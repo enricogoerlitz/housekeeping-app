@@ -31,18 +31,20 @@ import {
   Screen,
   ScreenHeader,
   Section,
+  SwipeArea,
   Text,
   ViewTabs,
   announce,
   columnsFor,
   keyboardFocusRing,
   panelPlacement,
+  tabSwipe,
   useBreakpoint,
   useTheme,
   type MenuOption,
 } from '@housekeeping/ui';
 import { useIsFocused, useRouter } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Pressable, View, type HostInstance } from 'react-native';
 
 import { ChoreSheet } from '@/features/chores/chore-sheet';
@@ -65,6 +67,7 @@ import {
   CalendarSwipe,
   ParkedTarget,
   TripRangeBanner,
+  useDraggedKind,
 } from './calendar-drag';
 import { useFillHeight } from './calendar-fill';
 import { DayPanel } from './day-panel';
@@ -533,16 +536,20 @@ export function CalendarScreen() {
   const parkedCellWidth =
     parkedWidth > 0 ? (parkedWidth - (parkedColumns - 1) * PARKED_GAP) / parkedColumns : undefined;
 
+  // Phones: a swipe under the grid changes the view, in the grid the period (spec 0034, REQ-006).
+  const viewSwipe = tabSwipe(VIEWS, view, changeView);
   const laterStrip = (
-    <View onLayout={(event) => measureBelow(event.nativeEvent.layout.height)}>
-      <PlannedLaterStrip
-        data={data}
-        entries={later}
-        expanded={laterOpen}
-        onToggle={() => setLaterOpen(!laterOpen)}
-        onOpenEntry={setOpenEntry}
-      />
-    </View>
+    <ViewSwipe enabled={isPhone} onStep={viewSwipe.onStep}>
+      <View onLayout={(event) => measureBelow(event.nativeEvent.layout.height)}>
+        <PlannedLaterStrip
+          data={data}
+          entries={later}
+          expanded={laterOpen}
+          onToggle={() => setLaterOpen(!laterOpen)}
+          onOpenEntry={setOpenEntry}
+        />
+      </View>
+    </ViewSwipe>
   );
 
   return (
@@ -642,55 +649,59 @@ export function CalendarScreen() {
           </CalendarSwipe>
           {view === 'month' ? laterStrip : null}
           {view === 'week' ? (
-            <ParkedTarget>
-              <View onLayout={(event) => measureBelow(event.nativeEvent.layout.height)}>
-                <Section
-                  title="Vorgemerkt"
-                  testID="planned-later"
-                  action={
-                    lastSlotId ? (
-                      <Button
-                        label="vormerken"
-                        icon="plus"
-                        variant="link"
-                        size="sm"
-                        disabled={online.disabled}
-                        hint={online.hint}
-                        testID="add-later"
-                        onPress={() => onAdd({ date: null, slotId: lastSlotId })}
-                      />
-                    ) : undefined
-                  }
-                >
-                  {later.length === 0 ? (
-                    <Text color="muted">
-                      Nichts vorgemerkt. Hier landet, was bald dran sein soll, aber noch keinen Tag
-                      hat.
-                    </Text>
-                  ) : (
-                    // From 700 px a grid of equal columns, each at least 220 px (REQ-001).
-                    <View
-                      style={{
-                        flexDirection: isPhone ? 'column' : 'row',
-                        flexWrap: 'wrap',
-                        gap: PARKED_GAP,
-                      }}
-                      testID="planned-later-grid"
-                      onLayout={(event) => setParkedWidth(event.nativeEvent.layout.width)}
-                    >
-                      {later.map((entry) => (
-                        <View
-                          key={entry.id}
-                          style={isPhone ? undefined : { width: parkedCellWidth ?? PARKED_COLUMN }}
-                        >
-                          <EntryLine entry={entry} data={data} onPress={setOpenEntry} />
-                        </View>
-                      ))}
-                    </View>
-                  )}
-                </Section>
-              </View>
-            </ParkedTarget>
+            <ViewSwipe enabled={isPhone} onStep={viewSwipe.onStep}>
+              <ParkedTarget>
+                <View onLayout={(event) => measureBelow(event.nativeEvent.layout.height)}>
+                  <Section
+                    title="Vorgemerkt"
+                    testID="planned-later"
+                    action={
+                      lastSlotId ? (
+                        <Button
+                          label="vormerken"
+                          icon="plus"
+                          variant="link"
+                          size="sm"
+                          disabled={online.disabled}
+                          hint={online.hint}
+                          testID="add-later"
+                          onPress={() => onAdd({ date: null, slotId: lastSlotId })}
+                        />
+                      ) : undefined
+                    }
+                  >
+                    {later.length === 0 ? (
+                      <Text color="muted">
+                        Nichts vorgemerkt. Hier landet, was bald dran sein soll, aber noch keinen
+                        Tag hat.
+                      </Text>
+                    ) : (
+                      // From 700 px a grid of equal columns, each at least 220 px (REQ-001).
+                      <View
+                        style={{
+                          flexDirection: isPhone ? 'column' : 'row',
+                          flexWrap: 'wrap',
+                          gap: PARKED_GAP,
+                        }}
+                        testID="planned-later-grid"
+                        onLayout={(event) => setParkedWidth(event.nativeEvent.layout.width)}
+                      >
+                        {later.map((entry) => (
+                          <View
+                            key={entry.id}
+                            style={
+                              isPhone ? undefined : { width: parkedCellWidth ?? PARKED_COLUMN }
+                            }
+                          >
+                            <EntryLine entry={entry} data={data} onPress={setOpenEntry} />
+                          </View>
+                        ))}
+                      </View>
+                    )}
+                  </Section>
+                </View>
+              </ParkedTarget>
+            </ViewSwipe>
           ) : null}
           {adding ? <AddEntrySheet target={adding} onClose={() => setAdding(undefined)} /> : null}
           {/* A window stays in the address while a page opened from it is on top (AC-016). */}
@@ -736,5 +747,24 @@ export function CalendarScreen() {
         label={trip?.phase === 'drawing' && range ? rangeLabel(range.from, range.to) : null}
       />
     </DragProvider>
+  );
+}
+
+/**
+ * The room under the calendar grid on phones (spec 0034, REQ-006): a sideways swipe there changes
+ * the view Woche ↔ Monat ↔ Jahr like the tabs; in the grid it pages. Never while something hangs
+ * on the finger.
+ */
+function ViewSwipe(props: {
+  enabled: boolean;
+  onStep: (step: -1 | 1) => void;
+  children: ReactNode;
+}) {
+  const kind = useDraggedKind();
+  if (!props.enabled) return <>{props.children}</>;
+  return (
+    <SwipeArea enabled={kind === null} onSwipe={props.onStep} testID="calendar-view-swipe">
+      {props.children}
+    </SwipeArea>
   );
 }

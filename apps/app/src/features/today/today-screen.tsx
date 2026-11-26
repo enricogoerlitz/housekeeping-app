@@ -7,6 +7,7 @@ import {
   useToday,
 } from '@housekeeping/api';
 import {
+  addDays,
   addPresetSlot,
   entriesForDay,
   overviewSections,
@@ -15,7 +16,7 @@ import {
   shiftOverview,
   type ISODate,
 } from '@housekeeping/core';
-import { Screen, ScreenHeader, Text, useBreakpoint } from '@housekeeping/ui';
+import { Screen, ScreenHeader, SwipeArea, Text, useBreakpoint } from '@housekeeping/ui';
 import { useState } from 'react';
 import { View } from 'react-native';
 
@@ -153,15 +154,23 @@ export function TodayScreen() {
   if (!twoColumns) {
     return (
       <Screen testID="today-screen" header={header}>
-        {offlineHint}
-        {nav}
-        {strip}
-        <TodayTrips shown={shown} />
-        {meals}
-        {recap}
-        {chores}
-        <TodayShopping preview={!isPhone} />
-        <TodayPacking shown={shown} />
+        {/* Phones: a swipe to the left shows the next day, to the right the previous one (spec
+            0034, REQ-005); rows that scroll sideways keep their own swipe. */}
+        <SwipeArea
+          enabled={isPhone}
+          onSwipe={(step) => show(addDays(shown, step))}
+          testID="today-swipe"
+        >
+          {offlineHint}
+          {nav}
+          {strip}
+          <TodayTrips shown={shown} />
+          {meals}
+          {recap}
+          {chores}
+          <TodayShopping preview={!isPhone} />
+          <TodayPacking shown={shown} />
+        </SwipeArea>
         <TripWindowHost page="uebersicht" />
         {addSheet}
       </Screen>

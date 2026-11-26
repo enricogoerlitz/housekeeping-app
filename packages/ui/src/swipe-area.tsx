@@ -1,7 +1,15 @@
-import { useEffect, useEffectEvent, useState, type ReactNode } from 'react';
-import { PanResponder, Platform, View, type StyleProp, type ViewStyle } from 'react-native';
+import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from 'react';
+import {
+  PanResponder,
+  Platform,
+  View,
+  type HostInstance,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
 import { useSharedValue } from 'react-native-reanimated';
 
+import { inInnerSwipeArea, inSidewaysScroller } from './sideways-scroller';
 import { claimsSwipe, swipeStep } from './swipe-step';
 
 export interface SwipeAreaProps {
@@ -17,6 +25,8 @@ export interface SwipeAreaProps {
 // Vertical moves stay with the browser (scrolling); sideways ones reach the responder.
 const WEB_PAN_Y: ViewStyle | null =
   Platform.OS === 'web' ? ({ touchAction: 'pan-y' } as unknown as ViewStyle) : null;
+// react-native-web writes `dataSet` as data attributes; an outer area finds inner ones by it.
+const WEB_MARK: object = Platform.OS === 'web' ? { dataSet: { swipeArea: '' } } : {};
 
 /**
  * An area that changes to the next or previous item on a sideways swipe, e.g. the day in the day
@@ -37,9 +47,19 @@ export function SwipeArea(props: SwipeAreaProps) {
     if (swiped) report(swiped.step);
   }, [swiped]);
 
+  // A touch in a row that scrolls sideways belongs to that row (spec 0034, AC-012), one in a
+  // swipe area inside this one to that area (REQ-006).
+  const blocked = useSharedValue(false);
+  const own = useRef<HostInstance>(null);
   const [responder] = useState(() => {
-    const claims = (dx: number, dy: number) => enabled.get() && claimsSwipe(dx, dy);
+    const claims = (dx: number, dy: number) =>
+      enabled.get() && !blocked.get() && claimsSwipe(dx, dy);
     return PanResponder.create({
+      onStartShouldSetPanResponderCapture: (event) => {
+        const target = event.nativeEvent.target;
+        blocked.set(inSidewaysScroller(target) || inInnerSwipeArea(target, own.current));
+        return false;
+      },
       onMoveShouldSetPanResponderCapture: (_event, gesture) => claims(gesture.dx, gesture.dy),
       onMoveShouldSetPanResponder: (_event, gesture) => claims(gesture.dx, gesture.dy),
       onPanResponderRelease: (_event, gesture) => {
@@ -51,7 +71,13 @@ export function SwipeArea(props: SwipeAreaProps) {
     });
   });
   return (
-    <View {...responder.panHandlers} testID={props.testID} style={[WEB_PAN_Y, props.style]}>
+    <View
+      ref={own}
+      {...WEB_MARK}
+      {...responder.panHandlers}
+      testID={props.testID}
+      style={[WEB_PAN_Y, props.style]}
+    >
       {props.children}
     </View>
   );
