@@ -48,6 +48,15 @@ describe('pickImageFile (spec 0033, REQ-008)', () => {
     click.mockRestore();
   });
 
+  it('AC-009: "Foto aufnehmen" asks for the camera (capture), the other buttons do not', () => {
+    const click = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => undefined);
+    pickImageFile(() => undefined, { camera: true });
+    expect(picker()?.getAttribute('capture')).toBe('environment');
+    pickImageFile(() => undefined);
+    expect(picker()?.hasAttribute('capture')).toBe(false);
+    click.mockRestore();
+  });
+
   it('a second try replaces a picker that never reported back', () => {
     const click = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => undefined);
     pickImageFile(() => undefined);

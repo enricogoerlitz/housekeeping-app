@@ -91,6 +91,8 @@ export function fakeDeps(
     env: (name) => env[name],
     createUserClient: () => client,
     now: () => new Date('2026-11-20T09:30:00Z'),
+    // Every name is public unless a test says otherwise.
+    resolveDns: async () => ['93.184.215.14'],
   };
 }
 

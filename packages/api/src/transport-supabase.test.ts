@@ -634,6 +634,39 @@ describe('supabase transport', () => {
   });
 });
 
+describe('supabase transport: fetch-image (spec 0039)', () => {
+  it('AC-006: hands the bytes over as a Blob; AC-007: not_an_image and odd answers are refused', async () => {
+    const image = new Blob([new Uint8Array([0xff, 0xd8, 0xff])]);
+    const { client, invoked } = stubClient(
+      [],
+      [
+        { data: image, error: null },
+        {
+          data: null,
+          error: {
+            name: 'FunctionsHttpError',
+            message: 'Edge Function returned a non-2xx status code',
+            context: { status: 422, json: async () => ({ error: 'not_an_image' }) },
+          },
+        },
+        { data: '<html>', error: null },
+      ],
+    );
+    const transport = createSupabaseTransport(client);
+    const request = { householdId: 'h1', url: 'https://example.org/kuchen.jpg' };
+    await expect(transport.fetchImage(request)).resolves.toBe(image);
+    expect(invoked).toEqual([{ name: 'fetch-image', body: request }]);
+    await expect(transport.fetchImage(request)).rejects.toMatchObject({
+      kind: 'permanent',
+      code: 'not_an_image',
+      status: 422,
+    });
+    await expect(transport.fetchImage(request)).rejects.toMatchObject({
+      code: 'invalid_response',
+    });
+  });
+});
+
 describe('supabase transport: AI edge functions', () => {
   const httpError = (status: number, body: unknown) => ({
     data: null,

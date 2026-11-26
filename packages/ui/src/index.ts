@@ -51,6 +51,7 @@ export {
   type SheetAction,
 } from './overlay';
 export { pickImageFile } from './pick-image';
+export { useImageDropAndPaste } from './image-drop';
 export { useKeyboard } from './keyboard';
 export { tabSwipe, type TabSwipe } from './tab-swipe';
 export { useFinePointer, useHover } from './pointer';

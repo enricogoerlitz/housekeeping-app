@@ -37,4 +37,6 @@ export interface Deps {
   /** `authorization` is the caller's own `Authorization` header. */
   createUserClient: (authorization: string) => UserClient;
   now: () => Date;
+  /** Every A and AAAA address of a host name (fetch-public's SSRF check). */
+  resolveDns: (hostname: string) => Promise<string[]>;
 }

@@ -420,6 +420,12 @@ export function createSupabaseTransport(
     sendTestPush: (endpoint) => nothing('send_test_push', { p_endpoint: endpoint }),
     resolveMapsLink: (url) =>
       invokeParsed(ResolveMapsLinkReplySchema, 'resolve-maps-link', { url }),
+    fetchImage: async (request) => {
+      // supabase-js answers application/octet-stream as a Blob.
+      const data = await invoke('fetch-image', request);
+      if (!(data instanceof Blob)) throw new TransportError('permanent', 'invalid_response');
+      return data;
+    },
     askAssistant: (request) => invokeParsed(AssistantReplySchema, 'ai-assistant', request),
     aiSearch: (request) => invokeParsed(AiSearchResultSchema, 'ai-search', request),
     speechToken: () => invokeParsed(SpeechTokenReplySchema, 'speech-token', {}),

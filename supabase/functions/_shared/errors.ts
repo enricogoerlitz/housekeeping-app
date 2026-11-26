@@ -3,7 +3,9 @@ import type { ErrorCode } from './contract.gen.ts';
 const STATUS: { [code in ErrorCode]: number } = {
   invalid_request: 400,
   unauthorized: 401,
+  forbidden: 403,
   not_a_maps_link: 422,
+  not_an_image: 422,
   quota_exceeded: 429,
   internal: 500,
   ai_unavailable: 503,

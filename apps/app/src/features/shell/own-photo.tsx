@@ -13,8 +13,8 @@ import {
 import { useEffect, useState, type ReactNode } from 'react';
 import { Pressable, View } from 'react-native';
 
-import { confirmFirst } from '@/features/shell/confirm-dialog';
 import { useOnlineOnly } from '@/features/shell/offline';
+import { PhotoWindow } from '@/features/shell/photo-window';
 import { CAN_PICK_PHOTO, pickPhotoFile } from '@/lib/pick-photo';
 import { errorMessage, FAILED_MESSAGE } from '@/features/shell/error-message';
 
@@ -57,8 +57,9 @@ export function OwnPhoto(
 }
 
 /**
- * The photo on a detail page (16:9) with "Foto hinzufügen/ändern" and "Foto entfernen"; both need
- * the network. Test ids `<prefix>-image`, `<prefix>-photo-change`, `<prefix>-photo-remove`.
+ * The photo on a detail page (16:9) with "Foto hinzufügen/ändern", which opens the window
+ * "Foto" (spec 0039); "Foto entfernen" is in there. Both need the network. Test ids
+ * `<prefix>-image`, `<prefix>-photo-change`, `<prefix>-photo-window`, `<prefix>-photo-remove`.
  */
 export function DetailPhotoBlock(props: {
   photoPath: string | undefined;
@@ -72,31 +73,18 @@ export function DetailPhotoBlock(props: {
   const photo = usePhoto(props.photoPath);
   const [busy, setBusy] = useState<'upload' | 'remove' | undefined>();
   const [error, setError] = useState<string | undefined>();
+  const [windowOpen, setWindowOpen] = useState(false);
   const hasPhoto = !!props.photoPath;
   const prefix = props.testPrefix;
 
-  const change = () =>
-    pickPhotoFile((file) => {
-      setError(undefined);
-      setBusy('upload');
-      preparePhoto(file)
-        .then((prepared) => props.onChange(prepared))
-        .then(() => toast.show({ message: 'Foto gespeichert' }))
-        .catch((caught: unknown) => setError(message(caught)))
-        .finally(() => setBusy(undefined));
-    });
-
-  // Asks first (spec 0036, AC-019).
-  const remove = () =>
-    confirmPhotoRemoval(() => {
-      setError(undefined);
-      setBusy('remove');
-      props
-        .onRemove()
-        .then(() => toast.show({ message: 'Foto entfernt' }))
-        .catch((caught: unknown) => setError(message(caught)))
-        .finally(() => setBusy(undefined));
-    });
+  const run = (kind: 'upload' | 'remove', action: () => Promise<void>, done: string) => {
+    setError(undefined);
+    setBusy(kind);
+    action()
+      .then(() => toast.show({ message: done }))
+      .catch((caught: unknown) => setError(message(caught)))
+      .finally(() => setBusy(undefined));
+  };
 
   return (
     <View style={{ gap: 8 }}>
@@ -124,8 +112,7 @@ export function DetailPhotoBlock(props: {
         hasPhoto={hasPhoto}
         disabled={online.disabled || busy !== undefined}
         hint={online.hint}
-        onChange={change}
-        onRemove={remove}
+        onChange={() => setWindowOpen(true)}
         testPrefix={prefix}
       />
       {busy ? (
@@ -138,32 +125,32 @@ export function DetailPhotoBlock(props: {
           {error}
         </Text>
       ) : null}
+      {windowOpen ? (
+        <PhotoWindow
+          current={photo.uri ? { uri: photo.uri } : undefined}
+          hasPhoto={hasPhoto}
+          name={props.name}
+          placeholderIcon={props.placeholderIcon}
+          aspectRatio={16 / 9}
+          onApply={(prepared) => run('upload', () => props.onChange(prepared), 'Foto gespeichert')}
+          onRemove={() => run('remove', props.onRemove, 'Foto entfernt')}
+          onClose={() => setWindowOpen(false)}
+          testPrefix={prefix}
+        />
+      ) : null}
     </View>
   );
 }
 
-/** „Foto entfernen?“ · „Entfernen“ / „Abbrechen“ before a photo goes (spec 0036, AC-019). */
-export function confirmPhotoRemoval(remove: () => void): void {
-  confirmFirst({
-    title: 'Foto entfernen?',
-    confirmLabel: 'Entfernen',
-    onConfirm: remove,
-    testID: 'confirm-remove-photo',
-  });
-}
-
 /**
- * "Foto hinzufügen/ändern" and "Foto entfernen" right under a photo (spec 0036, REQ-008), at a
- * restaurant, an activity, a recipe and a collection. `onRemove` asks first itself.
+ * "Foto hinzufügen/ändern" right under a photo (spec 0036, REQ-008), at a restaurant, an
+ * activity, a recipe and a collection; it opens the window "Foto" (spec 0039, REQ-001).
  */
 export function PhotoActionRow(props: {
   hasPhoto: boolean;
-  /** Only an own photo can be removed, not a sample photo (default: `hasPhoto`). */
-  removable?: boolean;
   disabled: boolean;
   hint: string | undefined;
   onChange: () => void;
-  onRemove: () => void;
   testPrefix: string;
 }) {
   if (!CAN_PICK_PHOTO) return null;
@@ -179,18 +166,6 @@ export function PhotoActionRow(props: {
         onPress={props.onChange}
         testID={`${props.testPrefix}-photo-change`}
       />
-      {(props.removable ?? props.hasPhoto) ? (
-        <Button
-          label="Foto entfernen"
-          icon="trash"
-          variant="link"
-          size="sm"
-          disabled={props.disabled}
-          hint={props.hint}
-          onPress={props.onRemove}
-          testID={`${props.testPrefix}-photo-remove`}
-        />
-      ) : null}
     </Row>
   );
 }
