@@ -2,7 +2,9 @@ import {
   tripEndLabel,
   dateRangeLabel,
   dragSourceKey,
+  entryCountRole,
   entryKindRole,
+  lineTooltip,
   stripeText,
   type TripStripe,
   type HouseholdRowItem,
@@ -24,9 +26,11 @@ import {
   useTheme,
   withAlpha,
 } from '@housekeeping/ui';
+import { useState } from 'react';
 import { Pressable, View, type ViewStyle } from 'react-native';
 
 import { useChoreCheckWindow } from '@/features/chores/chore-check-list';
+import { DoneEntrySheet } from '@/features/chores/done-entry-sheet';
 import { entryReminderLabels, ReminderBell } from '@/features/meal-plan/reminder-bell';
 import { OFFLINE_EDIT_HINT, useOnlineOnly } from '@/features/shell/offline';
 
@@ -226,6 +230,7 @@ export function EntryLine(props: {
         onPress={guardPress(() => props.onPress(entry))}
         accessibilityLabel={props.withSlot ? `${data.slotName(entry.slotId)}: ${spoken}` : spoken}
         accessibilityAction={{ label: 'Verschieben', onAction: () => openMove(entry) }}
+        tooltip={lineTooltip(entryCountRole(entry, data.recipesById), title)}
         testID={`entry-${entry.id}`}
       />
     </View>
@@ -241,7 +246,10 @@ function People(props: { ids: Id[]; data: CalendarData }) {
   return people.length > 0 ? <AvatarStack members={people} size="xs" /> : null;
 }
 
-/** A booked chore: ✓, and a tap on its name opens the chore window while the chore exists. */
+/**
+ * A booked chore: ✓. A tap offers „Zurücknehmen“ or „Im Verlauf öffnen“ (spec 0035, REQ-001) and,
+ * while the chore exists, „Aufgabe öffnen“ for the chore window.
+ */
 function ChoreLine(props: {
   item: HouseholdRowItem;
   data: CalendarData;
@@ -250,24 +258,41 @@ function ChoreLine(props: {
   onOpenChore: (choreId: Id) => void;
 }) {
   const { item } = props;
+  const [doneOpen, setDoneOpen] = useState(false);
   const people = <People ids={item.memberIds} data={props.data} />;
   const choreId = props.data.chores.some((chore) => chore.id === item.choreId)
     ? item.choreId
     : undefined;
+  const onPress =
+    item.eventId !== undefined
+      ? () => setDoneOpen(true)
+      : choreId === undefined
+        ? undefined
+        : () => props.onOpenChore(choreId);
   return (
-    <KindLine
-      kind="chore"
-      title={choreTitle(item)}
-      quiet
-      dashed={item.approximate}
-      size={props.compact ? 'compact' : 'row'}
-      leading={<Icon name="check" size={14} color="muted" />}
-      trailing={props.peopleBelow ? undefined : people}
-      detail={props.peopleBelow ? people : undefined}
-      onPress={choreId === undefined ? undefined : () => props.onOpenChore(choreId)}
-      accessibilityLabel={`Erledigt: ${choreTitle(item)}`}
-      testID={`chore-occ-${item.key}`}
-    />
+    <>
+      <KindLine
+        kind="chore"
+        title={choreTitle(item)}
+        quiet
+        dashed={item.approximate}
+        size={props.compact ? 'compact' : 'row'}
+        leading={<Icon name="check" size={14} color="muted" />}
+        trailing={props.peopleBelow ? undefined : people}
+        detail={props.peopleBelow ? people : undefined}
+        onPress={onPress}
+        tooltip={lineTooltip('chore', choreTitle(item))}
+        accessibilityLabel={`Erledigt: ${choreTitle(item)}`}
+        testID={`chore-occ-${item.key}`}
+      />
+      {doneOpen && item.eventId !== undefined ? (
+        <DoneEntrySheet
+          eventId={item.eventId}
+          onClose={() => setDoneOpen(false)}
+          onOpenChore={choreId === undefined ? undefined : () => props.onOpenChore(choreId)}
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -326,6 +351,7 @@ export function HouseholdDay(props: {
               trailing={props.peopleBelow ? undefined : people}
               detail={props.peopleBelow ? people : undefined}
               onPress={() => props.onOpenChore(chore.id)}
+              tooltip={lineTooltip('chore', choreTitle(item))}
               accessibilityLabel={`${choreTitle(item)}, Details`}
               testID={`chore-occ-${item.key}`}
             />

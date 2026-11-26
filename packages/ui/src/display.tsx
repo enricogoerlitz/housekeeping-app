@@ -16,6 +16,7 @@ import { useHover } from './pointer';
 import type { IconName } from './icons';
 import { HYPHENATE, Icon, Surface, Text } from './primitives';
 import { ToneContext, useTheme } from './theme-context';
+import { useTooltip } from './tooltip';
 import type { KindColor, Tone } from './themes';
 
 const AVATAR_SIZES = { xs: 18, s: 26, m: 40, l: 56 } as const;
@@ -153,6 +154,11 @@ export interface PhotoProps {
   source?: ImageSource | number;
   /** Shown as placeholder when there is no image. */
   placeholderIcon?: IconName;
+  /**
+   * The photo is on its way: a calm surface of the final size instead of the symbol, so nothing
+   * pops or shifts when it fades in (spec 0034, AC-010).
+   */
+  loading?: boolean;
   width?: number | `${number}%`;
   height?: number;
   aspectRatio?: number;
@@ -172,24 +178,19 @@ export function Photo(props: PhotoProps) {
     aspectRatio: props.aspectRatio,
     borderRadius: radius,
     overflow: 'hidden',
+    backgroundColor: theme.colors.surfaceSunken,
   };
   if (props.source === undefined) {
     return (
       <View
         testID={props.testID}
-        style={[
-          box,
-          {
-            backgroundColor: theme.colors.surfaceSunken,
-            alignItems: 'center',
-            justifyContent: 'center',
-          },
-          props.style,
-        ]}
+        style={[box, { alignItems: 'center', justifyContent: 'center' }, props.style]}
       >
-        <ToneContext.Provider value={undefined}>
-          <Icon name={props.placeholderIcon ?? 'utensils'} size={26} color="muted" />
-        </ToneContext.Provider>
+        {props.loading ? null : (
+          <ToneContext.Provider value={undefined}>
+            <Icon name={props.placeholderIcon ?? 'utensils'} size={26} color="muted" />
+          </ToneContext.Provider>
+        )}
       </View>
     );
   }
@@ -900,6 +901,11 @@ export interface KindLineProps {
    * (spec 0016); it needs `onPress`.
    */
   accessibilityAction?: { label: string; onAction: () => void };
+  /**
+   * The whole text for a tooltip when the title is cut off, e.g. "Aktivität: Bouldern (Power vs.
+   * Balance) · 18:00" (spec 0035, REQ-005); only with a mouse or a trackpad.
+   */
+  tooltip?: string;
   testID?: string;
 }
 
@@ -910,9 +916,11 @@ export interface KindLineProps {
 export function KindLine(props: KindLineProps) {
   const hover = useHover();
   const theme = useTheme();
+  const { onTarget, hoverProps, tooltip } = useTooltip(props.tooltip, props.testID);
   const compact = props.size === 'compact';
   const title = (
     <Text
+      ref={onTarget}
       variant={compact ? 'caption' : props.quiet ? 'small' : 'body'}
       color={props.quiet || props.struck ? 'muted' : 'text'}
       numberOfLines={compact ? 1 : 2}
@@ -962,13 +970,15 @@ export function KindLine(props: KindLineProps) {
   const action = props.accessibilityAction;
   if (!props.onPress) {
     return (
-      <View testID={props.testID} accessibilityLabel={props.accessibilityLabel}>
+      <View testID={props.testID} accessibilityLabel={props.accessibilityLabel} {...hoverProps}>
         {body}
+        {tooltip}
       </View>
     );
   }
   return (
     <Pressable
+      {...hoverProps}
       testID={props.testID}
       accessibilityRole="button"
       accessibilityLabel={props.accessibilityLabel ?? props.title}
@@ -998,6 +1008,7 @@ export function KindLine(props: KindLineProps) {
       }}
     >
       {body}
+      {tooltip}
     </Pressable>
   );
 }

@@ -1,7 +1,6 @@
 import {
   changeChoreEventDay,
   reassignChoreEvent,
-  removeChoreEvent,
   useChores,
   useMembers,
   useToday,
@@ -17,7 +16,6 @@ import {
   Stack,
   Surface,
   Text,
-  toast,
 } from '@housekeeping/ui';
 import { useState, type ReactNode } from 'react';
 
@@ -26,6 +24,7 @@ import { useOnlineOnly } from '@/features/shell/offline';
 import { PlanDateCalendar } from '@/lib/plan-date-calendar';
 
 import { dayWithDate } from './chore-labels';
+import { removeEventWithToast } from './done-entry-sheet';
 
 interface HistoryEventProps {
   event: ChoreEvent;
@@ -47,21 +46,15 @@ function useHistoryEvent(props: HistoryEventProps): { title: string; body: React
   const [picking, setPicking] = useState(false);
   const choreExists = chores.some((chore) => chore.id === event.choreId);
 
-  // Asks first (spec 0036, Entscheidung 1); "Rückgängig" afterwards is gone.
+  // Asks first (spec 0036, Entscheidung 1).
   const remove = () =>
     confirmFirst({
       title: 'Eintrag entfernen?',
       message: `„${event.title}“, ${dayWithDate(event.doneOn, today)}`,
       confirmLabel: 'Entfernen',
       onConfirm: () => {
-        const removal = removeChoreEvent(event.id);
         props.onClose();
-        if (!removal) return;
-        toast.show({
-          message: removal.restoresChore
-            ? `Entfernt – „${event.title}“ ist wieder dran`
-            : 'Eintrag entfernt',
-        });
+        removeEventWithToast(event, 'Entfernt');
       },
       testID: 'confirm-remove-event',
     });

@@ -15,6 +15,9 @@ export function fadeOutCopy(node: unknown, options: { slide: boolean; ms: number
   if (layer.parentElement !== document.body) return;
   const copy = layer.cloneNode(true) as HTMLElement;
   const next = layer.nextSibling;
+  // A window dragged down (spec 0033) leaves from where the finger left it.
+  const place = layer.querySelector<HTMLElement>('[data-sheet-part="panel"]')?.style.transform;
+  const from = place && place !== 'none' ? place : 'translateY(0px)';
   queueMicrotask(() => {
     if (node.isConnected) return;
     copy.setAttribute('inert', '');
@@ -37,7 +40,7 @@ export function fadeOutCopy(node: unknown, options: { slide: boolean; ms: number
       scrim?.animate([{ opacity: 1 }, { opacity: 0 }], timing);
       panel?.animate(
         options.slide
-          ? [{ transform: 'translateY(0)' }, { transform: `translateY(${panel.offsetHeight}px)` }]
+          ? [{ transform: from }, { transform: `${from} translateY(${panel.offsetHeight}px)` }]
           : [{ opacity: 1 }, { opacity: 0 }],
         timing,
       );

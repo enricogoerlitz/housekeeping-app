@@ -156,6 +156,30 @@ Knöpfen am unteren Rand der Seite, nicht darauf. Quelle: Video-Befund. Offline:
    `autocomplete="one-time-code"`-artige Tricks, die ich nicht ohne Rückfrage einsetze.
 5. Foto-Auswahl: Das unsichtbare `<input type=file>` hängt während der Auswahl am Dokument und wird
    erst nach `change`/`cancel` entfernt (Ursache H-11 laut Analyse).
+6. Beim Bau entschieden: Das Wegwischen hört auf die Touch-Ereignisse des Browsers
+   (`sheet-drag-events.web.ts`), nicht auf den Responder von React Native: Nur ein Listener am
+   Element selbst kann iOS das eigene Scrollen und Nachfedern beim ersten Zug verbieten (AC-003).
+   Die Entscheidung selbst (`sheet-drag.ts`) ist rein und getestet. Elemente mit eigener Geste
+   (`touch-action: none`, z. B. der Griff einer Ordnen-Liste) behalten den Finger. Nativ gibt es
+   kein Wegwischen (nur PWA).
+7. Die Seiten-Sperre hält jeden Scroll-Bereich in `#root` an seiner Stelle, solange ein Fenster da
+   ist (auch beim Zurückgeben des Fokus an die Seite), statt `shell.tsx` zu ändern; nur auf dem
+   Handy (Nicht-Ziel: Desktop unverändert).
+8. Fokus: Ein `TextField` mit `autoFocus` im Fenster meldet sich beim Fenster an; das Fenster setzt
+   den Fokus nach dem Einblenden (250 ms) ohne Scrollen und holt ihn 600 ms lang zurück, wenn ein
+   sich schließendes Menü ihn auf seinen Knopf zurücklegt (das war die Ursache am Desktop: der Fokus
+   landete auf dem Schleier). Ein eigenes Suchfeld mit `autoFocus` (z. B. „Neue Zutat“) wird
+   genauso gehalten.
+9. Hinweise: Seiten melden Knöpfe mit `useToastAvoid`; der Hinweis misst sie beim Erscheinen und
+   ein Bild später noch einmal und steht dann über ihnen, nie höher als die Bildschirmmitte.
+10. OFFEN (AC-018): iOS öffnet die Tastatur nur, wenn der Fokus während eines Fingertipps gesetzt
+    wird. „Neu → Rezept“ öffnet das Fenster über die Adresse, nachdem das Menü zu ist; der Cursor
+    steht dann im Titel, ob iOS die Tastatur dazu öffnet, zeigt erst das Gerät.
+    Option A: so lassen — Pro: kein Eingriff in Menü und Navigation / Contra: auf dem iPhone ein
+    Tipp mehr. Option B: im Menüpunkt ein verstecktes Feld fokussieren und den Fokus beim Öffnen
+    übergeben (bekannter iOS-Kniff) — Pro: Tastatur sofort offen / Contra: `Menu` muss den Fokus
+    beim Schließen nicht mehr auf seinen Knopf legen, react-native-web legt ihn trotzdem zurück;
+    fragil, nur am Gerät prüfbar. Empfehlung: A, erst nach der iPhone-Abnahme über B entscheiden.
 
 ## Daten
 
@@ -163,18 +187,29 @@ Entfällt: nur Oberfläche.
 
 ## Umsetzung
 
-- [ ] 1. `Sheet`: Wegwischen mit Kopf und Inhalt-oben, Tests der reinen Entscheidungslogik in
+- [x] 1. `Sheet`: Wegwischen mit Kopf und Inhalt-oben, Tests der reinen Entscheidungslogik in
       `packages/ui` (AC-001–AC-005)
-- [ ] 2. Schleier auf dem Handy transparent, Schatten/Griff (AC-006, AC-007)
-- [ ] 3. Tastatur-Rahmen: einmal setzen nach Ende der visualViewport-Änderung, Fenster unten
+- [x] 2. Schleier auf dem Handy transparent, Schatten/Griff (AC-006, AC-007)
+- [x] 3. Tastatur-Rahmen: einmal setzen nach Ende der visualViewport-Änderung, Fenster unten
       verankern (AC-008–AC-010)
-- [ ] 4. Seiten-Scroll-Sperre unter Fenstern, `scrollIntoView` nur bei Bedarf (AC-011–AC-013)
-- [ ] 5. Eingabe-Attribute in `TextField` und den eigenen Eingabefeldern (AC-014–AC-016)
-- [ ] 6. Fokus beim Öffnen (Fenster setzt Fokus nach der Einblend-Animation) (AC-017–AC-020)
+- [x] 4. Seiten-Scroll-Sperre unter Fenstern, `scrollIntoView` nur bei Bedarf (AC-011–AC-013)
+- [x] 5. Eingabe-Attribute in `TextField` (AC-014–AC-016); das Suchfeld (`search-or-create.tsx`)
+      gehört Spec 0036
+- [x] 6. Fokus beim Öffnen (Fenster setzt Fokus nach der Einblend-Animation) (AC-017–AC-020)
 - [x] 7. Suche: X mit Fokus-Erhalt (AC-021, AC-022) — gebaut mit Spec 0036: `FieldClearButton`
       (`packages/ui/src/field-clear.tsx`) in `SearchOrCreate` und den Suchen von Rezepten,
       Restaurants, Aktivitäten und Artikeln; ui-Tests AC-021/AC-022, Dev-Server geprüft
-- [ ] 8. `pick-photo.ts`: Input im Dokument halten (AC-023, AC-024)
-- [ ] 9. Toast-Abstand auf Rezept- und Sammlungsseite (AC-025)
+- [x] 8. `pick-photo.ts`: Input im Dokument halten (AC-023, AC-024), als `pickImageFile` in `ui`
+- [x] 9. Toast-Abstand auf Rezept- und Sammlungsseite (AC-025)
 - [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün; Bildschirmfotos
       `/ui-verify`; iPhone-Abnahme durch Enrico in der Vorschau
+      _Stand 26.11.2026:_ `pnpm format:check`, `pnpm check` (ui 98,7 % Zeilen) und `pnpm build:web`
+      (mit `.env`) grün. Tests: `sheet-drag.test.ts`, `keyboard-settle.test.ts`,
+      `scroll-reveal.test.ts`, `toast-place.test.ts`, `field-autofill.test.ts`,
+      `overlay-handy.test.tsx`, `page-scroll-lock.test.tsx`, `pick-image.test.tsx`, ergänzt
+      `controls.test.tsx`, `editable-section.test.tsx`. Im Browser (Chromium, Touch emuliert, 390 ×
+      844 und 1440 × 900): Link-Fenster ohne Schleier mit Griff, kurzer Zug federt zurück, langer Zug
+      schließt, Seite bleibt stehen; „Neu → Rezept“ am Desktop mit Cursor im Titel; „Bad putzen“
+      fokussiert nichts; Foto über den Dateiwähler beim ersten Mal gespeichert, „Foto gespeichert“
+      über „Kochen / Einplanen / Auf die Liste“. Bilder in `tmp/review-0003/0033/`. Offen:
+      iPhone-Abnahme (Wischen, Tastatur, Kontakt-Leiste, Mediathek).

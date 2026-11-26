@@ -13,6 +13,7 @@ import Animated, {
 import { scheduleOnRN } from 'react-native-worklets';
 
 import { useFinePointer } from './pointer';
+import { inSidewaysScroller } from './sideways-scroller';
 import {
   claimsTabSwipe,
   scrollKeepsTabSwipe,
@@ -36,23 +37,6 @@ const TIMING = { easing: EASE_OUT, reduceMotion: ReduceMotion.Never };
 // direction it arrives from survives a remount here. Taken only right after a swipe.
 let arriving: { step: -1 | 1; at: number } | undefined;
 const ARRIVE_WITHIN_MS = 1000;
-
-/** Web: a touch starting in an area that scrolls sideways belongs to that area (decision 8). */
-function inSidewaysScroller(target: unknown): boolean {
-  if (Platform.OS !== 'web') return false;
-  const view = globalThis as unknown as {
-    getComputedStyle?: (element: unknown) => { overflowX: string };
-  };
-  let node = target as { scrollWidth?: number; clientWidth?: number; parentElement?: unknown };
-  while (node && typeof node.scrollWidth === 'number') {
-    if (node.scrollWidth > (node.clientWidth ?? 0) + 1) {
-      const overflow = view.getComputedStyle?.(node).overflowX;
-      if (overflow === 'auto' || overflow === 'scroll') return true;
-    }
-    node = node.parentElement as typeof node;
-  }
-  return false;
-}
 
 /**
  * The page content below the view tabs on phones (spec 0029, REQ-003): it follows a sideways

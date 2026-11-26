@@ -507,6 +507,52 @@ describe('TextField', () => {
     expect(screen.getByTestId('mail').getAttribute('autocomplete')).toBe('email');
   });
 
+  it('spec 0033, AC-014: titles and names carry a name of their own that iOS does not read as a contact', () => {
+    render(
+      <>
+        <TextField label="Name" value="" onChangeText={() => undefined} testID="name" />
+        <TextField label="Titel" value="" onChangeText={() => undefined} testID="title" />
+      </>,
+    );
+    const name = screen.getByTestId('name').getAttribute('name') ?? '';
+    const title = screen.getByTestId('title').getAttribute('name') ?? '';
+    expect(name).toMatch(/^hk-field-/);
+    expect(title).toMatch(/^hk-field-/);
+    expect(name).not.toBe(title);
+    expect(screen.getByTestId('name').getAttribute('autocomplete')).toBe('off');
+  });
+
+  it('spec 0033, AC-015: a web address opens the URL keyboard', () => {
+    render(
+      <TextField
+        label="Adresse"
+        value=""
+        keyboardType="url"
+        onChangeText={() => undefined}
+        testID="url"
+      />,
+    );
+    const input = screen.getByTestId('url');
+    expect(input.getAttribute('type')).toBe('url');
+    expect(input.getAttribute('inputmode')).toBe('url');
+    expect(input.getAttribute('autocapitalize')).toBe('none');
+    expect(input.getAttribute('autocomplete')).toBe('off');
+  });
+
+  it('spec 0033, AC-016: an e-mail field keeps the suggestions of e-mail addresses', () => {
+    render(
+      <TextField
+        label="E-Mail"
+        value=""
+        keyboardType="email-address"
+        onChangeText={() => undefined}
+        testID="mail"
+      />,
+    );
+    expect(screen.getByTestId('mail').getAttribute('autocomplete')).toBe('email');
+    expect(screen.getByTestId('mail').getAttribute('name')).toBe('email');
+  });
+
   it('an error replaces the hint', () => {
     render(<TextField label="Menge" error="Bitte eine Zahl" hint="z. B. 2" testID="amount" />);
     expect(screen.getByTestId('amount-error').textContent).toBe('Bitte eine Zahl');

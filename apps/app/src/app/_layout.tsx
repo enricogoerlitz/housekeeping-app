@@ -11,6 +11,7 @@ import { AuthGate } from '@/features/auth/auth-gate';
 import { ReturnAfterSignIn } from '@/features/auth/return-path';
 import { ConfirmHost } from '@/features/shell/confirm-dialog';
 import { NotificationBridge } from '@/features/notifications/use-notification-open';
+import { PortraitHint } from '@/features/shell/portrait-hint';
 import { AssistantProvider } from '@/lib/assistant';
 import { features } from '@/lib/features';
 import { SettingsProvider, useSettings } from '@/lib/settings';
@@ -35,6 +36,7 @@ export default function RootLayout() {
           {/* "… löschen?" before every delete, over every window (spec 0036, REQ-012). */}
           <ConfirmHost />
           <ToastHost />
+          <PortraitHint />
         </Themed>
       </SettingsProvider>
     </SafeAreaProvider>

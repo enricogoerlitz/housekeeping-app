@@ -476,7 +476,7 @@ describe('showing a photo on a screen (usePhoto)', () => {
     unsubscribe();
   });
 
-  it('one blob: URL per photo while any screen shows it, revoked after the last one let go', async () => {
+  it('one blob: URL per photo while any screen shows it, kept after the last one let go', async () => {
     await fx.startEnrico();
     const path = await photoFromNadja();
     const create = vi.spyOn(URL, 'createObjectURL');
@@ -491,16 +491,69 @@ describe('showing a photo on a screen (usePhoto)', () => {
 
     first();
     second();
-    // A screen that unmounts and mounts again in the same commit keeps the URL.
-    const again = showPhoto(path);
     await Promise.resolve();
-    expect(photoView(path).uri).toBe(uri);
-    again();
-    await Promise.resolve();
-    expect(revoke).toHaveBeenCalledWith(uri);
-    expect(photoView(path)).toEqual({ loading: true });
+    expect(revoke).not.toHaveBeenCalled();
     expect(create).toHaveBeenCalledTimes(1);
     create.mockRestore();
+    revoke.mockRestore();
+  });
+
+  it('AC-009: a photo shown before is there in the first render when a screen shows it again', async () => {
+    await fx.startEnrico();
+    const path = await photoFromNadja();
+    const release = showPhoto(path);
+    await fx.settle();
+    const uri = photoView(path).uri;
+    release();
+    await Promise.resolve();
+    fx.clearCalls();
+
+    // The list opens again: its first render reads the photo before any effect ran.
+    expect(photoView(path)).toEqual({ uri, loading: false });
+    const again = showPhoto(path);
+    await fx.settle();
+    expect(fx.calls).toEqual([]);
+    expect(photoView(path).uri).toBe(uri);
+    again();
+  });
+
+  it('keeps at most 24 photos no screen shows; the one let go longest ago is revoked', async () => {
+    await fx.startEnrico();
+    const wire = fx.server.transport(NADJA);
+    const paths: string[] = [];
+    for (let index = 0; index < 25; index += 1) {
+      const path = `${H}/activities/act-bouldern/${crypto.randomUUID()}.jpg`;
+      await wire.uploadMedia(path, photo(index));
+      paths.push(path);
+    }
+    const revoke = vi.spyOn(URL, 'revokeObjectURL');
+    const uris: (string | undefined)[] = [];
+    for (const path of paths) {
+      const release = showPhoto(path);
+      await fx.settle();
+      uris.push(photoView(path).uri);
+      release();
+      await Promise.resolve();
+    }
+    expect(revoke).toHaveBeenCalledTimes(1);
+    expect(revoke).toHaveBeenCalledWith(uris[0]);
+    expect(photoView(paths[0])).toEqual({ loading: true });
+    expect(photoView(paths[24]).uri).toBe(uris[24]);
+    revoke.mockRestore();
+  });
+
+  it('signing out revokes the photos kept in memory', async () => {
+    await fx.startEnrico();
+    const path = await photoFromNadja();
+    const release = showPhoto(path);
+    await fx.settle();
+    const uri = photoView(path).uri;
+    release();
+    await Promise.resolve();
+    const revoke = vi.spyOn(URL, 'revokeObjectURL');
+    await resetLocalData();
+    expect(revoke).toHaveBeenCalledWith(uri);
+    expect(photoView(path)).toEqual({ loading: true });
     revoke.mockRestore();
   });
 

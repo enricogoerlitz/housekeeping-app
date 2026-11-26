@@ -110,6 +110,14 @@ describe('Photo', () => {
     expect(screen.getByLabelText('Curry im Topf')).toBeTruthy();
   });
 
+  it('AC-010: while the photo loads a calm surface of the same size stands, without the symbol', () => {
+    render(<Photo testID="photo" placeholderIcon="leaf" loading width={80} height={60} />);
+    const surface = screen.getByTestId('photo');
+    expect(surface.querySelector('svg')).toBeNull();
+    expect(getComputedStyle(surface).width).toBe('80px');
+    expect(getComputedStyle(surface).height).toBe('60px');
+  });
+
   it('without alt the picture is decorative', () => {
     render(<Photo testID="photo" source={PHOTO} />);
     expect(screen.queryByLabelText(/./)).toBeNull();

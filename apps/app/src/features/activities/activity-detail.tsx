@@ -11,17 +11,7 @@ import {
   useToday,
 } from '@housekeeping/api';
 import { showsRoute, isWebUrl, visitsOf, type Activity, type Id } from '@housekeeping/core';
-import {
-  Button,
-  EmptyState,
-  Icon,
-  IconButton,
-  Menu,
-  openExternalLink,
-  Row,
-  Stack,
-  Text,
-} from '@housekeeping/ui';
+import { Button, EmptyState, Icon, IconButton, Menu, Row, Stack, Text } from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
 import { View } from 'react-native';
@@ -35,6 +25,7 @@ import { useOnlineOnly } from '@/features/shell/offline';
 import { DetailPhotoBlock } from '@/features/shell/own-photo';
 import { useDeletePlace } from '@/features/shell/use-delete-place';
 import { VisitList, VisitsLine, useVisitsJump, type SectionRef } from '@/features/shell/visits';
+import { openLink } from '@/lib/open-link';
 
 import { ActivityFormSheet } from './activity-form';
 import { ACTIVITY_ICON } from './activity-photo';
@@ -240,7 +231,7 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
                 label="Webseite"
                 icon="external-link"
                 variant="secondary"
-                onPress={() => openExternalLink(website)}
+                onPress={() => openLink(website)}
                 testID="activity-website-open"
               />
             ) : null}

@@ -1,5 +1,14 @@
 import { deviceRowLabel } from '@housekeeping/core';
-import { Button, List, ListRow, Section, Stack, SwitchRow, Text } from '@housekeeping/ui';
+import {
+  Button,
+  List,
+  ListPlaceholder,
+  ListRow,
+  Section,
+  Stack,
+  SwitchRow,
+  Text,
+} from '@housekeeping/ui';
 
 import { confirmFirst } from '@/features/shell/confirm-dialog';
 import { OFFLINE_EDIT_HINT } from '@/features/shell/offline';
@@ -64,9 +73,8 @@ export function DevicesSection(props: { device: ThisDevice }) {
           Offline – deine Geräte siehst du mit Netz
         </Text>
       ) : list.status === 'loading' ? (
-        <Text variant="small" color="muted" testID="notif-devices-loading">
-          Wird geladen …
-        </Text>
+        // A calm placeholder only when the server takes longer (spec 0034, AC-002).
+        <ListPlaceholder label="Wird geladen …" rows={2} testID="notif-devices-loading" />
       ) : list.status === 'failed' ? (
         <Text variant="small" color="muted" testID="notif-devices-failed">
           Deine Geräte lassen sich gerade nicht laden.

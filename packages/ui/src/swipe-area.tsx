@@ -2,6 +2,7 @@ import { useEffect, useEffectEvent, useState, type ReactNode } from 'react';
 import { PanResponder, Platform, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useSharedValue } from 'react-native-reanimated';
 
+import { inSidewaysScroller } from './sideways-scroller';
 import { claimsSwipe, swipeStep } from './swipe-step';
 
 export interface SwipeAreaProps {
@@ -37,11 +38,21 @@ export function SwipeArea(props: SwipeAreaProps) {
     if (swiped) report(swiped.step);
   }, [swiped]);
 
+  // A touch in a row that scrolls sideways belongs to that row (spec 0034, AC-012).
+  const blocked = useSharedValue(false);
   const [responder] = useState(() => {
-    const claims = (dx: number, dy: number) => enabled.get() && claimsSwipe(dx, dy);
+    const claims = (dx: number, dy: number) =>
+      enabled.get() && !blocked.get() && claimsSwipe(dx, dy);
     return PanResponder.create({
+      onStartShouldSetPanResponderCapture: (event) => {
+        blocked.set(inSidewaysScroller(event.nativeEvent.target));
+        return false;
+      },
       onMoveShouldSetPanResponderCapture: (_event, gesture) => claims(gesture.dx, gesture.dy),
       onMoveShouldSetPanResponder: (_event, gesture) => claims(gesture.dx, gesture.dy),
+      // Once sideways, the swipe is this area's: a swipe around it (the view tabs) never takes it
+      // over (spec 0034, AC-014).
+      onPanResponderTerminationRequest: () => false,
       onPanResponderRelease: (_event, gesture) => {
         const step = swipeStep(gesture.dx, gesture.vx);
         if (step !== 0) {

@@ -360,6 +360,24 @@ export function isBackfillDay(day: ISODate, today: ISODate): boolean {
   return day <= today && day >= addDays(today, -BACKFILL_DAYS);
 }
 
+/**
+ * What a tap on a done entry in the calendar or the overview offers (spec 0035, REQ-001):
+ * "Zurücknehmen" only for the latest booked entry of its chore within the last 30 days, which
+ * brings date, last time and person of before back (glossary, Erledigung); any other entry opens
+ * the history. Undefined for an unknown entry.
+ */
+export function choreEventTakeBack(
+  events: ChoreEvent[],
+  eventId: Id,
+  today: ISODate,
+): 'takeBack' | 'history' | undefined {
+  const event = events.find((candidate) => candidate.id === eventId);
+  if (!event) return undefined;
+  // An entry of a deleted chore brings nothing back; the history can still remove it.
+  const latest = event.choreId === undefined ? undefined : latestBookedEvent(events, event.choreId);
+  return latest?.id === event.id && isBackfillDay(event.doneOn, today) ? 'takeBack' : 'history';
+}
+
 export interface DoneOnChoice {
   date: ISODate;
   label: 'heute' | 'gestern' | 'vorgestern';

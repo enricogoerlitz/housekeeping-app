@@ -37,6 +37,7 @@ import {
   columnsFor,
   keyboardFocusRing,
   panelPlacement,
+  tabSwipe,
   useBreakpoint,
   useTheme,
   type MenuOption,
@@ -565,6 +566,9 @@ export function CalendarScreen() {
           clearFab={bp !== 'desktop'}
           header={<ScreenHeader title="Kalender" right={actions} />}
           tabs={tabs}
+          // Phones: a swipe outside the grid changes the view Woche ↔ Monat ↔ Jahr like the tabs;
+          // in the grid it pages (CalendarSwipe takes it first; spec 0034, REQ-006).
+          tabSwipe={tabSwipe(VIEWS, view, changeView)}
           aside={
             <DayPanel
               data={data}

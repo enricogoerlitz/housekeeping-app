@@ -7,8 +7,10 @@ import {
   fittingItems,
   periodNavLabel,
   sharedHeight,
+  MONTH_MIN_LINES,
   dayA11yLabel,
   entryCountRole,
+  lineTooltip,
   dayKinds,
   dayMonthLabel,
   dayMonthLongLabel,
@@ -423,6 +425,28 @@ describe('spec 0021: the calendar on the desktop and the phone header', () => {
     expect(fittingItems([24, 24, 28, 28], 100, 28)).toBe(3);
     expect(fittingItems(lines(2), 10, 28)).toBe(2);
     expect(fittingItems([], 10, 28)).toBe(0);
+  });
+
+  it('spec 0035 AC-011: the tooltip of a calendar line names kind and whole text', () => {
+    expect(lineTooltip('activity', 'Bouldern (Power vs. Balance) · 18:00')).toBe(
+      'Aktivität: Bouldern (Power vs. Balance) · 18:00',
+    );
+    expect(lineTooltip('meal', 'Reste von Mittwoch')).toBe('Essen: Reste von Mittwoch');
+    expect(lineTooltip('chore', 'Bad putzen, etwa')).toBe('Aufgabe: Bad putzen, etwa');
+  });
+
+  it('spec 0035 AC-008: a share stops growing at its maximum', () => {
+    expect(sharedHeight(900, 3, 0, 250)).toBe(250);
+    expect(sharedHeight(600, 3, 0, 250)).toBe(200);
+    // The minimum wins over the maximum, so nothing gets too small to click (AC-009).
+    expect(sharedHeight(100, 3, 120, 110)).toBe(120);
+  });
+
+  it('spec 0035 AC-010: a desktop month day keeps two lines and "+n weitere" at least', () => {
+    const lines = (count: number) => Array<number>(count).fill(24);
+    expect(MONTH_MIN_LINES).toBe(2);
+    expect(fittingItems(lines(5), 60, 38, MONTH_MIN_LINES)).toBe(2);
+    expect(fittingItems(lines(5), 100, 38, MONTH_MIN_LINES)).toBe(2);
   });
 
   it('AC-046: the phone header names the period and offers "Heute ›" outside today’s', () => {

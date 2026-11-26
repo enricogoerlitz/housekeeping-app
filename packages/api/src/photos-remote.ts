@@ -322,6 +322,14 @@ interface ShownPhoto {
 const shown = new Map<string, ShownPhoto>();
 const photoListeners = new Set<() => void>();
 
+/**
+ * Photos no screen shows any more keep their URL, so a list opened again has them in its first
+ * frame (spec 0034, AC-009); beyond this many the one let go longest ago is revoked.
+ */
+const KEPT_PHOTOS = 24;
+/** Paths of the photos no screen shows, the one let go longest ago first. */
+const kept: string[] = [];
+
 function notifyPhotos(): void {
   for (const listener of photoListeners) listener();
 }
@@ -339,22 +347,42 @@ export function photoView(path: string | undefined): PhotoView {
   return shown.get(path)?.view ?? LOADING;
 }
 
+function unkeep(path: string): void {
+  const index = kept.indexOf(path);
+  if (index >= 0) kept.splice(index, 1);
+}
+
+function drop(path: string, entry: ShownPhoto): void {
+  if (shown.get(path) !== entry) return;
+  shown.delete(path);
+  unkeep(path);
+  if (entry.view.uri) URL.revokeObjectURL(entry.view.uri);
+}
+
 function fetchShown(path: string, entry: ShownPhoto): void {
   if (entry.fetching) return;
   entry.fetching = true;
+  const session = deviceSession();
   void loadPhoto(path).then((photo) => {
     entry.fetching = false;
     // Every screen let go meanwhile: no URL to create.
-    if (shown.get(path) !== entry) return;
+    if (shown.get(path) !== entry || entry.refs === 0) return;
     entry.view = photo ? { uri: URL.createObjectURL(photo), loading: false } : NO_PHOTO;
+    // The URL belongs to the session that loaded it: sign-out revokes it.
+    if (photo && session) {
+      session.signal.addEventListener('abort', () => {
+        drop(path, entry);
+        notifyPhotos();
+      });
+    }
     notifyPhotos();
   });
 }
 
 /**
  * A screen shows the photo: it is loaded (device storage, else downloaded) unless it is already
- * there; a photo that could not be loaded is tried again. Returns the release; the URL is revoked
- * after the last screen let go — after the current commit, so a screen that re-mounts keeps it.
+ * there; a photo that could not be loaded is tried again. Returns the release; after the last
+ * screen let go the photo is kept for the next one, up to `KEPT_PHOTOS`.
  */
 export function showPhoto(path: string): () => void {
   let entry = shown.get(path);
@@ -363,6 +391,7 @@ export function showPhoto(path: string): () => void {
     shown.set(path, entry);
   }
   entry.refs += 1;
+  unkeep(path);
   if (!entry.view.uri) fetchShown(path, entry);
   const held = entry;
   let released = false;
@@ -371,10 +400,20 @@ export function showPhoto(path: string): () => void {
     released = true;
     held.refs -= 1;
     if (held.refs > 0) return;
+    // After the current commit, so a screen that re-mounts keeps it as it is.
     queueMicrotask(() => {
       if (shown.get(path) !== held || held.refs > 0) return;
-      shown.delete(path);
-      if (held.view.uri) URL.revokeObjectURL(held.view.uri);
+      if (!held.view.uri) {
+        shown.delete(path);
+        return;
+      }
+      kept.push(path);
+      while (kept.length > KEPT_PHOTOS) {
+        const oldest = kept[0];
+        const entryOfOldest = oldest === undefined ? undefined : shown.get(oldest);
+        if (oldest === undefined || !entryOfOldest) kept.shift();
+        else drop(oldest, entryOfOldest);
+      }
     });
   };
 }

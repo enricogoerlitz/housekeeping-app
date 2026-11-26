@@ -1,4 +1,14 @@
-import { useEffect, useRef, useState, type ComponentRef, type ReactNode, type Ref } from 'react';
+import {
+  useContext,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ComponentRef,
+  type ReactNode,
+  type Ref,
+} from 'react';
 import {
   Platform,
   Pressable,
@@ -13,6 +23,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 
+import { fieldAutofill } from './field-autofill';
 import { mergeRefs, useHint } from './hint';
 import { icons, type IconName } from './icons';
 import { useHover } from './pointer';
@@ -29,6 +40,7 @@ import {
   type StarStep,
 } from './star-value';
 import { revealsError } from './reveal-error';
+import { SheetFocusContext } from './sheet-focus';
 import { switchRowParts } from './time-field-state';
 import { ToneContext, useAreaColors, useTheme } from './theme-context';
 import type { Theme, Tone } from './themes';
@@ -747,8 +759,28 @@ export function TextField(props: TextFieldProps) {
     onFocus,
     onBlur,
     inputRef,
+    autoFocus,
     ...input
   } = props;
+  // Spec 0033, REQ-006: in a window the window focuses the field once it has slid in.
+  const claimFocus = useContext(SheetFocusContext);
+  const own = useRef<ComponentRef<typeof TextInput> | null>(null);
+  useEffect(() => {
+    if (!autoFocus || !claimFocus || !own.current) return;
+    return claimFocus(own.current);
+  }, [autoFocus, claimFocus]);
+  // Spec 0033, REQ-005: no contact autofill on iOS; react-native-web does not pass `name` on.
+  const autofill = fieldAutofill({
+    id: useId(),
+    keyboardType: props.keyboardType,
+    autoComplete: props.autoComplete,
+  });
+  useLayoutEffect(() => {
+    const node = own.current as unknown;
+    if (Platform.OS === 'web' && node instanceof HTMLElement) {
+      node.setAttribute('name', autofill.name);
+    }
+  }, [autofill.name]);
   return (
     <View style={[{ gap: 6 }, style]}>
       {label ? <Text variant="smallStrong">{label}</Text> : null}
@@ -774,12 +806,14 @@ export function TextField(props: TextFieldProps) {
       >
         {left}
         <TextInput
+          autoCapitalize={autofill.autoCapitalize}
+          autoCorrect={autofill.autoCorrect}
+          inputMode={autofill.inputMode}
           {...input}
-          // No autofill from contacts on titles, amounts and notes (spec 0032, AC-010).
-          autoComplete={
-            props.autoComplete ?? (props.keyboardType === 'email-address' ? 'email' : 'off')
-          }
-          ref={inputRef}
+          // No autofill from contacts on titles, amounts and notes (spec 0032, AC-010; 0033).
+          autoComplete={autofill.autoComplete as TextInputProps['autoComplete']}
+          autoFocus={autoFocus === true && !claimFocus}
+          ref={mergeRefs(own, inputRef)}
           testID={testID}
           accessibilityLabel={accessibilityLabel ?? label ?? props.placeholder}
           placeholderTextColor={placeholderColor}

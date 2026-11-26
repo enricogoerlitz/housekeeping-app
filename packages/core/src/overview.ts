@@ -25,15 +25,12 @@ function dayWithMonth(shown: ISODate, today: ISODate): string {
 }
 
 /**
- * The title of the shown day (Offene Frage 2 c): "Freitag, 20. November" (also today, which
- * the greeting accompanies), "Morgen, Samstag 21. November", "Gestern, Donnerstag 19. November",
- * in another year "Freitag, 8. Januar 2027". "Morgen" and "Gestern" never need the year.
+ * The title of the shown day: always weekday and date, "Freitag, 20. November", in another year
+ * "Freitag, 8. Januar 2027". No "Morgen"/"Gestern" prefix, so the heading keeps one line and does
+ * not jump between days (spec 0035, AC-014; replaces spec 0011, Offene Frage 2 c).
  */
 export function overviewTitle(shown: ISODate, today: ISODate): string {
-  const weekday = weekdayLong(shown);
-  if (shown === addDays(today, 1)) return `Morgen, ${weekday} ${dayWithMonth(shown, shown)}`;
-  if (shown === addDays(today, -1)) return `Gestern, ${weekday} ${dayWithMonth(shown, shown)}`;
-  return `${weekday}, ${dayWithMonth(shown, today)}`;
+  return `${weekdayLong(shown)}, ${dayWithMonth(shown, today)}`;
 }
 
 // ---------- Seven days from yesterday (spec 0020, REQ-001, REQ-002) ----------
@@ -224,7 +221,7 @@ export function tripLines(input: { trips: Trip[]; members: Member[]; date: ISODa
 }
 
 export type ChoresOfDay =
-  /** Today: chores to check off. */
+  /** Today: chores to check off, and in `items` what was done today (spec 0035, AC-002). */
   | { kind: 'due'; chores: Chore[]; items: HouseholdRowItem[] }
   /** A later day: the dates computed from each rhythm, only to look at. */
   | { kind: 'planned'; items: HouseholdRowItem[] }
@@ -255,7 +252,10 @@ export function choresOfDay(input: {
   const notice = shown >= today ? householdAwayNotice(shown, today, away) : undefined;
   if (notice !== undefined) return { kind: 'away', notice, items: [] };
   if (shown === today) {
-    return { kind: 'due', chores: dueChores(input.chores, today, away), items: [] };
+    const done = (householdRow({ ...input, from: today, to: today })[today] ?? []).filter(
+      (item) => item.status === 'done',
+    );
+    return { kind: 'due', chores: dueChores(input.chores, today, away), items: done };
   }
   const items = householdRow({ ...input, from: shown, to: shown })[shown] ?? [];
   return shown > today ? { kind: 'planned', items } : { kind: 'done', items };

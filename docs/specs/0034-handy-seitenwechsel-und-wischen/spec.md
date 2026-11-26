@@ -153,6 +153,44 @@ Netz).
    liegt im Querformat ein Hinweis „Bitte Handy hochkant halten“ über der App.
 5. REQ-010: Wake Lock in installierten iOS-Apps ab iOS 18.4; nach Rückkehr in die App wird er neu
    angefordert. Der Haken aus dem Kochmodus wird gemeinsam genutzt.
+6. REQ-001 (Umsetzung): Die Daten kommen synchron aus dem Speicher; was wirklich wartet, ist die
+   Online-Liste „Deine Geräte“. Dort steht der Platzhalter `ListPlaceholder` (UI-Paket) statt
+   „Wird geladen …“.
+7. REQ-002/003 (Umsetzung): Auf dem Handy im Browser nutzt der Stack jedes Bereichs den JS-Stack von
+   Expo Router (der native Stack kann im Web nicht animieren): 300 ms Gleiten von rechts, bei
+   „Bewegung reduzieren“ 200 ms Überblenden; breitere Fenster behalten den nativen Stack ohne
+   Bewegung. Die iOS-Randgeste erkennt die reine Funktion `systemSwipeNavigation` (UI-Paket,
+   `edge-swipe.ts`): letzte Berührung am Rand (≤ 24 px), wurde zur Wischbewegung (≥ 10 px oder vom
+   System abgebrochen), danach `popstate` → kein Gleiten. Ein Tipp auf „‹ Essen“ am Rand gleitet.
+   Die Scroll-Lage der Liste bleibt ohne eigenen Code: Seite und Liste bleiben im Stack erhalten,
+   Chromium und WebKit stellen die Lage nach `display: none` selbst wieder her (gemessen, siehe
+   Nachweis).
+8. REQ-004 (Umsetzung): Aufgelöste Foto-Adressen bleiben nach dem Schließen einer Seite im Speicher
+   (höchstens 24, die älteste fällt heraus; Abmelden gibt alle frei). Während ein eigenes Foto lädt,
+   steht eine ruhige Fläche ohne Symbol. Rezept-Kacheln mit Beispielfotos zeigen beim Laden weiter
+   das Symbol.
+9. REQ-006 (Umsetzung): Der Kalender bekommt den `tabSwipe` des Bildschirms; das Raster behält sein
+   Zeitraum-Wischen, weil es den Finger zuerst nimmt und nicht mehr abgibt. In der Jahresansicht
+   liegen „Vorgemerkt“ und „Reisen“ im Raster-Bereich (Datei der Jahresansicht nicht angefasst, die
+   ändert Spec 0035); dort wechselt Wischen das Jahr, darunter die Ansicht.
+10. REQ-008 (Umsetzung): Die Reihenfolge merkt sich die Liste beim Öffnen (Rezepte, Inhalt einer
+    Sammlung, Restaurants); jedes andere Öffnen vergisst sie. Wischen ersetzt die Seite (kein neuer
+    Verlaufseintrag) und nutzt die Tab-Wisch-Fläche: Inhalt folgt dem Finger, am Ende federt er
+    zurück.
+11. REQ-011 (Umsetzung): In der installierten iOS-App öffnet ein unsichtbarer Link mit
+    `target=_blank` die Seite statt `window.open`; gilt auch für „Webseite“ bei Restaurant und
+    Aktivität (gleicher Fehler). Sonst wie bisher neuer Tab.
+12. OFFEN (REQ-007, Aufgabe 9 nicht gebaut): Tab-Wischen mit Vorschau ist deutlich größer als ein
+    Tag. Entwurf: `TabSwipeArea` bekommt `neighbour(step)`, das beim Übernehmen des Fingers den
+    Nachbar-Inhalt absolut daneben (±Breite) in dieselbe verschobene Zeile setzt; beim Loslassen
+    gleitet die Zeile weiter statt der heutigen Ankunfts-Animation, danach rendert die Seite den
+    neuen Tab und die Vorschau verschwindet. Dafür muss jeder Bildschirm mit Tabs (Essen:
+    Rezepte/Restaurants, Haushalt, Märkte, Kalender) seinen Tab-Inhalt als eigenen Baustein
+    `…TabBody({ tab, preview })` herauslösen, der nur liest (keine Adress-Schreibvorgänge, keine
+    Effekte, `pointerEvents: none`) und die zuletzt gewählten Listen-Parameter des Nachbarn nutzt.
+    Aufwand etwa 2–3 Tage; Risiken: zwei Listen gleichzeitig auf dem iPhone (Leistung), Blitzen
+    beim Übergang von Vorschau zu echter Seite, Seiteneffekte der Listen-Hooks. Entscheidung durch
+    Enrico.
 
 ## Daten
 
@@ -160,14 +198,38 @@ Entfällt: nur Oberfläche und lokale Reihenfolge der Liste (REQ-008, nur im Spe
 
 ## Umsetzung
 
-- [ ] 1. `asyncRoutes` aus, Bundle messen; Platzhalter-Baustein mit 400-ms-Verzögerung (AC-001–AC-003)
-- [ ] 2. Stack-Übergang Handy, Geste erkennen, Scroll-Lage halten (AC-004–AC-008)
-- [ ] 3. Bilder: aufgelöste Adressen im Speicher halten, Fläche + Einblenden (AC-009, AC-010)
-- [ ] 4. Übersicht `SwipeArea` (AC-011, AC-012)
-- [ ] 5. Kalender: `tabSwipe` auf freier Fläche (AC-013, AC-014)
-- [ ] 6. Reihenfolge-Speicher der Listen + Wischen auf Detailseiten (AC-017–AC-019)
-- [ ] 7. Manifest/Hinweis Querformat (AC-020, AC-021), Wake Lock im Einkaufsmodus (AC-022, AC-023)
-- [ ] 8. Rezeptlinks wie Route öffnen (AC-024)
-- [ ] 9. Tab-Wischen mit Vorschau (AC-015, AC-016)
-- [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün; `/ui-verify`;
-      iPhone-Abnahme durch Enrico in der Vorschau
+- [x] 1. `asyncRoutes` aus, Bundle messen; Platzhalter-Baustein mit 400-ms-Verzögerung (AC-001–AC-003)
+- [x] 2. Stack-Übergang Handy, Geste erkennen, Scroll-Lage halten (AC-004–AC-008)
+- [x] 3. Bilder: aufgelöste Adressen im Speicher halten, Fläche + Einblenden (AC-009, AC-010)
+- [x] 4. Übersicht `SwipeArea` (AC-011, AC-012)
+- [x] 5. Kalender: `tabSwipe` auf freier Fläche (AC-013, AC-014)
+- [x] 6. Reihenfolge-Speicher der Listen + Wischen auf Detailseiten (AC-017–AC-019)
+- [x] 7. Manifest/Hinweis Querformat (AC-020, AC-021), Wake Lock im Einkaufsmodus (AC-022, AC-023)
+- [x] 8. Rezeptlinks wie Route öffnen (AC-024)
+- [ ] 9. Tab-Wischen mit Vorschau (AC-015, AC-016) — nicht gebaut, OFFEN (Entscheidung 12)
+- [x] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün (26.11.); `/ui-verify`;
+      iPhone-Abnahme durch Enrico in der Vorschau (offen)
+
+## Nachweis
+
+- Tests (rot gezeigt, dann grün): `app-config.test.mjs` (AC-001, AC-020), `placeholder.test.tsx`
+  (AC-002, AC-003), `photos-remote.backend.test.ts` (AC-009, Speicher-Grenze, Abmelden),
+  `display.test.tsx` (AC-010), `swipe-area.test.tsx` (AC-012), `tab-swipe-area.test.tsx`
+  (AC-013/AC-014), `browse-order.test.ts` (AC-017–AC-019), `edge-swipe.test.ts` (AC-006, AC-007),
+  `portrait-hint.test.ts` (AC-021), `wake-lock.test.ts` (AC-022, AC-023), `open-in-new-tab.test.ts`
+  (AC-024).
+- Web-Bundle (`pnpm build:web`, `dist/_expo/static/js/web`): vorher 39 JS-Dateien, 7 396 784 B
+  (gzip-Summe 1 482 055 B); nur mit `asyncRoutes` aus 2 JS-Dateien (App + Spracherkennung),
+  7 390 892 B (gzip-Summe 1 459 063 B); mit der ganzen Spec (JS-Stack u. a.) 7 466 481 B (gzip-Summe
+  1 477 232 B).
+- Dev-Server (Port 8092, Chromium 390 × 844 mit Touch): Übersicht wischt Do 26. → Fr 27. → zurück;
+  Kalender Monat: Wischen im Raster → Dezember, darunter → Jahr; Rezept aus der Liste wischt zum
+  nächsten; Seite gleitet beim Öffnen und bei „‹ Essen“ in ~300 ms, nach Randgeste (Touch am
+  Rand + Abbruch + Verlauf zurück) ohne Gleiten, mit „Bewegung reduzieren“ ohne Verschiebung;
+  Deep-Link Rezept → „‹ Essen“ → Liste; Querformat zeigt den Hinweis, hochkant nicht. Scroll-Lage
+  nach Zurück: Chromium und WebKit 600 px vorher, 600 px nachher, derselbe Listen-Knoten (kein
+  Neuaufbau). Keine Konsolenfehler auf neun Seiten an Handy- und Desktop-Breite. Screenshots in
+  `tmp/review-0003/0034/`.
+- Nur am iPhone prüfbar: AC-004/AC-007 (Flackern, Randgeste), AC-020 (Android-Sperre), AC-021
+  (installierte App), AC-022 (Wake Lock ab iOS 18.4), AC-024 (Link ohne leeres Fenster), Gefühl
+  der Wisch-Gesten.

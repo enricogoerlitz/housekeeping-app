@@ -19,13 +19,13 @@ import {
   Stack,
   Text,
   TextField,
-  openExternalLink,
 } from '@housekeeping/ui';
 import { useState, type ReactNode } from 'react';
 
 import { SectionError, useSectionFrame } from './common';
 import type { SectionEditor } from './use-section-editor';
 import { errorMessage } from '@/features/shell/error-message';
+import { openLink } from '@/lib/open-link';
 
 type LinkAction = 'edit' | 'up' | 'down' | 'remove';
 
@@ -68,7 +68,7 @@ function LinkRow(props: { link: RecipeLink; testID: string; trailing?: ReactNode
           ? `${shown.title}${shown.subtitle ? `, ${shown.subtitle}` : ''}, öffnet extern`
           : undefined
       }
-      onPress={href && !props.trailing ? () => openExternalLink(href) : undefined}
+      onPress={href && !props.trailing ? () => openLink(href) : undefined}
       trailing={
         props.trailing ?? (href ? <Icon name="external-link" size={18} color="muted" /> : undefined)
       }

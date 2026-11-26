@@ -66,3 +66,4 @@ export * from './place';
 export * from './web-link';
 export * from './ingredient-groups';
 export * from './cooking-timers';
+export * from './browse-order';

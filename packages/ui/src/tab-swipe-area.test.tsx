@@ -5,6 +5,7 @@ import { reducedMotion } from '../test/mocks/reanimated';
 import { pointer } from '../test/setup';
 import { Button } from './controls';
 import { Text } from './primitives';
+import { SwipeArea } from './swipe-area';
 import { SwipeToRemove } from './swipe-row';
 import { TabSwipeArea } from './tab-swipe-area';
 import type { TabSwipe } from './tab-swipe';
@@ -183,6 +184,25 @@ describe('TabSwipeArea (spec 0029, REQ-003)', () => {
     Object.defineProperty(chips, 'clientWidth', { configurable: true, value: 390 });
     drag(chips, LEFT);
     expect(onStep).not.toHaveBeenCalled();
+  });
+
+  it('AC-013/AC-014 (spec 0034): a swipe area inside pages, the room around it changes the tab', () => {
+    const onStep = vi.fn();
+    const onPage = vi.fn();
+    render(
+      <TabSwipeArea swipe={{ index: 1, count: 3, onStep }}>
+        <SwipeArea onSwipe={onPage}>
+          <Text>Raster</Text>
+        </SwipeArea>
+        <Text>Darunter</Text>
+      </TabSwipeArea>,
+    );
+    drag(screen.getByText('Raster'), LEFT);
+    expect(onPage).toHaveBeenCalledWith(1);
+    expect(onStep).not.toHaveBeenCalled();
+    drag(screen.getByText('Darunter'), LEFT);
+    expect(onStep).toHaveBeenCalledWith(1);
+    expect(onPage).toHaveBeenCalledTimes(1);
   });
 
   it('a row swipe inside claims the move first', () => {

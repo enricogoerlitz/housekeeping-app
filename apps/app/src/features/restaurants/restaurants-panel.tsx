@@ -46,6 +46,7 @@ import { type ComponentRef, type ReactNode, useEffect, useMemo, useRef, useState
 import { Pressable, View, type TextInput } from 'react-native';
 
 import { useOpenRecipe } from '@/features/recipes/navigation';
+import { rememberBrowseOrder } from '@/lib/browse-order';
 import { afterWindowClosed, usePageParams } from '@/lib/url-state';
 import { NewRecipeSheet } from '@/features/recipes/new-recipe-sheet';
 import { FoodNewMenu, type FoodNewKind } from '@/features/recipes/new-menu';
@@ -148,6 +149,15 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
     const filtered = applyRestaurantListFilter(searched, filter, me.id);
     return sortRestaurantList(filtered, sort, { me: me.id, entries, today, shuffle });
   }, [query, restaurants, filter, me.id, sort, entries, today, shuffle]);
+
+  // From the list: the restaurant's page swipes through it in this order (spec 0034, REQ-008).
+  const openFromList = (restaurantId: Id) => {
+    rememberBrowseOrder(
+      'restaurants',
+      results.map((restaurant) => restaurant.id),
+    );
+    open(restaurantId);
+  };
 
   const onNew = (kind: FoodNewKind) => {
     if (kind === 'recipe' || kind === 'collection') setNewRecipe({ open: true, kind });
@@ -351,7 +361,7 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
             isFavorite={restaurant.favoriteOf.includes(me.id)}
             lastVisit={lastVisitLabel(visitsById.get(restaurant.id)?.daysSince)}
             selected={restaurant.id === selectedId}
-            onPress={() => open(restaurant.id)}
+            onPress={() => openFromList(restaurant.id)}
           />
         </View>
       )}

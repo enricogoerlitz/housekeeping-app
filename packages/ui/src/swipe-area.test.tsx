@@ -1,6 +1,8 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
+import { Text } from 'react-native';
+
 import { Button } from './controls';
 import { SwipeArea } from './swipe-area';
 
@@ -104,5 +106,25 @@ describe('SwipeArea (spec 0016, REQ-006)', () => {
     expect(onPress).toHaveBeenCalledTimes(1);
     expect(onSwipe).not.toHaveBeenCalled();
     expect(screen.getByTestId('area')).toBeTruthy();
+  });
+
+  it('AC-012 (spec 0034): a swipe in a row that scrolls sideways scrolls the row, not the item', () => {
+    const onSwipe = vi.fn();
+    render(
+      <SwipeArea onSwipe={onSwipe}>
+        <Text testID="row" style={{ overflowX: 'auto' } as object}>
+          Essen des Tages
+        </Text>
+      </SwipeArea>,
+    );
+    const row = screen.getByTestId('row');
+    Object.defineProperty(row, 'scrollWidth', { configurable: true, value: 800 });
+    Object.defineProperty(row, 'clientWidth', { configurable: true, value: 390 });
+    drag(row, [
+      [300, 100],
+      [285, 100],
+      [150, 100],
+    ]);
+    expect(onSwipe).not.toHaveBeenCalled();
   });
 });

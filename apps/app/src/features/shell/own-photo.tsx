@@ -45,6 +45,7 @@ export function OwnPhoto(
       <Photo
         source={source}
         placeholderIcon={props.placeholderIcon}
+        loading={photo.loading}
         width={props.width}
         height={props.height}
         aspectRatio={props.aspectRatio}

@@ -15,10 +15,11 @@ import {
   Text,
   toast,
   useBreakpoint,
+  useToastAvoid,
   type MenuOption,
 } from '@housekeeping/ui';
-import { useState } from 'react';
-import { View } from 'react-native';
+import { useRef, useState } from 'react';
+import { View, type HostInstance } from 'react-native';
 
 import { confirmPhotoRemoval } from '@/features/shell/own-photo';
 import { useOnlineOnly } from '@/features/shell/offline';
@@ -52,6 +53,9 @@ export function RecipeActions(props: RecipeActionsProps) {
   const online = useOnlineOnly();
   const assistant = useAssistant();
   const { isPhone } = useBreakpoint();
+  // A toast ("Foto gespeichert") stands above these buttons, not on them (spec 0033, AC-025).
+  const buttons = useRef<HostInstance>(null);
+  useToastAvoid(buttons);
   const size = props.compact ? 'sm' : 'md';
   const plan = (
     <Button
@@ -110,14 +114,16 @@ export function RecipeActions(props: RecipeActionsProps) {
   if (isPhone) {
     return (
       <Stack gap={10}>
-        {cook}
-        <Row gap={10} align="flex-start">
-          <View style={{ flex: 1, minWidth: 0 }}>{plan}</View>
-          <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
-            {toList}
-            {noIngredients}
-          </View>
-        </Row>
+        <View ref={buttons} style={{ gap: 10 }}>
+          {cook}
+          <Row gap={10} align="flex-start">
+            <View style={{ flex: 1, minWidth: 0 }}>{plan}</View>
+            <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
+              {toList}
+              {noIngredients}
+            </View>
+          </Row>
+        </View>
         {adjust}
       </Stack>
     );
