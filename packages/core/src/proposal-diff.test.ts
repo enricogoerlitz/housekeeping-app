@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  applyFields,
-  applyRows,
-  diffFields,
-  diffRows,
+  applyFieldChanges,
+  applyRowChanges,
+  diffFieldChanges,
+  diffRowChanges,
   proposalSummary,
   proposalSummaryText,
-  type Proposal,
+  type ChangeProposal,
 } from './proposal-diff';
 
 // Spec 0049, REQ-005: the Änderungsansicht as plain data. A change is active until the person
@@ -15,11 +15,11 @@ import {
 
 const none = new Set<string>();
 
-describe('diffFields', () => {
+describe('diffFieldChanges', () => {
   const labels = { name: 'Name', website: 'Webseite', cuisine: 'Küche' };
 
   it('AC-021: an empty field that gets a value is "neu", another value "geändert"', () => {
-    const fields = diffFields(
+    const fields = diffFieldChanges(
       labels,
       { name: 'Madame Hien', website: '', cuisine: 'Asiatisch' },
       { name: 'Madame Hien', website: 'https://madamehienberlin.de/', cuisine: 'Vietnamesisch' },
@@ -44,14 +44,18 @@ describe('diffFields', () => {
 
   it('a proposal without a value never clears a field; whitespace is no change', () => {
     expect(
-      diffFields(labels, { name: 'A', website: 'https://a.de', cuisine: 'X' }, { name: ' A ' }),
+      diffFieldChanges(
+        labels,
+        { name: 'A', website: 'https://a.de', cuisine: 'X' },
+        { name: ' A ' },
+      ),
     ).toEqual([]);
   });
 
   it('AC-017: ↺ keeps the old value, the rest is applied', () => {
     const before = { name: 'A', website: '', cuisine: 'X' };
-    const fields = diffFields(labels, before, { website: 'https://a.de', cuisine: 'Y' });
-    expect(applyFields(before, fields, new Set(['cuisine']))).toEqual({
+    const fields = diffFieldChanges(labels, before, { website: 'https://a.de', cuisine: 'Y' });
+    expect(applyFieldChanges(before, fields, new Set(['cuisine']))).toEqual({
       name: 'A',
       website: 'https://a.de',
       cuisine: 'X',
@@ -59,7 +63,7 @@ describe('diffFields', () => {
   });
 });
 
-describe('diffRows', () => {
+describe('diffRowChanges', () => {
   const key = (row: { name: string; amount: string }) => row.name;
   const label = (row: { name: string; amount: string }) => `${row.amount} ${row.name}`.trim();
   const same = (a: { amount: string }, b: { amount: string }) => a.amount === b.amount;
@@ -68,11 +72,16 @@ describe('diffRows', () => {
   const sellerie = { name: 'Sellerie', amount: '1 Stange' };
 
   it('AC-016: rows only before are "entfernt", only after "neu", other amounts "geändert"', () => {
-    const rows = diffRows('ingredients', [moehre, hack], [{ ...hack, amount: '400 g' }, sellerie], {
-      key,
-      label,
-      same,
-    });
+    const rows = diffRowChanges(
+      'ingredients',
+      [moehre, hack],
+      [{ ...hack, amount: '400 g' }, sellerie],
+      {
+        key,
+        label,
+        same,
+      },
+    );
     expect(rows.map((row) => [row.status, row.label, row.beforeLabel])).toEqual([
       ['removed', '1 Möhre', undefined],
       ['changed', '400 g Hackfleisch', '500 g Hackfleisch'],
@@ -85,51 +94,60 @@ describe('diffRows', () => {
     const b = { name: 'B', amount: '' };
     const c = { name: 'C', amount: '' };
     const x = { name: 'X', amount: '' };
-    const rows = diffRows('steps', [a, b, c], [x, b, c], { key, label, same });
+    const rows = diffRowChanges('steps', [a, b, c], [x, b, c], { key, label, same });
     expect(rows.map((row) => `${row.status}:${row.label}`)).toEqual([
       'removed:A',
       'new:X',
       'same:B',
       'same:C',
     ]);
-    expect(applyRows(rows, none)).toEqual([x, b, c]);
+    expect(applyRowChanges(rows, none)).toEqual([x, b, c]);
   });
 
   it('matches a name twice only twice ("Ergänzen" adds a second "Möhre")', () => {
-    const rows = diffRows('ingredients', [moehre], [moehre, moehre], { key, label, same });
+    const rows = diffRowChanges('ingredients', [moehre], [moehre, moehre], { key, label, same });
     expect(rows.map((row) => row.status)).toEqual(['same', 'new']);
   });
 
   it('AC-017, AC-018: "↺ behalten" keeps a removed row, × drops a new one, ↺ the old amount', () => {
-    const rows = diffRows('ingredients', [moehre, hack], [{ ...hack, amount: '400 g' }, sellerie], {
-      key,
-      label,
-      same,
-    });
+    const rows = diffRowChanges(
+      'ingredients',
+      [moehre, hack],
+      [{ ...hack, amount: '400 g' }, sellerie],
+      {
+        key,
+        label,
+        same,
+      },
+    );
     const id = (name: string) => rows.find((row) => row.label.endsWith(name))?.id ?? '';
-    expect(applyRows(rows, none)).toEqual([{ ...hack, amount: '400 g' }, sellerie]);
-    expect(applyRows(rows, new Set([id('Möhre'), id('Sellerie'), id('Hackfleisch')]))).toEqual([
-      moehre,
-      hack,
-    ]);
+    expect(applyRowChanges(rows, none)).toEqual([{ ...hack, amount: '400 g' }, sellerie]);
+    expect(
+      applyRowChanges(rows, new Set([id('Möhre'), id('Sellerie'), id('Hackfleisch')])),
+    ).toEqual([moehre, hack]);
   });
 
   it('a changed row can keep what only the old one has (merge)', () => {
     const old = { name: 'Hackfleisch', amount: '500 g', id: 'i-1' };
-    const rows = diffRows('ingredients', [old], [{ name: 'Hackfleisch', amount: '400 g', id: '' }], {
-      key,
-      label,
-      same,
-    });
-    expect(applyRows(rows, none, (before, after) => ({ ...after, id: before.id }))).toEqual([
+    const rows = diffRowChanges(
+      'ingredients',
+      [old],
+      [{ name: 'Hackfleisch', amount: '400 g', id: '' }],
+      {
+        key,
+        label,
+        same,
+      },
+    );
+    expect(applyRowChanges(rows, none, (before, after) => ({ ...after, id: before.id }))).toEqual([
       { name: 'Hackfleisch', amount: '400 g', id: 'i-1' },
     ]);
   });
 });
 
 describe('proposalSummary', () => {
-  const proposal: Proposal = {
-    fields: diffFields(
+  const proposal: ChangeProposal = {
+    fields: diffFieldChanges(
       { servings: 'Portionen', title: 'Titel' },
       { servings: '4', title: 'Bolognese' },
       { servings: '2', title: 'Bolognese' },
@@ -138,7 +156,7 @@ describe('proposalSummary', () => {
       {
         id: 'ingredients',
         label: 'Zutaten',
-        rows: diffRows(
+        rows: diffRowChanges(
           'ingredients',
           [{ name: 'Möhre' }, { name: 'Hack' }],
           [{ name: 'Hack' }, { name: 'Sellerie' }],

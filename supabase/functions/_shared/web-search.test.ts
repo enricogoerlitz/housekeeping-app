@@ -71,7 +71,9 @@ describe('configuredProviders', () => {
       'brave',
     ]);
     expect(
-      configuredProviders(fakeDeps({ env: { BRAVE_SEARCH_API_KEY: BRAVE_KEY } })).map((p) => p.name),
+      configuredProviders(fakeDeps({ env: { BRAVE_SEARCH_API_KEY: BRAVE_KEY } })).map(
+        (p) => p.name,
+      ),
     ).toEqual(['brave']);
   });
 });
@@ -172,7 +174,9 @@ describe('fallback (REQ-006)', () => {
     ]);
     const [url, init] = deps.fetchMock.mock.calls[1] ?? [];
     const braveUrl = new URL(String(url));
-    expect(braveUrl.origin + braveUrl.pathname).toBe('https://api.search.brave.com/res/v1/web/search');
+    expect(braveUrl.origin + braveUrl.pathname).toBe(
+      'https://api.search.brave.com/res/v1/web/search',
+    );
     expect(Object.fromEntries(braveUrl.searchParams)).toMatchObject({
       q: 'Spaghetti Bolognese Rezept',
       country: 'DE',
@@ -234,9 +238,9 @@ describe('fallback (REQ-006)', () => {
   it('AC-023: both fail → search_unavailable', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const deps = fakeDeps({ env: KEYS, fetch: async () => json({}, 429) });
-    await expect(
-      searchWithFallback(configuredProviders(deps), (p) => p.web('x')),
-    ).rejects.toEqual(new HttpError('search_unavailable'));
+    await expect(searchWithFallback(configuredProviders(deps), (p) => p.web('x'))).rejects.toEqual(
+      new HttpError('search_unavailable'),
+    );
   });
 
   it('AC-023: no provider configured → search_unavailable, logged by name only', async () => {

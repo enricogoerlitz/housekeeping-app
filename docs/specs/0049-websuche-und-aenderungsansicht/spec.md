@@ -152,7 +152,7 @@ festes Schema ohne Schreibrechte. Offline: nur online.
    die neue Funktion `web-search` mit der KI (Küche, Art, Beschreibung). Öffnungszeiten, Bewertung und
    Adresse kommen unverändert vom Anbieter.
 5. Agent, 26.11.: Fotos fremder Seiten zeigt die App über `fetch-image` (CSP `img-src 'self' data:
-   blob:`); das Foto einer Karte wird bei „Übernehmen“ zum Foto des Eintrags.
+blob:`); das Foto einer Karte wird bei „Übernehmen“ zum Foto des Eintrags.
 6. Agent, 26.11.: Die Änderungsansicht ist ein eigenes Fenster über dem Eintrag; ihr „Speichern“
    speichert direkt. Die Berechnung (Felder, Zeilen, Zusammenfassung, Anwenden) ist eine reine Funktion
    in `packages/core`; Zeilen gleichen sich bei Zutaten über den Artikel, bei Schritten, Links und
@@ -167,15 +167,15 @@ gespeichert, bevor die Person „Speichern“ tippt.
 
 ## Risiken
 
-| Risiko                                 | Gegenmaßnahme                                                                     | Test                       |
-| -------------------------------------- | --------------------------------------------------------------------------------- | -------------------------- |
-| SSRF über Treffer-Adressen             | jede Seite und jedes Bild über `fetchPublic` (ADR-0016)                           | Edge-Tests mit `fetchPublic` |
-| Schlüssel gelangt in App oder Log      | nur Function-Secrets, Logs nur mit Grund und Status, nie Adresse oder Suchwort    | Test „Log ohne Schlüssel“  |
-| Prompt-Injection aus Seite oder Treffer | Treffer und Seitentext als Daten markiert, strenges Schema, nur `select`          | AC-025                     |
-| Abgemeldet / fremder Haushalt          | JWT + Mitgliedschaft vor jedem Anbieter-Aufruf                                    | AC-024                     |
-| Anbieter-Antwort fremder Form          | zod je Anbieter, nur https-Adressen ≤ 2048 Zeichen übernommen                    | Edge-Tests                 |
-| Kosten laufen weg                      | höchstens 1 Suche (Serper) + 1 Ausweichsuche, 6 Seiten je Suche; Guthaben beim Anbieter | Vertragstest Grenzen |
-| Hängender Anbieter                     | 8 s je Anbieter, 6 s je Seite, eine Frist für alles                               | Edge-Tests mit Zeitgrenze  |
+| Risiko                                  | Gegenmaßnahme                                                                           | Test                         |
+| --------------------------------------- | --------------------------------------------------------------------------------------- | ---------------------------- |
+| SSRF über Treffer-Adressen              | jede Seite und jedes Bild über `fetchPublic` (ADR-0016)                                 | Edge-Tests mit `fetchPublic` |
+| Schlüssel gelangt in App oder Log       | nur Function-Secrets, Logs nur mit Grund und Status, nie Adresse oder Suchwort          | Test „Log ohne Schlüssel“    |
+| Prompt-Injection aus Seite oder Treffer | Treffer und Seitentext als Daten markiert, strenges Schema, nur `select`                | AC-025                       |
+| Abgemeldet / fremder Haushalt           | JWT + Mitgliedschaft vor jedem Anbieter-Aufruf                                          | AC-024                       |
+| Anbieter-Antwort fremder Form           | zod je Anbieter, nur https-Adressen ≤ 2048 Zeichen übernommen                           | Edge-Tests                   |
+| Kosten laufen weg                       | höchstens 1 Suche (Serper) + 1 Ausweichsuche, 6 Seiten je Suche; Guthaben beim Anbieter | Vertragstest Grenzen         |
+| Hängender Anbieter                      | 8 s je Anbieter, 6 s je Seite, eine Frist für alles                                     | Edge-Tests mit Zeitgrenze    |
 
 ## Umsetzung
 

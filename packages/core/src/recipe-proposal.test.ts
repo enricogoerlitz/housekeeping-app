@@ -38,7 +38,7 @@ function proposed(): { before: PageDraft; after: PageDraft } {
         row('Spaghetti', '', 'art-spaghetti'),
         row('Sellerie', '1 Stange'),
       ],
-      steps: ['Hack anbraten.'],
+      steps: [{ text: 'Hack anbraten.' }],
       links: [{ url: 'https://www.chefkoch.de/rezepte/393031127655461/Spaghetti-Bolognese.html' }],
     },
     newId,
@@ -54,7 +54,12 @@ describe('recipeProposal (REQ-005)', () => {
     const { before, after } = proposed();
     const proposal = recipeProposal(before, after, { articleName });
     const servings = proposal.fields.find((field) => field.id === 'servings');
-    expect(servings).toMatchObject({ label: 'Portionen', before: '4', after: '2', status: 'changed' });
+    expect(servings).toMatchObject({
+      label: 'Portionen',
+      before: '4',
+      after: '2',
+      status: 'changed',
+    });
     const ingredients = proposal.groups.find((group) => group.id === 'ingredients');
     expect(ingredients?.rows.map((entry) => [entry.status, entry.label])).toEqual([
       ['same', '500 g Hackfleisch'],
@@ -128,10 +133,15 @@ describe('recipeProposal (REQ-005)', () => {
       { replace: true },
     );
     const proposal = recipeProposal(before, after, { articleName });
-    const hack = proposal.groups.find((group) => group.id === 'ingredients')?.rows.find((entry) => entry.label === '400 g Hackfleisch');
+    const hack = proposal.groups
+      .find((group) => group.id === 'ingredients')
+      ?.rows.find((entry) => entry.label === '400 g Hackfleisch');
     expect(hack).toMatchObject({ status: 'changed', beforeLabel: '500 g Hackfleisch' });
     const applied = applyRecipeProposal(proposal, new Set());
-    expect(applied.ingredients.rows[0]).toMatchObject({ ingredientId: 'b-hack', amountText: '400 g' });
+    expect(applied.ingredients.rows[0]).toMatchObject({
+      ingredientId: 'b-hack',
+      amountText: '400 g',
+    });
   });
 
   it('"Ergänzen" removes nothing and shows the course as its name', () => {
@@ -153,5 +163,34 @@ describe('recipeProposal (REQ-005)', () => {
     ]);
     expect(proposalSummary(proposal, new Set())).toEqual({ added: 1, changed: 1, removed: 0 });
     expect(applyRecipeProposal(proposal, new Set()).classification?.course).toBe('side');
+  });
+
+  it('a new variant (spec 0045) is "neu"; × drops it with its rows and steps', () => {
+    const before = pageDraft(bolognese, []);
+    const after = fillPageDraft(
+      before,
+      {
+        variants: [{ id: 'd-veg', name: 'Vegetarisch', isDefault: false }],
+        ingredients: [{ ...row('Linsen', '200 g'), variantId: 'd-veg' }],
+        steps: [{ text: 'Linsen kochen.', variantId: 'd-veg' }, { text: 'Abschmecken.' }],
+        leadTime: { text: 'Linsen einweichen', hoursBefore: 12 },
+      },
+      newId,
+    );
+    const proposal = recipeProposal(before, after, { articleName });
+    const variants = proposal.groups.find((group) => group.id === 'variants');
+    expect(variants?.rows.map((entry) => [entry.status, entry.label])).toEqual([
+      ['new', 'Vegetarisch'],
+    ]);
+    expect(proposal.fields.map((field) => field.label)).toEqual(['Vorlauf', 'Vorlauf (Stunden)']);
+    const accepted = applyRecipeProposal(proposal, new Set());
+    expect(
+      accepted.ingredients.variants.map((variant) => [variant.name, variant.isDefault]),
+    ).toEqual([['Vegetarisch', true]]);
+    expect(accepted.steps?.leadTimeText).toBe('Linsen einweichen');
+    const dropped = applyRecipeProposal(proposal, new Set([variants?.rows[0]?.id ?? '']));
+    expect(dropped.ingredients.variants).toEqual([]);
+    expect(rowsOf(dropped)).toEqual(['Hackfleisch', 'Spaghetti', 'Möhren']);
+    expect(dropped.steps?.steps.map((step) => step.text)).toEqual(['Abschmecken.']);
   });
 });

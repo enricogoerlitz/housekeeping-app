@@ -86,9 +86,7 @@ function count(value: number | undefined): number | undefined {
 
 /** Drops undefined fields so the hits compare and serialise cleanly. */
 function compact<T extends object>(value: T): T {
-  return Object.fromEntries(
-    Object.entries(value).filter(([, entry]) => entry !== undefined),
-  ) as T;
+  return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined)) as T;
 }
 
 async function request(
@@ -185,7 +183,11 @@ function serperProvider(deps: Pick<Deps, 'fetch'>, key: string): SearchProvider 
   return {
     name: 'serper',
     async web(query) {
-      const body = shape('serper', SerperOrganic, await post('search', { q: query, gl: 'de', hl: 'de' }));
+      const body = shape(
+        'serper',
+        SerperOrganic,
+        await post('search', { q: query, gl: 'de', hl: 'de' }),
+      );
       return body.organic.flatMap((hit): WebHit[] => {
         const url = httpsUrl(hit.link);
         const title = cleanText(hit.title, 200);
@@ -297,7 +299,12 @@ function braveProvider(deps: Pick<Deps, 'fetch'>, key: string): SearchProvider {
     // The plan without local results: places are web results, with website and picture.
     async places(query) {
       return (await web(query)).map((hit) =>
-        compact({ title: hit.title, websiteUrl: hit.url, imageUrl: hit.imageUrl, snippet: hit.snippet }),
+        compact({
+          title: hit.title,
+          websiteUrl: hit.url,
+          imageUrl: hit.imageUrl,
+          snippet: hit.snippet,
+        }),
       );
     },
   };

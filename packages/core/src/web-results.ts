@@ -2,13 +2,16 @@
 // This file imports nothing: `pnpm gen:edge` copies it into
 // supabase/functions/_shared/web-results.gen.ts, where the edge function `web-search` uses it.
 
+// core has no DOM types (no URL), so addresses are read with one pattern: scheme, host, path, query.
+const ADDRESS = /^([a-z][a-z0-9+.-]*):\/\/(?:[^@/?#]*@)?([^/?#:]+)(?::\d+)?([^?#]*)(\?[^#]*)?/i;
+
 /** The host without "www.", lower case; "" for what is no address. */
 export function sourceHost(url: string): string {
-  try {
-    return new URL(url).hostname.toLowerCase().replace(/^www\./, '');
-  } catch {
-    return '';
-  }
+  return (
+    ADDRESS.exec(url)?.[2]
+      ?.toLowerCase()
+      .replace(/^www\./, '') ?? ''
+  );
 }
 
 const NO_RECIPE_HOSTS = [
@@ -30,17 +33,12 @@ const onHost = (host: string, domain: string) => host === domain || host.endsWit
 
 /** True for an https page that can be a single recipe; the page itself must still show one. */
 export function isRecipePage(url: string): boolean {
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return false;
-  }
-  if (parsed.protocol !== 'https:') return false;
+  const parts = ADDRESS.exec(url);
+  if (!parts || parts[1]?.toLowerCase() !== 'https') return false;
   const host = sourceHost(url);
   if (NO_RECIPE_HOSTS.some((domain) => onHost(host, domain) || host.startsWith('pinterest.')))
     return false;
-  return !NO_RECIPE_PATH.test(`${parsed.pathname}${parsed.search}`);
+  return !NO_RECIPE_PATH.test(`${parts[3] ?? ''}${parts[4] ?? ''}`);
 }
 
 const PREFERRED_HOST = 'chefkoch.de';

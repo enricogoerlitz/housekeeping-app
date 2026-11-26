@@ -1,7 +1,7 @@
 // The Änderungsansicht (spec 0049, REQ-005): what a proposal (web search or AI draft) would change
 // on an item that exists, as plain data. Every change is active until the person takes it back:
 // ↺ on a field keeps its old value, "↺ behalten" keeps a removed row, × drops a new row.
-// "Speichern" applies what is still active (applyFields, applyRows).
+// "Speichern" applies what is still active (applyFieldChanges, applyRowChanges).
 
 export type FieldStatus = 'new' | 'changed';
 export type RowStatus = 'same' | 'new' | 'changed' | 'removed';
@@ -37,7 +37,7 @@ export interface RowGroup<T = unknown> {
   rows: RowChange<T>[];
 }
 
-export interface Proposal {
+export interface ChangeProposal {
   fields: FieldChange[];
   groups: RowGroup[];
 }
@@ -49,7 +49,7 @@ export type Rejected = ReadonlySet<string>;
  * The fields of `labels` (in their order) whose proposed value differs from the old one. A
  * proposal without a value for a field says nothing about it: it never clears one.
  */
-export function diffFields<K extends string>(
+export function diffFieldChanges<K extends string>(
   labels: Record<K, string>,
   before: Partial<Record<K, string>>,
   after: Partial<Record<K, string | undefined>>,
@@ -68,14 +68,16 @@ export function diffFields<K extends string>(
       before: old,
       after: proposed,
       status: old === '' ? 'new' : 'changed',
-      ...(format ? { beforeLabel: old === '' ? '' : format(old), afterLabel: format(proposed) } : {}),
+      ...(format
+        ? { beforeLabel: old === '' ? '' : format(old), afterLabel: format(proposed) }
+        : {}),
     });
   }
   return changes;
 }
 
 /** The record with every active field change applied. */
-export function applyFields<R extends Record<string, string>>(
+export function applyFieldChanges<R extends Record<string, string>>(
   before: R,
   fields: readonly FieldChange[],
   rejected: Rejected,
@@ -97,7 +99,7 @@ export interface RowRules<T> {
  * The rows of a list before and after the proposal, in the proposed order; a removed row stands
  * where it stood, before the rows that replace it. A key that is there twice matches twice.
  */
-export function diffRows<T>(
+export function diffRowChanges<T>(
   group: string,
   before: readonly T[],
   after: readonly T[],
@@ -119,7 +121,12 @@ export function diffRows<T>(
       const row = before[index];
       if (matched.has(index) || flushed.has(index) || row === undefined) continue;
       flushed.add(index);
-      rows.push({ id: `${group}:b${index}`, status: 'removed', label: rules.label(row), before: row });
+      rows.push({
+        id: `${group}:b${index}`,
+        status: 'removed',
+        label: rules.label(row),
+        before: row,
+      });
     }
   };
   after.forEach((row, at) => {
@@ -150,7 +157,7 @@ export function diffRows<T>(
  * The list with every active change applied. A row that stays keeps its old version; an
  * accepted "geändert" row is the new one, or `merge(old, new)` to keep what only the old one has.
  */
-export function applyRows<T>(
+export function applyRowChanges<T>(
   rows: readonly RowChange<T>[],
   rejected: Rejected,
   merge?: (before: T, after: T) => T,
@@ -180,7 +187,7 @@ export interface ProposalSummary {
 }
 
 /** What "Speichern" would still change. */
-export function proposalSummary(proposal: Proposal, rejected: Rejected): ProposalSummary {
+export function proposalSummary(proposal: ChangeProposal, rejected: Rejected): ProposalSummary {
   const summary: ProposalSummary = { added: 0, changed: 0, removed: 0 };
   const count = (id: string, status: RowStatus) => {
     if (rejected.has(id) || status === 'same') return;
@@ -204,7 +211,7 @@ export function proposalSummaryText(summary: ProposalSummary): string {
 }
 
 /** True when the proposal changes nothing at all (then no Änderungsansicht is needed). */
-export function proposalIsEmpty(proposal: Proposal): boolean {
+export function proposalIsEmpty(proposal: ChangeProposal): boolean {
   const summary = proposalSummary(proposal, new Set());
   return summary.added + summary.changed + summary.removed === 0;
 }

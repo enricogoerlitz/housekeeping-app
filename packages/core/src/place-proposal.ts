@@ -1,5 +1,5 @@
 import type { PlaceProposal, WebResult } from './ai-contract';
-import { diffFields, type Proposal } from './proposal-diff';
+import { diffFieldChanges, type ChangeProposal } from './proposal-diff';
 import { priceLabel } from './restaurants';
 
 // A place found on the web (spec 0049) as the values of the restaurant or activity form, and the
@@ -25,7 +25,7 @@ const ACTIVITY_LABELS = {
   mapsUrl: 'Karten-Link',
 } as const;
 
-export type PlaceKind = 'restaurant' | 'activity';
+export type ProposalPlaceKind = 'restaurant' | 'activity';
 export type PlaceValues = Partial<
   Record<keyof typeof RESTAURANT_LABELS | keyof typeof ACTIVITY_LABELS, string>
 >;
@@ -38,7 +38,7 @@ function defined(values: Record<string, string | undefined>): PlaceValues {
 
 /** AC-015: the card and its preview as form values; what the provider does not know stays out. */
 export function placeValuesFromResult(
-  kind: PlaceKind,
+  kind: ProposalPlaceKind,
   result: WebResult,
   preview: PlaceProposal,
 ): PlaceValues {
@@ -64,12 +64,16 @@ export function placeValuesFromResult(
 }
 
 /** AC-021: what the found place changes on an existing restaurant or activity. */
-export function placeProposal(kind: PlaceKind, before: PlaceValues, after: PlaceValues): Proposal {
+export function placeProposal(
+  kind: ProposalPlaceKind,
+  before: PlaceValues,
+  after: PlaceValues,
+): ChangeProposal {
   const fields =
     kind === 'restaurant'
-      ? diffFields(RESTAURANT_LABELS, before, after, {
+      ? diffFieldChanges<keyof typeof RESTAURANT_LABELS>(RESTAURANT_LABELS, before, after, {
           priceLevel: (value) => priceLabel(Number(value) as 1 | 2 | 3 | 4),
         })
-      : diffFields(ACTIVITY_LABELS, before, after);
+      : diffFieldChanges<keyof typeof ACTIVITY_LABELS>(ACTIVITY_LABELS, before, after);
   return { fields, groups: [] };
 }

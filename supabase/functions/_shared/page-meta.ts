@@ -48,8 +48,7 @@ export function durationMinutes(value: unknown): number | undefined {
     value.trim(),
   );
   if (!match) return undefined;
-  const minutes =
-    Number(match[1] ?? 0) * 1440 + Number(match[2] ?? 0) * 60 + Number(match[3] ?? 0);
+  const minutes = Number(match[1] ?? 0) * 1440 + Number(match[2] ?? 0) * 60 + Number(match[3] ?? 0);
   return minutes > 0 && minutes <= 10_000 ? minutes : undefined;
 }
 
@@ -61,7 +60,8 @@ function firstImage(value: unknown): string | undefined {
     }
     return undefined;
   }
-  if (typeof value === 'object' && value !== null) return httpsUrl((value as { url?: unknown }).url);
+  if (typeof value === 'object' && value !== null)
+    return httpsUrl((value as { url?: unknown }).url);
   return httpsUrl(value);
 }
 
