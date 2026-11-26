@@ -13,17 +13,7 @@ import {
   collectionSummary,
   type Recipe,
 } from '@housekeeping/core';
-import {
-  Badge,
-  Button,
-  Row,
-  Screen,
-  ScreenHeader,
-  Stack,
-  Text,
-  useBreakpoint,
-  useToastAvoid,
-} from '@housekeeping/ui';
+import { Badge, Button, Row, Stack, Text, useBreakpoint, useToastAvoid } from '@housekeeping/ui';
 import { useRef, useState } from 'react';
 import { View, type HostInstance } from 'react-native';
 
@@ -39,6 +29,7 @@ import { appLink, shareText, useShareFile } from '@/lib/share';
 
 import { NO_INGREDIENTS_HINT, RecipeMoreMenu, useRecipePhoto } from './recipe-actions';
 import { RecipePhoto } from './recipe-cover';
+import { RecipeFrame } from './recipe-frame';
 import { COLLECTION_BADGE } from './recipe-grid';
 import { ContentsSection } from './sections/contents-section';
 import { HeadSection } from './sections/head-section';
@@ -61,6 +52,8 @@ export function CollectionDetailBody(props: {
   collection: Recipe;
   onBack: () => void;
   backLabel: string;
+  /** Beside the recipe list on wide screens (spec 0038). */
+  quick?: boolean;
   /** true while this page deletes its collection; false again when the deletion did not start. */
   onDeleting: (leaving: boolean) => void;
 }) {
@@ -73,7 +66,8 @@ export function CollectionDetailBody(props: {
   const contents = useCollectionContents(collection.id);
   const openRecipe = useOpenRecipe();
   const { bp, isPhone } = useBreakpoint();
-  const desktop = bp === 'desktop';
+  // Beside the list the column is too narrow for two (spec 0038).
+  const desktop = bp === 'desktop' && !props.quick;
   const [pantryCheck, setPantryCheck] = useState(false);
   const [planning, setPlanning] = useState(false);
   const photo = useRecipePhoto(collection);
@@ -197,20 +191,13 @@ export function CollectionDetailBody(props: {
   );
 
   return (
-    <Screen
-      testID="recipe-screen"
-      tone="essen"
-      tabSwipe={swipe}
-      header={
-        <ScreenHeader
-          title={collection.title}
-          titleOnScroll
-          backLabel={props.backLabel}
-          onBack={back}
-          right={headerRight}
-          testID="recipe-bar-title"
-        />
-      }
+    <RecipeFrame
+      quick={props.quick}
+      title={collection.title}
+      backLabel={props.backLabel}
+      onBack={back}
+      right={headerRight}
+      swipe={swipe}
     >
       <View testID="collection-detail" style={{ gap: isPhone ? 24 : 32, paddingTop: 8 }}>
         <EditError editor={editor} />
@@ -248,7 +235,7 @@ export function CollectionDetailBody(props: {
           />
         ) : null}
       </View>
-    </Screen>
+    </RecipeFrame>
   );
 }
 

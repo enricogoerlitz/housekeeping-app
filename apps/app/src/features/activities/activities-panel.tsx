@@ -21,6 +21,7 @@ import {
 import {
   Button,
   Chip,
+  columnsFor,
   EmptyState,
   Icon,
   IconButton,
@@ -43,6 +44,7 @@ import { useIsFocused, useRouter } from 'expo-router';
 import { type ComponentRef, useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, View, type TextInput } from 'react-native';
 
+import { ListViewSwitch, PlaceTile, TILE_MIN_WIDTH, useListView } from '@/features/shell/list-view';
 import { useOnlineOnly } from '@/features/shell/offline';
 import { ScrollColumn } from '@/features/shell/scroll-column';
 import { useSettings } from '@/lib/settings';
@@ -51,7 +53,7 @@ import { useOriginBack, usePageParams } from '@/lib/url-state';
 import { ActivityDetail } from './activity-detail';
 import { ActivityFormSheet } from './activity-form';
 import { ActivityKindsSheet } from './activity-kinds-sheet';
-import { ActivityPhoto } from './activity-photo';
+import { ActivityPhoto, useActivityIcon } from './activity-photo';
 import { activityPlaceLine, activityVisitsLabel } from './labels';
 
 const SORT_OF_SLUG = { name: 'name', bewertung: 'rating', zuletzt: 'recent' } as const;
@@ -68,6 +70,8 @@ const rememberLabel = (filter: RememberFilter) =>
 
 /** The list column next to a chosen activity on wide screens ("Liste und Detail"). */
 const LIST_COLUMN_WIDTH = 380;
+/** Space between the cards and tiles, across and down. */
+const GAP = 12;
 
 /**
  * "Aktivitäten" as its own page under "Verwalten" (spec 0024, REQ-008, REQ-009; spec 0004,
@@ -90,6 +94,10 @@ export function ActivitiesScreen() {
   // "‹ Verwalten", or the section it was opened from (spec 0019, REQ-006).
   const { label: backLabel, back } = useOriginBack(params.von, 'verwalten');
   const focused = useIsFocused();
+  // "Kacheln" open the activity's page, "Liste" beside the list on wide screens (spec 0038).
+  const listView = useListView('activities');
+  const tiles = listView.view === 'tiles';
+  const [listWidth, setListWidth] = useState(0);
   // "Gemerkt", "Alle", "Nicht gemerkt" (spec 0041, REQ-004): never in the address, and back to
   // "Gemerkt" whenever the list is left (AC-013).
   const [remember, setRemember] = useState<RememberFilter>('remembered');
@@ -120,7 +128,7 @@ export function ActivitiesScreen() {
 
   // On wide screens the chosen activity stands in the address and replaces the entry (spec 0019,
   // REQ-014); on phones the same address opens its page, with the list underneath.
-  const selectedId = isWide ? params.aktivitaet : undefined;
+  const selectedId = listView.quick ? params.aktivitaet : undefined;
   const addressed = params.aktivitaet;
   const replace = address.replace;
   useEffect(() => {
@@ -130,13 +138,18 @@ export function ActivitiesScreen() {
   }, [isWide, addressed, replace, router]);
   // From a new activity on to it: the window leaves the address first.
   const open = (activityId: Id) => {
-    if (isWide) address.replace({ fenster: undefined, aktivitaet: activityId });
+    if (listView.quick) address.replace({ fenster: undefined, aktivitaet: activityId });
     else {
       address.replace({ fenster: undefined });
       router.push({ pathname: '/aktivitaet/[id]', params: { id: activityId } });
     }
   };
   const closeDetail = () => address.replace({ aktivitaet: undefined, fenster: undefined });
+  // Spec 0038, AC-005: "Kacheln" close the activity beside the list; the tiles fill the width.
+  const changeView = (next: typeof listView.view) => {
+    if (selectedId) closeDetail();
+    listView.setView(next);
+  };
 
   const visitsById = new Map<Id, Visits>(
     activities.map((activity) => [activity.id, visitsOf('activity', activity.id, entries, today)]),
@@ -242,7 +255,21 @@ export function ActivitiesScreen() {
   }
 
   const split = selectedId !== undefined;
-  const columns = isPhone || split ? 1 : bp === 'desktop' ? 3 : 2;
+  const columns = tiles
+    ? columnsFor(listWidth, { minColumnWidth: TILE_MIN_WIDTH, gap: GAP, minColumns: 2 })
+    : isPhone || split
+      ? 1
+      : bp === 'desktop'
+        ? 3
+        : 2;
+  const cellWidth =
+    columns === 1
+      ? '100%'
+      : tiles && listWidth > 0
+        ? Math.floor((listWidth - GAP * (columns - 1)) / columns)
+        : columns === 2
+          ? '48.5%'
+          : '31.8%';
   const sortLabel = sortShortLabel(sort);
   const toolbar = (
     <Stack gap={8}>
@@ -267,38 +294,42 @@ export function ActivitiesScreen() {
         }
         testID="activity-search"
       />
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ gap: 8, paddingBottom: 2 }}
-        style={{ flexGrow: 0 }}
-      >
-        <Menu
-          label={sortLabel}
-          accessibilityLabel={`Sortierung: ${sortLabel}`}
-          icon="arrow-up-down"
-          value={sort}
-          onChange={setSort}
-          options={[...ACTIVITY_SORTS]}
-          testID="activity-sort"
-        />
-        <Menu
-          label={rememberLabel(remember)}
-          accessibilityLabel={`Merken: ${rememberLabel(remember)}`}
-          icon="bookmark"
-          value={remember}
-          onChange={setRemember}
-          options={[...REMEMBER_FILTERS]}
-          testID="activity-remember"
-        />
-        <Chip
-          label="Favoriten"
-          icon="heart"
-          selected={favoritesOnly}
-          onPress={() => setFavoritesOnly(!favoritesOnly)}
-          testID="afilter-favorites"
-        />
-      </ScrollView>
+      <Row gap={8}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ gap: 8, paddingBottom: 2 }}
+          style={{ flexGrow: 0, flexShrink: 1 }}
+        >
+          <Menu
+            label={sortLabel}
+            accessibilityLabel={`Sortierung: ${sortLabel}`}
+            icon="arrow-up-down"
+            value={sort}
+            onChange={setSort}
+            options={[...ACTIVITY_SORTS]}
+            testID="activity-sort"
+          />
+          <Menu
+            label={rememberLabel(remember)}
+            accessibilityLabel={`Merken: ${rememberLabel(remember)}`}
+            icon="bookmark"
+            value={remember}
+            onChange={setRemember}
+            options={[...REMEMBER_FILTERS]}
+            testID="activity-remember"
+          />
+          <Chip
+            label="Favoriten"
+            icon="heart"
+            selected={favoritesOnly}
+            onPress={() => setFavoritesOnly(!favoritesOnly)}
+            testID="afilter-favorites"
+          />
+        </ScrollView>
+        <View style={{ flex: 1 }} />
+        <ListViewSwitch value={listView.view} onChange={changeView} testID="activity-view" />
+      </Row>
     </Stack>
   );
   const listBody = (
@@ -314,20 +345,30 @@ export function ActivitiesScreen() {
           testID="activities-no-results"
         />
       ) : (
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+        <View
+          onLayout={(event) => setListWidth(event.nativeEvent.layout.width)}
+          style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GAP }}
+        >
           {results.map((activity) => (
-            <View
-              key={activity.id}
-              style={{ width: columns === 1 ? '100%' : columns === 2 ? '48.5%' : '31.8%' }}
-            >
-              <ActivityCard
-                activity={activity}
-                myRating={activity.ratings[me.id] ?? 0}
-                isFavorite={activity.favoriteOf.includes(me.id)}
-                visits={visitsById.get(activity.id)}
-                selected={activity.id === selectedId}
-                onPress={() => open(activity.id)}
-              />
+            <View key={activity.id} style={{ width: cellWidth }}>
+              {tiles ? (
+                <ActivityTile
+                  activity={activity}
+                  myRating={activity.ratings[me.id] ?? 0}
+                  isFavorite={activity.favoriteOf.includes(me.id)}
+                  visits={visitsById.get(activity.id)}
+                  onPress={() => open(activity.id)}
+                />
+              ) : (
+                <ActivityCard
+                  activity={activity}
+                  myRating={activity.ratings[me.id] ?? 0}
+                  isFavorite={activity.favoriteOf.includes(me.id)}
+                  visits={visitsById.get(activity.id)}
+                  selected={activity.id === selectedId}
+                  onPress={() => open(activity.id)}
+                />
+              )}
             </View>
           ))}
         </View>
@@ -379,6 +420,66 @@ export function ActivitiesScreen() {
       )}
       {sheet}
     </Screen>
+  );
+}
+
+/**
+ * "Kacheln" (spec 0038, AC-006): the own photo big in 4:3, else the symbol of its kind or its own
+ * symbol (spec 0041, AC-005); kind, place, favourite, rating and visits below the name.
+ */
+function ActivityTile(props: {
+  activity: Activity;
+  myRating: number;
+  isFavorite: boolean;
+  visits?: Visits;
+  onPress: () => void;
+}) {
+  const kindsById = useActivityKindsById();
+  const { activity } = props;
+  const id = activity.id;
+  const icon = useActivityIcon(activity);
+  const kind = activity.kindId === undefined ? undefined : kindsById[activity.kindId];
+  const placeLine = [kind?.name, activityPlaceLine(activity)].filter(Boolean).join(' · ');
+  const last = props.visits ? activityVisitsLabel(props.visits) : undefined;
+  const signals = props.isFavorite || props.myRating > 0 || last !== undefined;
+  return (
+    <PlaceTile
+      testID={`activity-${id}`}
+      name={activity.name}
+      photoPath={activity.photoPath}
+      placeholderIcon={icon}
+      meta={
+        <View style={{ gap: 4 }}>
+          {placeLine ? (
+            <Text variant="caption" color="muted" numberOfLines={1} testID={`activity-${id}-place`}>
+              {placeLine}
+            </Text>
+          ) : null}
+          {signals ? (
+            <Row gap={8} wrap>
+              {props.isFavorite ? (
+                <View
+                  testID={`activity-${id}-favorite`}
+                  accessibilityLabel="Favorit"
+                  accessibilityRole="image"
+                >
+                  <Icon name="heart" size={15} color="accent" filled />
+                </View>
+              ) : null}
+              {props.myRating ? (
+                <Stars value={props.myRating} size={13} testID={`activity-${id}-stars`} />
+              ) : null}
+              {last ? (
+                <Text variant="caption" color="muted" testID={`activity-${id}-last`}>
+                  {last}
+                </Text>
+              ) : null}
+            </Row>
+          ) : null}
+        </View>
+      }
+      onPress={props.onPress}
+    />
   );
 }
 
