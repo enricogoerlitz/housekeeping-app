@@ -7,6 +7,7 @@ import {
   AssistantReplySchema,
   AssistantRequestSchema,
   ErrorReplySchema,
+  FetchImageRequestSchema,
   ResolveMapsLinkReplySchema,
   ResolveMapsLinkRequestSchema,
   SpeechTokenReplySchema,
@@ -181,6 +182,29 @@ describe('maps link', () => {
   });
 });
 
+describe('fetch image (spec 0039)', () => {
+  it('AC-006: asks for an https address in the active household', () => {
+    const request = {
+      householdId: 'aaaaaaaa-0000-4000-8000-000000000001',
+      url: 'https://example.org/kuchen.jpg',
+    };
+    expect(FetchImageRequestSchema.parse(request)).toEqual(request);
+  });
+
+  it('AC-007: refuses http, other schemes, a missing household and extra fields', () => {
+    const householdId = 'aaaaaaaa-0000-4000-8000-000000000001';
+    for (const url of ['http://localhost/a.jpg', 'file:///etc/passwd', 'ftp://x.org/a.jpg'])
+      expect(FetchImageRequestSchema.safeParse({ householdId, url }).success).toBe(false);
+    expect(FetchImageRequestSchema.safeParse({ url: 'https://example.org/a.jpg' }).success).toBe(
+      false,
+    );
+    expect(
+      FetchImageRequestSchema.safeParse({ householdId, url: 'https://x.org/a.jpg', bytes: 1 })
+        .success,
+    ).toBe(false);
+  });
+});
+
 describe('ErrorReplySchema', () => {
   it('accepts every stable error code and nothing else', () => {
     for (const error of [
@@ -190,6 +214,8 @@ describe('ErrorReplySchema', () => {
       'quota_exceeded',
       'ai_unavailable',
       'internal',
+      'forbidden',
+      'not_an_image',
     ])
       expect(ErrorReplySchema.parse({ error })).toEqual({ error });
     expect(ErrorReplySchema.safeParse({ error: 'teapot' }).success).toBe(false);

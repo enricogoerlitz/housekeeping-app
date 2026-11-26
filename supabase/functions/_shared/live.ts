@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 
 import type { ClaimsResult, DbResult, Deps, Query, UserClient } from './deps.ts';
 import { ConfigError, requireEnv } from './errors.ts';
+import { resolveAddresses } from './fetch-public.ts';
 
 /**
  * The publishable key from SUPABASE_PUBLISHABLE_KEYS ({"default": "sb_publishable_…"}), else the
@@ -63,6 +64,8 @@ export function liveDeps(): Deps {
     env,
     fetch: (input, init) => fetch(input, init),
     now: () => new Date(),
+    resolveDns: (hostname) =>
+      resolveAddresses(hostname, (host, type) => Deno.resolveDns(host, type)),
     createUserClient: (authorization) => userClient(env, authorization),
   };
 }

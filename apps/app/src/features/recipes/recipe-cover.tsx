@@ -5,6 +5,7 @@ import { useMemo } from 'react';
 
 import { useOnlineOnly } from '@/features/shell/offline';
 import { PhotoActionRow, ZoomablePhoto } from '@/features/shell/own-photo';
+import { PhotoWindow } from '@/features/shell/photo-window';
 
 import { RecipePhotoStatus, type RecipePhotoState } from './recipe-actions';
 
@@ -56,8 +57,8 @@ function CollectionCover(props: { recipe: Recipe } & Omit<PhotoProps, 'source'>)
 
 /**
  * The photo of the page with its save state; a collection's cover is its collage (E14). A tap
- * shows it on the whole screen, "Foto ändern" and "Foto entfernen" stand right under it (spec
- * 0036, REQ-008, REQ-009); under a sample photo only "Foto ändern".
+ * shows it on the whole screen, "Foto ändern" right under it opens the window "Foto" (spec 0036,
+ * REQ-008, REQ-009; spec 0039, REQ-001), which the ⋯ menu opens too; under a sample photo too.
  */
 export function RecipePhoto(props: {
   recipe: Recipe;
@@ -81,17 +82,28 @@ export function RecipePhoto(props: {
         />
       </ZoomablePhoto>
       <PhotoActionRow
-        // A sample photo shows too: "Foto ändern", but nothing to remove.
+        // A sample photo shows too: "Foto ändern"; only an own one can be removed (in the window).
         hasPhoto={sources.length > 0}
-        removable={!!props.recipe.photoPath}
         disabled={online.disabled || props.photo.busy !== undefined}
         hint={online.hint}
         onChange={props.photo.change}
-        onRemove={props.photo.remove}
         onShare={props.onShare}
         testPrefix="recipe"
       />
       <RecipePhotoStatus photo={props.photo} />
+      {props.photo.windowOpen ? (
+        <PhotoWindow
+          current={props.recipe.kind === 'collection' ? covers[0] : image}
+          hasPhoto={!!props.recipe.photoPath}
+          name={props.recipe.title}
+          placeholderIcon={props.recipe.kind === 'collection' ? 'layers' : 'chef-hat'}
+          aspectRatio={4 / 3}
+          onApply={props.photo.apply}
+          onRemove={props.photo.removeConfirmed}
+          onClose={props.photo.closeWindow}
+          testPrefix="recipe"
+        />
+      ) : null}
     </Stack>
   );
 }

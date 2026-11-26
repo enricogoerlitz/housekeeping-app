@@ -123,6 +123,7 @@ type RpcName =
   | 'list_push_subscriptions'
   | 'send_test_push'
   | 'resolve-maps-link'
+  | 'fetch-image'
   | 'ai-assistant'
   | 'ai-search'
   | 'speech-token'
@@ -168,6 +169,8 @@ export interface FakeServer {
   purgeDeletionsBefore(before: string): void;
   /** The place the edge function `resolve-maps-link` answers for a short link. */
   setMapsLink(url: string, reply: ResolveMapsLinkReply): void;
+  /** The bytes the edge function `fetch-image` answers for an address (spec 0039). */
+  setImageAddress(url: string, image: Blob): void;
   /** The answers of the AI edge functions. */
   setAi(ai: FakeAi): void;
   /** A stored photo (bucket household-media). */
@@ -935,6 +938,7 @@ export function createFakeServer(): FakeServer {
   const failures: FailureRule[] = [];
   const calls: { userId: string; fn: string }[] = [];
   const mapsLinks = new Map<string, ResolveMapsLinkReply>();
+  const imageAddresses = new Map<string, Blob>();
   const media = new Map<string, Blob>();
   let ai: FakeAi = {};
   /** private.deletions: one snapshot per household, kind and target, kept for RESTORABLE_MS. */
@@ -3587,6 +3591,15 @@ export function createFakeServer(): FakeServer {
           if (!reply) throw new TransportError('permanent', 'not_a_maps_link', 422);
           return reply;
         }),
+      fetchImage: (request) =>
+        run(userId, 'fetch-image', () => {
+          requireUser(userId);
+          if (!isMember(userId, request.householdId))
+            throw new TransportError('permanent', 'forbidden', 403);
+          const image = imageAddresses.get(request.url);
+          if (!image) throw new TransportError('permanent', 'not_an_image', 422);
+          return image;
+        }),
       askAssistant: (request) =>
         run(userId, 'ai-assistant', () => {
           if (!ai.assistant) throw aiUnavailable();
@@ -3714,6 +3727,9 @@ export function createFakeServer(): FakeServer {
     row: (householdId, table, id) => data.get(householdId)?.[table]?.[id],
     failNext(fn, error, options = {}) {
       failures.push({ fn, error, afterApply: options.afterApply ?? false });
+    },
+    setImageAddress(url, image) {
+      imageAddresses.set(url, image);
     },
     setMapsLink(url, reply) {
       mapsLinks.set(url, reply);

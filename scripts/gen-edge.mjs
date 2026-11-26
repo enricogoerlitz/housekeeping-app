@@ -16,6 +16,11 @@ const copies = [
     target: 'supabase/functions/_shared/maps-link.gen.ts',
     allowedImports: [],
   },
+  {
+    source: 'packages/core/src/image-source.ts',
+    target: 'supabase/functions/_shared/image-source.gen.ts',
+    allowedImports: [],
+  },
 ];
 const check = process.argv.includes('--check');
 let failed = false;
