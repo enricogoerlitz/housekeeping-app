@@ -59,6 +59,7 @@ Ablauf und Regeln: siehe `AGENTS.md`, Abschnitt „Workflow per feature“.
 | [0050](0050-zutaten-vorschlaege-beim-einfuegen/spec.md)     | Zutaten einfügen: Vorschläge beim Tippen und Vorschau                  | freigegeben |
 | [0051](0051-mitteilungen-in-der-app-statt-push/spec.md)     | Mitteilungen in der App statt Push                                     | freigegeben |
 | [0052](0052-bildprompt-aufbereitung/spec.md)                | Bild-Prompt aufbereiten: aus einem kurzen Wunsch drei gute Bilder      | freigegeben |
+| [0053](0053-aufraeumen-batch-3/spec.md)                     | Aufräumen nach Batch 3                                                 | freigegeben |
 
 ## Welle 2 (0019–0028): Bau-Reihenfolge und Regeln
 

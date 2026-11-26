@@ -1,7 +1,7 @@
 -- Spec 0046 "Rezept-Mediengalerie mit mehreren Videos": recipes.videos is the ordered list of a
 -- recipe's videos ({path, url?, poster?}), checked by recipes_videos_valid (AC-004) and written
 -- only through add_recipe_video, set_recipe_video_poster and remove_recipe_video as the caller
--- (AC-003); the video of spec 0043 (video_path) is carried over (AC-001); restore_recipe brings
+-- (AC-003); the video of spec 0043 (video_path) is gone (spec 0053); restore_recipe brings
 -- the videos back; the nightly sweep keeps what a video names and takes the rest (AC-019).
 begin;
 \ir _helpers.psql
@@ -62,12 +62,12 @@ select throws_ok(format('select public.apply_changes(%L, %L)', tests.fx('home'),
     'changes', jsonb_build_object('videos', jsonb_build_array(jsonb_build_object('path', tests.file('home', 'pasta', 'v0'))))))),
   '22023', 'invalid_change', 'Entscheidung 2: apply_changes does not write videos');
 select throws_ok(format('select public.apply_changes(%L, %L)', tests.fx('home'), jsonb_build_array(jsonb_build_object(
-    'kind', 'patch', 'table', 'recipes', 'id', tests.fx('pasta'),
-    'changes', jsonb_build_object('video_path', tests.file('home', 'pasta', 'v0'))))),
-  '23514', null, 'Entscheidung 5: video_path takes no video any more');
-select lives_ok(format('select public.apply_changes(%L, %L)', tests.fx('home'), jsonb_build_array(jsonb_build_object(
     'kind', 'patch', 'table', 'recipes', 'id', tests.fx('pasta'), 'changes', '{"video_path": null}'::jsonb))),
-  'Entscheidung 5: … but a branch that still sends video_path null keeps working');
+  '22023', 'invalid_change', 'Spec 0053, AC-002: apply_changes patches no video_path any more');
+select throws_ok(format('select public.apply_changes(%L, %L)', tests.fx('home'), jsonb_build_array(jsonb_build_object(
+    'kind', 'insert', 'table', 'recipes',
+    'row', jsonb_build_object('id', gen_random_uuid(), 'title', 'Neu', 'video_path', null)))),
+  '22023', 'invalid_change', 'Spec 0053, AC-002: … and inserts none');
 select tests.clear_authentication();
 
 -- ===================== add_recipe_video =====================
@@ -174,16 +174,12 @@ select is((select public.remove_recipe_video(tests.fx('home'), tests.fx('pasta')
   null::jsonb, 'remove_recipe_video: removing it again changes nothing');
 select tests.clear_authentication();
 
--- ===================== Carrying over the video of spec 0043 (AC-001) =====================
-select is(private.videos_from_video_path(tests.file('home', 'pasta', 'old'),
-            '[{"url": "https://www.chefkoch.de/rezepte/1"}, {"url": "https://vm.tiktok.com/ZGdXoJ8Ay/"},
-              {"url": "https://www.tiktok.com/@koch/video/1"}]'),
-  jsonb_build_array(jsonb_build_object('path', tests.file('home', 'pasta', 'old'), 'url', 'https://vm.tiktok.com/ZGdXoJ8Ay/')),
-  'AC-001: the old video keeps its file, with the recipe''s first TikTok link as its source');
-select is(private.videos_from_video_path(tests.file('home', 'pasta', 'old'), '[]'),
-  jsonb_build_array(jsonb_build_object('path', tests.file('home', 'pasta', 'old'))),
-  'AC-001: … without a TikTok link it stays without a source');
-select is(private.videos_from_video_path(null, '[]'), '[]'::jsonb, 'AC-001: no old video, no videos');
+-- ===================== The video of spec 0043 is gone (spec 0053, AC-001) =====================
+select hasnt_column('public', 'recipes', 'video_path', 'Spec 0053, AC-001: recipes has no video_path');
+select is((select count(*)::int from pg_catalog.pg_constraint
+           where conrelid = 'public.recipes'::regclass and conname like 'recipes_video_path%'), 0,
+  'Spec 0053, AC-001: … nor its checks');
+select hasnt_function('private', 'videos_from_video_path', 'Spec 0053, AC-001: the carry-over of spec 0046 is gone');
 
 -- ===================== restore_recipe keeps the videos =====================
 update public.recipes set videos = jsonb_build_array(

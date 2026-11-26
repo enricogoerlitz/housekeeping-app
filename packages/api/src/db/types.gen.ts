@@ -1050,14 +1050,7 @@ export type Database = {
       notification_settings: {
         Row: {
           acknowledged_notices: string[];
-          activities_eve_at: string;
-          activities_eve_enabled: boolean;
-          chore_reminders_enabled: boolean;
           created_at: string;
-          daily_summary_at: string;
-          daily_summary_enabled: boolean;
-          daily_summary_parts: string[];
-          entry_reminders_enabled: boolean;
           household_id: string;
           id: string;
           member_id: string;
@@ -1066,14 +1059,7 @@ export type Database = {
         ComputedFields: never;
         Insert: {
           acknowledged_notices?: string[];
-          activities_eve_at?: string;
-          activities_eve_enabled?: boolean;
-          chore_reminders_enabled?: boolean;
           created_at?: string;
-          daily_summary_at?: string;
-          daily_summary_enabled?: boolean;
-          daily_summary_parts?: string[];
-          entry_reminders_enabled?: boolean;
           household_id: string;
           id?: string;
           member_id: string;
@@ -1081,14 +1067,7 @@ export type Database = {
         };
         Update: {
           acknowledged_notices?: string[];
-          activities_eve_at?: string;
-          activities_eve_enabled?: boolean;
-          chore_reminders_enabled?: boolean;
           created_at?: string;
-          daily_summary_at?: string;
-          daily_summary_enabled?: boolean;
-          daily_summary_parts?: string[];
-          entry_reminders_enabled?: boolean;
           household_id?: string;
           id?: string;
           member_id?: string;
@@ -1514,7 +1493,6 @@ export type Database = {
           total_minutes: number | null;
           updated_at: string;
           variants: NonNullable<Json>;
-          video_path: string | null;
           videos: NonNullable<Json>;
         };
         ComputedFields: never;
@@ -1541,7 +1519,6 @@ export type Database = {
           total_minutes?: number | null;
           updated_at?: string;
           variants?: NonNullable<Json>;
-          video_path?: string | null;
           videos?: NonNullable<Json>;
         };
         Update: {
@@ -1567,7 +1544,6 @@ export type Database = {
           total_minutes?: number | null;
           updated_at?: string;
           variants?: NonNullable<Json>;
-          video_path?: string | null;
           videos?: NonNullable<Json>;
         };
         Relationships: [

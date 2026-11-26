@@ -853,8 +853,8 @@ function checkRow(householdId: string, table: string, row: Row, tables: TableRow
   ) {
     throw new TransportError('permanent', '23514', 400);
   }
-  // recipes_video_path_retired and recipes_videos_valid (spec 0046).
-  if (table === 'recipes' && (row.video_path != null || !videosValid(householdId, row))) {
+  // recipes_videos_valid (spec 0046).
+  if (table === 'recipes' && !videosValid(householdId, row)) {
     throw new TransportError('permanent', '23514', 400);
   }
   const folder = PHOTO_FOLDERS[table];

@@ -30,11 +30,13 @@ describe('seed ids', () => {
 describe('AC-033 (spec 0003): generated seed', async () => {
   const seed = await generateSeed('2026-11-20');
 
-  it('is the same SQL whatever day it is generated on (all dates relative to the seed run)', async () => {
-    for (const day of ['2026-11-16', '2026-11-22', '2027-01-31', '2027-02-28', '2027-06-01']) {
+  // Spec 0053, AC-008: one generation per case; five in one case broke the 5 s limit in CI.
+  it.each(['2026-11-16', '2026-11-22', '2027-01-31', '2027-02-28', '2027-06-01'])(
+    'is the same SQL whatever day it is generated on (all dates relative to the seed run): %s',
+    async (day) => {
       expect((await generateSeed(day)).sql).toBe(seed.sql);
-    }
-  });
+    },
+  );
 
   it('writes no readable slug id and no fixed calendar date into the SQL', () => {
     expect(seed.sql).not.toMatch(

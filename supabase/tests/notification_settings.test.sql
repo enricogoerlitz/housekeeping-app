@@ -1,10 +1,11 @@
 -- Notification settings and the new time columns (spec 0013, Task 1): one row per member, created
--- by the server with the defaults (AC-011), readable and editable only by the member herself
--- (AC-012, AC-013), synced, gone with the membership (AC-036). chores.due_time (AC-022),
+-- by the server (AC-011), readable only by the member herself (AC-012, AC-013), synced, gone with
+-- the membership (AC-036). Since spec 0053 the row holds only the acknowledged notices (spec 0051),
+-- written only through acknowledge_notices: no column is patchable. chores.due_time (AC-022),
 -- the time of a restaurant entry (spec 0021, starts_at), households.timezone.
 begin;
 \ir _helpers.psql
-select plan(50);
+select plan(45);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 grant select on fx to anon, authenticated;
@@ -53,15 +54,9 @@ insert into public.chores (id, household_id, title, recurrence, assignment, next
 select is(
   (select count(*)::int from public.notification_settings where household_id = tests.fx('home')), 2,
   'AC-011 notification_settings: every member gets exactly one row');
-select is(
-  (select jsonb_build_object(
-     'daily', s.daily_summary_enabled, 'daily_at', s.daily_summary_at, 'parts', s.daily_summary_parts,
-     'eve', s.activities_eve_enabled, 'eve_at', s.activities_eve_at,
-     'chores', s.chore_reminders_enabled, 'entries', s.entry_reminders_enabled)
-   from public.notification_settings s where s.id = tests.settings_id('nadja')),
-  jsonb_build_object('daily', false, 'daily_at', '07:30:00', 'parts', jsonb_build_array('meals', 'activities', 'chores', 'prep'),
-                     'eve', false, 'eve_at', '19:00:00', 'chores', true, 'entries', true),
-  'AC-011 notification_settings: only chore and entry reminders are on, 7:30 and 19:00, all four parts (spec 0021: no reservation kind)');
+select columns_are('public', 'notification_settings',
+  array['id', 'household_id', 'member_id', 'acknowledged_notices', 'created_at', 'updated_at'],
+  'Spec 0053, AC-003 notification_settings: only the acknowledged notices are left, no push settings');
 select tests.clear_authentication();
 insert into fx (key, id) values ('vera', tests.create_user('vera@example.com', 'Vera'));
 insert into public.household_members (household_id, profile_id) values (tests.fx('home_b'), tests.fx('vera'));
@@ -76,66 +71,41 @@ update public.notification_settings set updated_at = '2026-01-01T00:00:00Z' wher
 alter table public.notification_settings enable trigger notification_settings_set_timestamps;
 
 select tests.authenticate_as(tests.fx('enrico'));
-select is(
-  tests.affected(format(
-    $$ update public.notification_settings set daily_summary_enabled = true, daily_summary_at = '06:45',
-         daily_summary_parts = '{meals,chores}' where id = %L $$, tests.settings_id('enrico'))),
-  1, 'AC-012 notification_settings: Enrico changes his own row');
-select is(
-  (select jsonb_build_object('daily', daily_summary_enabled, 'at', daily_summary_at, 'parts', daily_summary_parts)
-   from public.notification_settings where id = tests.settings_id('enrico')),
-  jsonb_build_object('daily', true, 'at', '06:45:00', 'parts', jsonb_build_array('meals', 'chores')),
-  'AC-012 notification_settings: the change is stored');
-select is(
-  (select updated_at from public.notification_settings where id = tests.settings_id('enrico')), now(),
-  'AC-012 notification_settings: the server sets updated_at, so the change reaches his other devices');
-select lives_ok(
+select throws_ok(
+  format($$ update public.notification_settings set daily_summary_enabled = true where id = %L $$,
+         tests.settings_id('enrico')),
+  '42703', null, 'Spec 0053, AC-004 notification_settings: the old push setting is gone');
+select throws_ok(
+  format($$ update public.notification_settings set acknowledged_notices = '{}' where id = %L $$,
+         tests.settings_id('enrico')),
+  '42501', null, 'Spec 0053, AC-004 notification_settings: Enrico changes no column of his row directly');
+select throws_ok(
   tests.apply_sql('home', jsonb_build_array(jsonb_build_object(
     'kind', 'patch', 'table', 'notification_settings', 'id', tests.settings_id('enrico'),
-    'changes', jsonb_build_object('activities_eve_enabled', true, 'activities_eve_at', '18:30',
-                                  'chore_reminders_enabled', false, 'entry_reminders_enabled', false)))),
-  'AC-012 apply_changes: the own row is patchable through the write path');
+    'changes', jsonb_build_object('daily_summary_enabled', true)))),
+  '22023', 'invalid_change', 'Spec 0053, AC-004 apply_changes: the old push settings are not patchable');
+select lives_ok(
+  format($$ select public.acknowledge_notices(%L, array[%L]) $$, tests.fx('home'),
+         'chore:' || tests.fx('bad') || ':' || to_char((now() at time zone 'Europe/Berlin')::date, 'YYYY-MM-DD')),
+  'Spec 0053, AC-005 acknowledge_notices: Enrico acknowledges a notice');
 select is(
-  (select activities_eve_at from public.notification_settings where id = tests.settings_id('enrico')), '18:30'::time,
-  'AC-012 apply_changes: the patch is stored');
-
--- Domain checks.
-select throws_ok(
-  format($$ update public.notification_settings set daily_summary_parts = '{}' where id = %L $$, tests.settings_id('enrico')),
-  '23514', null, 'AC-012 notification_settings: at least one part');
-select throws_ok(
-  format($$ update public.notification_settings set daily_summary_parts = '{meals,meals}' where id = %L $$,
-         tests.settings_id('enrico')),
-  '23514', null, 'AC-012 notification_settings: no part twice');
-select throws_ok(
-  format($$ update public.notification_settings set daily_summary_parts = '{meals,weather}' where id = %L $$,
-         tests.settings_id('enrico')),
-  '23514', null, 'AC-012 notification_settings: only the four known parts');
-select throws_ok(
-  format($$ update public.notification_settings set daily_summary_at = '06:47' where id = %L $$, tests.settings_id('enrico')),
-  '23514', null, 'Decision 4 notification_settings: 6:47 is not a 5-minute step');
-select throws_ok(
-  format($$ update public.notification_settings set activities_eve_at = '19:00:30' where id = %L $$,
-         tests.settings_id('enrico')),
-  '23514', null, 'Decision 4 notification_settings: seconds are not allowed');
+  (select updated_at from public.notification_settings where id = tests.settings_id('enrico')), now(),
+  'Spec 0053, AC-005 notification_settings: the server sets updated_at, so it reaches his other devices');
 
 -- ===================== AC-013: nobody else reads or changes it =====================
 select tests.authenticate_as(tests.fx('nadja'));
 select is(
   tests.affected(format('select 1 from public.notification_settings where id = %L', tests.settings_id('enrico'))), 0,
   'AC-013 notification_settings: Nadja does not see Enrico''s row');
-select is(
-  tests.affected(format($$ update public.notification_settings set daily_summary_enabled = false where id = %L $$,
-                        tests.settings_id('enrico'))), 0,
-  'AC-013 notification_settings: Nadja''s update of Enrico''s row changes nothing');
-select is(
-  (select daily_summary_enabled from public.notification_settings where id = tests.settings_id('nadja')), false,
-  'AC-013 notification_settings: Nadja''s own daily summary stays off');
+select throws_ok(
+  format($$ update public.notification_settings set acknowledged_notices = '{}' where id = %L $$,
+         tests.settings_id('enrico')),
+  '42501', null, 'AC-013 notification_settings: Nadja cannot change Enrico''s row');
 select throws_ok(
   tests.apply_sql('home', jsonb_build_array(jsonb_build_object(
     'kind', 'patch', 'table', 'notification_settings', 'id', tests.settings_id('enrico'),
-    'changes', jsonb_build_object('daily_summary_enabled', false)))),
-  'P0002', 'row_not_found', 'AC-013 apply_changes: Nadja cannot patch Enrico''s row');
+    'changes', jsonb_build_object('acknowledged_notices', '{}'::text[])))),
+  '22023', 'invalid_change', 'AC-013 apply_changes: Nadja cannot patch Enrico''s row');
 insert into pulled select 'nadja', public.sync_pull(jsonb_build_object('households',
   jsonb_build_object(tests.fx('home'), '{"full": true}'::jsonb)));
 select is(
@@ -159,16 +129,16 @@ select tests.authenticate_as(tests.fx('ben'));
 select is(
   tests.affected(format('select 1 from public.notification_settings where household_id = %L', tests.fx('home'))), 0,
   'AC-013 notification_settings: a member of another household reads no rows');
-select is(
-  tests.affected(format($$ update public.notification_settings set daily_summary_enabled = true where household_id = %L $$,
-                        tests.fx('home'))), 0,
-  'AC-013 notification_settings: a member of another household updates nothing');
+select throws_ok(
+  format($$ update public.notification_settings set acknowledged_notices = '{}' where household_id = %L $$,
+         tests.fx('home')),
+  '42501', null, 'AC-013 notification_settings: a member of another household updates nothing');
 
 select tests.authenticate_as_anon();
 select throws_ok('select * from public.notification_settings', '42501', null,
   'AC-043 notification_settings: anon cannot read settings');
 select throws_ok(
-  format($$ update public.notification_settings set daily_summary_enabled = true where id = %L $$,
+  format($$ update public.notification_settings set acknowledged_notices = '{}' where id = %L $$,
          tests.settings_id('enrico')),
   '42501', null, 'AC-043 notification_settings: anon cannot update settings');
 
@@ -291,11 +261,16 @@ select ok(
   (select c.relrowsecurity from pg_catalog.pg_class c where c.oid = 'public.notification_settings'::regclass),
   'Decision 3 notification_settings: row level security is on');
 select ok(
-  not has_column_privilege('authenticated', 'public.notification_settings', 'member_id', 'update')
-  and not has_column_privilege('authenticated', 'public.notification_settings', 'household_id', 'update')
-  and has_column_privilege('authenticated', 'public.notification_settings', 'daily_summary_parts', 'update')
+  not exists (select 1 from information_schema.column_privileges
+              where table_schema = 'public' and table_name = 'notification_settings'
+                and grantee = 'authenticated' and privilege_type in ('UPDATE', 'INSERT'))
   and not has_table_privilege('anon', 'public.notification_settings', 'select'),
-  'Decision 3 notification_settings: update only of the setting columns, nothing for anon');
+  'Spec 0053, AC-003 notification_settings: authenticated changes no column, nothing for anon');
+select is(
+  (select array_agg(policyname::text order by policyname) from pg_catalog.pg_policies
+   where schemaname = 'public' and tablename = 'notification_settings'),
+  array['notification_settings_select'],
+  'Spec 0053, Entscheidung 4 notification_settings: only the select policy is left');
 
 select * from finish();
 rollback;

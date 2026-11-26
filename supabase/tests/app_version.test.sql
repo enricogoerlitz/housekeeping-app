@@ -36,7 +36,7 @@ select is_empty(
 );
 
 -- ---------- Value ----------
-select is(public.min_app_version(), '2026.11.3', 'AC-025: the minimum version is raised by the contract of spec 0051 (push RPCs gone)');
+select is(public.min_app_version(), '2026.11.2', 'AC-025: the minimum version is the last published one (spec 0053 supersedes the 2026.11.3 of spec 0051)');
 
 select tests.authenticate_as_anon();
 select matches(

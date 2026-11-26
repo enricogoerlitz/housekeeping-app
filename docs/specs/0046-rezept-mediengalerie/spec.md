@@ -128,9 +128,9 @@ Ablauf von „Rückgängig“); was liegen bleibt, nimmt der nächtliche Aufräu
 5. Agent, 26.11. (Bau): Expand → migrate → contract (`30-database.md`): Die Migration übernimmt
    `video_path` nach `videos` und leert es; die Spalte bleibt bis zum Contract, nur noch `null`
    erlaubt, weil parallel gebaute Zweige auf der gemeinsamen lokalen Datenbank sie beim Anlegen
-   eines Rezepts noch mitsenden. OFFEN: `recipes.video_path` mit ihrer Check-Regel und dem
-   Allowlist-Eintrag entfernen, sobald alle Zweige von Batch 3 auf `develop` sind (spätestens mit
-   der neuen Basis vor v1).
+   eines Rezepts noch mitsenden. ERLEDIGT (Spec 0053, 26.11.2026): `recipes.video_path` ist
+   mit ihren Check-Regeln, dem Allowlist-Eintrag und `private.videos_from_video_path` entfernt,
+   seit alle Zweige von Batch 3 auf `develop` sind.
 6. Agent, 26.11. (Bau): Galerie als waagerecht seitenweise scrollende Fläche (im Browser
    CSS-Scroll-Snap): das Wischen folgt dem Finger wie im System, und das Wischen zwischen Rezepten
    übernimmt eine Berührung darin nicht (Spec 0029, Entscheidung 8). Pfeile nur bei Zeiger-Geräten,

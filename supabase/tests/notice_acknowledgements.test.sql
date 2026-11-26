@@ -52,7 +52,7 @@ select hasnt_function('private', 'run_notification_tick', 'AC-001: the scheduler
 select hasnt_function('private', 'chore_due_state', 'Decision 11: the SQL twins of the chore rules are gone');
 select has_function('private', 'is_silent', array['uuid', 'uuid', 'date'],
   'Decision 11: is_silent stays (chores wait on trips)');
-select is(public.min_app_version(), '2026.11.3', 'Decision 10: apps before 2026.11.3 stop writing');
+select is(public.min_app_version(), '2026.11.2', 'Decision 10, superseded by spec 0053: 2026.11.2 stays unlocked, the release may go out');
 
 -- ===================== AC-022: acknowledging in the own row =====================
 select is(tests.acks('enrico'), '{}'::text[], 'REQ-005: a member starts without acknowledgements');

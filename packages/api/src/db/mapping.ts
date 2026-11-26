@@ -34,7 +34,7 @@
 //   returns a `time` (`due_time`, `starts_at`, `reminder_at`); the rows write them with ":00",
 //   so a diff compares like with like. Of `notification_settings` only the signed-in member's row
 //   is `notificationSettings` (RLS sends no other); spec 0051: only its `acknowledged_notices`
-//   are read, the old setting columns are left alone.
+//   are read, so the setting columns dropped by spec 0053 do no harm in rows cached before.
 // - Spec 0017: a reminder is the three columns `reminder_day_offset`, `reminder_at` ("HH:MM:SS"
 //   like every time) and `reminder_text` ⇄ `MealPlanEntry.reminder` (none = all three null).
 //   `households.timezone` is
