@@ -34,6 +34,7 @@ import { MemberRatings } from '@/features/shell/member-ratings';
 import { useOnlineOnly } from '@/features/shell/offline';
 import { PantryCheckSheet } from '@/features/shopping/pantry-check-sheet';
 import { usePageParams } from '@/lib/url-state';
+import { useBrowseSwipe } from '@/lib/browse-order';
 
 import { AddToCollectionSheet } from './add-to-collection-sheet';
 import { CollectionDetailBody } from './collection-detail';
@@ -132,6 +133,8 @@ function RecipeDetailBody(props: {
   /** true while this page deletes its recipe; false again when the deletion did not start. */
   onDeleting: (leaving: boolean) => void;
 }) {
+  // Phones: swipe to the neighbour in the list it was opened from (spec 0034, REQ-008).
+  const swipe = useBrowseSwipe();
   const { recipe } = props;
   const router = useRouter();
   const online = useOnlineOnly();
@@ -261,6 +264,7 @@ function RecipeDetailBody(props: {
     <Screen
       testID="recipe-screen"
       tone="essen"
+      tabSwipe={swipe}
       header={
         <ScreenHeader
           title={recipe.title}

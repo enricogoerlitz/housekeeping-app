@@ -1,6 +1,8 @@
 import { Screen, ScreenHeader, type Tone } from '@housekeeping/ui';
 import type { ReactNode } from 'react';
 
+import { useBrowseSwipe } from '@/lib/browse-order';
+
 export interface DetailPageProps {
   /** Set on its own page; without it (split view on wide screens) only the content renders. */
   onBack?: () => void;
@@ -20,11 +22,13 @@ export interface DetailPageProps {
  * stays at the top while the page scrolls (spec 0005, AC-001, AC-002).
  */
 export function DetailPage(props: DetailPageProps) {
+  const swipe = useBrowseSwipe();
   if (!props.onBack) return <>{props.children}</>;
   return (
     <Screen
       testID={props.testID}
       tone={props.tone}
+      tabSwipe={swipe}
       header={
         <ScreenHeader
           title={props.title}

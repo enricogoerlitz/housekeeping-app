@@ -420,7 +420,17 @@ export function RecipesScreen() {
         data={aiVisible ? [] : results}
         keyExtractor={(recipe) => recipe.id}
         renderItem={(recipe) => (
-          <RecipeTile recipe={recipe} articlesById={articlesById} onOpen={openRecipe} />
+          <RecipeTile
+            recipe={recipe}
+            articlesById={articlesById}
+            // The recipe's page swipes through the list in this order (spec 0034, REQ-008).
+            onOpen={(recipeId) =>
+              openRecipe(
+                recipeId,
+                results.map((entry) => entry.id),
+              )
+            }
+          />
         )}
         minColumnWidth={TILE_MIN_WIDTH}
         minColumns={2}

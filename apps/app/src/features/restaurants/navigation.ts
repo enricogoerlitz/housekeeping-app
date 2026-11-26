@@ -2,6 +2,7 @@ import type { Id } from '@housekeeping/core';
 import { useBreakpoint } from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
 
+import { rememberBrowseOrder } from '@/lib/browse-order';
 import { originFor } from '@/lib/url-state';
 
 /**
@@ -15,6 +16,8 @@ export function useOpenRestaurant(): (restaurantId: Id) => void {
   return (restaurantId: Id) => {
     const von = originFor('essen');
     const origin = von ? { von } : {};
+    // Not opened from the restaurant list: its page has nothing to swipe to (spec 0034, AC-019).
+    rememberBrowseOrder('restaurants', undefined);
     if (isWide)
       router.navigate({
         pathname: '/rezepte',
