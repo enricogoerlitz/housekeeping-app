@@ -188,6 +188,7 @@ function recipeRows(householdId: string, recipe: Recipe): HouseholdRows {
         last_cooked_on: recipe.lastCookedOn ?? null,
         cooked_count: recipe.cookedCount,
         links: json(recipe.links),
+        video_path: recipe.videoPath ?? null,
         ...(recipe.createdAt ? { created_at: recipe.createdAt } : {}),
         ...(recipe.updatedAt ? { updated_at: recipe.updatedAt } : {}),
       } satisfies Cached<'recipes'>,
@@ -767,6 +768,7 @@ function toRecipe(row: Row, favorites: Row[], ratings: Row[]): Recipe {
     createdAt: r.created_at ?? '',
     updatedAt: opt(r.updated_at),
     links: (r.links ?? []) as unknown as Recipe['links'],
+    videoPath: opt(r.video_path),
   };
 }
 
