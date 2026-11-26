@@ -19,6 +19,7 @@ import {
 } from '@housekeeping/ui';
 import { useState, type ReactNode } from 'react';
 
+import { confirmFirst } from '@/features/shell/confirm-dialog';
 import { useOnlineOnly } from '@/features/shell/offline';
 import { PlanDateCalendar } from '@/lib/plan-date-calendar';
 
@@ -45,10 +46,18 @@ function useHistoryEvent(props: HistoryEventProps): { title: string; body: React
   const [picking, setPicking] = useState(false);
   const choreExists = chores.some((chore) => chore.id === event.choreId);
 
-  const remove = () => {
-    props.onClose();
-    removeEventWithToast(event, 'Entfernt');
-  };
+  // Asks first (spec 0036, Entscheidung 1).
+  const remove = () =>
+    confirmFirst({
+      title: 'Eintrag entfernen?',
+      message: `„${event.title}“, ${dayWithDate(event.doneOn, today)}`,
+      confirmLabel: 'Entfernen',
+      onConfirm: () => {
+        props.onClose();
+        removeEventWithToast(event, 'Entfernt');
+      },
+      testID: 'confirm-remove-event',
+    });
 
   return {
     title: event.title,

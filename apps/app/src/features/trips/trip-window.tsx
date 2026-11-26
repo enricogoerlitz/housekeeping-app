@@ -1,7 +1,6 @@
 import {
   removeTrip,
   resetPackingList,
-  snapshot,
   updateTrip,
   useMembers,
   usePackingList,
@@ -40,9 +39,9 @@ import { View } from 'react-native';
 
 import { FAILED, messageOf } from '@/features/packing/packing-labels';
 import { TripAddBagSheet } from '@/features/packing/trip-add-bag-sheet';
-import { ConfirmDialog } from '@/features/shell/confirm-dialog';
+import { confirmFirst, ConfirmDialog } from '@/features/shell/confirm-dialog';
 import { TripSection } from '@/features/packing/trip-section';
-import { undoAction, useOnlineOnly } from '@/features/shell/offline';
+import { useOnlineOnly } from '@/features/shell/offline';
 import { usePageParams } from '@/lib/url-state';
 
 import { TripFields, type TripFieldValues } from './trip-sheet';
@@ -189,14 +188,7 @@ function TripWindow(props: { tripId: Id; onClose: () => void }) {
     setDraft(undefined);
   };
 
-  const remove = () => {
-    if (online.disabled) return;
-    // With a packing list the dialog asks first, without one "Rückgängig" is enough (AC-016, AC-017).
-    if (deleteMessage && dialog !== 'delete') {
-      setDialog('delete');
-      return;
-    }
-    const restore = deleteMessage ? undefined : snapshot();
+  const removeNow = () => {
     try {
       removeTrip(trip.id);
     } catch {
@@ -205,16 +197,22 @@ function TripWindow(props: { tripId: Id; onClose: () => void }) {
     }
     setLeaving(true);
     props.onClose();
-    toast.show(
-      restore
-        ? {
-            message: 'Reise gelöscht',
-            actionLabel: 'Rückgängig',
-            onAction: undoAction(restore),
-            duration: 5000,
-          }
-        : { message: 'Reise und Packliste gelöscht' },
-    );
+    toast.show({ message: deleteMessage ? 'Reise und Packliste gelöscht' : 'Reise gelöscht' });
+  };
+  const remove = () => {
+    if (online.disabled) return;
+    // With a packing list the dialog asks first (AC-016), without one the plain question (spec
+    // 0036, Entscheidung 1; before "Rückgängig", AC-017).
+    if (deleteMessage && dialog !== 'delete') setDialog('delete');
+    else if (deleteMessage) removeNow();
+    else {
+      confirmFirst({
+        title: 'Reise löschen?',
+        confirmLabel: 'Löschen',
+        onConfirm: removeNow,
+        testID: 'confirm-delete-trip',
+      });
+    }
   };
 
   const reset = () => {

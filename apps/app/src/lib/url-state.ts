@@ -101,8 +101,11 @@ export interface PageAddress<K extends PageKey> {
   params: PageParams<K>;
   /** Changes parameters in place (view, filter, search, sort, paging, selection). */
   replace: (patch: PageParams<K>) => void;
-  /** Opens a window: the address changes in a new history entry. */
-  open: (patch: PageParams<K>) => void;
+  /**
+   * Opens a window: the address changes in a new history entry. `below` changes the entry under
+   * the window too, e.g. to the view the window belongs to (spec 0036, AC-017).
+   */
+  open: (patch: PageParams<K>, below?: PageParams<K>) => void;
   /**
    * Closes a window: back one entry when it was opened here, otherwise (the address was loaded
    * with it) the parameters change in place, so ✕ never leaves the app (AC-042).
@@ -137,9 +140,9 @@ export function usePageParams<K extends PageKey>(page: K): PageAddress<K> {
 
   const values = read.values;
   const open = useCallback(
-    (patch: PageParams<K>) => {
+    (patch: PageParams<K>, below?: PageParams<K>) => {
       // Back to the entry below restores its whole address, also what changed inside the window.
-      const before = pageParamsBefore(page, values);
+      const before = pageParamsBefore(page, { ...values, ...below });
       openWindowEntry(
         () => replace(patch),
         () => replace(before),

@@ -66,7 +66,11 @@ export { SearchOrCreate, type SearchOrCreateHit } from './search-or-create';
 export { SwipeToRemove } from './swipe-row';
 export { ReorderList, type ReorderListLabels } from './reorder-list';
 export { haptic } from './haptics';
-export { FilterBar } from './filter-bar';
+export { FilterBar, FilterSection } from './filter-bar';
+export { FieldClearButton } from './field-clear';
+export { InfoHint } from './info-hint';
+export { createRequestSlot } from './request-slot';
+export { PhotoViewer } from './photo-viewer';
 export { InfiniteList } from './infinite-list';
 export { ListDetail } from './list-detail';
 export {

@@ -11,6 +11,7 @@ import {
   activeFilterChips,
   activeFilterCount,
   applyRecipeListFilter,
+  canReshuffle,
   cookingHistory,
   cuisineFacets,
   EMPTY_RECIPE_LIST_FILTER,
@@ -35,6 +36,7 @@ import {
   Button,
   Chip,
   EmptyState,
+  FieldClearButton,
   FilterBar,
   Icon,
   IconButton,
@@ -50,8 +52,8 @@ import {
   ViewTabs,
   tabSwipe,
 } from '@housekeeping/ui';
-import { useMemo, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { type ComponentRef, useMemo, useRef, useState } from 'react';
+import { Pressable, View, type TextInput } from 'react-native';
 
 import { RestaurantsPanel } from '@/features/restaurants/restaurants-panel';
 import { StartPageActions } from '@/features/shell/profile-button';
@@ -103,6 +105,7 @@ const TILE_MIN_WIDTH = 260;
  * Search, filters, sort and the random order stay while the app runs (E14).
  */
 export function RecipesScreen() {
+  const searchInput = useRef<ComponentRef<typeof TextInput>>(null);
   const address = usePageParams('rezepte');
   const { params } = address;
   const online = useOnlineOnly();
@@ -186,7 +189,11 @@ export function RecipesScreen() {
   const onNew = (kind: FoodNewKind) => {
     if (kind === 'recipe' || kind === 'collection') openNew(kind);
     // The restaurant window belongs to the restaurants view; its address opens it (spec 0002).
-    else address.open({ ...viewPatch('restaurants'), fenster: 'neu-restaurant' });
+    // Closing it stays there, so the new restaurant opens beside its list (spec 0036, AC-017).
+    else {
+      const restaurantsView = viewPatch('restaurants');
+      address.open({ ...restaurantsView, fenster: 'neu-restaurant' }, restaurantsView);
+    }
   };
 
   const header = (
@@ -266,6 +273,7 @@ export function RecipesScreen() {
       search={
         <TextField
           round
+          inputRef={searchInput}
           value={query}
           onChangeText={list.setQuery}
           placeholder={aiSearch ? 'Was möchtet ihr essen?' : 'Rezepte suchen …'}
@@ -287,10 +295,10 @@ export function RecipesScreen() {
                 testID="ai-search-run"
               />
             ) : query ? (
-              <IconButton
-                icon="x"
+              <FieldClearButton
                 label="Suche leeren"
-                onPress={() => list.setQuery('')}
+                onClear={() => list.setQuery('')}
+                inputRef={searchInput}
                 testID="recipe-search-clear"
               />
             ) : undefined
@@ -313,7 +321,7 @@ export function RecipesScreen() {
       }
       chips={
         <>
-          {sort === 'random' ? (
+          {canReshuffle(sort, query) ? (
             <Chip
               label="Neu mischen"
               icon="refresh-cw"

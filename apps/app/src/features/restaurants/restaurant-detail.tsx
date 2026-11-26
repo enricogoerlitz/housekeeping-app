@@ -9,7 +9,14 @@ import {
   useRestaurant,
   useToday,
 } from '@housekeeping/api';
-import { isWebUrl, priceLabel, visitsOf, type Id, type Restaurant } from '@housekeeping/core';
+import {
+  showsRoute,
+  isWebUrl,
+  priceLabel,
+  visitsOf,
+  type Id,
+  type Restaurant,
+} from '@housekeeping/core';
 import {
   Badge,
   Button,
@@ -247,12 +254,15 @@ function RestaurantDetailBody(props: RestaurantDetailProps & { restaurant: Resta
             </Text>
           ) : null}
           <Row gap={10} wrap style={{ marginTop: 4 }}>
-            <Button
-              label="Route"
-              icon="map-pin"
-              onPress={() => setRouteOpen(true)}
-              testID="restaurant-route"
-            />
+            {/* Only with a map link (spec 0036, AC-018). */}
+            {showsRoute(restaurant) ? (
+              <Button
+                label="Route"
+                icon="map-pin"
+                onPress={() => setRouteOpen(true)}
+                testID="restaurant-route"
+              />
+            ) : null}
             {website ? (
               <Button
                 label="Webseite"

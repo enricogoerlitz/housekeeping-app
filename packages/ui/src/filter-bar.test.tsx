@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { Text } from './primitives';
-import { FilterBar, type FilterBarProps } from './filter-bar';
+import { FilterBar, FilterSection, type FilterBarProps } from './filter-bar';
 
 /** The window width react-native-web reads (jsdom has none, i.e. a phone). */
 function setWindowWidth(width: number) {
@@ -111,5 +111,21 @@ describe('FilterBar (spec 0005, REQ-007)', () => {
       fireEvent.keyDown(document, { key: 'Escape' });
       expect(screen.queryByTestId('bar-panel')).toBeNull();
     });
+  });
+});
+
+describe('FilterSection (spec 0036, REQ-003)', () => {
+  it('AC-005: never wider than the panel, so its chips wrap inside it', () => {
+    render(
+      <FilterSection title="Küche" testID="part">
+        <Text>Vietnamesisch 1</Text>
+      </FilterSection>,
+    );
+    const part = screen.getByTestId('part');
+    expect(part.textContent).toContain('Küche');
+    expect(getComputedStyle(part).maxWidth).toBe('100%');
+    expect(getComputedStyle(part).flexShrink).toBe('1');
+    const chips = part.lastElementChild as HTMLElement;
+    expect(getComputedStyle(chips).flexWrap).toBe('wrap');
   });
 });

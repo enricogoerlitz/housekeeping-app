@@ -114,10 +114,16 @@ describe('createArticle', () => {
   it('AC-030, AC-043: a taken or missing name saves nothing', async () => {
     await fx.startEnrico();
     expect(() => createArticle({ name: 'kokosmilch' })).toThrow('Gibt es schon: Kokosmilch');
-    expect(() => createArticle({ name: 'Karotten' })).toThrow('Gibt es schon: Möhren');
     expect(() => createArticle({ name: '   ' })).toThrow('Name fehlt');
     await fx.settle();
     expect(fx.calls).toEqual([]);
+  });
+
+  it('AC-011 (0036): a name that is only the synonym of another article can be created', async () => {
+    await fx.startEnrico();
+    expect(() => createArticle({ name: 'Karotten' })).not.toThrow();
+    await fx.settle();
+    expect(fx.calls.length).toBeGreaterThan(0);
   });
 
   it('offline: refused with the hint, nothing is sent', async () => {

@@ -40,6 +40,7 @@ export * from './store-queue';
 export * from './ai-contract';
 export * from './recipe-list';
 export * from './restaurant-list';
+export * from './list-sorts';
 export * from './recipe-editor';
 export * from './recipe-deletion';
 export * from './place-deletion';

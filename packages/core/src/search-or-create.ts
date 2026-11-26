@@ -22,14 +22,17 @@ export interface SearchOrCreateMatch<T> {
 export interface SearchOrCreateResult<T> {
   /** Hits, best first: exact > prefix > substring or all words in any order > typo > word part. */
   matches: SearchOrCreateMatch<T>[];
-  /** The item whose name or synonym is the query; then there is nothing to create. */
+  /**
+   * The item whose name or synonym is the query. A name leaves nothing to create; a synonym of
+   * another item still offers "neu anlegen" (spec 0036, REQ-005: „Schinken“ next to Kochschinken).
+   */
   exact?: T;
   /**
    * The look-alike for "Meinst du …?": creating needs a second confirmation. Only by spelling
    * (`spelledAlike`), never through a word part or a synonym containing the query.
    */
   similar?: T;
-  /** A non-empty query that is no existing name or synonym. */
+  /** A non-empty query that is no existing name (a synonym of another item does not count). */
   canCreate: boolean;
 }
 
@@ -39,6 +42,8 @@ const MIN_WORD_PART = 5;
 
 const SCORE = {
   exact: 100,
+  // An exact synonym ranks behind an exact name (spec 0036, Entscheidung 2).
+  exactSynonym: 95,
   prefix: 80,
   prefixSynonym: 70,
   substring: 50,
@@ -81,7 +86,7 @@ function scoreText(
   isSynonym: boolean,
 ): { score: number; piece: number } {
   const t = normalizeText(text);
-  if (t === query) return { score: SCORE.exact, piece: 0 };
+  if (t === query) return { score: isSynonym ? SCORE.exactSynonym : SCORE.exact, piece: 0 };
   if (t.startsWith(query))
     return { score: isSynonym ? SCORE.prefixSynonym : SCORE.prefix, piece: 0 };
   if (t.includes(query) || allWordsIncluded(query, t))
@@ -135,15 +140,18 @@ export function matchSearchOrCreate<T extends SearchOrCreateItem>(
       a.item.name.localeCompare(b.item.name, 'de'),
   );
 
-  const exact =
-    items.find((item) => normalizeText(item.name) === q) ??
-    items.find((item) => (item.synonyms ?? []).some((synonym) => normalizeText(synonym) === q));
+  const exactName = items.find((item) => normalizeText(item.name) === q);
+  const exactSynonym = items.find((item) =>
+    (item.synonyms ?? []).some((synonym) => normalizeText(synonym) === q),
+  );
   const matches = scored
     .slice(0, Math.max(0, options?.limit ?? DEFAULT_LIMIT))
     .map(({ item, matchedSynonym, wordPart }) =>
       matchedSynonym === undefined ? { item, wordPart } : { item, matchedSynonym, wordPart },
     );
-  if (exact) return { matches, exact, canCreate: false };
+  if (exactName) return { matches, exact: exactName, canCreate: false };
+  // The synonym is shown as the hit, so there is nothing to brake for.
+  if (exactSynonym) return { matches, exact: exactSynonym, canCreate: true };
 
   return { matches, similar: findSimilar(q, items), canCreate: true };
 }

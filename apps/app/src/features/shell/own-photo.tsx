@@ -2,6 +2,7 @@ import { preparePhoto, usePhoto, WRITE_REJECTED_MESSAGE } from '@housekeeping/ap
 import {
   Button,
   Photo,
+  PhotoViewer,
   Row,
   Stack,
   Text,
@@ -9,9 +10,10 @@ import {
   type IconName,
   type PhotoProps,
 } from '@housekeeping/ui';
-import { useEffect, useState } from 'react';
-import { View } from 'react-native';
+import { useEffect, useState, type ReactNode } from 'react';
+import { Pressable, View } from 'react-native';
 
+import { confirmFirst } from '@/features/shell/confirm-dialog';
 import { useOnlineOnly } from '@/features/shell/offline';
 import { CAN_PICK_PHOTO, pickPhotoFile } from '@/lib/pick-photo';
 import { errorMessage, FAILED_MESSAGE } from '@/features/shell/error-message';
@@ -84,58 +86,48 @@ export function DetailPhotoBlock(props: {
         .finally(() => setBusy(undefined));
     });
 
-  const remove = () => {
-    setError(undefined);
-    setBusy('remove');
-    props
-      .onRemove()
-      .then(() => toast.show({ message: 'Foto entfernt' }))
-      .catch((caught: unknown) => setError(message(caught)))
-      .finally(() => setBusy(undefined));
-  };
+  // Asks first (spec 0036, AC-019).
+  const remove = () =>
+    confirmPhotoRemoval(() => {
+      setError(undefined);
+      setBusy('remove');
+      props
+        .onRemove()
+        .then(() => toast.show({ message: 'Foto entfernt' }))
+        .catch((caught: unknown) => setError(message(caught)))
+        .finally(() => setBusy(undefined));
+    });
 
   return (
     <View style={{ gap: 8 }}>
       <View style={{ maxWidth: 560 }}>
-        <OwnPhoto
-          photoPath={props.photoPath}
+        <ZoomablePhoto
+          sources={photo.uri ? [{ uri: photo.uri }] : []}
           name={props.name}
-          placeholderIcon={props.placeholderIcon}
-          aspectRatio={16 / 9}
           testID={`${prefix}-image`}
-        />
+        >
+          <OwnPhoto
+            photoPath={props.photoPath}
+            name={props.name}
+            placeholderIcon={props.placeholderIcon}
+            aspectRatio={16 / 9}
+            testID={`${prefix}-image`}
+          />
+        </ZoomablePhoto>
       </View>
       {photo.loading ? (
         <Text variant="caption" color="muted">
           Foto wird geladen …
         </Text>
       ) : null}
-      {CAN_PICK_PHOTO ? (
-        <Row gap={12} wrap>
-          <Button
-            label={hasPhoto ? 'Foto ändern' : 'Foto hinzufügen'}
-            icon="camera"
-            variant="link"
-            size="sm"
-            disabled={online.disabled || busy !== undefined}
-            hint={online.hint}
-            onPress={change}
-            testID={`${prefix}-photo-change`}
-          />
-          {hasPhoto ? (
-            <Button
-              label="Foto entfernen"
-              icon="trash"
-              variant="link"
-              size="sm"
-              disabled={online.disabled || busy !== undefined}
-              hint={online.hint}
-              onPress={remove}
-              testID={`${prefix}-photo-remove`}
-            />
-          ) : null}
-        </Row>
-      ) : null}
+      <PhotoActionRow
+        hasPhoto={hasPhoto}
+        disabled={online.disabled || busy !== undefined}
+        hint={online.hint}
+        onChange={change}
+        onRemove={remove}
+        testPrefix={prefix}
+      />
       {busy ? (
         <Text variant="small" color="muted" testID={`${prefix}-photo-busy`}>
           {busy === 'upload' ? 'Foto wird hochgeladen …' : 'Foto wird entfernt …'}
@@ -147,6 +139,94 @@ export function DetailPhotoBlock(props: {
         </Text>
       ) : null}
     </View>
+  );
+}
+
+/** „Foto entfernen?“ · „Entfernen“ / „Abbrechen“ before a photo goes (spec 0036, AC-019). */
+export function confirmPhotoRemoval(remove: () => void): void {
+  confirmFirst({
+    title: 'Foto entfernen?',
+    confirmLabel: 'Entfernen',
+    onConfirm: remove,
+    testID: 'confirm-remove-photo',
+  });
+}
+
+/**
+ * "Foto hinzufügen/ändern" and "Foto entfernen" right under a photo (spec 0036, REQ-008), at a
+ * restaurant, an activity, a recipe and a collection. `onRemove` asks first itself.
+ */
+export function PhotoActionRow(props: {
+  hasPhoto: boolean;
+  disabled: boolean;
+  hint: string | undefined;
+  onChange: () => void;
+  onRemove: () => void;
+  testPrefix: string;
+}) {
+  if (!CAN_PICK_PHOTO) return null;
+  return (
+    <Row gap={12} wrap>
+      <Button
+        label={props.hasPhoto ? 'Foto ändern' : 'Foto hinzufügen'}
+        icon="camera"
+        variant="link"
+        size="sm"
+        disabled={props.disabled}
+        hint={props.hint}
+        onPress={props.onChange}
+        testID={`${props.testPrefix}-photo-change`}
+      />
+      {props.hasPhoto ? (
+        <Button
+          label="Foto entfernen"
+          icon="trash"
+          variant="link"
+          size="sm"
+          disabled={props.disabled}
+          hint={props.hint}
+          onPress={props.onRemove}
+          testID={`${props.testPrefix}-photo-remove`}
+        />
+      ) : null}
+    </Row>
+  );
+}
+
+/**
+ * A photo that opens on the whole screen when tapped (spec 0036, REQ-009); without a photo (the
+ * placeholder) it is only the picture. `<testID>-zoom` is the tap target, `<testID>-viewer` the
+ * full-screen view.
+ */
+export function ZoomablePhoto(props: {
+  sources: readonly (number | { uri: string })[];
+  name: string;
+  testID: string;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  if (props.sources.length === 0) return <>{props.children}</>;
+  return (
+    <>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Foto von ${props.name} groß anzeigen`}
+        onPress={() => setOpen(true)}
+        testID={`${props.testID}-zoom`}
+        style={(state) => ({ opacity: state.pressed ? 0.85 : 1 })}
+      >
+        {props.children}
+      </Pressable>
+      {open ? (
+        <PhotoViewer
+          sources={props.sources}
+          alt={props.name}
+          closeLabel="Schließen"
+          onClose={() => setOpen(false)}
+          testID={`${props.testID}-viewer`}
+        />
+      ) : null}
+    </>
   );
 }
 

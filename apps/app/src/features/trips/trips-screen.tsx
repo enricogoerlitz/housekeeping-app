@@ -1,6 +1,5 @@
 import {
   removeTrip,
-  snapshot,
   useTrips,
   useMembers,
   useMembersById,
@@ -45,8 +44,8 @@ import { View } from 'react-native';
 import { stripeWho } from '@/features/calendar/calendar-data';
 import { stripeSurface, useStripeColors } from '@/features/calendar/calendar-parts';
 import { FAILED } from '@/features/packing/packing-labels';
-import { ConfirmDialog } from '@/features/shell/confirm-dialog';
-import { undoAction, useOnlineOnly } from '@/features/shell/offline';
+import { confirmFirst, ConfirmDialog } from '@/features/shell/confirm-dialog';
+import { useOnlineOnly } from '@/features/shell/offline';
 import { useOriginBack, usePageParams } from '@/lib/url-state';
 
 import { TripSheet } from './trip-sheet';
@@ -88,28 +87,28 @@ export function TripsScreen() {
   const remove = (stripe: TripStripe, confirmed = false) => {
     if (online.disabled) return;
     const message = tripDeleteDialog(stripe.tripId, listBags, items);
-    if (message && !confirmed) {
-      setDeleting({ stripe, message });
+    // With a packing list the dialog below, without one the plain question (spec 0036,
+    // Entscheidung 1; before "Rückgängig").
+    if (!confirmed) {
+      if (message) setDeleting({ stripe, message });
+      else {
+        confirmFirst({
+          title: 'Reise löschen?',
+          confirmLabel: 'Löschen',
+          onConfirm: () => remove(stripe, true),
+          testID: 'confirm-delete-trip',
+        });
+      }
       return;
     }
     setDeleting(undefined);
-    const restore = message ? undefined : snapshot();
     try {
       removeTrip(stripe.tripId);
     } catch {
       toast.show({ message: FAILED });
       return;
     }
-    toast.show(
-      restore
-        ? {
-            message: 'Reise gelöscht',
-            actionLabel: 'Rückgängig',
-            onAction: undoAction(restore),
-            duration: 5000,
-          }
-        : { message: 'Reise und Packliste gelöscht' },
-    );
+    toast.show({ message: message ? 'Reise und Packliste gelöscht' : 'Reise gelöscht' });
   };
 
   const row = (stripe: TripStripe) => {

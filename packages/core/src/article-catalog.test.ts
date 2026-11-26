@@ -463,12 +463,28 @@ describe('validateArticleDraft', () => {
     ]);
   });
 
-  it('AC-030: a name equal to a synonym of another article is taken by that article', () => {
-    const [problem] = validateArticleDraft(
-      { id: 'a-milchkokos', name: 'Karotten', synonyms: [] },
-      list,
-    );
-    expect(problem?.message).toBe('Gibt es schon: Möhren');
+  it('spec 0036, AC-011: a name equal to a synonym of another article is fine', () => {
+    expect(validateArticleDraft({ name: 'Karotten', synonyms: [] }, list)).toEqual([]);
+    expect(
+      validateArticleDraft({ id: 'a-milchkokos', name: 'Karotten', synonyms: [] }, list),
+    ).toEqual([]);
+  });
+
+  it('spec 0036, AC-011: the synonym owner stays editable next to the article of that name', () => {
+    const karotten = article('a-karotten', 'Karotten');
+    const both = [...list, karotten];
+    // Möhren keeps its synonym Karotten and can still be saved (renamed, more synonyms).
+    expect(
+      validateArticleDraft(
+        { id: 'a-moehren', name: 'Möhren (Bund)', synonyms: ['Karotten', 'Mohrrüben'] },
+        both,
+      ),
+    ).toEqual([]);
+    // A new synonym that is another article's name stays refused.
+    expect(
+      validateArticleDraft({ id: 'a-mango', name: 'Mango', synonyms: ['Karotten'] }, both)[0]
+        ?.message,
+    ).toBe('„Karotten“ ist schon ein Artikel');
   });
 
   it('AC-030: an empty name is missing', () => {

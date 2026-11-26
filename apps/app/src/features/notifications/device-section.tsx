@@ -10,6 +10,7 @@ import {
   Text,
 } from '@housekeeping/ui';
 
+import { confirmFirst } from '@/features/shell/confirm-dialog';
 import { OFFLINE_EDIT_HINT } from '@/features/shell/offline';
 
 import type { ThisDevice } from './use-device-push';
@@ -97,7 +98,15 @@ export function DevicesSection(props: { device: ThisDevice }) {
                     variant="ghost"
                     size="sm"
                     disabled={props.device.busy}
-                    onPress={() => props.device.remove(device)}
+                    onPress={() =>
+                      confirmFirst({
+                        title: `„${deviceRowLabel(device)}“ entfernen?`,
+                        message: 'Dieses Gerät bekommt dann keine Mitteilungen mehr.',
+                        confirmLabel: 'Entfernen',
+                        onConfirm: () => props.device.remove(device),
+                        testID: 'confirm-remove-device',
+                      })
+                    }
                     testID={`notif-device-remove-${device.id}`}
                   />
                 )

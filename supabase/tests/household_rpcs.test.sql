@@ -90,11 +90,13 @@ select throws_ok(
   'AC-010: a starter article with an unknown diet is rejected'
 );
 select throws_ok(
-  $$ select public.create_household('X', '{"areas": [], "articles": [{"name": "Milch", "name_key": "milch"},
+  -- A name may be another article's synonym since spec 0036 (Entscheidung 2); two synonyms may not.
+  $$ select public.create_household('X', '{"areas": [], "articles": [{"name": "Sojamilch", "name_key": "sojamilch",
+                                                                      "synonyms": ["Milch"], "synonym_keys": ["milch"]},
                                                                      {"name": "Hafermilch", "name_key": "hafermilch",
                                                                       "synonyms": ["Milch"], "synonym_keys": ["milch"]}]}') $$,
   '22023', 'invalid_starter',
-  'E6 (spec 0007): a starter synonym equal to the name of another starter article is rejected'
+  'E6 (spec 0007): a starter synonym equal to a synonym of another starter article is rejected'
 );
 select throws_ok(
   $$ select public.create_household('X', '{"areas": [], "articles": [{"name": "Milch", "name_key": "milch",

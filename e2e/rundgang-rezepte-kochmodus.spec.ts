@@ -23,6 +23,7 @@ import { seedIds } from './seed-ids';
 
 const LASAGNE = seedIds['rec-lasagne'];
 const HALLOUMI = seedIds['rec-halloumi-pfanne'];
+const PFANNKUCHEN = seedIds['rec-pfannkuchen'];
 /** Lasagne's ingredients: i1 = 150 g Rote Linsen, i13 = 40 g Butter (seed order). */
 const LINSEN = nestedSeedId('lasagne-i1');
 
@@ -165,21 +166,28 @@ test('AC-045 / AC-046: "Neu" offers exactly Rezept, Sammlung, Restaurant on both
   await expect(page.locator('[role="menuitem"]')).toHaveText(['Rezept', 'Sammlung', 'Restaurant']);
 });
 
-test('AC-049: deleting names the planned entries that go', async ({ page }) => {
-  await open(page, `/rezept/${HALLOUMI}`);
+test('AC-049: deleting asks first and names the planned entries that go (spec 0036: asks first)', async ({
+  page,
+}) => {
+  // Pfannkuchen, so Halloumi-Pfanne stays for the next test (there is no undo any more).
+  await open(page, `/rezept/${PFANNKUCHEN}`);
   await tid(page, 'recipe-plan').click();
   await tid(page, 'plan-recipe-week-next').click();
   await tid(page, 'plan-recipe-save').click();
   await tid(page, 'recipe-more').click();
   await page.locator('[role="menuitem"]').filter({ hasText: 'Löschen' }).click();
+  await expect(tid(page, 'confirm-delete-recipe')).toContainText('Pfannkuchen');
+  await tid(page, 'confirm-delete-recipe-cancel').click();
+  await expect(tid(page, 'recipe-title')).toHaveText('Pfannkuchen');
+  await tid(page, 'recipe-more').click();
+  await page.locator('[role="menuitem"]').filter({ hasText: 'Löschen' }).click();
+  await tid(page, 'confirm-delete-recipe-confirm').click();
   await expect(toastMessage(page)).toContainText(
-    'Halloumi-Pfanne gelöscht · 1 geplanter Eintrag entfällt',
+    'Pfannkuchen gelöscht · 1 geplanter Eintrag entfällt',
   );
-  // Deleting leads back by itself; "Rückgängig" brings the recipe back for the next test.
+  // Deleting leads back by itself and there is no undo.
   await expect(tid(page, 'recipe-more')).toHaveCount(0);
-  await tid(page, 'toast-action').click();
-  await open(page, `/rezept/${HALLOUMI}`);
-  await expect(tid(page, 'recipe-title')).toHaveText('Halloumi-Pfanne');
+  await expect(tid(page, 'toast-action')).toHaveCount(0);
 });
 
 test('Decision 15: deleting asks about the ingredients of the entries that go and takes them off', async ({
@@ -218,7 +226,7 @@ test('Decision 15: deleting asks about the ingredients of the entries that go an
   await tid(page, 'recipe-more').click();
   await page.locator('[role="menuitem"]').filter({ hasText: 'Löschen' }).click();
   await expect(tid(page, 'recipe-delete-dialog')).toContainText('Halloumi-Pfanne löschen?');
-  // AC-049 before left its entry next week after "Rückgängig": one or two entries go.
+  // Earlier tests of this file may have planned Halloumi-Pfanne next week too: one or more entries go.
   await expect(tid(page, 'recipe-delete-message')).toContainText(
     /^Für (1 geplanten Eintrag|\d+ geplante Einträge) (steht 1 Zutat|stehen \d+ Zutaten) auf der Einkaufsliste\.$/,
   );

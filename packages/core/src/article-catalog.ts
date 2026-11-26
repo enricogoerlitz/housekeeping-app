@@ -335,8 +335,9 @@ export type ArticleDraftProblem<T extends Article = Article> =
 
 /**
  * Checks name and synonyms of an article being created (no id) or edited (its id) against the
- * other articles: a name or synonym must not be the name or a synonym of another article (after
- * normalising, E6). Empty → "Name fehlt", taken → "Gibt es schon: Kokosmilch", a synonym taken →
+ * other articles: a name must not be the name of another article, a synonym not the name or a
+ * synonym of another article (after normalising, E6; spec 0036 allows a name that is another
+ * article's synonym). Empty → "Name fehlt", taken → "Gibt es schon: Kokosmilch", a synonym taken →
  * "„Möhren“ ist schon ein Artikel"; at most 120 characters, 30 synonyms and 2000 characters in
  * all synonyms (after cleanSynonyms; the keys count too). [] = fine.
  */
@@ -353,7 +354,10 @@ export function validateArticleDraft<T extends Article>(
   } else if (!fits(name)) {
     problems.push({ field: 'name', kind: 'tooLong', message: 'Höchstens 120 Zeichen' });
   } else {
-    const existing = findByKey(normalizeText(name), others);
+    // Only another name takes it: a name may be another article's synonym („Schinken“ next to
+    // Kochschinken, spec 0036, Entscheidung 2); the search puts the exact name first.
+    const key = normalizeText(name);
+    const existing = others.find((article) => normalizeText(article.name) === key);
     if (existing) {
       problems.push({
         field: 'name',
@@ -378,7 +382,13 @@ export function validateArticleDraft<T extends Article>(
       message: 'Höchstens 2000 Zeichen in allen Synonymen',
     });
   }
+  // A synonym the article already has stays, also when another article took it as its name
+  // since (spec 0036, Entscheidung 2); only new synonyms are checked.
+  const kept = new Set(
+    (articles.find((article) => article.id === draft.id)?.synonyms ?? []).map(normalizeText),
+  );
   for (const synonym of synonyms) {
+    if (kept.has(normalizeText(synonym))) continue;
     const existing = findByKey(normalizeText(synonym), others);
     if (!existing) continue;
     problems.push({

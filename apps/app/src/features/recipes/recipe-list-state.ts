@@ -1,21 +1,22 @@
 import {
   recipeListFromParams,
   recipeListToParams,
-  shuffleOrder,
   type Id,
   type RecipeListFilter,
   type RecipeListSort,
 } from '@housekeeping/core';
-import { useState } from 'react';
 
+import { createListSession } from '@/lib/list-session';
+import { useSettings } from '@/lib/settings';
 import { usePageParams } from '@/lib/url-state';
 
 // Search, filter and sort of "Essen → Rezepte" stand in the address (spec 0019, REQ-011), so a
 // reload and a copied address show the same list; opening a recipe, switching tabs or views keeps
-// them (spec 0008, E14). Only the random order is drawn anew per page load (AC-035).
+// them (spec 0008, E14). Only the random order is drawn anew per page load (AC-035). The sort
+// chosen last is also kept on the device and applies when the address names none (spec 0036,
+// REQ-002).
 
-let shuffle: readonly Id[] = [];
-let round = 0;
+const session = createListSession();
 
 export interface RecipeListState {
   query: string;
@@ -42,29 +43,25 @@ export interface RecipeListActions {
 /** The list state of "Essen → Rezepte" and its changes; each change replaces the address. */
 export function useRecipeListState(): RecipeListState & RecipeListActions {
   const { params, replace } = usePageParams('rezepte');
-  const state = recipeListFromParams(params);
-  const [, rerender] = useState(0);
-  const write = (next: Partial<typeof state>, restart: boolean) => {
-    if (restart) round += 1;
-    replace(recipeListToParams({ ...state, ...next }));
-  };
+  const settings = useSettings();
+  const state = recipeListFromParams(params, settings.listSorts.recipes);
+  const current = session.useCurrent();
+  const write = (next: Partial<typeof state>) => replace(recipeListToParams({ ...state, ...next }));
   return {
     ...state,
-    round,
-    setQuery: (query) => write({ query }, false),
-    setFilter: (filter) => write({ filter }, true),
+    round: current.round,
+    setQuery: (query) => write({ query }),
+    setFilter: (filter) => {
+      session.restart();
+      write({ filter });
+    },
     setSort: (sort, ids) => {
-      if (sort === 'random') shuffle = shuffleOrder(ids, Math.random);
-      write({ sort }, true);
+      if (sort === 'random') session.reshuffle(ids);
+      else session.restart();
+      settings.update({ listSorts: { ...settings.listSorts, recipes: sort } });
+      write({ sort });
     },
-    reshuffle: (ids) => {
-      shuffle = shuffleOrder(ids, Math.random);
-      round += 1;
-      rerender((count) => count + 1);
-    },
-    shuffleFor: (ids) => {
-      if (shuffle.length === 0 && ids.length > 0) shuffle = shuffleOrder(ids, Math.random);
-      return shuffle;
-    },
+    reshuffle: session.reshuffle,
+    shuffleFor: (ids) => session.shuffleFor(current, ids),
   };
 }

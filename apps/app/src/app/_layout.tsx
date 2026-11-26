@@ -9,6 +9,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AssistantSheet } from '@/features/assistant/assistant-sheet';
 import { AuthGate } from '@/features/auth/auth-gate';
 import { ReturnAfterSignIn } from '@/features/auth/return-path';
+import { ConfirmHost } from '@/features/shell/confirm-dialog';
 import { NotificationBridge } from '@/features/notifications/use-notification-open';
 import { PortraitHint } from '@/features/shell/portrait-hint';
 import { AssistantProvider } from '@/lib/assistant';
@@ -32,6 +33,8 @@ export default function RootLayout() {
               {features.ai ? <AssistantSheet /> : null}
             </AssistantProvider>
           </AuthGate>
+          {/* "… löschen?" before every delete, over every window (spec 0036, REQ-012). */}
+          <ConfirmHost />
           <ToastHost />
           <PortraitHint />
         </Themed>

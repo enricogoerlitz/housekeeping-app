@@ -8,6 +8,7 @@ import {
   normalizeText,
   unknownDietArticles,
   tagValues,
+  valueOnEnter,
   valueSuggestions,
   type ClassificationDraft,
   type Course,
@@ -261,7 +262,11 @@ function Field(props: { label: string; error?: string; children: ReactNode }) {
   );
 }
 
-/** "Suchen oder anlegen" over existing values: a hit or „…“ neu anlegen (AC-024). */
+/**
+ * "Suchen oder anlegen" over existing values: a hit or „…“ neu anlegen (AC-024). After a value the
+ * cursor stays in the field; Enter takes an exactly equal value or creates the typed one (spec
+ * 0036, REQ-004).
+ */
 export function ValuePicker(props: {
   label: string;
   placeholder: string;
@@ -289,6 +294,11 @@ export function ValuePicker(props: {
       onSelect={pick}
       createOptions={result.canCreate ? [{ key: 'new', label: `„${name}“ neu anlegen` }] : []}
       onCreate={() => pick(name)}
+      onSubmit={() => {
+        const value = valueOnEnter(query, props.values);
+        if (value) pick(value);
+      }}
+      keepFocus
       brake={
         result.similar
           ? {

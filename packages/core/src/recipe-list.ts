@@ -392,6 +392,14 @@ export function orderByShuffle<T extends { id: Id }>(
   return [...known, ...added];
 }
 
+/**
+ * "⟳ Neu mischen" stands next to the list only with "Zufall" and no search: a search orders by
+ * hit, so mixing would change nothing (spec 0036, AC-002).
+ */
+export function canReshuffle(sort: RecipeListSort, query: string): boolean {
+  return sort === 'random' && query.trim() === '';
+}
+
 /** The recipes in the chosen sort; "Zufall" follows the stored order (`shuffle`). */
 export function sortRecipeList(
   recipes: readonly Recipe[],

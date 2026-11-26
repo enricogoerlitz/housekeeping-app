@@ -51,6 +51,7 @@ test('AC-001, AC-006: inviting names the Google test users; "Zurückziehen" remo
   );
   const row = page.locator('[data-testid^="household-invitation-withdraw-"]').first();
   await row.click();
+  await tid(page, 'confirm-withdraw-invitation-confirm').click();
   await expect(toastMessage(page)).toHaveText(`Einladung an ${email} zurückgezogen`);
   await expect(page.locator('[data-testid^="household-invitation-withdraw-"]')).toHaveCount(0);
 });

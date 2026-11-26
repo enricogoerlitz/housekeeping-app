@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { parseListSorts, type ListSorts } from '@housekeeping/core';
 import { DEFAULT_THEME_ID, isThemeId, type ColorMode, type ThemeId } from '@housekeeping/ui';
 import {
   createContext,
@@ -26,6 +27,8 @@ export interface LocalSettings {
   installHintDismissed: boolean;
   /** The household row of the calendar per view (spec 0010, D18: week on, month off). */
   householdRow: { week: boolean; month: boolean };
+  /** The sort chosen last per list; a restart keeps it, filters and search not (spec 0036). */
+  listSorts: ListSorts;
 }
 
 const STORAGE_KEY = 'housekeeping.settings.v1';
@@ -36,6 +39,7 @@ const defaults: LocalSettings = {
   aiAssist: false,
   installHintDismissed: false,
   householdRow: { week: true, month: false },
+  listSorts: {},
 };
 
 function parseHouseholdRow(value: unknown): LocalSettings['householdRow'] {
@@ -67,6 +71,7 @@ function parseSettings(raw: string | null): LocalSettings {
       aiAssist: record.aiAssist === true,
       installHintDismissed: record.installHintDismissed === true,
       householdRow: parseHouseholdRow(record.householdRow),
+      listSorts: parseListSorts(record.listSorts),
     };
   } catch {
     return defaults;

@@ -51,6 +51,7 @@ import { useState, type ReactNode } from 'react';
 import { Platform, Pressable, View } from 'react-native';
 
 import { useOpenManageEntry } from '@/features/manage/navigation';
+import { confirmFirst } from '@/features/shell/confirm-dialog';
 import { StartPageActions } from '@/features/shell/profile-button';
 import { OFFLINE_EDIT_HINT, undoAction, useOnlineOnly } from '@/features/shell/offline';
 import { useMissingObject } from '@/lib/addressed';
@@ -60,7 +61,7 @@ import { usePageParams } from '@/lib/url-state';
 import { useDictation } from '@/lib/use-dictation';
 
 import { useActiveShopper } from './active-shopper';
-import { CountStepper, removeWithUndo } from './item-controls';
+import { CountStepper, removeAfterAsking } from './item-controls';
 import { checkOnList, ItemSheet } from './item-sheet';
 import { ClearListSheet, DishesSheet } from './list-sheets';
 import { PantryCheckSheet } from './pantry-check-sheet';
@@ -130,7 +131,9 @@ function ItemRow(props: {
       label="Entfernen"
       enabled={props.swipe}
       onRemove={() =>
-        props.canRemove ? removeWithUndo(item.id, name) : toast.show({ message: OFFLINE_EDIT_HINT })
+        props.canRemove
+          ? removeAfterAsking(item.id, name)
+          : toast.show({ message: OFFLINE_EDIT_HINT })
       }
       rightLabel="Erledigt"
       onSwipeRight={() => checkOnList(item.id, name)}
@@ -277,14 +280,24 @@ export function ListScreen() {
     setDictation(undefined);
   };
 
+  // "Erledigt leeren" asks first (spec 0036, Entscheidung 1).
   const clearDone = () => {
-    const restore = snapshot();
-    const count = clearCheckedItems();
-    if (count === 0) return;
-    toast.show({
-      message: count === 1 ? '1 erledigter Posten entfernt' : `${count} erledigte Posten entfernt`,
-      actionLabel: 'Rückgängig',
-      onAction: undoAction(restore),
+    if (done.length === 0) return;
+    confirmFirst({
+      title:
+        done.length === 1
+          ? '1 erledigten Posten entfernen?'
+          : `${done.length} erledigte Posten entfernen?`,
+      confirmLabel: 'Entfernen',
+      onConfirm: () => {
+        const count = clearCheckedItems();
+        if (count === 0) return;
+        toast.show({
+          message:
+            count === 1 ? '1 erledigter Posten entfernt' : `${count} erledigte Posten entfernt`,
+        });
+      },
+      testID: 'confirm-clear-done',
     });
   };
   // "Liste leeren …" (AC-035): everything, with "Rückgängig" for all of it.

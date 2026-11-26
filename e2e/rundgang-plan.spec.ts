@@ -247,17 +247,20 @@ test('AC-033 / AC-037 (0010), AC-027 (0030): with Enrico away on Saturday both a
   await expect(tid(page, `eater-${member('m-nadja')}`)).toHaveAttribute('aria-selected', 'true');
   await page.keyboard.press('Escape');
 
-  // AC-037: deleting a row without a packing list offers "Rückgängig" for 5 seconds.
+  // AC-037 (spec 0036: asks first): deleting a row without a packing list asks, then no undo.
   await open(page, '/reisen');
   const row = tid(page, 'trips-upcoming')
     .locator('[data-testid^="trip-"][data-testid$="-open"]')
     .filter({ hasText: 'Fortbildung Köln' });
   const rowId = ((await row.getAttribute('data-testid')) ?? '').replace(/-open$/, '');
   await tid(page, `${rowId}-remove`).click();
-  await expect(toastMessage(page)).toHaveText('Reise gelöscht');
-  await expect(tid(page, 'trips-upcoming')).not.toContainText('Fortbildung Köln');
-  await tid(page, 'toast-action').click();
+  await tid(page, 'confirm-delete-trip-cancel').click();
   await expect(tid(page, 'trips-upcoming')).toContainText('Fortbildung Köln');
+  await tid(page, `${rowId}-remove`).click();
+  await tid(page, 'confirm-delete-trip-confirm').click();
+  await expect(toastMessage(page)).toHaveText('Reise gelöscht');
+  await expect(tid(page, 'toast-action')).toHaveCount(0);
+  await expect(tid(page, 'trips-upcoming')).not.toContainText('Fortbildung Köln');
 });
 
 test('AC-034 (0016), AC-007 (0022): "Reisen" lives at /reisen, a trip opens as ?reise=<id> over it; old addresses are gone', async ({

@@ -24,9 +24,9 @@ import {
   Button,
   Chip,
   EmptyState,
+  FieldClearButton,
   FilterBar,
   Icon,
-  IconButton,
   InfiniteList,
   ListDetail,
   Menu,
@@ -42,8 +42,8 @@ import {
   type TabSwipe,
 } from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Pressable, View } from 'react-native';
+import { type ComponentRef, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { Pressable, View, type TextInput } from 'react-native';
 
 import { useOpenRecipe } from '@/features/recipes/navigation';
 import { rememberBrowseOrder } from '@/lib/browse-order';
@@ -81,6 +81,7 @@ function sortShortLabel(sort: RestaurantListSort): string {
  * and the random order stay while the app runs (E14).
  */
 export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }) {
+  const searchInput = useRef<ComponentRef<typeof TextInput>>(null);
   const router = useRouter();
   const address = usePageParams('rezepte');
   const { params } = address;
@@ -249,6 +250,7 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
       search={
         <TextField
           round
+          inputRef={searchInput}
           value={query}
           onChangeText={list.setQuery}
           placeholder="Restaurants suchen …"
@@ -257,10 +259,10 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
           left={<Icon name="search" size={19} color="muted" />}
           right={
             query ? (
-              <IconButton
-                icon="x"
+              <FieldClearButton
                 label="Suche leeren"
-                onPress={() => list.setQuery('')}
+                onClear={() => list.setQuery('')}
+                inputRef={searchInput}
                 testID="restaurant-search-clear"
               />
             ) : undefined

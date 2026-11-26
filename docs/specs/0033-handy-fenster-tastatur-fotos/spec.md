@@ -196,7 +196,9 @@ Entfällt: nur Oberfläche.
 - [x] 5. Eingabe-Attribute in `TextField` (AC-014–AC-016); das Suchfeld (`search-or-create.tsx`)
       gehört Spec 0036
 - [x] 6. Fokus beim Öffnen (Fenster setzt Fokus nach der Einblend-Animation) (AC-017–AC-020)
-- [x] 7. Suche: X mit Fokus-Erhalt (AC-021, AC-022) → umgesetzt mit Spec 0036
+- [x] 7. Suche: X mit Fokus-Erhalt (AC-021, AC-022) — gebaut mit Spec 0036: `FieldClearButton`
+      (`packages/ui/src/field-clear.tsx`) in `SearchOrCreate` und den Suchen von Rezepten,
+      Restaurants, Aktivitäten und Artikeln; ui-Tests AC-021/AC-022, Dev-Server geprüft
 - [x] 8. `pick-photo.ts`: Input im Dokument halten (AC-023, AC-024), als `pickImageFile` in `ui`
 - [x] 9. Toast-Abstand auf Rezept- und Sammlungsseite (AC-025)
 - [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün; Bildschirmfotos

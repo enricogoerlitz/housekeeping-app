@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Platform, View } from 'react-native';
 
 import { Button, Chip } from './controls';
-import { Surface } from './primitives';
+import { Row, Surface, Text } from './primitives';
 import { Sheet } from './overlay';
 import { ScrollRow } from './scroll-row';
 import { useBreakpoint } from './theme-context';
@@ -121,6 +121,21 @@ export function FilterBar(props: FilterBarProps) {
           </View>
         </Surface>
       ) : null}
+    </View>
+  );
+}
+
+/**
+ * One field of a filter panel: its title and the chips below it. Never wider than the panel, so
+ * a long run of chips (13 cuisines) wraps inside it instead of running out (spec 0036, AC-005).
+ */
+export function FilterSection(props: { title: string; children: ReactNode; testID?: string }) {
+  return (
+    <View style={{ gap: 8, flexShrink: 1, maxWidth: '100%' }} testID={props.testID}>
+      <Text variant="smallStrong">{props.title}</Text>
+      <Row wrap gap={8}>
+        {props.children}
+      </Row>
     </View>
   );
 }

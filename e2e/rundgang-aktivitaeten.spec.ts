@@ -632,6 +632,7 @@ test('AC-018: "Foto entfernen" on Lasagne shows the sample photo again and delet
 
   await tid(page, 'recipe-more').click();
   await tid(page, 'recipe-more-photo-remove').click();
+  await tid(page, 'confirm-remove-photo-confirm').click();
   await expect(image).toHaveAttribute('src', sample ?? '', SYNC);
   await tid(page, 'recipe-more').click();
   await expect(page.locator(`[data-testid="recipe-more-photo-remove"]${ACTIVE}`)).toHaveCount(0);

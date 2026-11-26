@@ -107,11 +107,17 @@ test.describe('Artikel and Märkte at phone width', () => {
     await expect(dragon).toHaveCount(1);
     await dragon.click();
     await tid(page, 'article-delete').click();
+    // Spec 0036: asks first; "Abbrechen" leaves it, the toast after deleting has no undo.
+    await expect(tid(page, 'confirm-delete-article')).toBeVisible();
+    await tid(page, 'confirm-delete-article-cancel').click();
+    await expect(tid(page, 'confirm-delete-article')).toBeHidden();
+    await expect(tid(page, 'article-sheet')).toBeVisible();
+    await tid(page, 'article-delete').click();
+    await tid(page, 'confirm-delete-article-confirm').click();
     await expect(tid(page, 'article-sheet')).toBeHidden();
     await expect(toastMessage(page)).toHaveText('„Drachenfrucht“ gelöscht');
+    await expect(tid(page, 'toast-action')).toHaveCount(0);
     await expect(dragon).toHaveCount(0);
-    await tid(page, 'toast-action').click();
-    await expect(dragon).toHaveCount(1);
   });
 
   test('AC-028 / AC-034: "Kokosmilch" shows its recipes and cannot be deleted while used', async ({

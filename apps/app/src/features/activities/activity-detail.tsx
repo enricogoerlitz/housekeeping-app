@@ -10,7 +10,7 @@ import {
   usePlanEntries,
   useToday,
 } from '@housekeeping/api';
-import { isWebUrl, visitsOf, type Activity, type Id } from '@housekeeping/core';
+import { showsRoute, isWebUrl, visitsOf, type Activity, type Id } from '@housekeeping/core';
 import { Button, EmptyState, Icon, IconButton, Menu, Row, Stack, Text } from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
@@ -29,7 +29,7 @@ import { openLink } from '@/lib/open-link';
 
 import { ActivityFormSheet } from './activity-form';
 import { ACTIVITY_ICON } from './activity-photo';
-import { activityVisitsLabel, hasPlace } from './labels';
+import { activityVisitsLabel } from './labels';
 
 /** The windows of an activity's detail; they stand in the address (spec 0019, REQ-013). */
 export type ActivityWindow = 'bearbeiten' | 'einplanen';
@@ -217,8 +217,8 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
             </Text>
           ) : null}
           <Row gap={10} wrap style={{ marginTop: 4 }}>
-            {/* AC-015: without a place there is nowhere to route to. */}
-            {hasPlace(activity) ? (
+            {/* Only with a map link (spec 0036, AC-018; before AC-015: with a place). */}
+            {showsRoute(activity) ? (
               <Button
                 label="Route"
                 icon="map-pin"

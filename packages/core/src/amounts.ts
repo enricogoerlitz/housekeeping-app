@@ -66,6 +66,16 @@ const UNIT_BY_SPELLING = new Map<string, string>([
   ['msp.', 'Msp.'],
   ['msp', 'Msp.'],
 ]);
+const FIRST_UNITS = ['g', 'kg', 'ml', 'l', 'EL', 'TL', 'Prise', 'Stück', 'Bund', 'Dose'];
+
+/**
+ * The units the app understands, as they are stored: the common ones first, then the others in
+ * the order above. For the (i) next to a field with a free unit (spec 0036, REQ-006).
+ */
+export const KNOWN_UNITS: readonly string[] = [
+  ...new Set([...FIRST_UNITS, ...UNIT_BY_SPELLING.values()]),
+];
+
 // These unit nouns take a plural after any quantity other than one ("2 Dosen"); the remaining
 // units stay unchanged as measures ("2 Bund", "3 Stück").
 const UNIT_PLURALS: Record<string, string> = {

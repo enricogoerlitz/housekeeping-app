@@ -242,6 +242,23 @@ describe('restaurant list in the address', () => {
   });
 });
 
+describe('stored sort as the fallback (spec 0036, REQ-002)', () => {
+  it('AC-003: without "sortierung" the stored sort of the device applies', () => {
+    expect(recipeListFromParams({}, 'title').sort).toBe('title');
+    expect(restaurantListFromParams({}, 'rating').sort).toBe('rating');
+  });
+
+  it('AC-004: a link with "sortierung" wins over the stored sort', () => {
+    expect(recipeListFromParams({ sortierung: 'neu' }, 'title').sort).toBe('new');
+    expect(restaurantListFromParams({ sortierung: 'zuletzt' }, 'rating').sort).toBe('lastVisit');
+  });
+
+  it('pins: without a stored sort the default stays', () => {
+    expect(recipeListFromParams({}).sort).toBe('recent');
+    expect(restaurantListFromParams({}).sort).toBe('title');
+  });
+});
+
 describe('cookingStepFromParam', () => {
   it('AC-045: step 3 of a recipe with six steps is index 2', () => {
     expect(cookingStepFromParam(3, 6)).toBe(2);

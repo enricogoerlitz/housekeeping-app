@@ -42,6 +42,14 @@ export type RouteOpening =
   | { kind: 'app-scheme'; url: string; fallback?: string };
 
 /**
+ * "Route" shows only where a map link is stored (spec 0036, REQ-011): at a restaurant, an
+ * activity, a plan entry and in the overview. An address alone is no destination to trust.
+ */
+export function showsRoute(place: { mapsUrl?: string }): boolean {
+  return (place.mapsUrl ?? '').trim() !== '';
+}
+
+/**
  * The opening for a map app. In the installed web app on iPhone and iPad a new window becomes an
  * in-app browser that stays empty once a universal link has jumped to the app (WebKit bug 199029),
  * so the app is opened by its scheme instead: `maps:` with the parameters of `maps.apple.com`,
