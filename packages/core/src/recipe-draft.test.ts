@@ -11,6 +11,7 @@ import {
   imageFailureNotice,
   imagePromptWithExtra,
   insertAtCursor,
+  isDictationStopWord,
   isNewTag,
   linkChipLabel,
   mainIngredientNames,
@@ -467,5 +468,25 @@ describe('imagePromptWithExtra: "Neu generieren" with a wish (spec 0045, REQ-006
     const result = imagePromptWithExtra(prompt, 'heller, von oben');
     expect(result).toHaveLength(1000);
     expect(result.startsWith(`${prompt}. `)).toBe(true);
+  });
+});
+
+describe('isDictationStopWord: „Ende“ as its own utterance ends dictation (spec 0040, AC-018)', () => {
+  it('AC-018: a segment that is only „Ende“ stops, whatever the case and punctuation', () => {
+    for (const segment of ['Ende', 'Ende.', ' ende ', 'ENDE!', '„Ende“']) {
+      expect(isDictationStopWord(segment)).toBe(true);
+    }
+  });
+
+  it('AC-018: „Ende“ inside a sentence does not stop', () => {
+    for (const segment of [
+      'Am Ende des Tages will ich Pasta.',
+      'Bis zum Ende backen.',
+      'Ende Oktober',
+      'Endlich',
+      '',
+    ]) {
+      expect(isDictationStopWord(segment)).toBe(false);
+    }
   });
 });

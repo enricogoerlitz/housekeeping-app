@@ -183,6 +183,15 @@ export function insertAtCursor(
   return { text: `${head}${words}${tail}`, cursor: head.length + words.length };
 }
 
+/**
+ * Saying „Ende“ as its own utterance (after a short pause) ends dictation (spec 0040, decision 7).
+ * The speech service splits utterances at pauses, so „am Ende des Tages“ in the flow of speech is
+ * part of a longer segment and never matches.
+ */
+export function isDictationStopWord(segment: string): boolean {
+  return segment.replace(/[\s.,;:!?…"„“'‚‘»«-]/gu, '').toLowerCase() === 'ende';
+}
+
 /** The prefilled prompt of the tab "KI" (REQ-004): the title, for a recipe with main ingredients. */
 export function defaultImagePrompt(title: string, mainIngredients: readonly string[]): string {
   const names = mainIngredients.slice(0, MAIN_INGREDIENTS_IN_PROMPT);
