@@ -1,7 +1,6 @@
 import {
   useContext,
   useEffect,
-  useId,
   useLayoutEffect,
   useRef,
   useState,
@@ -23,7 +22,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 
-import { fieldAutofill } from './field-autofill';
+import { disguiseContactWords, fieldAutofill, isAppleTouchBrowser } from './field-autofill';
 import { mergeRefs, useHint } from './hint';
 import { icons, type IconName } from './icons';
 import { useHover } from './pointer';
@@ -728,6 +727,17 @@ export interface TextFieldProps extends Pick<
   testID?: string;
 }
 
+let fieldSerial = 0;
+const nextFieldSerial = () => (fieldSerial += 1);
+const unchanged = (text: string) => text;
+
+/** Safari on iPhone and iPad, where the contact autofill guesses from a field's words. */
+function onAppleTouch(): boolean {
+  return (
+    Platform.OS === 'web' && typeof navigator !== 'undefined' && isAppleTouchBrowser(navigator)
+  );
+}
+
 export function TextField(props: TextFieldProps) {
   const theme = useTheme();
   const c = theme.colors;
@@ -769,21 +779,25 @@ export function TextField(props: TextFieldProps) {
     if (!autoFocus || !claimFocus || !own.current) return;
     return claimFocus(own.current);
   }, [autoFocus, claimFocus]);
-  // Spec 0033, REQ-005: no contact autofill on iOS; react-native-web does not pass `name` on.
+  // Spec 0033, REQ-005: never "Kontakt autom. ausfüllen" on iOS (field-autofill.ts says how);
+  // react-native-web does not pass `name` on.
+  const [serial] = useState(nextFieldSerial);
   const autofill = fieldAutofill({
-    id: useId(),
+    serial,
     keyboardType: props.keyboardType,
     autoComplete: props.autoComplete,
   });
+  const words = autofill.disguise && onAppleTouch() ? disguiseContactWords : unchanged;
   useLayoutEffect(() => {
     const node = own.current as unknown;
     if (Platform.OS === 'web' && node instanceof HTMLElement) {
       node.setAttribute('name', autofill.name);
     }
   }, [autofill.name]);
+  const accessibleName = accessibilityLabel ?? label ?? props.placeholder;
   return (
     <View style={[{ gap: 6 }, style]}>
-      {label ? <Text variant="smallStrong">{label}</Text> : null}
+      {label ? <Text variant="smallStrong">{words(label)}</Text> : null}
       <View
         style={{
           flexDirection: 'row',
@@ -814,8 +828,10 @@ export function TextField(props: TextFieldProps) {
           autoComplete={autofill.autoComplete as TextInputProps['autoComplete']}
           autoFocus={autoFocus === true && !claimFocus}
           ref={mergeRefs(own, inputRef)}
+          nativeID={autofill.id}
           testID={testID}
-          accessibilityLabel={accessibilityLabel ?? label ?? props.placeholder}
+          placeholder={props.placeholder === undefined ? undefined : words(props.placeholder)}
+          accessibilityLabel={accessibleName === undefined ? undefined : words(accessibleName)}
           placeholderTextColor={placeholderColor}
           onFocus={(event) => {
             setFocused(true);
