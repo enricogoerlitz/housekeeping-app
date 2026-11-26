@@ -201,7 +201,7 @@ describe('series (REQ-003)', () => {
     expect(plan.kind).toBe('split');
     expect(fx.calls).toHaveLength(before + 1);
     const ops = opsOf(before);
-    expect(ops.map((op) => [op.kind, op.table])).toEqual([
+    expect(ops.map((op) => [op.kind, 'table' in op ? op.table : undefined])).toEqual([
       ['patch', 'activity_series'],
       ['insert', 'activity_series'],
       ['patch', 'activity_series_exceptions'],

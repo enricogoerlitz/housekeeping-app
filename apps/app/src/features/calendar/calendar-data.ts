@@ -1,6 +1,9 @@
 import {
   useTrips,
   useActivitiesById,
+  useActivityKindsById,
+  useActivitySeries,
+  useActivitySeriesExceptions,
   useChoreEvents,
   useChores,
   useHousehold,
@@ -14,6 +17,9 @@ import {
   useToday,
 } from '@housekeeping/api';
 import {
+  activityIconOf,
+  peopleLabel,
+  seriesPlanEntries,
   tripStripes,
   dayA11yLabel,
   entryCountRole,
@@ -28,6 +34,7 @@ import {
   type TripStripe,
   type HouseholdRowItem,
   type Id,
+  type ActivityIcon,
   type ISODate,
   type KindRole,
   type MealPlanEntry,
@@ -52,6 +59,9 @@ export function useCalendarData() {
   const chores = useChores();
   const events = useChoreEvents();
   const listBags = usePackingListBags();
+  const kindsById = useActivityKindsById();
+  const seriesList = useActivitySeries();
+  const exceptions = useActivitySeriesExceptions();
 
   const slots = household.mealSlots;
   const slotOrder = useMemo(() => slots.map((slot) => slot.id), [slots]);
@@ -66,6 +76,10 @@ export function useCalendarData() {
     }
     return map;
   }, [entries]);
+  // Spec 0041, Entscheidung 3: the Termine of the series, computed for each shown day (a few
+  // date checks per series and day).
+  const seriesOn = (date: ISODate): MealPlanEntry[] =>
+    seriesList.length === 0 ? [] : seriesPlanEntries(seriesList, exceptions, date, date);
 
   return {
     today,
@@ -81,8 +95,21 @@ export function useCalendarData() {
     slots,
     slotOrder,
     stripes,
-    /** The entries of a day, by Tageszeit and kind (spec 0004, AC-002). */
-    dayEntries: (date: ISODate) => entriesForDay(byDate.get(date) ?? [], date, slotOrder),
+    /**
+     * The entries of a day, by Tageszeit and kind (spec 0004, AC-002), with the Termine of the
+     * series on that day (spec 0041, REQ-003).
+     */
+    dayEntries: (date: ISODate) =>
+      entriesForDay([...(byDate.get(date) ?? []), ...seriesOn(date)], date, slotOrder),
+    /** Spec 0041: the symbol of an activity entry (AC-005); undefined for other kinds. */
+    activityIconOf: (entry: MealPlanEntry): ActivityIcon | undefined => {
+      if (entry.kind !== 'activity' || entry.activityId === undefined) return undefined;
+      const activity = activitiesById[entry.activityId];
+      return activity ? activityIconOf(activity, kindsById) : undefined;
+    },
+    /** Spec 0041, AC-014: "Enrico + 2" for an activity entry; "" otherwise. */
+    peopleOf: (entry: MealPlanEntry): string =>
+      entry.kind === 'activity' ? peopleLabel(entry.eaterIds, entry.guests, membersById) : '',
     /**
      * The text of an entry's row: a collection with the number of its recipes (spec 0009,
      * AC-022), a restaurant or activity with its time, "Trattoria Da Enzo (Tisch für 6) · 19:30" (spec 0021).

@@ -3,7 +3,6 @@ import {
   useActivitiesById,
   useMembers,
   useMembersById,
-  usePlanEntries,
   useRecipesById,
   useRestaurantsById,
 } from '@housekeeping/api';
@@ -37,6 +36,7 @@ import { Pressable, View } from 'react-native';
 
 import { stripeA11y, stripeLine, useStripeColors } from '@/features/calendar/calendar-parts';
 import { EntryPicture } from '@/features/meal-plan/entry-picture';
+import { usePlanEntriesWithSeries } from '@/features/meal-plan/series-entries';
 import { KIND_LABELS } from '@/features/meal-plan/kind-badges';
 import { OFFLINE_EDIT_HINT, useOnlineOnly } from '@/features/shell/offline';
 
@@ -67,10 +67,11 @@ export interface DayStripProps {
  * kinds and trips as stripes below (AC-004); on desktop tiles.
  */
 export function DayStrip(props: DayStripProps) {
-  const entries = usePlanEntries();
   const trips = useTrips();
   const members = useMembers();
   const section = overviewSection(props.shown, props.today);
+  // Spec 0041: the Termine of the series of these days too.
+  const entries = usePlanEntriesWithSeries(section.from, section.to);
   const stripes = tripStripes(trips, members).flatMap((stripe) => {
     const segment = stripeSegment(stripe, section.from, section.to);
     return segment ? [{ stripe, start: segment.start, end: segment.end }] : [];

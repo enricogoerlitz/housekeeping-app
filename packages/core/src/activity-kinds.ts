@@ -93,7 +93,6 @@ export function activityIconOf(
 export const KIND_NAME_MAX_LENGTH = 40;
 
 // The same rule as the database check: no control characters (they would reach notifications).
-// eslint-disable-next-line no-control-regex
 const CONTROL = /[\u0000-\u001f\u007f]/;
 
 /** "Name fehlt" or "Höchstens 40 Zeichen"; undefined when the name can be saved. */

@@ -279,7 +279,7 @@ export function peopleLabel(
   return guests > 0 ? `${names.join(', ')} + ${guests}` : names.join(', ');
 }
 
-/** "Wiederholen" when planning an activity (REQ-003). */
+/** "Rhythmus" when planning an activity (REQ-003). */
 export type RepeatKind = 'none' | 'weekly' | 'monthly' | 'yearly';
 
 export const REPEAT_OPTIONS: readonly { value: RepeatKind; label: string }[] = [
@@ -289,7 +289,7 @@ export const REPEAT_OPTIONS: readonly { value: RepeatKind; label: string }[] = [
   { value: 'yearly', label: 'Jährlich' },
 ];
 
-/** The fields of "Wiederholen"; `until` undefined = "dauerhaft". */
+/** The fields of "Rhythmus"; `until` undefined = "dauerhaft". */
 export interface RepeatDraft {
   kind: RepeatKind;
   /** "alle N Wochen". */
