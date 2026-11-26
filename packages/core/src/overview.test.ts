@@ -283,6 +283,15 @@ describe('AC-032: choresOfDay', () => {
     ]);
   });
 
+  it('spec 0035 AC-002: today also lists what was done today, with its entry', () => {
+    const doneToday: ChoreEvent = { ...window, id: 'ev-heute', doneOn: today, doneBy: enrico.id };
+    const day = choresOfDay({ ...input, events: [window, doneToday], shown: today });
+    expect(day.kind).toBe('due');
+    expect(day.items.map((item) => [item.status, item.title, item.eventId])).toEqual([
+      ['done', 'Fenster Wohnzimmer', 'ev-heute'],
+    ]);
+  });
+
   it('AC-032: Saturday shows "Küche wischen" planned with Enrico', () => {
     const day = choresOfDay({ ...input, shown: '2026-11-21' });
     expect(day.kind).toBe('planned');

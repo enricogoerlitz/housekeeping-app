@@ -221,7 +221,7 @@ export function tripLines(input: { trips: Trip[]; members: Member[]; date: ISODa
 }
 
 export type ChoresOfDay =
-  /** Today: chores to check off. */
+  /** Today: chores to check off, and in `items` what was done today (spec 0035, AC-002). */
   | { kind: 'due'; chores: Chore[]; items: HouseholdRowItem[] }
   /** A later day: the dates computed from each rhythm, only to look at. */
   | { kind: 'planned'; items: HouseholdRowItem[] }
@@ -252,7 +252,10 @@ export function choresOfDay(input: {
   const notice = shown >= today ? householdAwayNotice(shown, today, away) : undefined;
   if (notice !== undefined) return { kind: 'away', notice, items: [] };
   if (shown === today) {
-    return { kind: 'due', chores: dueChores(input.chores, today, away), items: [] };
+    const done = (householdRow({ ...input, from: today, to: today })[today] ?? []).filter(
+      (item) => item.status === 'done',
+    );
+    return { kind: 'due', chores: dueChores(input.chores, today, away), items: done };
   }
   const items = householdRow({ ...input, from: shown, to: shown })[shown] ?? [];
   return shown > today ? { kind: 'planned', items } : { kind: 'done', items };
