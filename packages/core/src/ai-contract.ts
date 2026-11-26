@@ -285,12 +285,56 @@ export type RecipeDraftReply = z.infer<typeof RecipeDraftReplySchema>;
 export const IMAGE_STYLES = ['glossy', 'rustic', 'top', 'close', 'bright'] as const;
 export type ImageStyle = (typeof IMAGE_STYLES)[number];
 
+/** What a picture is for (spec 0052): the entries that have a photo. */
+export const IMAGE_SUBJECTS = ['recipe', 'collection', 'restaurant', 'activity'] as const;
+export type ImageSubject = (typeof IMAGE_SUBJECTS)[number];
+
+/** Limits of the image context; the app cuts longer texts (image-context.ts). */
+export const IMAGE_CONTEXT_LIMITS = {
+  title: 200,
+  ingredients: 8,
+  ingredient: 80,
+  description: 600,
+  category: 80,
+  place: 200,
+} as const;
+
+/**
+ * Spec 0052, REQ-003: what the picture is for, so the language model can turn a short wish into
+ * good prompts. German texts as the household wrote them; no address, no personal data.
+ */
+export const AiImageContextSchema = z.strictObject({
+  kind: z.enum(IMAGE_SUBJECTS),
+  /** The entry's title or name, e.g. "Bertablock". */
+  title: z.string().trim().min(1).max(IMAGE_CONTEXT_LIMITS.title),
+  /** Recipe: its main ingredients, e.g. "Rote Linsen". */
+  ingredients: z
+    .array(z.string().trim().min(1).max(IMAGE_CONTEXT_LIMITS.ingredient))
+    .max(IMAGE_CONTEXT_LIMITS.ingredients)
+    .optional(),
+  /** Recipe or activity: its description. */
+  description: z.string().trim().min(1).max(IMAGE_CONTEXT_LIMITS.description).optional(),
+  /** Restaurant: its cuisine ("Österreichisch"); activity: its kind ("Bouldern"). */
+  category: z.string().trim().min(1).max(IMAGE_CONTEXT_LIMITS.category).optional(),
+  /** Activity or restaurant: the name of the place, e.g. "Sportforum Hohenschönhausen". */
+  place: z.string().trim().min(1).max(IMAGE_CONTEXT_LIMITS.place).optional(),
+});
+export type AiImageContext = z.infer<typeof AiImageContextSchema>;
+
+/** "Was soll anders sein?" of "Neu generieren" (spec 0045, REQ-006; spec 0052, REQ-004). */
+export const IMAGE_EXTRA_MAX = 300;
+
 export const AiImageRequestSchema = z.strictObject({
   householdId: Id,
+  /** The wish: what the picture should show, typed by the person or the draft's image prompt. */
   prompt: z.string().trim().min(1).max(1000),
   styles: z.array(z.enum(IMAGE_STYLES)).max(IMAGE_STYLES.length).optional(),
   /** "Aus diesem Foto" (REQ-005): the photo to start from, at most 1024 px. */
   image: JpegDataUrl.optional(),
+  /** Spec 0052, REQ-004: what should be different this time; weighs more than the wish. */
+  extra: z.string().trim().min(1).max(IMAGE_EXTRA_MAX).optional(),
+  /** Spec 0052, REQ-003: what the picture is for. */
+  context: AiImageContextSchema.optional(),
 });
 export type AiImageRequest = z.infer<typeof AiImageRequestSchema>;
 

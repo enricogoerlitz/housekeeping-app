@@ -13,6 +13,7 @@ import {
   showsRoute,
   isWebUrl,
   priceLabel,
+  restaurantImageContext,
   visitsOf,
   type Id,
   type Restaurant,
@@ -203,6 +204,7 @@ function RestaurantDetailBody(props: RestaurantDetailProps & { restaurant: Resta
         <DetailPhotoBlock
           photoPath={restaurant.photoPath}
           name={restaurant.name}
+          aiContext={restaurantImageContext(restaurant)}
           placeholderIcon={RESTAURANT_ICON}
           onChange={(photo) => setRestaurantPhoto(restaurant.id, photo)}
           onRemove={() => removeRestaurantPhoto(restaurant.id)}

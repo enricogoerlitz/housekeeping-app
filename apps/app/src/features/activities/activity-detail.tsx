@@ -11,7 +11,14 @@ import {
   usePlanEntries,
   useToday,
 } from '@housekeeping/api';
-import { showsRoute, isWebUrl, visitsOf, type Activity, type Id } from '@housekeeping/core';
+import {
+  activityImageContext,
+  showsRoute,
+  isWebUrl,
+  visitsOf,
+  type Activity,
+  type Id,
+} from '@housekeeping/core';
 import {
   Button,
   EmptyState,
@@ -191,6 +198,7 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
         <DetailPhotoBlock
           photoPath={activity.photoPath}
           name={activity.name}
+          aiContext={activityImageContext(activity, kind?.name)}
           placeholderIcon={icon}
           onChange={(photo) => setActivityPhoto(activity.id, photo)}
           onRemove={() => removeActivityPhoto(activity.id)}

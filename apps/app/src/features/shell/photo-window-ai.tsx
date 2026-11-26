@@ -3,6 +3,7 @@ import {
   IMAGE_EDIT_MAX_SIDE,
   IMAGE_STYLES,
   imageFailureNotice,
+  type AiImageContext,
   type ImageStyle,
 } from '@housekeeping/core';
 import {
@@ -26,7 +27,7 @@ import { revokeLater } from './revoke-later';
 
 // The tab "KI" of the photo window (spec 0040, REQ-004, REQ-005): a prompt (prefilled from the
 // title, for a recipe with its main ingredients), style chips and, with a photo, "Aus diesem
-// Foto". "Erzeugen" brings three variants; a tap makes one the window's new image, which
+// Foto". With the wish goes what the picture is for (spec 0052). "Erzeugen" brings three variants; a tap makes one the window's new image, which
 // "Übernehmen" saves through the usual photo path. Variants are never stored (AC-012). While they
 // are made the tiles pulse (spec 0045, REQ-005).
 
@@ -54,6 +55,8 @@ async function currentPhoto(uri: string): Promise<Blob> {
 
 export function PhotoWindowAi(props: {
   prompt: string;
+  /** What the picture is for (spec 0052, REQ-003). */
+  context: AiImageContext | undefined;
   /** The own photo shown now; offers "Aus diesem Foto". */
   currentUri: string | undefined;
   /** A variant was tapped: it becomes the window's new image. */
@@ -101,7 +104,12 @@ export function PhotoWindowAi(props: {
       try {
         const image =
           fromPhoto && props.currentUri ? await currentPhoto(props.currentUri) : undefined;
-        const reply = await generateImagesAsync({ prompt, styles, ...(image ? { image } : {}) });
+        const reply = await generateImagesAsync({
+          prompt,
+          styles,
+          ...(image ? { image } : {}),
+          ...(props.context ? { context: props.context } : {}),
+        });
         if (mine !== attempt.current) return;
         setSelected(undefined);
         setResult({

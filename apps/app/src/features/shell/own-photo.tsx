@@ -1,4 +1,5 @@
 import { preparePhoto, usePhoto, WRITE_REJECTED_MESSAGE } from '@housekeeping/api';
+import type { AiImageContext } from '@housekeeping/core';
 import {
   Button,
   IconButton,
@@ -65,6 +66,8 @@ export function OwnPhoto(
 export function DetailPhotoBlock(props: {
   photoPath: string | undefined;
   name: string;
+  /** What the picture is for, for "KI" in the window (spec 0052, REQ-003). */
+  aiContext: AiImageContext;
   placeholderIcon: IconName;
   onChange: (photo: Blob) => Promise<void>;
   onRemove: () => Promise<void>;
@@ -136,6 +139,7 @@ export function DetailPhotoBlock(props: {
           current={photo.uri ? { uri: photo.uri } : undefined}
           hasPhoto={hasPhoto}
           name={props.name}
+          aiContext={props.aiContext}
           placeholderIcon={props.placeholderIcon}
           aspectRatio={16 / 9}
           onApply={(prepared) => run('upload', () => props.onChange(prepared), 'Foto gespeichert')}

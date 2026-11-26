@@ -3,7 +3,7 @@
 // (preparePhoto with 1280 px for a draft, 1024 px for "Aus diesem Foto"); here they become JPEG
 // data URLs. Nothing is saved: a draft fills the edit mode, a variant is stored only by
 // "Übernehmen" through the usual photo path.
-import type { ImageStyle, RecipeDraftReply } from '@housekeeping/core';
+import type { AiImageContext, ImageStyle, RecipeDraftReply } from '@housekeeping/core';
 
 import { aiCall } from './ai';
 import { getState } from './store';
@@ -54,20 +54,26 @@ export async function draftRecipeAsync(input: {
 
 /**
  * AC-012 – AC-015: up to three variants as JPEG blobs and how many failed; `image` (a JPEG from
- * preparePhoto) for "Aus diesem Foto". Nothing is stored.
+ * preparePhoto) for "Aus diesem Foto". Spec 0052: `context` says what the picture is for,
+ * `extra` what "Neu generieren" should change. Nothing is stored.
  */
 export async function generateImagesAsync(input: {
   prompt: string;
   styles: readonly ImageStyle[];
   image?: Blob;
+  extra?: string;
+  context?: AiImageContext;
 }): Promise<{ images: Blob[]; failed: number }> {
   const householdId = getState().activeHouseholdId;
+  const extra = input.extra?.trim();
   const reply = await aiCall(async (transport) =>
     transport.aiImage({
       householdId,
       prompt: input.prompt.trim(),
       styles: [...input.styles],
       ...(input.image ? { image: await jpegDataUrl(input.image) } : {}),
+      ...(extra ? { extra } : {}),
+      ...(input.context ? { context: input.context } : {}),
     }),
   );
   return {

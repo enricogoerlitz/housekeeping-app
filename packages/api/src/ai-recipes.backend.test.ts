@@ -123,6 +123,35 @@ describe('generateImagesAsync (spec 0040, REQ-004, REQ-005)', () => {
     });
     expect(sent[0]?.image).toBe('data:image/jpeg;base64,/9j/4AAQSkZJRg==');
   });
+
+  it('spec 0052, AC-011: context and the extra of "Neu generieren" travel as their own fields', async () => {
+    await fx.startEnrico();
+    const sent: unknown[] = [];
+    fx.server.setAi({
+      image: (request) => {
+        sent.push(request);
+        return { images: [bytesToBase64(JPEG)], failed: 0 };
+      },
+    });
+    const context = { kind: 'recipe' as const, title: 'Spaghetti mit Bällchen in Tomatensoße' };
+    await generateImagesAsync({
+      prompt: 'spaghetti with meatballs',
+      styles: [],
+      extra: ' heller und mit Basilikum ',
+      context,
+    });
+    await generateImagesAsync({ prompt: 'Pasta', styles: [], extra: '  ' });
+    expect(sent).toEqual([
+      {
+        householdId: H,
+        prompt: 'spaghetti with meatballs',
+        styles: [],
+        extra: 'heller und mit Basilikum',
+        context,
+      },
+      { householdId: H, prompt: 'Pasta', styles: [] },
+    ]);
+  });
 });
 
 describe('createRecipeFromPage (spec 0040, AC-001)', () => {

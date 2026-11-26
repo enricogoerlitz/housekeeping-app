@@ -56,6 +56,7 @@ Ablauf und Regeln: siehe `AGENTS.md`, Abschnitt „Workflow per feature“.
 | [0047](0047-feinschliff-teilen-foto-links-kalender/spec.md) | Feinschliff: Teilen, Foto-Fenster, „+ Link“, Foto im Plan-Eintrag      | freigegeben |
 | [0048](0048-sicherung-ohne-videos/spec.md)                  | Sicherung ohne Videos                                                  | freigegeben |
 | [0050](0050-zutaten-vorschlaege-beim-einfuegen/spec.md)     | Zutaten einfügen: Vorschläge beim Tippen und Vorschau                  | freigegeben |
+| [0052](0052-bildprompt-aufbereitung/spec.md)                | Bild-Prompt aufbereiten: aus einem kurzen Wunsch drei gute Bilder      | freigegeben |
 
 ## Welle 2 (0019–0028): Bau-Reihenfolge und Regeln
 

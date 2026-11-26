@@ -1,4 +1,9 @@
-import { imageFailureNotice, type Recipe } from '@housekeeping/core';
+import {
+  draftImageContext,
+  IMAGE_EXTRA_MAX,
+  imageFailureNotice,
+  type Recipe,
+} from '@housekeeping/core';
 import { Button, Notice, Photo, Row, Stack, Text, useTheme } from '@housekeeping/ui';
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
@@ -48,6 +53,7 @@ export function AiPageTools(props: { recipe: Recipe; editor: PageEditor }) {
             if (generatePhoto && reply.draft.imagePrompt) {
               startPhotoSuggestions(recipe.id, {
                 prompt: reply.draft.imagePrompt,
+                context: draftImageContext(reply.draft),
                 coverUrl: reply.sources.find((source) => source.coverUrl)?.coverUrl,
               });
             }
@@ -60,8 +66,6 @@ export function AiPageTools(props: { recipe: Recipe; editor: PageEditor }) {
 
 /** Spec 0045, REQ-005: read by screen readers on each pulsing tile. */
 const GENERATING_LABEL = 'Foto wird erzeugt';
-/** The wish of "Neu generieren" (REQ-006); the image prompt takes up to 1000 characters in all. */
-const EXTRA_MAX = 300;
 /** Three tiles stay thumbnails on a wide screen; the large photo stands below. */
 const TILE_MAX = 200;
 
@@ -91,7 +95,7 @@ function PhotoSuggestionsPanel(props: { recipe: Recipe; editor: PageEditor }) {
         placeholder="optional, z. B. heller, von oben"
         value={extra}
         onChangeText={setExtra}
-        maxLength={EXTRA_MAX}
+        maxLength={IMAGE_EXTRA_MAX}
         editable={!loading && !online.disabled}
         testID={`${id}-extra`}
       />
