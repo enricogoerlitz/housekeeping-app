@@ -342,24 +342,68 @@ describe('web-search: places (REQ-002)', () => {
         },
       ],
     });
-    const [, init] = deps.fetchMock.mock.calls[0] ?? [];
-    expect(JSON.parse(String(init?.body)).ll).toBe('@52.515,13.454,11z');
   });
 
-  it('AC-027: nothing around the household → once more without a place (a named place elsewhere)', async () => {
-    let calls = 0;
-    const { deps } = setup({
-      [SERPER_MAPS]: () => {
-        calls += 1;
-        return json({ places: calls === 1 ? [] : [madameHien] });
-      },
+  // Entscheidung 11: one search without a place and one around the household, at the same time.
+  // The fake reads the body: a request with `ll` is the one around the household.
+  const fetchMaps = (free: object[], around: object[]) =>
+    fakeDeps({
+      client: fakeClient({ tables: tables() }),
+      env: KEYS,
+      fetch: async (_input, init) =>
+        json({ places: JSON.parse(String(init?.body)).ll ? around : free }),
     });
+  const sentLl = (deps: ReturnType<typeof fakeDeps>) =>
+    deps.fetchMock.mock.calls.map(([, init]) => JSON.parse(String(init?.body)).ll).sort();
+  const koeln = { lat: 50.934, lng: 6.948 };
+  const inKoeln = {
+    ...madameHien,
+    title: 'My-Da Garden',
+    latitude: 50.94,
+    longitude: 6.94,
+    cid: '1',
+  };
+  const inUsa = {
+    ...madameHien,
+    title: 'Holiday Ice Rink',
+    latitude: 34.05,
+    longitude: -118.25,
+    cid: '2',
+  };
+
+  it('AC-038: a district in the text wins over the household in Köln', async () => {
+    const deps = fetchMaps([madameHien], [inKoeln]);
     const reply = await body(
-      await handler(search('Bertablock', 'activity', { near: { lat: 50.94, lng: 6.96 } }), deps),
+      await handler(
+        search('vietnamesisch friedrichshain gut', 'restaurant', { near: koeln }),
+        deps,
+      ),
     );
-    expect(reply.results).toHaveLength(1);
-    const bodies = deps.fetchMock.mock.calls.map(([, init]) => JSON.parse(String(init?.body)));
-    expect(bodies.map((sent) => sent.ll)).toEqual(['@50.94,6.96,11z', undefined]);
+    expect((reply.results as WebResult[]).map((card) => card.title)).toEqual(['Madame Hien']);
+    expect(sentLl(deps)).toEqual(['@50.934,6.948,11z', undefined]);
+  });
+
+  it('AC-039: a named place far from the household ("Mutzenbacher" from Köln) is found', async () => {
+    const mutzenbacher = { ...madameHien, title: 'Mutzenbacher', cid: '3' };
+    const river = { ...inKoeln, title: 'Mutzbach', type: 'Fluss' };
+    const deps = fetchMaps([mutzenbacher], [river]);
+    const reply = await body(
+      await handler(search('mutzenbacher', 'restaurant', { near: koeln }), deps),
+    );
+    expect((reply.results as WebResult[]).map((card) => card.title)).toEqual(['Mutzenbacher']);
+  });
+
+  it('AC-008: a text without a place stays around the household', async () => {
+    const deps = fetchMaps([inUsa], [inKoeln]);
+    const reply = await body(await handler(search('eislaufen', 'activity', { near: koeln }), deps));
+    expect((reply.results as WebResult[]).map((card) => card.title)).toEqual(['My-Da Garden']);
+  });
+
+  it('AC-040: a household without places searches Germany-wide, never the provider default (USA)', async () => {
+    const deps = fetchMaps([inUsa], [inKoeln]);
+    const reply = await body(await handler(search('eislaufen', 'activity'), deps));
+    expect((reply.results as WebResult[]).map((card) => card.title)).toEqual(['My-Da Garden']);
+    expect(sentLl(deps)).toEqual(['@51.1657,10.4515,6z', undefined]);
   });
 
   it('at most 5 cards', async () => {

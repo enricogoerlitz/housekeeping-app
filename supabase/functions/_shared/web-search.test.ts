@@ -107,7 +107,7 @@ describe('Serper', () => {
   it('AC-008, AC-011: places from /maps around the centre, with hours, price and maps link', async () => {
     const deps = fakeDeps({ env: KEYS, fetch: async () => json(maps) });
     const { value } = await searchWithFallback(configuredProviders(deps), (p) =>
-      p.places('vietnamesisch', { lat: 52.515, lng: 13.454 }),
+      p.places('vietnamesisch', { lat: 52.515, lng: 13.454, zoom: 11 }),
     );
     expect(value).toEqual([
       {
@@ -127,14 +127,15 @@ describe('Serper', () => {
         priceLevel: 2,
       },
     ]);
-    const [url, init] = deps.fetchMock.mock.calls[0] ?? [];
-    expect(String(url)).toBe('https://google.serper.dev/maps');
-    expect(JSON.parse(String(init?.body))).toEqual({
-      q: 'vietnamesisch',
-      gl: 'de',
-      hl: 'de',
-      ll: '@52.515,13.454,11z',
+    // Entscheidung 11: once without a place, once around the centre.
+    const sent = deps.fetchMock.mock.calls.map(([url, init]) => {
+      expect(String(url)).toBe('https://google.serper.dev/maps');
+      return JSON.parse(String(init?.body));
     });
+    expect(sent).toEqual([
+      { q: 'vietnamesisch', gl: 'de', hl: 'de' },
+      { q: 'vietnamesisch', gl: 'de', hl: 'de', ll: '@52.515,13.454,11z' },
+    ]);
   });
 
   it('a place without cid gets a maps link from its coordinates', async () => {

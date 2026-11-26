@@ -95,6 +95,10 @@ export function useWebSearch(kind: WebSearchKind, initialQuery = ''): WebSearch 
   const [photos, setPhotos] = useState<Record<string, CardPhoto>>({});
   const [focusRequest, setFocusRequest] = useState(0);
   const round = useRef(0);
+  // A card's preview is read once per search: tapping it again after „Zurück zu den Ergebnissen“
+  // shows it at once instead of asking the model again (KI-Testlauf 26.11.).
+  const previews = useRef(new Map<string, PreviewState>());
+  const reading = useRef(new Set<string>());
   const shown = useRef<Record<string, CardPhoto>>({});
   useLayoutEffect(() => {
     shown.current = photos;
@@ -139,6 +143,8 @@ export function useWebSearch(kind: WebSearchKind, initialQuery = ''): WebSearch 
     for (const photo of Object.values(photos))
       if (photo.status === 'ready') URL.revokeObjectURL(photo.uri);
     setPhotos({});
+    previews.current.clear();
+    reading.current.clear();
     setPreview(undefined);
     setState({ status: 'searching' });
     webSearchAsync({
@@ -161,11 +167,21 @@ export function useWebSearch(kind: WebSearchKind, initialQuery = ''): WebSearch 
 
   const open = (card: WebResult) => {
     const mine = round.current;
-    setPreview({ status: 'loading', card });
     setPhotoChoice(defaultWebPhotoChoice(card.imageUrl !== undefined, imageWish));
-    const done = (next: PreviewState) => {
-      if (round.current === mine)
-        setPreview((current) => (current?.card === card ? next : current));
+    const known = previews.current.get(card.url);
+    if (known) {
+      setPreview(known);
+      return;
+    }
+    setPreview({ status: 'loading', card });
+    // Still being read (back and tapped again): the running answer fills the preview.
+    if (reading.current.has(card.url)) return;
+    reading.current.add(card.url);
+    const done = (next: PreviewState, keep = next.status !== 'failed') => {
+      if (round.current !== mine) return;
+      reading.current.delete(card.url);
+      if (keep) previews.current.set(card.url, next);
+      setPreview((current) => (current?.card === card ? next : current));
     };
     if (kind === 'recipe') {
       draftRecipeAsync({ text: '', links: [card.url], photos: [], imagePrompt: false }).then(
@@ -187,7 +203,7 @@ export function useWebSearch(kind: WebSearchKind, initialQuery = ''): WebSearch 
     placePreviewAsync(kind, card).then(
       (proposal) => done({ status: 'place', card, proposal }),
       // The card alone is a preview too: address, hours and link come from the provider.
-      () => done({ status: 'place', card, proposal: {} }),
+      () => done({ status: 'place', card, proposal: {} }, false),
     );
   };
 
@@ -211,6 +227,8 @@ export function useWebSearch(kind: WebSearchKind, initialQuery = ''): WebSearch 
     },
     reset: () => {
       round.current += 1;
+      previews.current.clear();
+      reading.current.clear();
       for (const photo of Object.values(photos))
         if (photo.status === 'ready') URL.revokeObjectURL(photo.uri);
       setPhotos({});

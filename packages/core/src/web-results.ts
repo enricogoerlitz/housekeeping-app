@@ -159,3 +159,46 @@ export function ratingLabel(
   if (ratingCount === undefined) return stars;
   return `${stars} (${ratingCount.toLocaleString('de-DE')})`;
 }
+
+/** Where a household without places searches (Entscheidung 11): Germany, country-wide. */
+export const COUNTRY_CENTRE = { lat: 51.1657, lng: 10.4515 };
+/** Map zoom of the search around the household (city, Entscheidung 8) and around Germany. */
+export const CITY_ZOOM = 11;
+export const COUNTRY_ZOOM = 6;
+/**
+ * Farther than this from the centre, the search without a place found nothing named in the text
+ * but the provider's own default (a city in the USA, probe 26.11.); nearer, Google found the
+ * district, city or place the text names — also on a trip abroad in Europe.
+ */
+const NAMED_PLACE_KM = 2000;
+const EARTH_KM = 6371;
+
+/** Great-circle distance in km. */
+export function distanceKm(
+  a: { lat: number; lng: number },
+  b: { lat: number; lng: number },
+): number {
+  const rad = (degrees: number) => (degrees * Math.PI) / 180;
+  const dLat = rad(b.lat - a.lat);
+  const dLng = rad(b.lng - a.lng);
+  const h =
+    Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * EARTH_KM * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+/**
+ * Which place hits a search shows (Entscheidung 11). `free` was searched without a place, `around`
+ * around the household's centre (or Germany). A text that names a district, a city or one place
+ * ("vietnamesisch friedrichshain", "Mutzenbacher") lets Google find it on its own, near the
+ * centre's part of the world: then `free` wins, even when the household's places are elsewhere.
+ * A text without a place lands at the provider's default far away: then `around`.
+ */
+export function pickPlaceHits<T extends { location?: { lat: number; lng: number } }>(
+  free: readonly T[],
+  around: readonly T[],
+  centre: { lat: number; lng: number },
+): T[] {
+  const first = free.find((hit) => hit.location)?.location;
+  if (first && distanceKm(first, centre) <= NAMED_PLACE_KM) return [...free];
+  return [...around];
+}

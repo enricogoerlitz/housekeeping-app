@@ -8,7 +8,7 @@ import type { OpeningDay } from './contract.gen.ts';
 import type { Deps } from './deps.ts';
 import { HttpError } from './errors.ts';
 import { fetchTextWithRetry } from './retry.ts';
-import { mapsLinkOfCid, priceLevelOf, weekdayOf } from './web-results.gen.ts';
+import { mapsLinkOfCid, pickPlaceHits, priceLevelOf, weekdayOf } from './web-results.gen.ts';
 
 export interface WebHit {
   title: string;
@@ -34,10 +34,17 @@ export interface PlaceHit {
   snippet?: string;
 }
 
+/** The centre of a place search and the map zoom around it. */
+export interface Around {
+  lat: number;
+  lng: number;
+  zoom: number;
+}
+
 export interface SearchProvider {
   name: 'serper' | 'brave';
   web(query: string): Promise<WebHit[]>;
-  places(query: string, near?: { lat: number; lng: number }): Promise<PlaceHit[]>;
+  places(query: string, around?: Around): Promise<PlaceHit[]>;
 }
 
 /** One provider gave no usable answer; the next one is asked. */
@@ -51,8 +58,6 @@ class ProviderFailed extends Error {
 const TIMEOUT_MS = 8000;
 const MAX_URL = 2048;
 const MAX_TEXT = 400;
-/** City scale: "botanischer garten" finds the one of the city, not the nearest park (probe 26.11.). */
-const ZOOM = 11;
 
 const text = z.string().trim().min(1).catch('').optional();
 const num = z.number().finite().optional().catch(undefined);
@@ -174,6 +179,38 @@ function coordinatesLink(lat: number, lng: number): string {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${lat},${lng}`)}`;
 }
 
+function mapPlaces(body: z.infer<typeof SerperMaps>): PlaceHit[] {
+  return body.places.flatMap((place): PlaceHit[] => {
+    const title = cleanText(place.title, 200);
+    if (!title) return [];
+    const location =
+      place.latitude !== undefined &&
+      place.longitude !== undefined &&
+      Math.abs(place.latitude) <= 90 &&
+      Math.abs(place.longitude) <= 180
+        ? { lat: place.latitude, lng: place.longitude }
+        : undefined;
+    const mapsUrl =
+      (place.cid ? mapsLinkOfCid(place.cid) : undefined) ??
+      (location ? coordinatesLink(location.lat, location.lng) : undefined);
+    return [
+      compact({
+        title,
+        address: cleanText(place.address, 300),
+        location,
+        rating: rating(place.rating),
+        ratingCount: count(place.ratingCount),
+        category: cleanText(place.type, 120),
+        websiteUrl: httpsUrl(place.website, true),
+        mapsUrl,
+        imageUrl: httpsUrl(place.thumbnailUrl),
+        openingHours: openingDays(place.openingHours),
+        priceLevel: priceLevelOf(place.priceLevel),
+      }),
+    ];
+  });
+}
+
 function serperProvider(deps: Pick<Deps, 'fetch'>, key: string): SearchProvider {
   const post = (path: string, body: object) =>
     request(deps, 'serper', `https://google.serper.dev/${path}`, {
@@ -204,46 +241,23 @@ function serperProvider(deps: Pick<Deps, 'fetch'>, key: string): SearchProvider 
         ];
       });
     },
-    async places(query, near) {
-      const body = shape(
-        'serper',
-        SerperMaps,
-        await post('maps', {
-          q: query,
-          gl: 'de',
-          hl: 'de',
-          ...(near ? { ll: `@${near.lat},${near.lng},${ZOOM}z` } : {}),
-        }),
-      );
-      return body.places.flatMap((place): PlaceHit[] => {
-        const title = cleanText(place.title, 200);
-        if (!title) return [];
-        const location =
-          place.latitude !== undefined &&
-          place.longitude !== undefined &&
-          Math.abs(place.latitude) <= 90 &&
-          Math.abs(place.longitude) <= 180
-            ? { lat: place.latitude, lng: place.longitude }
-            : undefined;
-        const mapsUrl =
-          (place.cid ? mapsLinkOfCid(place.cid) : undefined) ??
-          (location ? coordinatesLink(location.lat, location.lng) : undefined);
-        return [
-          compact({
-            title,
-            address: cleanText(place.address, 300),
-            location,
-            rating: rating(place.rating),
-            ratingCount: count(place.ratingCount),
-            category: cleanText(place.type, 120),
-            websiteUrl: httpsUrl(place.website, true),
-            mapsUrl,
-            imageUrl: httpsUrl(place.thumbnailUrl),
-            openingHours: openingDays(place.openingHours),
-            priceLevel: priceLevelOf(place.priceLevel),
-          }),
-        ];
-      });
+    // Entscheidung 11: Google searched once without a place and once around the centre, at the
+    // same time; a text naming a district, a city or one place is found without the centre.
+    async places(query, around) {
+      const maps = async (ll?: string) =>
+        mapPlaces(
+          shape(
+            'serper',
+            SerperMaps,
+            await post('maps', { q: query, gl: 'de', hl: 'de', ...(ll ? { ll } : {}) }),
+          ),
+        );
+      if (!around) return maps();
+      const [free, near] = await Promise.all([
+        maps(),
+        maps(`@${around.lat},${around.lng},${around.zoom}z`),
+      ]);
+      return pickPlaceHits(free, near, around);
     },
   };
 }

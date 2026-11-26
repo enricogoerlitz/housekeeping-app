@@ -290,7 +290,7 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
                   fill.setText(link);
                   setAiTab('own');
                 }}
-                recipeRows={(reply) => draftInput(reply).ingredients ?? []}
+                recipeRows={draftInput}
                 testID="new-recipe-web"
               />
             ) : (
