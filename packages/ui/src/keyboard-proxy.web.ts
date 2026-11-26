@@ -10,7 +10,11 @@
 
 import { isAppleTouchBrowser } from './field-autofill';
 
-/** How long a tap's keyboard waits for its window (spec 0033, decision 10). */
+/**
+ * How long a tap's keyboard waits for its window (spec 0033, decision 10).
+ *
+ * @public The tests wait for it.
+ */
 export const HANDOVER_MS = 1500;
 
 let proxy: HTMLInputElement | null = null;

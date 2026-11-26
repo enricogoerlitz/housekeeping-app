@@ -40,7 +40,7 @@ function NewRestaurant(props: {
 const enter = (testID: string) => fireEvent.keyDown(screen.getByTestId(testID), { key: 'Enter' });
 
 describe('Enter saves a window (spec 0036, REQ-014)', () => {
-  it('AC-023: Enter in „Name“ of „Neues Restaurant“ does what „Anlegen“ does', () => {
+  it('AC-023: Enter in „Name“ of „Restaurant hinzufügen“ does what its primary button does', () => {
     pointer.fine = true;
     const onSave = vi.fn();
     render(<NewRestaurant onSave={onSave} />);
