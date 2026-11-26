@@ -125,8 +125,8 @@ function Navigation(props: BottomTabBarProps) {
   const keyboard = useKeyboard();
   const segments = useSegments();
   const activeRoute = props.state.routes[props.state.index]?.name ?? 'index';
-  // A detail page highlights the section it came from (`von`); a page under "Verwalten"
-  // highlights no tab (spec 0019, REQ-006; spec 0005, AC-054).
+  // A page highlights its own section, a detail page too: `von` only names "Zurück" (spec 0035,
+  // REQ-002). A page under "Verwalten" highlights no tab (spec 0005, AC-054).
   const section = useActiveSection();
   const activeKey = (section && KEY_OF_SECTION[section]) ?? '';
   const openSection = useOpenSection();

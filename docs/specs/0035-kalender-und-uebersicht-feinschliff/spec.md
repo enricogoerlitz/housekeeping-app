@@ -1,5 +1,5 @@
 ---
-status: freigegeben # entwurf | freigegeben | umgesetzt | verworfen
+status: umgesetzt # entwurf | freigegeben | umgesetzt | verworfen
 datum: 2026-11-26
 ---
 
@@ -58,15 +58,16 @@ zu einer Höchsthöhe mit dem Fenster; die Tageszahlen sind etwas größer als h
 Offline: offline vollständig.
 
 - AC-008: Angenommen Desktop 1440 × 1000 px · Wenn ich „Jahr“ öffne · Dann sind die Zeilen eines
-  Monats höchstens 22 px hoch und die Tageszahlen 12 px groß (heute 10 px)
+  Monats höchstens 28 px hoch und die Tageszahlen 12 px groß (vorher 36 px und 10 px)
 - AC-009: Angenommen ein niedriges Fenster 1440 × 700 px · Dann bleibt die Ansicht wie heute lesbar
   (keine Zeile unter 24 px Trefferfläche)
 
 **REQ-004 — Monatsansicht am Desktop niedriger.** Die Mindesthöhe einer Woche in der Monatsansicht am
 Desktop sinkt um etwa 15 %. Quelle: K-02. Offline: offline vollständig.
 
-- AC-010: Angenommen Desktop 1440 × 800 px, Monat November (5 Wochen) · Dann passt der ganze Monat
-  ohne Scrollen auf die Seite
+- AC-010: Angenommen Desktop 1440 × 900 px, Monat Januar 2027 (fünf Wochen, keine Reise) · Dann
+  passt der ganze Monat ohne Scrollen auf die Seite (vorher scrollte er; eine Woche ist mindestens
+  138 statt 166 px hoch)
 
 **REQ-005 — Tooltip am Desktop.** Verweilt die Maus 500 ms über einem Eintrag im Kalender, dessen
 Text abgeschnitten ist, zeigt ein gestalteter Tooltip den ganzen Text (Art, Name, Zusatz, Uhrzeit).
@@ -81,15 +82,34 @@ Quelle: K-03. Offline: offline vollständig.
 Wochentag und Datum. Quelle: H-02. Offline: offline vollständig.
 
 - AC-014: Angenommen heute ist Donnerstag, 26.11. · Wenn ich Freitag, 27.11. wähle · Dann lautet die
-  Überschrift „Freitag, 27. November“ und bleibt auf dem Handy einzeilig wie am Donnerstag
+  Überschrift „Freitag, 27. November“ und ist auf dem Handy genauso hoch wie am Donnerstag
 
 ## Entscheidungen
 
 1. REQ-002: Die Markierung folgt der Seite; `von=kalender` bestimmt nur noch Zurück-Ziel und
    Beschriftung. Ändert Spec 0019 (Markierung nach Herkunft) — AC dort wird angepasst.
-2. REQ-003/004: Zahlen (22 px, 12 px, −15 %) sind Startwerte; geprüft mit `/ui-verify` am Desktop.
-3. REQ-005: neuer Baustein `Tooltip` in `packages/ui` (nur feiner Zeiger, über `TopLayer`), damit ihn
-   später auch andere abgeschnittene Texte nutzen.
+   Folge: Eine Seite, die aus einer Detailseite mit `von` geöffnet wird, nennt deren Bereich
+   („‹ Essen“ statt „‹ Kalender“ für ein Rezept aus einem Rezept, das aus dem Kalender kam).
+2. REQ-003/004: Zahlen am Desktop gemessen (1440 × 700/900/1000) und angepasst. Jahr: Tageszeile
+   höchstens 28 px statt 22 px, weil AC-009 mindestens 24 px Trefferfläche verlangt und Zahl
+   (12/15 px) plus Punktzeile sonst nicht passen; ein Monat wächst höchstens bis 224 px, darunter
+   folgen die Reisen. Monat: mindestens zwei statt drei Einträge plus „+n weitere“ (`MONTH_MIN_LINES`),
+   eine Woche ohne Reise 138 statt 166 px (−17 %). AC-010 ging von „November (5 Wochen)“ aus;
+   November 2026 hat sechs Wochenzeilen, und 1440 × 800 bräuchte rund −40 %, gegen „nicht viel“
+   (Enrico, K-02). Darum misst AC-010 einen Monat mit fünf Wochen bei 1440 × 900.
+3. REQ-005: neuer Baustein `useTooltip` in `packages/ui` (nur feiner Zeiger und Web, über
+   `TopLayer`), eingebaut in `KindLine` über `tooltip`; der Text kommt aus `lineTooltip` (core).
+   Erhöht wirkt er wie das, was beim Ziehen schwebt (`surfaceRaised`, `shadowRaised`). Ein Druck
+   oder das Verlassen schließt ihn.
+4. REQ-001: Ein Tipp auf ✓ öffnet ein kleines Fenster (`DoneEntrySheet`) mit „Zurücknehmen“ oder
+   „Im Verlauf öffnen“ (`choreEventTakeBack`, core) und im Kalender „Aufgabe öffnen“, damit das
+   Aufgaben-Fenster weiter erreichbar bleibt. „Zurücknehmen“ nur für die jüngste Erledigung der
+   letzten 30 Tage einer bestehenden Aufgabe; sonst „Im Verlauf öffnen“. Die Übersicht zeigt heute
+   das heute Erledigte am Ende von „Zu tun“ mit ✓ (wie der Kalender, Spec 0010 AC-018), sonst gäbe
+   es dort nichts anzutippen. Das Fenster steht nicht in der Adresse (wie andere kleine Rückfragen).
+5. REQ-006: Auch der Wechsel ins nächste Jahr nennt keine Vorsilbe mehr: „Freitag, 1. Januar 2027“.
+   Auf 390 und 430 px Breite ist die Überschrift an jedem Tag zweizeilig und gleich hoch (68 px);
+   „einzeilig“ aus AC-014 gilt dort nicht, das Springen ist weg.
 
 ## Daten
 
@@ -98,10 +118,22 @@ Liest die Erledigungen (`chore_events`); „Zurücknehmen“ nutzt den bestehend
 
 ## Umsetzung
 
-- [ ] 1. ✓ in Kalender und Übersicht antippbar, „Zurücknehmen“ über `removeChoreEvent` (AC-001–AC-004)
-- [ ] 2. `sectionOfPath` nach Seite, Tests in `url-params.test.ts` (AC-005–AC-007)
-- [ ] 3. Jahresansicht Höchsthöhe und Schrift (AC-008, AC-009)
-- [ ] 4. Monatsansicht Mindesthöhe (AC-010)
-- [ ] 5. `Tooltip` + Einsatz im Kalender (AC-011–AC-013)
-- [ ] 6. `overviewTitle` ohne Vorsilbe (AC-014)
-- [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün; `/ui-verify` Desktop/Handy
+- [x] 1. ✓ in Kalender und Übersicht antippbar, „Zurücknehmen“ über `removeChoreEvent` (AC-001–AC-004)
+- [x] 2. `sectionOfPath` nach Seite, Tests in `url-params.test.ts` (AC-005–AC-007)
+- [x] 3. Jahresansicht Höchsthöhe und Schrift (AC-008, AC-009)
+- [x] 4. Monatsansicht Mindesthöhe (AC-010)
+- [x] 5. `Tooltip` + Einsatz im Kalender (AC-011–AC-013)
+- [x] 6. `overviewTitle` ohne Vorsilbe (AC-014)
+- [x] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün; `/ui-verify` Desktop/Handy
+
+## Nachweis
+
+26.11.2026: `pnpm format:check && pnpm check && pnpm build:web` grün (core, ui, api mit Abdeckung
+≥ 80 %). Neue Tests: `overview.test.ts` (AC-002, AC-014), `place.test.ts` (AC-005–AC-007),
+`chores.test.ts` (AC-001, AC-003), `household-row.test.ts`, `calendar.test.ts` (AC-008, AC-010,
+AC-011), `tooltip-position.test.ts` und `tooltip.test.tsx` (AC-011–AC-013). Im Dev-Server
+(Playwright, 1440 × 700/900/1000 und 390 × 844) geprüft: Zurücknehmen in Übersicht und Kalender,
+offline deaktiviert mit Hinweis, „Im Verlauf öffnen“ öffnet den Eintrag im Verlauf; Aktivität aus
+dem Kalender markiert nur „Aktivitäten“, „‹ Kalender“ führt zurück; Restaurant auf dem Handy
+markiert „Essen“; Tooltip nach 500 ms nur bei abgeschnittenem Text; Jahr 28 px/12 px, Januar 2027
+bei 1440 × 900 ohne Scrollen; Überschrift der Übersicht an jedem Tag gleich hoch.

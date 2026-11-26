@@ -72,6 +72,10 @@ export interface YearViewProps {
 }
 
 const ROW_GAP = 14;
+// A tall window stretches a month's weeks only up to this (spec 0035, REQ-003); the month itself
+// then stops at its padding, name (32), weekday initials (12) and six such weeks.
+const DAY_ROW_MAX = 28;
+const MONTH_MAX = 2 * 6 + 32 + 12 + 6 * DAY_ROW_MAX;
 
 const WEEKDAY_INITIALS = ['M', 'D', 'M', 'D', 'F', 'S', 'S'];
 const TINT_ALPHA = '33';
@@ -102,7 +106,7 @@ export function YearView(props: YearViewProps) {
   const rowHeight =
     props.height === undefined
       ? undefined
-      : sharedHeight(props.height - (rows.length - 1) * ROW_GAP, rows.length, 0);
+      : sharedHeight(props.height - (rows.length - 1) * ROW_GAP, rows.length, 0, MONTH_MAX);
   const registerMonth = useScrollTo({
     enabled: !props.fillsWindow,
     request: props.scrollRequest,
@@ -252,7 +256,10 @@ function MiniMonth(props: {
         <WeekRowTarget
           key={week[0]}
           dates={week.map((date) => (date.slice(0, 7) === month ? date : null))}
-          style={[{ flexDirection: 'row' }, props.fill ? { flexGrow: 1 } : null]}
+          style={[
+            { flexDirection: 'row' },
+            props.fill ? { flexGrow: 1, maxHeight: DAY_ROW_MAX } : null,
+          ]}
         >
           {week.map((date) =>
             date.slice(0, 7) === month ? (
@@ -351,7 +358,7 @@ function MiniDay(props: {
             <Text
               variant="caption"
               color={props.selected ? undefined : isToday ? 'accent' : 'text'}
-              style={[{ fontSize: 10, lineHeight: 13 }, props.selected ? { color: c.bg } : null]}
+              style={[{ fontSize: 12, lineHeight: 15 }, props.selected ? { color: c.bg } : null]}
             >
               {String(parseISODate(props.date).getDate())}
             </Text>

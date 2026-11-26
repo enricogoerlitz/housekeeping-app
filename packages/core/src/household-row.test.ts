@@ -130,6 +130,19 @@ describe('householdRow rules', () => {
     ]);
   });
 
+  it('spec 0035 AC-001: a done item names its entry, so it can be taken back', () => {
+    const row = householdRow({
+      chores: [fenster],
+      events: [{ ...badDone, id: 'ev', doneOn: today }],
+      members,
+      trips: [],
+      from: today,
+      to: today,
+      today,
+    });
+    expect(row[today]?.map((item) => item.eventId)).toEqual([undefined, 'ev']);
+  });
+
   it('leaves out skipped events and chores without a date until they are done', () => {
     const row = householdRow({
       chores: [chore({ id: 'x', title: 'Keller' })],

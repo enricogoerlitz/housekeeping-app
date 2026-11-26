@@ -133,16 +133,16 @@ Bereich ist. Quelle: ER-07. Offline: vollständig.
   Zurück-Taste des Browsers drücke · Dann sehe ich zuerst „Liste“, dann „Lasagne“.
 
 **REQ-006 — „Zurück“ führt zur Herkunft und nennt sie.** Jede Detailseite (Rezept, Sammlung,
-Restaurant, Aktivität, Reisetasche, Markt, Artikel; die Reise ist nach Spec 0022 ein Fenster) kennt ihre Herkunft aus `von`, beschriftet
-„Zurück“ damit und hebt in Tab-Leiste oder Seitenleiste diesen Bereich hervor; ohne `von` gilt der
-eigene Bereich. Quelle: X-01, X-05, ER-07. Offline: vollständig.
+Restaurant, Aktivität, Reisetasche, Markt, Artikel; die Reise ist nach Spec 0022 ein Fenster) kennt ihre Herkunft aus `von` und beschriftet
+„Zurück“ damit; ohne `von` gilt der eigene Bereich. Hervorgehoben ist seit Spec 0035 (REQ-002)
+immer der Bereich der Seite selbst, nicht die Herkunft. Quelle: X-01, X-05, ER-07. Offline: vollständig.
 
 Ist der vorige Verlaufseintrag die Herkunft, geht „Zurück“ dorthin (mit ihrem Zustand); sonst zur
 Startseite der Herkunft. Werte von `von`: `uebersicht`, `essen`, `kalender`, `liste`, `haushalt`,
 `verwalten`, `reisen`.
 
 - AC-015: Angenommen die Übersicht zeigt Dienstag, 24.11. · Wenn ich „Lasagne“ öffne · Dann steht
-  oben „‹ Übersicht“ und „Übersicht“ ist hervorgehoben · Wenn ich „‹ Übersicht“ wähle · Dann zeigt
+  oben „‹ Übersicht“ und „Essen“ ist hervorgehoben (geändert durch Spec 0035, AC-007) · Wenn ich „‹ Übersicht“ wähle · Dann zeigt
   die Übersicht wieder Dienstag, 24.11.
 - AC-016: Angenommen im Kalender ist der Eintrag „Trattoria Da Enzo“ offen · Wenn ich „Restaurant
   öffnen“ und dann „‹ Kalender“ wähle · Dann sehe ich dieselbe Woche mit dem offenen Eintrag.

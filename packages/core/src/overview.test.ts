@@ -48,7 +48,7 @@ function chore(partial: Partial<Chore> & Pick<Chore, 'id' | 'title'>): Chore {
 describe('REQ-001: the shown day', () => {
   it('spec 0011: titles and section names of the shown day', () => {
     expect(overviewTitle(today, today)).toBe('Freitag, 20. November');
-    expect(overviewTitle('2026-11-21', today)).toBe('Morgen, Samstag 21. November');
+    expect(overviewTitle('2026-11-21', today)).toBe('Samstag, 21. November');
     expect(overviewSections('2026-11-21', today)).toEqual({
       planned: 'Geplant am Samstag',
       chores: 'Zu tun am Samstag',
@@ -56,18 +56,23 @@ describe('REQ-001: the shown day', () => {
     expect(overviewSections(today, today)).toEqual({ planned: 'Heute geplant', chores: 'Zu tun' });
   });
 
-  it('spec 0011 AC-032: a past day reads "Erledigt am Mittwoch"; yesterday gets "Gestern, "', () => {
+  it('spec 0011 AC-032: a past day reads "Erledigt am Mittwoch"', () => {
     expect(overviewSections('2026-11-18', today)).toEqual({
       planned: 'Geplant am Mittwoch',
       chores: 'Erledigt am Mittwoch',
     });
-    expect(overviewTitle('2026-11-19', today)).toBe('Gestern, Donnerstag 19. November');
   });
 
-  it('another year adds the year; tomorrow across New Year stays "Morgen, …"', () => {
+  it('spec 0035 AC-014: tomorrow and yesterday read only weekday and date, like today', () => {
+    expect(overviewTitle('2026-11-27', '2026-11-26')).toBe('Freitag, 27. November');
+    expect(overviewTitle('2026-11-25', '2026-11-26')).toBe('Mittwoch, 25. November');
+    expect(overviewTitle('2026-11-26', '2026-11-26')).toBe('Donnerstag, 26. November');
+  });
+
+  it('another year adds the year, also for tomorrow across New Year', () => {
     expect(overviewTitle('2027-01-08', today)).toBe('Freitag, 8. Januar 2027');
     expect(overviewTitle('2025-11-21', today)).toBe('Freitag, 21. November 2025');
-    expect(overviewTitle('2027-01-01', '2026-12-31')).toBe('Morgen, Freitag 1. Januar');
+    expect(overviewTitle('2027-01-01', '2026-12-31')).toBe('Freitag, 1. Januar 2027');
   });
 });
 
@@ -114,7 +119,7 @@ describe('spec 0020 REQ-001/REQ-002: seven days from yesterday', () => {
       from: '2026-12-30',
       to: '2027-01-05',
     });
-    expect(overviewTitle('2027-01-01', newYear)).toBe('Morgen, Freitag 1. Januar');
+    expect(overviewTitle('2027-01-01', newYear)).toBe('Freitag, 1. Januar 2027');
   });
 
   it('AC-006: at midnight to Mo 23.11. the strip becomes So 22.–Sa 28.11.', () => {
@@ -275,6 +280,15 @@ describe('AC-032: choresOfDay', () => {
       'muell',
       'bad',
       'bett',
+    ]);
+  });
+
+  it('spec 0035 AC-002: today also lists what was done today, with its entry', () => {
+    const doneToday: ChoreEvent = { ...window, id: 'ev-heute', doneOn: today, doneBy: enrico.id };
+    const day = choresOfDay({ ...input, events: [window, doneToday], shown: today });
+    expect(day.kind).toBe('due');
+    expect(day.items.map((item) => [item.status, item.title, item.eventId])).toEqual([
+      ['done', 'Fenster Wohnzimmer', 'ev-heute'],
     ]);
   });
 

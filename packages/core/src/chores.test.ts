@@ -9,6 +9,7 @@ import {
   fasterNotice,
   firstDueOn,
   isBackfillDay,
+  choreEventTakeBack,
   latestBookedEvent,
   nextAssignee,
   nextDueAfter,
@@ -531,6 +532,26 @@ describe('the history chain (Offene Frage 9: the latest booked entry)', () => {
     const pending = event({ id: 'ev-new' });
     expect(latestBookedEvent([thisWeek, pending], 'c')?.id).toBe('ev-new');
     expect(latestBookedEvent([other], 'c')).toBeUndefined();
+  });
+
+  it('spec 0035 AC-001: the latest booked entry of the last 30 days can be taken back', () => {
+    expect(choreEventTakeBack([lastWeek, thisWeek], 'ev-20', today)).toBe('takeBack');
+  });
+
+  it('spec 0035 AC-003: an entry with a later booked one opens the history instead', () => {
+    expect(choreEventTakeBack([lastWeek, thisWeek], 'ev-13', today)).toBe('history');
+    // Booked later for an earlier day: that one is the latest (glossary, Erledigung).
+    expect(choreEventTakeBack([thisWeek, yesterdayLate], 'ev-20', today)).toBe('history');
+    const skipped = event({ id: 'ev-skip', kind: 'skipped', createdAt: '2026-11-20T11:00:00Z' });
+    expect(choreEventTakeBack([thisWeek, skipped], 'ev-20', today)).toBe('history');
+  });
+
+  it('spec 0035: older than 30 days stays in the history; an unknown entry offers nothing', () => {
+    const old = event({ id: 'ev-old', doneOn: '2026-10-20', createdAt: '2026-10-20T09:00:00Z' });
+    expect(choreEventTakeBack([old], 'ev-old', today)).toBe('history');
+    expect(choreEventTakeBack([thisWeek], 'nope', today)).toBeUndefined();
+    const { choreId: _gone, ...orphan } = thisWeek;
+    expect(choreEventTakeBack([orphan], 'ev-20', today)).toBe('history');
   });
 
   it('AC-031: latestBookedEvent orders by microseconds, as the database does (seed rows are 1 µs apart)', () => {

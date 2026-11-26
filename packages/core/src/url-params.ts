@@ -555,17 +555,17 @@ const OWN_SECTION: readonly [prefix: string, section: Origin][] = [
 ];
 
 /**
- * The section a page highlights in the tab bar and the sidebar (REQ-006): a start page its own,
- * a detail page its origin from `von`, or without one the section it lives in. Pages under
- * "Verwalten" (articles, stores, bags, members, feedback, settings) belong to "Verwalten".
+ * The section a page highlights in the tab bar and the sidebar: always the section of the page
+ * itself, a start page its own, a detail page the section it lives in (spec 0035, REQ-002; `von`
+ * only names the target of "Zurück", spec 0019 REQ-006). Pages under "Verwalten" (activities,
+ * articles, stores, bags, members, feedback, settings) belong to "Verwalten".
  */
-export function sectionOfPath(pathname: string, von: string | undefined): Origin {
-  const start = sectionOfStartPath(pathname);
-  if (start) return start;
-  const own =
+export function sectionOfPath(pathname: string): Origin {
+  return (
+    sectionOfStartPath(pathname) ??
     OWN_SECTION.find(([prefix]) => pathname === prefix || pathname.startsWith(prefix))?.[1] ??
-    'verwalten';
-  return sectionOfOrigin(von, own);
+    'verwalten'
+  );
 }
 
 /**
