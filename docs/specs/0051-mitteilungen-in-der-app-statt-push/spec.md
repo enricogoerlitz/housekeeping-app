@@ -162,7 +162,9 @@ Auftrag. Offline: nur online.
    `apply_changes` würde mit der parallelen Spec 0046 kollidieren. Rückbau in einer späteren
    Migration, die `apply_changes` ohnehin neu definiert. ERLEDIGT (Spec 0053, 26.11.2026): die
    Spalten sind mit derselben Veröffentlichung entfernt (Begründung dort, Entscheidung 2).
-10. **Mindestversion 2026.11.3:** Die Migration löscht Tabellen und Funktionen, die 2026.11.2 aufruft
+10. **Mindestversion 2026.11.3** (ersetzt durch Spec 0053, Entscheidung 3: wieder 2026.11.2, weil
+    die Veröffentlichung keine noch nicht veröffentlichte Mindestversion zulässt; 2026.11.2 bleibt
+    ohne Sperre, ihre Push-Aufrufe scheitern harmlos bis zur Aktualisierung der PWA): Die Migration löscht Tabellen und Funktionen, die 2026.11.2 aufruft
     (Geräte, Probe); ältere Apps schreiben danach nicht mehr und werden zum Aktualisieren aufgefordert.
 11. **SQL-Zwillinge entfallen:** Die Fachregeln in SQL (`private.chore_*`, `prep_items`,
     `plan_entry_title`, Texte des Planers u. a.) gab es nur für den Zeitplaner (ADR-0014,
@@ -200,19 +202,19 @@ Mitglieder (alles schon im Cache).
 
 ## Risiken
 
-| Risiko                                         | Gegenmaßnahme                                                                    | Test                                     |
-| ---------------------------------------------- | -------------------------------------------------------------------------------- | ---------------------------------------- |
-| Fremdes Mitglied bestätigt in meiner Zeile     | RPC filtert `member_id = auth.uid()` und Mitgliedschaft, sonst `not_found`       | pgTAP `notice_acknowledgements` (AC-024) |
-| Abgemeldeter Aufruf                            | `revoke … from public, anon`; nur `authenticated`                                | pgTAP (AC-024)                           |
-| Zeile wächst unbegrenzt / riesige Schlüssel    | Prüfung Format und Länge, 100 je Aufruf, 400 je Zeile, Aufräumen 14 Tage         | pgTAP (AC-023, AC-024)                   |
-| Direktes Schreiben an der RPC vorbei           | kein Update-Recht auf `acknowledged_notices`, `apply_changes` lässt nichts zu    | pgTAP (AC-025), `transport-fake.test.ts` |
-| Alte App (2026.11.2) ruft gelöschte RPCs       | Mindestversion 2026.11.3 sperrt das Schreiben, Fehler zeigen den Hinweis         | `migrations.test.mjs` (Kopf `contract`)  |
-| Löschen trifft etwas, das noch gebraucht wird  | Abhängigkeiten per Abfrage ermittelt; `is_silent` bleibt; Tests aller Funktionen | `pnpm exec supabase test db`             |
-| Vault-Löschung scheitert in der Cloud          | `delete from vault.secrets where name in (…)` als Eigentümer `postgres`          | lokale Migration; Enrico-Schritte prüfen |
-| Mitteilung verrät fremde Daten                 | nur aus dem eigenen Cache (RLS), nur eigene Person                               | core `notices.test.ts` (AC-008, AC-013)  |
-| Schlüssel weit in der Zukunft verdrängen echte | Tag höchstens heute + 367 (eine Erinnerung liegt höchstens 366 Tage vorher)      | pgTAP (AC-024), `commands-notices`       |
-| Alte Push-Secrets bleiben in der Cloud stehen  | `supabase secrets unset …` (Enrico-Schritt 2); `push-send` geht mit `--prune`    | `/security-check` 26.11. (niedrig)       |
-| Tipp öffnet eine fremde Adresse                | nur feste Pfade `/haushalt`, `/kalender` mit Ids aus dem Cache; Zod an der Seite | core `notifications.test.ts`             |
+| Risiko                                         | Gegenmaßnahme                                                                            | Test                                     |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------- |
+| Fremdes Mitglied bestätigt in meiner Zeile     | RPC filtert `member_id = auth.uid()` und Mitgliedschaft, sonst `not_found`               | pgTAP `notice_acknowledgements` (AC-024) |
+| Abgemeldeter Aufruf                            | `revoke … from public, anon`; nur `authenticated`                                        | pgTAP (AC-024)                           |
+| Zeile wächst unbegrenzt / riesige Schlüssel    | Prüfung Format und Länge, 100 je Aufruf, 400 je Zeile, Aufräumen 14 Tage                 | pgTAP (AC-023, AC-024)                   |
+| Direktes Schreiben an der RPC vorbei           | kein Update-Recht auf `acknowledged_notices`, `apply_changes` lässt nichts zu            | pgTAP (AC-025), `transport-fake.test.ts` |
+| Alte App (2026.11.2) ruft gelöschte RPCs       | Fehler ändern nichts, PWA aktualisiert sich (Mindestversion 2026.11.3 → 0053: 2026.11.2) | `migrations.test.mjs` (Kopf `contract`)  |
+| Löschen trifft etwas, das noch gebraucht wird  | Abhängigkeiten per Abfrage ermittelt; `is_silent` bleibt; Tests aller Funktionen         | `pnpm exec supabase test db`             |
+| Vault-Löschung scheitert in der Cloud          | `delete from vault.secrets where name in (…)` als Eigentümer `postgres`                  | lokale Migration; Enrico-Schritte prüfen |
+| Mitteilung verrät fremde Daten                 | nur aus dem eigenen Cache (RLS), nur eigene Person                                       | core `notices.test.ts` (AC-008, AC-013)  |
+| Schlüssel weit in der Zukunft verdrängen echte | Tag höchstens heute + 367 (eine Erinnerung liegt höchstens 366 Tage vorher)              | pgTAP (AC-024), `commands-notices`       |
+| Alte Push-Secrets bleiben in der Cloud stehen  | `supabase secrets unset …` (Enrico-Schritt 2); `push-send` geht mit `--prune`            | `/security-check` 26.11. (niedrig)       |
+| Tipp öffnet eine fremde Adresse                | nur feste Pfade `/haushalt`, `/kalender` mit Ids aus dem Cache; Zod an der Seite         | core `notifications.test.ts`             |
 
 ## Enrico-Schritte
 

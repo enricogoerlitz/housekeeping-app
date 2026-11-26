@@ -6,8 +6,8 @@ datum: 2026-11-26
 # 0053 — Aufräumen nach Batch 3
 
 **Quelle:** Koordinator, 26.11.2026, nach dem Merge von 0044–0052 auf `develop`: die beiden
-offenen Rückbauten (Spec 0046, Entscheidung 5; Spec 0051, Entscheidung 9) und der wackelnde Test
-`seed-sql.test.ts`. Regel „Keine Altlasten vor v1“: nichts aus Batch 3 ist veröffentlicht
+offenen Rückbauten (Spec 0046, Entscheidung 5; Spec 0051, Entscheidung 9), der wackelnde Test
+`seed-sql.test.ts` und (nachgereicht) die Mindestversion, die die nächste Veröffentlichung sperrte. Regel „Keine Altlasten vor v1“: nichts aus Batch 3 ist veröffentlicht
 (Produktion: 2026.11.2). **Kritischer Pfad:** ja: Migration (Spalten löschen), RLS.
 
 ## Ziel
@@ -19,8 +19,8 @@ App benutzt, merkt davon nichts. Die Prüfungen in der Pipeline laufen ohne zuf�
 ## Nicht-Ziele
 
 - Keine Änderung an Verhalten, Oberfläche oder Synchronisation.
-- Keine neue Mindestversion und keine Änderung am Prüfen der Mindestversion in der
-  Veröffentlichung (siehe Entscheidung 3).
+- Keine Änderung am Prüfen der Mindestversion in der Veröffentlichung (`scripts/release/version.mjs`
+  bleibt, wie es ist).
 - Kein Aufräumen weiterer Altlasten außerhalb der zwei Rückbauten und des Tests.
 
 ## Anforderungen
@@ -67,24 +67,34 @@ von 5 s. Quelle: Ausfälle in CI (Lauf 45863795034, 5,46 s). Offline: entfällt.
   28.02.2027 oder 01.06.2027 erzeugt wird · Dann ist das SQL jeweils gleich, und jeder Tag ist ein
   eigener Testfall
 
+**REQ-005 — Die nächste Veröffentlichung geht durch.** `public.min_app_version()` ist wieder die
+zuletzt veröffentlichte Version 2026.11.2 statt 2026.11.3 aus Spec 0051. Quelle: Koordinator,
+26.11.2026, nach Spec 0014, Planentscheidung 10. Offline: entfällt.
+
+- AC-009: Angenommen veröffentlicht ist 2026.11.2 und alle Migrationen von `develop` mit dieser ·
+  Wenn die Veröffentlichung `checkMinAppVersion` prüft · Dann ist die Mindestversion 2026.11.2 und
+  die Prüfung meldet nichts; 2026.11.2 bleibt ohne Sperre
+
 ## Entscheidungen
 
 1. **Ein Rückbau für beide** in einer Migration, die `apply_changes` einmal neu definiert (Spec 0051,
-   Entscheidung 9 wollte genau das). Kopf `-- contract: …; min_app_version: 2026.11.3` und
+   Entscheidung 9 wollte genau das). Kopf `-- contract: …; min_app_version: 2026.11.2` und
    `public.min_app_version()` neu mit demselben Wert, weil `scripts/ci/migrations.mjs` beides für
    jedes `drop column` verlangt.
 2. **Sicher für 2026.11.2:** `video_path` gab es dort nie (Spec 0043 ist unveröffentlicht). Die
    alten Einstellungen liest 2026.11.2 über `sync_pull` als ganze Zeile und setzt für fehlende
    Spalten Vorgaben (`=== true`, `?? '07:30'`, `!== false`, `?? []` in `toNotificationSettings`,
-   Tag v2026.11.2), stürzt also nicht ab; Push gibt es seit 0051 ohnehin nicht mehr. Schreiben
-   sperrt die Mindestversion 2026.11.3 aus 0051 (dieselbe Veröffentlichung); und selbst ohne Sperre
-   weist `apply_changes` die alten Spalten mit `invalid_change` ab. Beide Migrationen gehen mit
-   derselben nächsten Veröffentlichung hinaus, deshalb braucht es keine eigene Mindestversion.
-3. OFFEN (aus 0051, nicht hier gelöst): `scripts/release/version.mjs` bricht eine Veröffentlichung
-   ab, wenn die Mindestversion über der zuletzt veröffentlichten liegt (Spec 0014, AC-026). Mit
-   2026.11.3 (0051) und veröffentlicht 2026.11.2 ergibt `checkMinAppVersion` „Mindestversion
-   2026.11.3 ist noch nicht veröffentlicht“: die nächste Veröffentlichung von `develop` scheitert
-   so, mit oder ohne diese Spec. Entscheidung für Koordinator/Enrico.
+   Tag v2026.11.2), stürzt also nicht ab; Push gibt es seit 0051 ohnehin nicht mehr. Seine Aufrufe
+   der Push-RPCs und der alten Einstellungen scheitern mit einem Fehler und ändern nichts
+   (`apply_changes` weist die Spalten mit `invalid_change` ab), bis sich die PWA beim nächsten Start
+   selbst aktualisiert.
+3. **Mindestversion 2026.11.2 statt 2026.11.3** (Koordinator, 26.11.2026; ersetzt Spec 0051,
+   Entscheidung 10): `scripts/release/version.mjs` bricht eine Veröffentlichung ab, wenn die
+   Mindestversion über der zuletzt veröffentlichten liegt (Spec 0014, AC-026, Planentscheidung 10);
+   mit 2026.11.3 und veröffentlicht 2026.11.2 hätte `checkMinAppVersion` „Mindestversion 2026.11.3
+   ist noch nicht veröffentlicht“ gemeldet. Diese Migration setzt sie deshalb auf 2026.11.2 zurück;
+   2026.11.2 bleibt ohne Sperre, was nach Entscheidung 2 harmlos ist (nur PWA, aktualisiert sich
+   selbst).
 4. **Richtlinie `notification_settings_update` entfällt:** ohne Spaltenrecht zum Ändern ist sie
    wirkungslos; `acknowledge_notices` schreibt als `security definer`. Ohne sie gilt „verboten“,
    falls je wieder ein Spaltenrecht dazukommt.
@@ -108,7 +118,8 @@ Gelöscht: `recipes.video_path` (überall `null` seit 0046), die sieben Einstell
 | Risiko                                              | Gegenmaßnahme                                                       | Test                                           |
 | --------------------------------------------------- | ------------------------------------------------------------------- | ---------------------------------------------- |
 | `apply_changes` ändert sich unbemerkt woanders      | Neudefinition aus der letzten Fassung, Rumpf vorher/nachher gedifft | `pnpm exec supabase test db`, Diff im PR       |
-| Alte App 2026.11.2 stürzt an fehlenden Spalten ab   | alte Zuordnung setzt Vorgaben; Schreiben gesperrt (Entscheidung 2)  | Code-Lesung Tag v2026.11.2                     |
+| Alte App 2026.11.2 stürzt an fehlenden Spalten ab   | alte Zuordnung setzt Vorgaben; Schreibfehler ändern nichts (E. 2)   | Code-Lesung Tag v2026.11.2                     |
+| Veröffentlichung bricht an der Mindestversion ab    | Mindestversion = zuletzt veröffentlichte 2026.11.2 (E. 3)           | pgTAP `app_version`, `checkMinAppVersion`      |
 | Fremdes Mitglied, Abgemeldeter ändert Einstellung   | keine Spalte änderbar, keine Update-Richtlinie, RLS beim Lesen      | pgTAP `notification_settings` (AC-004)         |
 | Ungültige Eingabe: alte Spalte über `apply_changes` | Erlaubnisliste ohne die Spalten, `invalid_change`                   | pgTAP `notification_settings`, `recipe_videos` |
 | Kette bricht auf frischer Datenbank                 | alle Migrationen plus `seed.sql` in einer Wegwerf-Datenbank         | Nachweis                                       |
@@ -120,6 +131,11 @@ Gelöscht: `recipes.video_path` (überall `null` seit 0046), die sieben Einstell
 - [x] 3. Client: Transport-Fake, Zuordnungstest, Kommentar `fetch-video` (AC-006)
 - [x] 4. Seed-Test je Tag (AC-008)
 - [x] 5. Kette auf frischer Wegwerf-Datenbank; `/security-check`; Spec 0046/0051 OFFEN erledigt
+- [x] 6. Mindestversion 2026.11.2 (AC-009): pgTAP `app_version`, `notice_acknowledgements` rot →
+      grün; `node scripts/ci/migrations.mjs --base origin/develop` ok; `lastMinAppVersion` über alle
+      Migrationen = 2026.11.2, `checkMinAppVersion({ published: '2026.11.2', next: '2026.11.3' })`
+      meldet nichts. Geteilte DB: nur die Funktion aus der Migration nachgezogen (Migration war
+      schon eingespielt).
 - [x] Nachweis (26.11.2026): pgTAP vorher rot (je 5 von 45 bzw. 44 in `notification_settings`,
       `recipe_videos`), nach `pnpm exec supabase migration up` grün; `pnpm exec supabase test db`
       grün (55 Dateien, 2.632 Tests); `pg_get_functiondef(apply_changes)` vorher/nachher: nur die

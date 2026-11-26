@@ -1,4 +1,4 @@
--- contract: recipes.video_path (Spec 0046) und die Push-Einstellungen (Spec 0051) ohne Leser; min_app_version: 2026.11.3
+-- contract: recipes.video_path (Spec 0046) und die Push-Einstellungen (Spec 0051) ohne Leser; min_app_version: 2026.11.2
 -- Spec 0053 — Aufräumen nach Batch 3: the contract steps of spec 0046 (Entscheidung 5) and spec
 -- 0051 (Decision 9), with apply_changes redefined once for both.
 --
@@ -9,10 +9,12 @@
 --   20261126200418: the columns with their checks and column grants go, and with them the update
 --   policy (nothing is updatable any more; acknowledge_notices writes as security definer). The
 --   row per member with acknowledged_notices stays.
--- * Safe for the released 2026.11.2: it never knew video_path, it maps missing setting columns to
---   defaults, and min_app_version 2026.11.3 (20261126200418, released together with this
---   migration) already stops it writing; apply_changes refuses the old columns anyway. The minimum
---   version stays 2026.11.3; it is restated because scripts/ci/migrations.mjs asks for it.
+-- * Minimum version back to 2026.11.2, the last published one (spec 0014, plan decision 10: it may
+--   be at most that, or the release stops). This supersedes the 2026.11.3 of 20261126200418. The
+--   released 2026.11.2 stays unlocked and copes: it never knew video_path, it maps missing setting
+--   columns to defaults, and its calls to the push RPCs and the old setting columns fail with an
+--   error and change nothing (apply_changes refuses the columns) until the PWA updates itself on
+--   its next start.
 
 -- ---------------------------------------------------------------------------------------------
 -- recipes.video_path
@@ -334,7 +336,7 @@ end
 $$;
 
 -- ---------------------------------------------------------------------------------------------
--- Minimum app version: unchanged (see the header)
+-- Minimum app version: the last published one (see the header)
 -- ---------------------------------------------------------------------------------------------
 
 create or replace function public.min_app_version()
@@ -343,5 +345,5 @@ language sql
 stable
 set search_path = ''
 as $$
-  select '2026.11.3'::text
+  select '2026.11.2'::text
 $$;
