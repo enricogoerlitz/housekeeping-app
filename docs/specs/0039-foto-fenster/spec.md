@@ -141,8 +141,9 @@ ohne sie warnt der Job `media_sweep_not_configured` und löscht nichts.
 - [x] 3. Desktop: Ziehen, Einfügen, Prüfung (AC-003–AC-005)
 - [x] 4. Handy: Mediathek, Kamera, Datei (AC-009)
 - [x] 5. Aufräum-Funktion, Job, Edge Function (AC-010–AC-012)
-- [x] 6. Platz in der Zeile unter dem Foto für das „Teilen“-Symbol aus Spec 0042
-      (`PhotoActionRow` nimmt `children`).
+- [x] 6. „Teilen“-Symbol aus Spec 0042 (`onShare`) rechts in derselben Zeile wie „Foto ändern“.
+      Das Feld „Foto“ im Fenster „Neu“ (Spec 0037, `NewPhotoSlot`) bleibt beim bisherigen
+      Auswählen: dort wäre ein Fenster im Fenster nötig.
 - [x] Nachweis (26.11.2026): `pnpm format:check && pnpm check && pnpm build:web` grün (Tests
       core/api/ui/edge inkl. Abdeckung; `build:web` mit geladener Umgebung).
       `pnpm exec supabase test db supabase/tests/media_orphan_sweep.test.sql` 19/19 ok; die ganze
