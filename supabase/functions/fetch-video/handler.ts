@@ -52,7 +52,7 @@ async function recipeOf(
   if (!row || row.kind !== 'recipe') return undefined;
   const id = String(row.id);
   const household = String(row.household_id);
-  // The object name must match the bucket's policy and recipes_video_path_valid exactly.
+  // The object name must match the bucket's policy and recipes_videos_valid exactly.
   if (!UUID.test(id) || !UUID.test(household)) return undefined;
   const links = Array.isArray(row.links)
     ? row.links.flatMap((link: unknown) =>

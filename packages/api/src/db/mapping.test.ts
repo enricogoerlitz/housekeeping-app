@@ -843,7 +843,8 @@ describe('spec 0013: notification settings, times and reservation in the rows', 
   const settingsRow = (overrides: Row = { id: 'ns-enrico' }): Row => ({
     household_id: DEMO_HOUSEHOLD_ID,
     member_id: ENRICO,
-    // The old setting columns are still in the row (spec 0051, Decision 9) and are left alone.
+    // Spec 0053, AC-006: a row cached before the push settings were dropped still carries them;
+    // they are left alone, so the cache needs no new version.
     daily_summary_enabled: false,
     daily_summary_at: '07:30:00',
     acknowledged_notices: ['chore:c-muell:2026-11-20'],
@@ -859,7 +860,7 @@ describe('spec 0013: notification settings, times and reservation in the rows', 
     return { tables, small };
   }
 
-  it('spec 0051, REQ-005: the own row reads as the acknowledged notices; missing or broken as none', () => {
+  it('spec 0051, REQ-005 and spec 0053, AC-006: the own row reads as the acknowledged notices; missing or broken as none', () => {
     const { tables, small } = withSettings([settingsRow()]);
     const back = rowsToHousehold(tables, small, DEMO_HOUSEHOLD_ID, { memberId: ENRICO });
     expect(back.notificationSettings).toEqual({

@@ -160,8 +160,8 @@ Auftrag. Offline: nur online.
    `*_reminders_enabled`) bleiben in dieser Migration stehen, weil die veröffentlichte Version
    2026.11.2 sie liest und `apply_changes` sie in der Erlaubnisliste führt; eine Neudefinition von
    `apply_changes` würde mit der parallelen Spec 0046 kollidieren. Rückbau in einer späteren
-   Migration, die `apply_changes` ohnehin neu definiert. OFFEN: Rückbau der Spalten (eigene kleine
-   Migration nach der nächsten Veröffentlichung).
+   Migration, die `apply_changes` ohnehin neu definiert. ERLEDIGT (Spec 0053, 26.11.2026): die
+   Spalten sind mit derselben Veröffentlichung entfernt (Begründung dort, Entscheidung 2).
 10. **Mindestversion 2026.11.3:** Die Migration löscht Tabellen und Funktionen, die 2026.11.2 aufruft
     (Geräte, Probe); ältere Apps schreiben danach nicht mehr und werden zum Aktualisieren aufgefordert.
 11. **SQL-Zwillinge entfallen:** Die Fachregeln in SQL (`private.chore_*`, `prep_items`,
