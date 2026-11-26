@@ -41,6 +41,7 @@ const bouldern: Activity = {
   favoriteOf: [],
   ratings: {},
   createdAt: '2026-10-01T12:00:00.000Z',
+  remembered: true,
 };
 
 function byId<T extends { id: Id }>(items: T[]): Record<Id, T> {

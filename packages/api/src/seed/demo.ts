@@ -2,6 +2,7 @@ import {
   addContribution,
   addDays,
   contributionsFromEntry,
+  DEFAULT_ACTIVITY_KINDS,
   findArticleByName,
   isoWeekday,
   normalizeText,
@@ -12,6 +13,7 @@ import {
   toISODate,
   weekdayShort,
   type Activity,
+  type ActivityKind,
   type Amount,
   type Area,
   type Article,
@@ -830,7 +832,8 @@ function buildDemoData(today: ISODate): HouseholdData {
     { ...visit(2, 'rest-enzo', 'plan-enzo-2'), sort: 1, startsAt: '19:30' },
   );
 
-  // ---------- Activities (spec 0004) ----------
+  // ---------- Activities (spec 0004; kinds, series and "Merken" spec 0041) ----------
+  const activityKinds = defaultActivityKinds();
   const activity = (id: string, name: string, extra: Partial<Activity>): Activity => ({
     id,
     name,
@@ -839,11 +842,13 @@ function buildDemoData(today: ISODate): HouseholdData {
     createdBy: ENRICO,
     createdAt,
     ...extra,
+    remembered: extra.remembered ?? true,
   });
   // Bouldern has no ratings and favourites yet (AC-020 starts from there).
   const activities: Activity[] = [
     activity('act-bouldern', 'Bouldern', {
       description: 'In der Boulderhalle, Schuhe gibt es zum Ausleihen.',
+      kindId: 'kind-sport',
     }),
     activity('act-eislaufen', 'Eislaufen', {
       description: 'Öffentlicher Lauf, Schlittschuhe gibt es zum Ausleihen.',
@@ -852,12 +857,14 @@ function buildDemoData(today: ISODate): HouseholdData {
       mapsUrl: 'https://www.google.com/maps/place/Eisstadion+Hohensch%C3%B6nhausen/@52.55,13.5,17z',
       favoriteOf: [NADJA],
       ratings: { [ENRICO]: 5, [NADJA]: 4 },
+      kindId: 'kind-sport',
     }),
     activity('act-spieleabend', 'Spieleabend', {
       description: 'Brettspiele zu Hause, gern mit Freunden.',
       favoriteOf: [ENRICO],
       ratings: { [ENRICO]: 4 },
       createdBy: NADJA,
+      kindId: 'kind-treffen',
     }),
   ];
   const outing = (
@@ -904,6 +911,9 @@ function buildDemoData(today: ISODate): HouseholdData {
     collectionRecipes,
     restaurants,
     activities,
+    activityKinds,
+    activitySeries: [],
+    activitySeriesExceptions: [],
     planEntries,
     items,
     chores,
@@ -911,6 +921,24 @@ function buildDemoData(today: ISODate): HouseholdData {
     feedback,
     ...buildPacking(today),
   };
+}
+
+/** The default kinds of every household (the database seeds the same, spec 0041). */
+function defaultActivityKinds(): ActivityKind[] {
+  const slugs = [
+    'geburtstag',
+    'sport',
+    'ausflug',
+    'kultur',
+    'essen-gehen',
+    'treffen',
+    'reise',
+    'sonstiges',
+  ];
+  return DEFAULT_ACTIVITY_KINDS.map((kind, index) => ({
+    ...kind,
+    id: `kind-${slugs[index] ?? index}`,
+  }));
 }
 
 // ---------- Reisetaschen and packing lists (spec 0012) ----------
@@ -1083,6 +1111,9 @@ function buildTestData(today: ISODate): HouseholdData {
     collectionRecipes: [],
     restaurants: [],
     activities: [],
+    activityKinds: defaultActivityKinds(),
+    activitySeries: [],
+    activitySeriesExceptions: [],
     planEntries: [],
     items: [],
     chores: [],

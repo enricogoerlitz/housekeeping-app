@@ -1,6 +1,7 @@
 import {
   rateRecipe,
   toggleFavorite,
+  useArticlesById,
   useCollectionContents,
   useCurrentMember,
   useMembers,
@@ -8,6 +9,7 @@ import {
 import {
   canPutCollectionOnList,
   collectionListHint,
+  collectionShareText,
   collectionSummary,
   type Recipe,
 } from '@housekeeping/core';
@@ -33,6 +35,8 @@ import { PantryCheckSheet } from '@/features/shopping/pantry-check-sheet';
 import { useBrowseSwipe } from '@/lib/browse-order';
 
 import { useOpenRecipe } from './navigation';
+import { appLink, shareText, useShareFile } from '@/lib/share';
+
 import { NO_INGREDIENTS_HINT, RecipeMoreMenu, useRecipePhoto } from './recipe-actions';
 import { RecipePhoto } from './recipe-cover';
 import { COLLECTION_BADGE } from './recipe-grid';
@@ -40,15 +44,17 @@ import { ContentsSection } from './sections/contents-section';
 import { HeadSection } from './sections/head-section';
 import { IngredientsSection } from './sections/ingredients-section';
 import { LinksSection } from './sections/links-section';
+import { EditControls, EditError } from './sections/edit-controls';
 import { NotesSection } from './sections/notes-section';
-import { useSectionEditor } from './sections/use-section-editor';
+import { usePageEditor } from './sections/use-page-editor';
 import { useDeleteRecipe } from './use-delete-recipe';
 
 /**
  * The page of a collection (spec 0009, REQ-002, E13), at the address of a recipe: the cover (own
  * photo, collage or stack placeholder), the head with the Kennzeichen "Sammlung" and "für 6 ·
  * 2 Rezepte · 4 eigene Zutaten", the ratings, "Einplanen" and "Auf die Liste"; then "Enthält",
- * "Eigene Zutaten" and "Notizen". No Einordnung, no Zubereitung, no "Kochen" and no assistant.
+ * "Eigene Zutaten" and "Notizen". No Einordnung, no Zubereitung, no "Kochen" and no assistant. One
+ * pen at the top edits the whole page (spec 0037, REQ-001).
  * Two columns from the desktop breakpoint like the recipe page: "Enthält" on the left.
  */
 export function CollectionDetailBody(props: {
@@ -59,7 +65,7 @@ export function CollectionDetailBody(props: {
   onDeleting: (leaving: boolean) => void;
 }) {
   // Phones: swipe to the neighbour in the list it was opened from (spec 0034, REQ-008).
-  const swipe = useBrowseSwipe();
+  const browse = useBrowseSwipe();
   const { collection } = props;
   const online = useOnlineOnly();
   const me = useCurrentMember();
@@ -71,12 +77,31 @@ export function CollectionDetailBody(props: {
   const [pantryCheck, setPantryCheck] = useState(false);
   const [planning, setPlanning] = useState(false);
   const photo = useRecipePhoto(collection);
-  const editor = useSectionEditor(collection);
+  const editor = usePageEditor(collection);
+  const editing = editor.draft !== undefined;
+  // While the page is edited nothing leads away without asking (spec 0037, AC-005).
+  const swipe = editing ? undefined : browse;
+  const back = () => editor.guard(props.onBack);
   const { remove, dialog: deleteDialog } = useDeleteRecipe(
     collection,
     props.onBack,
     props.onDeleting,
   );
+
+  // "Teilen" (spec 0042, REQ-004): what it contains and its own ingredients, with the own photo.
+  const articlesById = useArticlesById();
+  const shareFile = useShareFile(collection.photoPath, collection.title);
+  const share = () =>
+    void shareText({
+      title: collection.title,
+      text: collectionShareText({
+        collection,
+        contents,
+        articleName: (articleId) => articlesById[articleId]?.name ?? '',
+        appUrl: appLink(`/rezept/${collection.id}`),
+      }),
+      file: shareFile,
+    });
 
   // AC-025, AC-028: for the collection's own portions; nothing in it reads "Noch nichts enthalten".
   const canGoOnList = canPutCollectionOnList(collection, contents);
@@ -93,7 +118,9 @@ export function CollectionDetailBody(props: {
     />
   );
 
-  const headerRight = (
+  const headerRight = editing ? (
+    <EditControls editor={editor} />
+  ) : (
     <>
       <FavoriteButton
         testID="recipe-favorite"
@@ -103,7 +130,8 @@ export function CollectionDetailBody(props: {
         onPress={() => toggleFavorite(collection.id)}
       />
       {desktop ? actions : null}
-      <RecipeMoreMenu recipe={collection} photo={photo} onDelete={remove} />
+      <EditControls editor={editor} />
+      <RecipeMoreMenu recipe={collection} photo={photo} onDelete={remove} onShare={share} />
       {deleteDialog}
     </>
   );
@@ -121,16 +149,18 @@ export function CollectionDetailBody(props: {
           </Text>
         }
       />
-      <MemberRatings
-        ratings={collection.ratings}
-        members={members}
-        me={me.id}
-        onRate={(stars) => rateRecipe(collection.id, stars)}
-        disabled={online.disabled}
-        hint={online.hint}
-        testID="recipe-rating"
-      />
-      {desktop ? null : <View style={{ marginTop: 4 }}>{actions}</View>}
+      {editing ? null : (
+        <MemberRatings
+          ratings={collection.ratings}
+          members={members}
+          me={me.id}
+          onRate={(stars) => rateRecipe(collection.id, stars)}
+          disabled={online.disabled}
+          hint={online.hint}
+          testID="recipe-rating"
+        />
+      )}
+      {desktop || editing ? null : <View style={{ marginTop: 4 }}>{actions}</View>}
     </Stack>
   );
 
@@ -176,17 +206,18 @@ export function CollectionDetailBody(props: {
           title={collection.title}
           titleOnScroll
           backLabel={props.backLabel}
-          onBack={props.onBack}
+          onBack={back}
           right={headerRight}
           testID="recipe-bar-title"
         />
       }
     >
       <View testID="collection-detail" style={{ gap: isPhone ? 24 : 32, paddingTop: 8 }}>
+        <EditError editor={editor} />
         {desktop ? (
           <>
             <Row gap={32} align="flex-start">
-              <RecipePhoto recipe={collection} photo={photo} style={{ flex: 1 }} />
+              <RecipePhoto recipe={collection} photo={photo} style={{ flex: 1 }} onShare={share} />
               {head}
             </Row>
             <Row gap={32} align="flex-start">
@@ -199,7 +230,7 @@ export function CollectionDetailBody(props: {
           </>
         ) : (
           <>
-            <RecipePhoto recipe={collection} photo={photo} />
+            <RecipePhoto recipe={collection} photo={photo} onShare={share} />
             {head}
             {contained}
             {ingredients}

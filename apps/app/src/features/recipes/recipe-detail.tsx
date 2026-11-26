@@ -10,6 +10,7 @@ import {
   canPutRecipeOnList,
   chooseVariant,
   recipeDietChip,
+  recipeShareText,
   shownVariantId,
   type Id,
   type Recipe,
@@ -33,6 +34,7 @@ import { FavoriteButton } from '@/features/shell/favorite-button';
 import { MemberRatings } from '@/features/shell/member-ratings';
 import { useOnlineOnly } from '@/features/shell/offline';
 import { PantryCheckSheet } from '@/features/shopping/pantry-check-sheet';
+import { appLink, shareText, useShareFile } from '@/lib/share';
 import { usePageParams } from '@/lib/url-state';
 import { useBrowseSwipe } from '@/lib/browse-order';
 
@@ -44,8 +46,9 @@ import { HeadSection } from './sections/head-section';
 import { IngredientsSection } from './sections/ingredients-section';
 import { LinksSection } from './sections/links-section';
 import { NotesSection } from './sections/notes-section';
+import { EditControls, EditError } from './sections/edit-controls';
 import { StepsSection } from './sections/steps-section';
-import { useSectionEditor } from './sections/use-section-editor';
+import { usePageEditor } from './sections/use-page-editor';
 import { RecipePhoto } from './recipe-cover';
 import { useDeleteRecipe } from './use-delete-recipe';
 
@@ -60,8 +63,9 @@ export interface RecipeDetailProps {
 /**
  * A recipe as a whole page in "Essen" (spec 0008, REQ-006, E12): the bar with "‹ Essen", the
  * title once scrolled (phones) and the actions; inside two columns from the desktop breakpoint.
- * Each block (Kopf, Einordnung, Zutaten, Zubereitung, Notizen) is a section with its own pen; at
- * most one is open (REQ-007, `useSectionEditor`).
+ * The page reads without pens; the one pen at the top opens every block (Kopf, Einordnung, Zutaten,
+ * Zubereitung, Notizen, Links) at once, "Speichern" saves them in one step (spec 0037, REQ-001,
+ * `usePageEditor`).
  */
 export function RecipeDetail(props: RecipeDetailProps) {
   const recipe = useRecipe(props.recipeId);
@@ -134,7 +138,7 @@ function RecipeDetailBody(props: {
   onDeleting: (leaving: boolean) => void;
 }) {
   // Phones: swipe to the neighbour in the list it was opened from (spec 0034, REQ-008).
-  const swipe = useBrowseSwipe();
+  const browse = useBrowseSwipe();
   const { recipe } = props;
   const router = useRouter();
   const online = useOnlineOnly();
@@ -166,7 +170,11 @@ function RecipeDetailBody(props: {
   const { open: addingToCollection, set: setAddingToCollection } = windowOf('sammlung');
   const { open: pantryCheck, set: setPantryCheck } = windowOf('vorratscheck');
   const photo = useRecipePhoto(recipe);
-  const editor = useSectionEditor(recipe);
+  const editor = usePageEditor(recipe);
+  const editing = editor.draft !== undefined;
+  // While the page is edited nothing leads away without asking (AC-005).
+  const swipe = editing ? undefined : browse;
+  const back = () => editor.guard(props.onBack);
 
   const activeVariantId = shownVariantId(recipe, variantChoice);
   // No chip without food (spec 0023, AC-029: only "kein Lebensmittel").
@@ -188,6 +196,21 @@ function RecipeDetailBody(props: {
 
   const { remove, dialog: deleteDialog } = useDeleteRecipe(recipe, props.onBack, props.onDeleting);
 
+  // "Teilen" (spec 0042, AC-008): the portions and the variant shown here, with the own photo.
+  const shareFile = useShareFile(recipe.photoPath, recipe.title);
+  const share = () =>
+    void shareText({
+      title: recipe.title,
+      text: recipeShareText({
+        recipe,
+        articleName: (articleId) => articlesById[articleId]?.name ?? '',
+        servings: shownServings,
+        variantId: activeVariantId,
+        appUrl: appLink(`/rezept/${recipe.id}`),
+      }),
+      file: shareFile,
+    });
+
   const actions = (
     <RecipeActions
       recipe={recipe}
@@ -199,7 +222,9 @@ function RecipeDetailBody(props: {
     />
   );
 
-  const headerRight = (
+  const headerRight = editing ? (
+    <EditControls editor={editor} />
+  ) : (
     <>
       <FavoriteButton
         testID="recipe-favorite"
@@ -209,11 +234,13 @@ function RecipeDetailBody(props: {
         onPress={() => toggleFavorite(recipe.id)}
       />
       {desktop ? actions : null}
+      <EditControls editor={editor} />
       <RecipeMoreMenu
         recipe={recipe}
         photo={photo}
         onDelete={remove}
         onAddToCollection={() => setAddingToCollection(true)}
+        onShare={share}
       />
       {deleteDialog}
     </>
@@ -228,16 +255,18 @@ function RecipeDetailBody(props: {
         variantId={activeVariantId}
         editor={editor}
       />
-      <MemberRatings
-        ratings={recipe.ratings}
-        members={members}
-        me={me.id}
-        onRate={(stars) => rateRecipe(recipe.id, stars)}
-        disabled={online.disabled}
-        hint={online.hint}
-        testID="recipe-rating"
-      />
-      {desktop ? null : <View style={{ marginTop: 4 }}>{actions}</View>}
+      {editing ? null : (
+        <MemberRatings
+          ratings={recipe.ratings}
+          members={members}
+          me={me.id}
+          onRate={(stars) => rateRecipe(recipe.id, stars)}
+          disabled={online.disabled}
+          hint={online.hint}
+          testID="recipe-rating"
+        />
+      )}
+      {desktop || editing ? null : <View style={{ marginTop: 4 }}>{actions}</View>}
     </Stack>
   );
 
@@ -270,17 +299,18 @@ function RecipeDetailBody(props: {
           title={recipe.title}
           titleOnScroll
           backLabel={props.backLabel}
-          onBack={props.onBack}
+          onBack={back}
           right={headerRight}
           testID="recipe-bar-title"
         />
       }
     >
       <View testID="recipe-detail" style={{ gap: isPhone ? 24 : 32, paddingTop: 8 }}>
+        <EditError editor={editor} />
         {desktop ? (
           <>
             <Row gap={32} align="flex-start">
-              <RecipePhoto recipe={recipe} photo={photo} style={{ flex: 1 }} />
+              <RecipePhoto recipe={recipe} photo={photo} style={{ flex: 1 }} onShare={share} />
               {head}
             </Row>
             <Row gap={32} align="flex-start">
@@ -293,7 +323,7 @@ function RecipeDetailBody(props: {
           </>
         ) : (
           <>
-            <RecipePhoto recipe={recipe} photo={photo} />
+            <RecipePhoto recipe={recipe} photo={photo} onShare={share} />
             {head}
             {ingredients}
             {steps}

@@ -215,6 +215,10 @@ export function EntrySheet(props: {
       fields.guests = state.guests;
       fields.portions = state.portions;
       if (state.variants.length > 0) fields.variants = state.variants;
+    } else if (entry.kind === 'activity') {
+      // Spec 0041, REQ-005: "Wer ist dabei?" and "Gäste".
+      fields.eaterIds = state.eaterIds;
+      fields.guests = state.guests;
     }
     if (
       reminder.draft.on &&
@@ -481,8 +485,9 @@ export function EntrySheet(props: {
             testID="entry-text-input"
           />
         ) : null}
-        {eats ? (
+        {eats || entry.kind === 'activity' ? (
           <EaterPicker
+            label={entry.kind === 'activity' ? 'Wer ist dabei?' : undefined}
             members={members}
             eaterIds={portions.state.eaterIds}
             guests={portions.state.guests}

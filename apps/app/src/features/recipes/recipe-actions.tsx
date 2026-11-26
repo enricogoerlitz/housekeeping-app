@@ -223,11 +223,12 @@ export function RecipePhotoStatus(props: { photo: RecipePhotoState }) {
   );
 }
 
-type MoreAction = 'collection' | 'photo' | 'photo-remove' | 'delete';
+type MoreAction = 'share' | 'collection' | 'photo' | 'photo-remove' | 'delete';
 
 /**
- * ⋯ of the recipe page (AC-020): "Zu Sammlung hinzufügen" for a recipe only (spec 0009, AC-008,
- * AC-009), "Foto ändern", "Foto entfernen" with an own photo, "Löschen".
+ * ⋯ of the recipe page (AC-020): "Teilen" (spec 0042, REQ-004; offline too), "Zu Sammlung
+ * hinzufügen" for a recipe only (spec 0009, AC-008, AC-009), "Foto ändern", "Foto entfernen" with
+ * an own photo, "Löschen".
  */
 export function RecipeMoreMenu(props: {
   recipe: Recipe;
@@ -235,10 +236,13 @@ export function RecipeMoreMenu(props: {
   onDelete: () => void;
   /** Offered for the kind "Rezept" only; a collection never goes into a collection (D15). */
   onAddToCollection?: () => void;
+  /** "Teilen": runs inside the tap, as the share menu of the browser asks. */
+  onShare?: () => void;
 }) {
   const online = useOnlineOnly();
   const busy = props.photo.busy !== undefined;
   const options: MenuOption<MoreAction>[] = [];
+  if (props.onShare) options.push({ value: 'share', label: 'Teilen' });
   if (props.recipe.kind === 'recipe' && props.onAddToCollection) {
     options.push({
       value: 'collection',
@@ -272,7 +276,8 @@ export function RecipeMoreMenu(props: {
       accessibilityLabel={`Mehr zu ${props.recipe.title}`}
       options={options}
       onChange={(action) => {
-        if (action === 'collection') props.onAddToCollection?.();
+        if (action === 'share') props.onShare?.();
+        else if (action === 'collection') props.onAddToCollection?.();
         else if (action === 'photo') props.photo.change();
         else if (action === 'photo-remove') props.photo.remove();
         else props.onDelete();

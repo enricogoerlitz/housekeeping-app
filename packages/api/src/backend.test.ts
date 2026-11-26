@@ -344,10 +344,10 @@ describe('active household per device', () => {
     switchHousehold(second);
     await vi.waitFor(async () => expect(await storage.get('active')).toBe(second));
     await stopBackend();
-    // Nadja joins and removes Enrico (the last member could not leave).
+    // Nadja joins, then Enrico leaves (the last member could not leave).
     const invitation = await server.transport(ENRICO).inviteMember(second, 'nadja@example.com');
     await server.transport(NADJA).acceptInvitation(invitation);
-    await server.transport(NADJA).removeMember(second, ENRICO);
+    await server.transport(ENRICO).removeMember(second, ENRICO);
 
     await startEnrico();
     expect(getState().activeHouseholdId).toBe(H);
@@ -360,7 +360,7 @@ describe('active household per device', () => {
     await vi.waitFor(async () => expect(await storage.get('active')).toBe(second));
     const invitation = await server.transport(ENRICO).inviteMember(second, 'nadja@example.com');
     await server.transport(NADJA).acceptInvitation(invitation);
-    await server.transport(NADJA).removeMember(second, ENRICO);
+    await server.transport(ENRICO).removeMember(second, ENRICO);
     await engine.pull();
     await settle(engine);
     expect(getState().activeHouseholdId).toBe(H);
@@ -394,8 +394,8 @@ describe('a new cache version (AC-018)', () => {
     return itemId;
   }
 
-  it('spec 0031: version 18 for packing_items.per_day_quantity (after 0030: 17); version 17 loads again', () => {
-    expect(CACHE_VERSION).toBe(18);
+  it('spec 0042: version 20 for stores.maps_url (after 0041: 19); version 19 loads again', () => {
+    expect(CACHE_VERSION).toBe(20);
   });
 
   it('spec 0012: a queued pack entry survives the version bump and is sent', async () => {
@@ -594,7 +594,7 @@ describe('store chosen on this device (spec 0006, REQ-007)', () => {
     );
     const invitation = await server.transport(ENRICO).inviteMember(second, 'nadja@example.com');
     await server.transport(NADJA).acceptInvitation(invitation);
-    await server.transport(NADJA).removeMember(second, ENRICO);
+    await server.transport(ENRICO).removeMember(second, ENRICO);
     await engine.pull();
     await settle(engine);
     expect(getState().storeChoices).toEqual({ [H]: 'store-dm' });

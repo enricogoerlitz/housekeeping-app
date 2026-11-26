@@ -1,6 +1,7 @@
 import { preparePhoto, usePhoto, WRITE_REJECTED_MESSAGE } from '@housekeeping/api';
 import {
   Button,
+  IconButton,
   Photo,
   PhotoViewer,
   Row,
@@ -67,6 +68,8 @@ export function DetailPhotoBlock(props: {
   placeholderIcon: IconName;
   onChange: (photo: Blob) => Promise<void>;
   onRemove: () => Promise<void>;
+  /** "Teilen" at the right end of the photo's row (spec 0042, REQ-004). */
+  onShare?: () => void;
   testPrefix: string;
 }) {
   const online = useOnlineOnly();
@@ -108,13 +111,16 @@ export function DetailPhotoBlock(props: {
           Foto wird geladen …
         </Text>
       ) : null}
-      <PhotoActionRow
-        hasPhoto={hasPhoto}
-        disabled={online.disabled || busy !== undefined}
-        hint={online.hint}
-        onChange={() => setWindowOpen(true)}
-        testPrefix={prefix}
-      />
+      <View style={{ maxWidth: 560 }}>
+        <PhotoActionRow
+          hasPhoto={hasPhoto}
+          disabled={online.disabled || busy !== undefined}
+          hint={online.hint}
+          onChange={() => setWindowOpen(true)}
+          onShare={props.onShare}
+          testPrefix={prefix}
+        />
+      </View>
       {busy ? (
         <Text variant="small" color="muted" testID={`${prefix}-photo-busy`}>
           {busy === 'upload' ? 'Foto wird hochgeladen …' : 'Foto wird entfernt …'}
@@ -144,31 +150,44 @@ export function DetailPhotoBlock(props: {
 
 /**
  * "Foto hinzufügen/ändern" right under a photo (spec 0036, REQ-008), at a restaurant, an
- * activity, a recipe and a collection; it opens the window "Foto" (spec 0039, REQ-001).
- * `children` stand in the same row after it (spec 0042 puts the "Teilen" icon there).
+ * activity, a recipe and a collection; it opens the window "Foto", where "Foto entfernen" is
+ * (spec 0039, REQ-001). "Teilen" stands as an icon at the right end of the row, also offline
+ * (spec 0042, REQ-004, AC-016).
  */
 export function PhotoActionRow(props: {
   hasPhoto: boolean;
   disabled: boolean;
   hint: string | undefined;
   onChange: () => void;
+  onShare?: () => void;
   testPrefix: string;
-  children?: ReactNode;
 }) {
-  if (!CAN_PICK_PHOTO) return <>{props.children}</>;
+  if (!CAN_PICK_PHOTO && !props.onShare) return null;
   return (
-    <Row gap={12} wrap align="center">
-      <Button
-        label={props.hasPhoto ? 'Foto ändern' : 'Foto hinzufügen'}
-        icon="camera"
-        variant="link"
-        size="sm"
-        disabled={props.disabled}
-        hint={props.hint}
-        onPress={props.onChange}
-        testID={`${props.testPrefix}-photo-change`}
-      />
-      {props.children}
+    <Row gap={12} align="center">
+      <View style={{ flex: 1, minWidth: 0 }}>
+        {CAN_PICK_PHOTO ? (
+          <Button
+            label={props.hasPhoto ? 'Foto ändern' : 'Foto hinzufügen'}
+            icon="camera"
+            variant="link"
+            size="sm"
+            disabled={props.disabled}
+            hint={props.hint}
+            onPress={props.onChange}
+            testID={`${props.testPrefix}-photo-change`}
+          />
+        ) : null}
+      </View>
+      {props.onShare ? (
+        <IconButton
+          icon="share"
+          label="Teilen"
+          variant="soft"
+          onPress={props.onShare}
+          testID={`${props.testPrefix}-share`}
+        />
+      ) : null}
     </Row>
   );
 }

@@ -179,10 +179,28 @@ export function createStore(name: string, copyFrom?: Id): Id {
   return store.id;
 }
 
-/** ✎ on a store (AC-044); "Name fehlt", at most 80 characters. */
-export function renameStore(storeId: Id, name: string): void {
-  const trimmed = storeName(name);
-  commit({ path: 'diff' }, () => patchStore(storeId, (store) => ({ ...store, name: trimmed })));
+/** maps_url of stores (spec 0042, REQ-002): an http(s) link of at most 2000 characters. */
+const MAPS_URL = /^https?:\/\/\S+$/i;
+const MAPS_URL_MAX_LENGTH = 2000;
+
+/**
+ * ✎ "Markt bearbeiten" (AC-044; spec 0042, AC-003): name ("Name fehlt", at most 80 characters)
+ * and map link in one patch; an empty link removes it.
+ */
+export function updateStore(storeId: Id, changes: { name: string; mapsUrl?: string }): void {
+  const trimmed = storeName(changes.name);
+  const link = changes.mapsUrl?.trim() || undefined;
+  if (link !== undefined && (!MAPS_URL.test(link) || link.length > MAPS_URL_MAX_LENGTH)) {
+    throw new Error('Das ist kein Karten-Link');
+  }
+  commit({ path: 'diff' }, () =>
+    patchStore(storeId, (store) => {
+      const next: Store = { ...store, name: trimmed };
+      if (link === undefined) delete next.mapsUrl;
+      else next.mapsUrl = link;
+      return next;
+    }),
+  );
 }
 
 /**

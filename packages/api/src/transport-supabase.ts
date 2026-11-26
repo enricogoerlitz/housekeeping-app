@@ -14,6 +14,7 @@ import {
   AddResultSchema,
   AdjustResultSchema,
   ApplyChangesResultSchema,
+  SavedRecipePageSchema,
   AssignAreaResultSchema,
   CheckResultSchema,
   ClearedItemsSchema,
@@ -266,6 +267,13 @@ export function createSupabaseTransport(
     applyChanges: (householdId, ops) =>
       parsed(ApplyChangesResultSchema, 'apply_changes', {
         p_household_id: householdId,
+        p_ops: ops,
+      }),
+    saveRecipePage: (householdId, recipeId, seenUpdatedAt, ops) =>
+      parsed(SavedRecipePageSchema, 'save_recipe_page', {
+        p_household_id: householdId,
+        p_recipe_id: recipeId,
+        p_seen_updated_at: seenUpdatedAt ?? null,
         p_ops: ops,
       }),
     setItemChecked: (itemId, checked, seenCheckSeq, onList) =>

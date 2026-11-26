@@ -2,6 +2,7 @@ import { useCurrentMember, usePlanEntries, useRestaurants, useToday } from '@hou
 import {
   applyRestaurantListFilter,
   cuisineFacets,
+  tagFacets,
   EMPTY_RESTAURANT_LIST_FILTER,
   filterButtonLabel,
   removeRestaurantFilterChip,
@@ -141,6 +142,7 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
   const { query, filter, sort } = list;
   const shuffle = list.shuffleFor(restaurants.map((restaurant) => restaurant.id));
   const cuisines = useMemo(() => cuisineFacets(restaurants), [restaurants]);
+  const tags = useMemo(() => tagFacets(restaurants), [restaurants]);
   const visitsById = useMemo(
     () =>
       new Map(
@@ -302,7 +304,7 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
               testID="restaurant-reshuffle"
             />
           ) : null}
-          {restaurantFilterChips(filter, cuisines).map((chip) => (
+          {restaurantFilterChips(filter, cuisines, tags).map((chip) => (
             <Chip
               key={`${chip.kind}-${chip.value}`}
               label={chip.label}
@@ -324,7 +326,12 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
       }
       panelTitle="Filter"
       panel={
-        <RestaurantFilterPanel filter={filter} onChange={list.setFilter} cuisines={cuisines} />
+        <RestaurantFilterPanel
+          filter={filter}
+          onChange={list.setFilter}
+          cuisines={cuisines}
+          tags={tags}
+        />
       }
       resetLabel="Zurücksetzen"
       onReset={() => list.setFilter(EMPTY_RESTAURANT_LIST_FILTER)}

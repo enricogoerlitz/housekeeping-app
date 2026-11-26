@@ -33,6 +33,7 @@ const bouldern: Activity = {
   favoriteOf: [],
   ratings: {},
   createdAt: '2026-10-01T12:00:00.000Z',
+  remembered: true,
 };
 const lasagne: MealPlanEntry = {
   id: 'entry-lasagne',
@@ -213,7 +214,7 @@ describe('addEntryRequest (spec 0031, REQ-023)', () => {
     });
   });
 
-  it('a restaurant takes its time, an activity everyone at home', () => {
+  it('a restaurant takes its time, an activity who is "dabei" (spec 0041, AC-014)', () => {
     const restaurant = run(
       start(),
       {
@@ -230,16 +231,22 @@ describe('addEntryRequest (spec 0031, REQ-023)', () => {
       eaterIds: [enrico.id],
       startsAt: '19:30',
     });
-    const activity = run(start(), {
-      type: 'choose',
-      choice: { kind: 'activity', activity: bouldern },
-      eaterIds: [],
-      context,
-    });
+    const activity = run(
+      start(),
+      {
+        type: 'choose',
+        choice: { kind: 'activity', activity: bouldern },
+        eaterIds: everyone,
+        context,
+      },
+      { type: 'setEaters', eaterIds: [enrico.id], context },
+      { type: 'setGuests', guests: 2, context },
+    );
     expect(addEntryRequest(activity, everyone)?.input).toMatchObject({
       kind: 'activity',
       activityId: bouldern.id,
-      eaterIds: everyone,
+      eaterIds: [enrico.id],
+      guests: 2,
     });
   });
 

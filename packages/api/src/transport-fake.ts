@@ -19,6 +19,7 @@
 import {
   addDays,
   compareTimestamps,
+  householdOwnerId,
   isHalfStar,
   isReminderPast,
   isWebUrl,
@@ -26,6 +27,10 @@ import {
   PROFILE_COLORS,
   tripDays,
   queueEffect,
+  DEFAULT_ACTIVITY_KINDS,
+  isActivityIcon,
+  normalizeText,
+  SeriesRuleSchema,
   RECIPE_LIMITS,
   type AiSearchRequest,
   type AiSearchResult,
@@ -70,6 +75,7 @@ import {
 
 type RpcName =
   | 'apply_changes'
+  | 'save_recipe_page'
   | 'set_shopping_item_checked'
   | 'set_shopping_item_not_available'
   | 'add_shopping_contributions'
@@ -196,6 +202,7 @@ const CASCADES: Record<string, { table: string; column: string }[]> = {
   activities: [
     { table: 'activity_favorites', column: 'activity_id' },
     { table: 'activity_ratings', column: 'activity_id' },
+    { table: 'activity_series', column: 'activity_id' },
   ],
   feedback: [{ table: 'feedback_votes', column: 'feedback_id' }],
   // Spec 0012: the same table as the diff uses (db/tables.ts).
@@ -230,6 +237,15 @@ const REFERENCES: {
     onDelete: 'restrict',
   },
   { table: 'meal_plan_entries', column: 'activity_id', target: 'activities', onDelete: 'restrict' },
+  // Spec 0041.
+  { table: 'activities', column: 'kind_id', target: 'activity_kinds', onDelete: 'set null' },
+  { table: 'activity_series', column: 'activity_id', target: 'activities', onDelete: 'cascade' },
+  {
+    table: 'activity_series_exceptions',
+    column: 'series_id',
+    target: 'activity_series',
+    onDelete: 'cascade',
+  },
   {
     table: 'meal_plan_entries',
     column: 'leftovers_of_entry_id',
@@ -444,6 +460,9 @@ interface PlaceDeletion {
   /** The old values of the entries that became free text, and the text written. */
   converted: (Row & { new_text: string })[];
   removed: Row[];
+  /** Spec 0041: the series of an activity and their exceptions. */
+  series: Row[];
+  exceptions: Row[];
 }
 type PlaceKind = 'restaurant' | 'activity';
 /** A row of private.deletions: primary key (household, kind, target), the snapshot by kind. */
@@ -608,7 +627,7 @@ function bookedAfter(a: Row, b: Row): boolean {
 /** recipes.kind, its default 'recipe' when a row carries none (spec 0009, E2). */
 const kindOf = (row: Row | undefined) => row?.kind ?? 'recipe';
 
-/** recipes_kind_valid and recipes_kind_fields (spec 0009, E2, E3). */
+/** recipes_kind_valid and recipes_kind_fields (spec 0009, E2, E3; a time since spec 0037). */
 function checkRecipeKind(row: Row): void {
   const kind = kindOf(row);
   if (kind !== 'recipe' && kind !== 'collection')
@@ -623,7 +642,6 @@ function checkRecipeKind(row: Row): void {
     kind === 'recipe'
       ? row.course != null
       : row.course == null &&
-        row.total_minutes == null &&
         row.cuisine == null &&
         row.lead_time == null &&
         empty(row.tags) &&
@@ -854,6 +872,33 @@ function checkRow(householdId: string, table: string, row: Row, tables: TableRow
       (other) => other.id !== row.id && other.name_key === row.name_key,
     );
     if (clash) throw new TransportError('permanent', '23505', 409);
+    // activities_icon_valid (spec 0041, Entscheidung 5).
+    if (row.icon != null && !isActivityIcon(String(row.icon))) {
+      throw new TransportError('permanent', '23514', 400);
+    }
+  }
+  // activity_kinds_icon_valid, activity_kinds_household_id_name_key_key (spec 0041).
+  if (table === 'activity_kinds') {
+    if (!isActivityIcon(String(row.icon))) throw new TransportError('permanent', '23514', 400);
+    const clash = Object.values(tables.activity_kinds ?? {}).some(
+      (other) => other.id !== row.id && other.name_key === row.name_key,
+    );
+    if (clash) throw new TransportError('permanent', '23505', 409);
+  }
+  // activity_series_rule_valid, activity_series_period_valid (spec 0041).
+  if (table === 'activity_series') {
+    const invalidPeriod = row.ends_on != null && String(row.ends_on) < String(row.starts_on);
+    if (!SeriesRuleSchema.safeParse(row.rule).success || invalidPeriod) {
+      throw new TransportError('permanent', '23514', 400);
+    }
+  }
+  // activity_series_exceptions_one_per_occurrence (spec 0041).
+  if (table === 'activity_series_exceptions') {
+    const clash = Object.values(tables.activity_series_exceptions ?? {}).some(
+      (other) =>
+        other.id !== row.id && other.series_id === row.series_id && other.on_date === row.on_date,
+    );
+    if (clash) throw new TransportError('permanent', '23505', 409);
   }
   // chores_as_needed_never_due (spec 0011, AC-043).
   if (table === 'chores' && isAsNeeded(row) && row.next_due_on != null) {
@@ -945,6 +990,13 @@ export function createFakeServer(): FakeServer {
 
   const isMember = (userId: string, householdId: string) =>
     members.some((member) => member.household_id === householdId && member.profile_id === userId);
+  /** private.household_owner (spec 0042, REQ-005): earliest join, ties by the smaller id. */
+  const ownerOf = (householdId: string) =>
+    householdOwnerId(
+      members
+        .filter((member) => member.household_id === householdId)
+        .map((m) => ({ profileId: String(m.profile_id), joinedAt: String(m.created_at) })),
+    );
   const memberIdsOf = (householdId: string) =>
     members
       .filter((member) => member.household_id === householdId)
@@ -2058,6 +2110,34 @@ export function createFakeServer(): FakeServer {
     return result;
   }
 
+  /** The tables save_recipe_page writes (spec 0037): the page's rows, nothing else. */
+  const PAGE_TABLES = new Set(['recipes', 'articles', 'collection_recipes', 'meal_plan_entries']);
+
+  /** save_recipe_page: the recipe locked, compared with what the caller saw, then apply_changes. */
+  function saveRecipePage(
+    userId: string,
+    householdId: string,
+    recipeId: string,
+    seenUpdatedAt: string | undefined,
+    ops: readonly ChangeOp[],
+  ) {
+    if (!isMember(userId, householdId)) throw new TransportError('permanent', 'not_member', 403);
+    const outside = ops.some(
+      (op) =>
+        !('table' in op) ||
+        !PAGE_TABLES.has(op.table) ||
+        (op.table === 'recipes' && (op.kind !== 'patch' || op.id !== recipeId)),
+    );
+    if (outside) throw reject('invalid_change');
+    const row = data.get(householdId)?.recipes?.[recipeId];
+    if (!row) throw new TransportError('permanent', 'row_not_found', 404);
+    const changedMeanwhile =
+      seenUpdatedAt !== undefined && compareTimestamps(String(row.updated_at), seenUpdatedAt) > 0;
+    applyChanges(userId, householdId, ops);
+    const after = data.get(householdId)?.recipes?.[recipeId]?.updated_at;
+    return { changedMeanwhile, ...(after ? { updatedAt: String(after) } : {}) };
+  }
+
   // ---------- sync_pull ----------
 
   function syncPull(userId: string, request: PullRequest): RawPullResult {
@@ -2509,6 +2589,13 @@ export function createFakeServer(): FakeServer {
         favorites: parentRows(place.favorites).map((favorite) => String(favorite.member_id)),
         converted,
         removed: later,
+        series: kind === 'activity' ? parentRows('activity_series') : [],
+        exceptions:
+          kind === 'activity'
+            ? Object.values(before.activity_series_exceptions ?? {}).filter((exception) =>
+                parentRows('activity_series').some((series) => series.id === exception.series_id),
+              )
+            : [],
       };
       let tables = before;
       for (const entry of converted) {
@@ -2545,6 +2632,14 @@ export function createFakeServer(): FakeServer {
     transaction(householdId, (before) => {
       const row: Row = { ...withoutTimestamps(deletion.row), created_at: deletion.row.created_at };
       if (kind === 'activity' && !current.has(String(row.created_by))) row.created_by = null;
+      // A kind deleted meanwhile is not put back (spec 0041).
+      if (
+        kind === 'activity' &&
+        row.kind_id != null &&
+        !before.activity_kinds?.[String(row.kind_id)]
+      ) {
+        row.kind_id = null;
+      }
       checkRow(householdId, place.table, row, before);
       let tables = withRow(before, place.table, row);
       for (const rating of deletion.ratings) {
@@ -2569,6 +2664,18 @@ export function createFakeServer(): FakeServer {
           eater_ids: eaters.filter((id) => current.has(id)),
           cook_id: current.has(String(entry.cook_id)) ? entry.cook_id : null,
         });
+      }
+      for (const series of deletion.series) {
+        if (tables.activity_series?.[series.id]) continue;
+        const eaters = Array.isArray(series.eater_ids) ? series.eater_ids.map(String) : [];
+        tables = withRow(tables, 'activity_series', {
+          ...withoutTimestamps(series),
+          eater_ids: eaters.filter((id) => current.has(id)),
+        });
+      }
+      for (const exception of deletion.exceptions) {
+        if (tables.activity_series_exceptions?.[exception.id]) continue;
+        tables = withRow(tables, 'activity_series_exceptions', withoutTimestamps(exception));
       }
       for (const entry of deletion.converted) {
         const now = tables.meal_plan_entries?.[entry.id];
@@ -2614,6 +2721,10 @@ export function createFakeServer(): FakeServer {
     return {
       applyChanges: (householdId, ops) =>
         run(userId, 'apply_changes', () => applyChanges(userId, householdId, ops)),
+      saveRecipePage: (householdId, recipeId, seenUpdatedAt, ops) =>
+        run(userId, 'save_recipe_page', () =>
+          saveRecipePage(userId, householdId, recipeId, seenUpdatedAt, ops),
+        ),
 
       setItemChecked: (requestedItemId, checked, seenCheckSeq, onList = false) =>
         run(userId, 'set_shopping_item_checked', () => {
@@ -3188,6 +3299,20 @@ export function createFakeServer(): FakeServer {
             updated_at: time,
           });
           createNotificationSettings(id, userId);
+          // households_seed_activity_kinds (spec 0041, REQ-001).
+          transaction(id, (tables) => [
+            withRows(
+              tables,
+              'activity_kinds',
+              DEFAULT_ACTIVITY_KINDS.map((kind) => ({
+                id: crypto.randomUUID(),
+                name: kind.name,
+                name_key: normalizeText(kind.name),
+                icon: kind.icon,
+              })),
+            ),
+            undefined,
+          ]);
           return id;
         }),
 
@@ -3195,6 +3320,8 @@ export function createFakeServer(): FakeServer {
         run(userId, 'invite_member', () => {
           if (!isMember(userId, householdId))
             throw new TransportError('permanent', 'not_member', 403);
+          if (ownerOf(householdId) !== userId)
+            throw new TransportError('permanent', 'not_owner', 403);
           const address = email.trim().toLowerCase();
           if (!/^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/.test(address)) throw reject('invalid_email');
           const already = members.some(
@@ -3255,6 +3382,8 @@ export function createFakeServer(): FakeServer {
         run(userId, 'remove_member', () => {
           if (!isMember(userId, householdId))
             throw new TransportError('permanent', 'not_member', 403);
+          if (profileId !== userId && ownerOf(householdId) !== userId)
+            throw new TransportError('permanent', 'not_owner', 403);
           if (!isMember(profileId, householdId)) {
             throw new TransportError('permanent', 'member_not_found', 404);
           }
@@ -3555,11 +3684,12 @@ export function createFakeServer(): FakeServer {
         created_at: time,
         updated_at: time,
       });
+      // In the given order, so the first one is the owner (spec 0042, REQ-005).
       for (const profileId of memberIds) {
         members.push({
           household_id: household.id,
           profile_id: profileId,
-          created_at: time,
+          created_at: now(),
           updated_at: time,
         });
         createNotificationSettings(household.id, profileId);

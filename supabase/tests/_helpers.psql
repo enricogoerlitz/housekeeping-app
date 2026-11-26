@@ -61,6 +61,15 @@ begin
   insert into public.households (name) values (p_name) returning id into v_id;
   insert into public.household_members (household_id, profile_id)
   select v_id, m from unnest(p_member_ids) as m;
+  -- The members joined in array order, an hour ago, so the first one is the owner (spec 0042,
+  -- REQ-005) and anyone joining in the test joins after them; one transaction alone would give
+  -- them all the same created_at.
+  alter table public.household_members disable trigger household_members_set_timestamps;
+  update public.household_members hm
+  set created_at = now() - interval '1 hour' + m.n * interval '1 second'
+  from unnest(p_member_ids) with ordinality as m (profile_id, n)
+  where hm.household_id = v_id and hm.profile_id = m.profile_id;
+  alter table public.household_members enable trigger household_members_set_timestamps;
   return v_id;
 end
 $$;

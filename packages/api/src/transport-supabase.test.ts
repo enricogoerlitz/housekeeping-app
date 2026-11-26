@@ -324,6 +324,39 @@ describe('supabase transport', () => {
     ).toMatchObject({ code: 'ingredient_article_invalid', constraint: undefined });
   });
 
+  it('spec 0037 AC-006: save_recipe_page with its parameters and answer', async () => {
+    const { client, calls } = stubClient([
+      ok({ changed_meanwhile: true, updated_at: '2026-11-26T10:00:00Z' }),
+      ok({ changed_meanwhile: 'ja' }),
+    ]);
+    const transport = createSupabaseTransport(client);
+    const ops = [
+      { kind: 'patch', table: 'recipes', id: 'r1', changes: { title: 'Omas Apfelkuchen' } },
+    ] as const;
+    expect(await transport.saveRecipePage('h1', 'r1', '2026-11-26T09:00:00Z', ops)).toEqual({
+      changedMeanwhile: true,
+      updatedAt: '2026-11-26T10:00:00Z',
+    });
+    await expect(transport.saveRecipePage('h1', 'r1', undefined, ops)).rejects.toMatchObject({
+      code: 'invalid_response',
+    });
+    expect(calls).toEqual([
+      {
+        fn: 'save_recipe_page',
+        args: {
+          p_household_id: 'h1',
+          p_recipe_id: 'r1',
+          p_seen_updated_at: '2026-11-26T09:00:00Z',
+          p_ops: ops,
+        },
+      },
+      {
+        fn: 'save_recipe_page',
+        args: { p_household_id: 'h1', p_recipe_id: 'r1', p_seen_updated_at: null, p_ops: ops },
+      },
+    ]);
+  });
+
   it('spec 0008: delete_recipe and restore_recipe with their parameters and answers', async () => {
     const { client, calls } = stubClient([
       ok({ converted: 3, removed: 2, collections: 1 }),

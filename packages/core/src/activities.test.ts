@@ -14,6 +14,7 @@ function activity(partial: Partial<Activity> & Pick<Activity, 'id' | 'name'>): A
     ratings: {},
     createdAt: '2026-11-01T12:00:00.000Z',
     ...partial,
+    remembered: partial.remembered ?? true,
   };
 }
 

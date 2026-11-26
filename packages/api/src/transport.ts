@@ -243,6 +243,15 @@ export const ApplyChangesResultSchema = z.object({
 });
 export type ApplyChangesResult = z.infer<typeof ApplyChangesResultSchema>;
 
+/** save_recipe_page (spec 0037, AC-006): whether the recipe changed since the edit mode opened. */
+export const SavedRecipePageSchema = z
+  .object({ changed_meanwhile: z.boolean(), updated_at: z.string().nullable().optional() })
+  .transform((row) => ({
+    changedMeanwhile: row.changed_meanwhile,
+    ...(row.updated_at ? { updatedAt: row.updated_at } : {}),
+  }));
+export type SavedRecipePage = z.infer<typeof SavedRecipePageSchema>;
+
 export const CheckResultSchema = z
   .object({ item_id: z.string(), checked: z.boolean(), check_seq: z.number() })
   .nullable();
@@ -381,6 +390,19 @@ export type PushSubscriptionRow = z.infer<typeof PushSubscriptionRowSchema>;
 export interface Transport {
   // Generic write (ADR-0011)
   applyChanges(householdId: string, ops: readonly ChangeOp[]): Promise<ApplyChangesResult>;
+  /**
+   * The recipe page in one step (spec 0037, REQ-001): `ops` as for applyChanges, limited to the
+   * page's rows (the recipe, new articles, its collection rows, plan entries of a removed
+   * variant), in one transaction. `seenUpdatedAt` is the recipe's `updated_at` when the edit mode
+   * opened; the answer says whether the row changed since (AC-006). The change is applied either
+   * way. `row_not_found` when the recipe is gone or foreign, `invalid_change` for other rows.
+   */
+  saveRecipePage(
+    householdId: string,
+    recipeId: string,
+    seenUpdatedAt: string | undefined,
+    ops: readonly ChangeOp[],
+  ): Promise<SavedRecipePage>;
   // Store queue and list
   /** `onList`: checked on "Liste", not in "Einkaufen" (spec 0025, REQ-006). */
   setItemChecked(
@@ -586,6 +608,7 @@ export function switchable(inner: Transport): SwitchableTransport {
       blocked ? Promise.reject(new TransportError('transient', 'offline')) : call(...args);
   return {
     applyChanges: guard(inner.applyChanges.bind(inner)),
+    saveRecipePage: guard(inner.saveRecipePage.bind(inner)),
     setItemChecked: guard(inner.setItemChecked.bind(inner)),
     setItemNotAvailable: guard(inner.setItemNotAvailable.bind(inner)),
     addShoppingContributions: guard(inner.addShoppingContributions.bind(inner)),

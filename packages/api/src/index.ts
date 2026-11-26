@@ -10,11 +10,13 @@ export * from './commands-articles';
 export * from './commands-stores';
 export * from './commands-recipes';
 export * from './commands-collections';
+export * from './commands-recipe-page';
 export * from './commands-plan';
 export * from './commands-shopping';
 export * from './commands-chores';
 export * from './commands-restaurants';
 export * from './commands-activities';
+export * from './commands-activity-series';
 export * from './commands-places';
 export * from './commands-packing';
 export * from './commands-notifications';
@@ -22,6 +24,7 @@ export * from './assistant';
 export * from './ai';
 export { photoSource, useRecipeImage } from './photos';
 export {
+  loadPhoto,
   PHOTO_UPLOAD_FAILED_MESSAGE,
   preparePhoto,
   removeActivityPhoto,
@@ -53,5 +56,5 @@ export {
   useAuth,
 } from './auth';
 export { TEST_ACCOUNTS, type TestAccountKey } from './dev-accounts';
-export { useHouseholdInvitations, useMyInvitations } from './households';
+export { useHouseholdInvitations, useHouseholdOwnerId, useMyInvitations } from './households';
 export { starterCatalogEntries } from './starter/entries';

@@ -2,14 +2,19 @@ import {
   deleteStore,
   fullAreaOrder,
   moveStoreArea,
-  renameStore,
   setDefaultStore,
   setStoreAreaHidden,
   useAreas,
   useHousehold,
   useStores,
 } from '@housekeeping/api';
-import { moveInOrder, storeOrderIndex, type Id } from '@housekeeping/core';
+import {
+  moveInOrder,
+  parseMapsLink,
+  showsRoute,
+  storeOrderIndex,
+  type Id,
+} from '@housekeeping/core';
 import {
   Badge,
   Button,
@@ -35,12 +40,14 @@ import { useOriginBack, usePageParams } from '@/lib/url-state';
 import { messageOf, ORDER_LABELS } from './labels';
 import { ConfirmDialog } from '@/features/shell/confirm-dialog';
 
-import { AddAreaSheet, NameSheet } from './store-dialogs';
+import { RouteSheet } from '@/features/restaurants/route-sheet';
+
+import { AddAreaSheet, StoreEditSheet } from './store-dialogs';
 
 type StoreAction = 'default' | 'delete';
 
 /**
- * ✎ "Markt umbenennen" and ⋯ ("Als Standard", "Markt löschen …", AC-044, AC-045) of a store, with
+ * ✎ "Markt bearbeiten" (name and map link, spec 0042) and ⋯ ("Als Standard", "Markt löschen …", AC-044, AC-045) of a store, with
  * their windows. In the page header on phones, next to the store's name on wide screens.
  */
 function StoreActions(props: { storeId: Id; onDeleted: () => void }) {
@@ -70,7 +77,7 @@ function StoreActions(props: { storeId: Id; onDeleted: () => void }) {
     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
       <IconButton
         icon="pencil"
-        label="Markt umbenennen"
+        label="Markt bearbeiten"
         disabled={online.disabled}
         hint={online.hint}
         onPress={() => setDialog('rename')}
@@ -103,23 +110,7 @@ function StoreActions(props: { storeId: Id; onDeleted: () => void }) {
         testID="store-menu"
       />
       {dialog === 'rename' ? (
-        <NameSheet
-          title="Markt umbenennen"
-          label="Name"
-          initialName={store.name}
-          submitLabel="Speichern"
-          onSubmit={(name) => {
-            try {
-              renameStore(store.id, name);
-            } catch (caught) {
-              return messageOf(caught);
-            }
-            setDialog(undefined);
-            return undefined;
-          }}
-          onClose={() => setDialog(undefined)}
-          testID="store-rename-sheet"
-        />
+        <StoreEditSheet store={store} onClose={() => setDialog(undefined)} />
       ) : null}
       {dialog === 'delete' ? (
         <ConfirmDialog
@@ -157,9 +148,13 @@ export function StoreOrderPanel(props: { storeId: Id; onDeleted: () => void; sho
   const household = useHousehold();
   const online = useOnlineOnly();
   const [addingArea, setAddingArea] = useState(false);
+  const [routeOpen, setRouteOpen] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const store = stores.find((candidate) => candidate.id === props.storeId);
   if (!store) return null;
+  // The place of the link (coordinates when it has them), else the store's name.
+  const linked = store.mapsUrl ? parseMapsLink(store.mapsUrl) : null;
+  const location = linked?.kind === 'place' ? linked.location : undefined;
 
   const isDefault = household.defaultStoreId === store.id;
   const order = fullAreaOrder(store);
@@ -201,6 +196,23 @@ export function StoreOrderPanel(props: { storeId: Id; onDeleted: () => void; sho
       ) : isDefault ? (
         <View style={{ flexDirection: 'row', marginBottom: 6 }}>
           <Badge label="Standard" tone="accent" />
+        </View>
+      ) : null}
+      {/* "Route" only with a map link (spec 0036, REQ-011; spec 0042, AC-003). */}
+      {showsRoute(store) ? (
+        <View style={{ flexDirection: 'row', marginBottom: 12 }}>
+          <Button
+            label="Route"
+            icon="map-pin"
+            variant="secondary"
+            onPress={() => setRouteOpen(true)}
+            testID="store-route"
+          />
+          <RouteSheet
+            restaurant={{ name: store.name, location }}
+            visible={routeOpen}
+            onClose={() => setRouteOpen(false)}
+          />
         </View>
       ) : null}
       <Text color="muted" style={{ marginBottom: 12 }}>

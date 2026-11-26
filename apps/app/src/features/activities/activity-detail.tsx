@@ -4,13 +4,21 @@ import {
   setActivityPhoto,
   toggleActivityFavorite,
   useActivity,
+  useActivityKindsById,
   useCurrentMember,
   useHousehold,
   useMembers,
   usePlanEntries,
   useToday,
 } from '@housekeeping/api';
-import { showsRoute, isWebUrl, visitsOf, type Activity, type Id } from '@housekeeping/core';
+import {
+  activityShareText,
+  showsRoute,
+  isWebUrl,
+  visitsOf,
+  type Activity,
+  type Id,
+} from '@housekeeping/core';
 import { Button, EmptyState, Icon, IconButton, Menu, Row, Stack, Text } from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
@@ -26,9 +34,10 @@ import { DetailPhotoBlock } from '@/features/shell/own-photo';
 import { useDeletePlace } from '@/features/shell/use-delete-place';
 import { VisitList, VisitsLine, useVisitsJump, type SectionRef } from '@/features/shell/visits';
 import { openLink } from '@/lib/open-link';
+import { appLink, shareText, useShareFile } from '@/lib/share';
 
 import { ActivityFormSheet } from './activity-form';
-import { ACTIVITY_ICON } from './activity-photo';
+import { useActivityIcon } from './activity-photo';
 import { activityVisitsLabel } from './labels';
 
 /** The windows of an activity's detail; they stand in the address (spec 0019, REQ-013). */
@@ -91,6 +100,9 @@ export function ActivityDetail(props: ActivityDetailProps) {
 function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity }) {
   const { activity } = props;
   const online = useOnlineOnly();
+  const kindsById = useActivityKindsById();
+  const icon = useActivityIcon(activity);
+  const kind = activity.kindId === undefined ? undefined : kindsById[activity.kindId];
   const me = useCurrentMember();
   const members = useMembers();
   const household = useHousehold();
@@ -118,16 +130,28 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
       onPress={() => toggleActivityFavorite(activity.id)}
     />
   );
+  // "Teilen" (spec 0042, REQ-004): works offline; the photo goes along where files can be shared.
+  const shareFile = useShareFile(activity.photoPath, activity.name);
+  const share = () =>
+    void shareText({
+      title: activity.name,
+      text: activityShareText(activity, appLink(`/aktivitaet/${activity.id}`)),
+      file: shareFile,
+    });
   const more = (
-    <Menu<'delete'>
+    <Menu<'share' | 'delete'>
       trigger="icon"
       icon="ellipsis"
       label="Mehr"
       accessibilityLabel={`Mehr zu ${activity.name}`}
       options={[
+        { value: 'share', label: 'Teilen' },
         { value: 'delete', label: 'Löschen', disabled: online.disabled, hint: online.hint },
       ]}
-      onChange={remove}
+      onChange={(action) => {
+        if (action === 'delete') remove();
+        else share();
+      }}
       testID="activity-more"
     />
   );
@@ -170,9 +194,10 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
         <DetailPhotoBlock
           photoPath={activity.photoPath}
           name={activity.name}
-          placeholderIcon={ACTIVITY_ICON}
+          placeholderIcon={icon}
           onChange={(photo) => setActivityPhoto(activity.id, photo)}
           onRemove={() => removeActivityPhoto(activity.id)}
+          onShare={share}
           testPrefix="activity"
         />
 
@@ -180,6 +205,18 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
           {props.onBack ? null : (
             <Text variant="title" heading testID="activity-title">
               {activity.name}
+            </Text>
+          )}
+          {kind ? (
+            <Row gap={6}>
+              <Icon name={icon} size={16} color="muted" />
+              <Text variant="small" color="muted" testID="activity-kind">
+                {activity.remembered ? kind.name : `${kind.name} · nicht gemerkt`}
+              </Text>
+            </Row>
+          ) : activity.remembered ? null : (
+            <Text variant="small" color="muted" testID="activity-kind">
+              Nicht gemerkt
             </Text>
           )}
           {activity.description ? (

@@ -1,5 +1,5 @@
 ---
-status: freigegeben # entwurf | freigegeben | umgesetzt | verworfen
+status: umgesetzt # entwurf | freigegeben | umgesetzt | verworfen
 datum: 2026-11-26
 ---
 
@@ -123,6 +123,30 @@ beim Ändern sofort um. Quelle: E-11. Offline: offline lesend.
    Check `recipes_kind_fields` nur für `total_minutes`.
 3. Enrico, 26.11.: Personen als Stepper im Vorratscheck, kein eigener Schritt.
 4. Glossar „Abschnitt der Rezeptseite“ wird ersetzt durch **Bearbeitungsmodus**.
+5. Bau 26.11.: Die Speicher-Funktion ist `save_recipe_page(p_household_id, p_recipe_id,
+p_seen_updated_at, p_ops)`: sie sperrt das Rezept, vergleicht sein `updated_at` mit dem Stand beim
+   Öffnen (`Recipe.updatedAt`, nur gelesen) und ruft `apply_changes` mit denselben Ops auf (Allowlist,
+   RLS, Trigger unverändert). Nur Zeilen-Ops auf `recipes` (Patch genau dieses Rezepts), `articles`
+   (ohne Löschen), `collection_recipes`, `meal_plan_entries`. `apply_changes` und `CACHE_VERSION`
+   bleiben unverändert (die Cache-Zeilen trugen `updated_at` schon).
+6. Bau 26.11.: Zeilen ohne Artikel oder doppelt eingefügte halten „Speichern“ zurück („Erst für jede
+   Zutat einen Artikel wählen“); früher speicherte „Fertig“ den Rest. Eine Seite wird nie halb
+   gespeichert.
+7. Bau 26.11.: „+ Rezept“ öffnet den Bearbeitungsmodus mit „Rezepte zu …“; das Fenster übernimmt die
+   Rezepte wie bisher sofort (eigener Schreibweg, Spec 0009), sie erscheinen dann in „Enthält“.
+   ⋯ → „Entfernen“ einer Zutat im Lesemodus bleibt ein eigener Schreibweg mit Rückfrage (Spec 0036);
+   ⋯ → „Zutat bearbeiten“ öffnet den Bearbeitungsmodus mit der Zeile.
+8. Bau 26.11.: AC-016 braucht „< 2 h“: der Dauer-Filter bekommt „< 2 Std“ (120, Adresse `dauer=120`).
+9. Bau 26.11.: Eine Sammlung trägt keine Schlagworte und passt daher zu keinem Schlagwort-Filter; die
+   leere Sammlung passt zu jeder Ernährung, Gerichtart und Küche, aber zu keinem Dauer-Filter
+   (REQ-005).
+10. Bau 26.11.: Gefragt wird beim Zurück-Link, Android-Zurück, Escape und (Browser) beim Neuladen oder
+    Schließen des Tabs; das Wischen zum Nachbarrezept ist im Bearbeitungsmodus aus.
+11. OFFEN: AC-006 nennt „Nadja“. Rezepte speichern nicht, wer zuletzt geändert hat; der Hinweis lautet
+    daher „Das Rezept wurde zwischendurch geändert. Deine Änderungen gelten, die übrigen bleiben.“
+    Mit Namen bräuchte es eine Spalte `updated_by` (Migration) – Entscheidung Enrico.
+12. OFFEN: Browser-Zurück und der Wechsel des Tabs unten verwerfen ungespeicherte Änderungen ohne
+    Frage (der Router bietet dafür keinen Haken ohne neue Abhängigkeit).
 
 ## Daten
 
@@ -132,21 +156,30 @@ in einer Transaktion, `security invoker` unter RLS.
 
 ## Risiken
 
-| Risiko                                  | Gegenmaßnahme                             | Test                               |
-| --------------------------------------- | ----------------------------------------- | ---------------------------------- |
-| Speichern bricht halb ab                | eine Funktion, eine Transaktion           | pgTAP: Fehler in Zutat → nichts    |
-| Fremder Haushalt / abgemeldet speichert | RLS, Funktion läuft als Aufrufer          | pgTAP fremder Haushalt, abgemeldet |
-| Sammlung bekommt Rezept-Felder (Küche)  | Check lockert nur `total_minutes`         | pgTAP Check                        |
-| Sync verpasst Änderungen                | bestehende Trigger, `updated_at` je Zeile | pgTAP Trigger                      |
+| Risiko                                     | Gegenmaßnahme                             | Test                                |
+| ------------------------------------------ | ----------------------------------------- | ----------------------------------- |
+| Speichern bricht halb ab                   | eine Funktion, eine Transaktion           | pgTAP: Fehler in Zutat → nichts     |
+| Fremder Haushalt / abgemeldet speichert    | RLS, Funktion läuft als Aufrufer          | pgTAP fremder Haushalt, abgemeldet  |
+| Sammlung bekommt Rezept-Felder (Küche)     | Check lockert nur `total_minutes`         | pgTAP Check                         |
+| Sync verpasst Änderungen                   | bestehende Trigger, `updated_at` je Zeile | pgTAP Trigger                       |
+| Funktion schreibt Fremdes (Domain-Ops)     | Filter: nur Zeilen-Ops der Seite          | pgTAP „domain op“, „another recipe“ |
+| Eigenes Speichern gilt als „zwischendurch“ | letztes eigenes `updated_at` gemerkt      | api-Test AC-006 (zweites Speichern) |
 
 ## Umsetzung
 
-- [ ] 1. Migration Check + Speicher-Funktion (`db-change`, pgTAP) (AC-003, AC-004, AC-017)
-- [ ] 2. Bearbeitungsmodus der Rezept- und Sammlungsseite, Lesemodus ohne Stifte (AC-001–AC-007)
-- [ ] 3. Neu-Fenster (AC-008, AC-009)
-- [ ] 4. Aus Rezept übernehmen (core-Funktion + Picker) (AC-010–AC-012)
-- [ ] 5. Filter: Sammlungen, Dauer, Schlagworte (core + Adresse + Auswahlfeld) (AC-013–AC-019)
-- [ ] 6. Personen-Stepper im Vorratscheck (AC-020, AC-021)
-- [ ] 7. Glossar „Bearbeitungsmodus“
-- [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün;
+- [x] 1. Migration Check + Speicher-Funktion (`db-change`, pgTAP) (AC-003, AC-004, AC-017)
+- [x] 2. Bearbeitungsmodus der Rezept- und Sammlungsseite, Lesemodus ohne Stifte (AC-001–AC-007)
+- [x] 3. Neu-Fenster (AC-008, AC-009)
+- [x] 4. Aus Rezept übernehmen (core-Funktion + Picker) (AC-010–AC-012)
+- [x] 5. Filter: Sammlungen, Dauer, Schlagworte (core + Adresse + Auswahlfeld) (AC-013–AC-019)
+- [x] 6. Personen-Stepper im Vorratscheck (AC-020, AC-021)
+- [x] 7. Glossar „Bearbeitungsmodus“
+- [x] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün;
       `pnpm exec supabase test db`; `/security-check`
+
+**Nachweis (26.11.2026):** pgTAP `recipe_page_save` (27) und `collections` grün, rot zuerst;
+`pnpm exec supabase test db` war vor fremden Migrationen anderer Wellen-2-Agenten auf der geteilten
+lokalen DB vollständig grün (55 Dateien, 2700 Tests); core `page-editor`, `recipe-list-0037`, api
+`commands-recipe-page`, `pantry-portions`, `transport-supabase` (rot zuerst); `pnpm format:check &&
+pnpm check && pnpm build:web` grün; Screenshots Handy/Desktop in `tmp/review-0003/0037/`;
+`/security-check`: ein niedriger Befund (Domain-Ops im Filter) behoben.

@@ -1,5 +1,6 @@
 import {
   createActivity,
+  useActivityKindsById,
   readActivityMapsLink,
   removeActivityPhoto,
   resolveActivityShortLink,
@@ -11,16 +12,30 @@ import {
   type ActivityPlace,
 } from '@housekeeping/api';
 import {
+  activityIconOf,
   findDuplicateActivity,
   normalizeWebsite,
   type Activity,
+  type ActivityIcon,
   type GeoPoint,
   type Id,
 } from '@housekeeping/core';
-import { Button, Icon, Notice, Row, Sheet, Stack, Text, TextField, toast } from '@housekeeping/ui';
+import {
+  Button,
+  Icon,
+  Notice,
+  Row,
+  Sheet,
+  Stack,
+  SwitchRow,
+  Text,
+  TextField,
+  toast,
+} from '@housekeeping/ui';
 import { useState } from 'react';
 
 import { useOnlineOnly } from '@/features/shell/offline';
+import { PlaceField } from '@/features/shell/place-field';
 import {
   PhotoChoiceField,
   savePhotoChoice as savePhoto,
@@ -28,6 +43,7 @@ import {
   type PhotoChoice,
 } from '@/features/shell/own-photo';
 
+import { ActivityIconField, ActivityKindField } from './activity-kind-field';
 import { ACTIVITY_ICON } from './activity-photo';
 import { errorMessage, FAILED_MESSAGE } from '@/features/shell/error-message';
 
@@ -61,6 +77,10 @@ export function useActivityForm(activity?: Activity) {
   const [mapsUrl, setMapsUrl] = useState<string | undefined>(activity?.mapsUrl);
   const [website, setWebsiteValue] = useState(activity?.websiteUrl ?? '');
   const [websiteError, setWebsiteError] = useState<string | undefined>();
+  // Spec 0041: "Art", "Symbol" and "Merken" (on for a new activity, REQ-004).
+  const [kindId, setKindId] = useState<Id | undefined>(activity?.kindId);
+  const [icon, setIcon] = useState<ActivityIcon | undefined>(activity?.icon);
+  const [remembered, setRemembered] = useState(activity?.remembered ?? true);
   const photoChoice = usePhotoChoice(activity?.photoPath);
   const { photo, preparing } = photoChoice;
   const [saving, setSaving] = useState(false);
@@ -163,6 +183,9 @@ export function useActivityForm(activity?: Activity) {
         name: name.trim(),
         description: description.trim() || undefined,
         websiteUrl: checkedWebsite.url,
+        kindId,
+        icon,
+        remembered,
         ...place,
       },
       photo,
@@ -190,6 +213,12 @@ export function useActivityForm(activity?: Activity) {
     website,
     setWebsite,
     websiteError,
+    kindId,
+    setKindId,
+    icon,
+    setIcon,
+    remembered,
+    setRemembered,
     photoChoice,
     photo,
     preparing,
@@ -219,6 +248,8 @@ export function ActivityFormFields(props: {
   autoFocus?: boolean;
 }) {
   const { form } = props;
+  const kindsById = useActivityKindsById();
+  const kindIcon = activityIconOf({ kindId: form.kindId }, kindsById);
   const place = form.reading?.status === 'place' ? form.reading.place : undefined;
   const confirmation = place
     ? [
@@ -259,6 +290,15 @@ export function ActivityFormFields(props: {
           />
         ) : null}
       </Stack>
+      <ActivityKindField kindId={form.kindId} onChange={form.setKindId} />
+      <ActivityIconField icon={form.icon} fallback={kindIcon} onChange={form.setIcon} />
+      <SwitchRow
+        label="Merken"
+        description="Steht in der Liste unter „Gemerkt“. Aus für Einmaliges – im Kalender steht es trotzdem."
+        value={form.remembered}
+        onValueChange={form.setRemembered}
+        testID="activity-remembered"
+      />
       <TextField
         label="Beschreibung"
         value={form.description}
@@ -269,66 +309,56 @@ export function ActivityFormFields(props: {
       />
       <PhotoChoiceField
         state={form.photoChoice}
-        placeholderIcon={ACTIVITY_ICON}
+        placeholderIcon={form.icon ?? (form.kindId ? kindIcon : ACTIVITY_ICON)}
         testPrefix="activity"
       />
-      <Stack gap={8}>
-        <Text variant="smallStrong">Ort (optional)</Text>
-        <TextField
-          accessibilityLabel="Karten-Link"
-          value={form.link}
-          onChangeText={form.changeLink}
-          placeholder="Link aus Google Maps oder Apple Karten einfügen"
-          error={form.linkError}
-          hint={
-            form.reading
-              ? undefined
-              : 'In der Karten-App auf „Teilen“ tippen und den Link kopieren.'
-          }
-          left={<Icon name="link" size={18} color="muted" />}
-          testID="activity-link"
-        />
-        {confirmation ? (
-          <Row gap={6}>
-            <Icon name="circle-check" size={16} color="success" />
-            <Text
-              variant="small"
-              color="success"
-              testID="activity-link-ok"
-              style={{ flexShrink: 1 }}
-            >
-              {confirmation}
-            </Text>
-          </Row>
-        ) : null}
-        {form.reading?.status === 'short' ? (
-          <Row gap={6}>
-            <Icon name="info" size={16} color="muted" />
-            <Text
-              variant="small"
-              color="muted"
-              testID="activity-link-short"
-              style={{ flexShrink: 1 }}
-            >
-              Kurzlink erkannt – Ort wird beim Speichern abgerufen
-            </Text>
-          </Row>
-        ) : null}
-        <TextField
-          label="Ortsname"
-          value={form.placeName}
-          onChangeText={form.setPlaceName}
-          placeholder="z. B. Eisstadion Hohenschönhausen"
-          testID="activity-place-name"
-        />
-        <TextField
-          label="Adresse"
-          value={form.address}
-          onChangeText={form.setAddress}
-          placeholder="Straße, Ort"
-          testID="activity-address"
-        />
-      </Stack>
+      {/* The place field of restaurants, activities and stores (spec 0042, REQ-001): the
+          name for the search is the place name ("Eisstadion …"), which also labels "Route". */}
+      <PlaceField
+        title="Ort (optional)"
+        testPrefix="activity"
+        entryName={form.name}
+        searchName={form.placeName}
+        onSearchNameChange={form.setPlaceName}
+        link={form.link}
+        onLinkChange={form.changeLink}
+        linkError={form.linkError}
+        linkHint={
+          form.reading ? undefined : 'In der Karten-App auf „Teilen“ tippen und den Link kopieren.'
+        }
+        address={{ value: form.address, onChange: form.setAddress }}
+        onWebsite={form.setWebsite}
+        linkStatus={
+          <>
+            {confirmation ? (
+              <Row gap={6}>
+                <Icon name="circle-check" size={16} color="success" />
+                <Text
+                  variant="small"
+                  color="success"
+                  testID="activity-link-ok"
+                  style={{ flexShrink: 1 }}
+                >
+                  {confirmation}
+                </Text>
+              </Row>
+            ) : null}
+            {form.reading?.status === 'short' ? (
+              <Row gap={6}>
+                <Icon name="info" size={16} color="muted" />
+                <Text
+                  variant="small"
+                  color="muted"
+                  testID="activity-link-short"
+                  style={{ flexShrink: 1 }}
+                >
+                  Kurzlink erkannt – Ort wird beim Speichern abgerufen
+                </Text>
+              </Row>
+            ) : null}
+          </>
+        }
+      />
       <TextField
         label="Webseite"
         value={form.website}
@@ -371,6 +401,9 @@ export function ActivityFormSheet(props: {
           location: values.draft.location,
           mapsUrl: values.draft.mapsUrl,
           websiteUrl: values.draft.websiteUrl,
+          kindId: values.draft.kindId,
+          icon: values.draft.icon,
+          remembered: values.draft.remembered,
         });
         id = editing.id;
       } else {

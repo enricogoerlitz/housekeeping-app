@@ -1,9 +1,24 @@
-import { addAreaToStore, fullAreaOrder, useAreas, useStores } from '@housekeeping/api';
-import { matchSearchOrCreate, validateAreaName, type Area, type Id } from '@housekeeping/core';
+import {
+  addAreaToStore,
+  fullAreaOrder,
+  resolveMapsShortLink,
+  updateStore,
+  useAreas,
+  useStores,
+} from '@housekeeping/api';
+import {
+  matchSearchOrCreate,
+  parseMapsLink,
+  validateAreaName,
+  type Area,
+  type Id,
+  type Store,
+} from '@housekeeping/core';
 import { SearchOrCreate, Sheet, Stack, Text, TextField, toast } from '@housekeeping/ui';
 import { useState, type ReactNode } from 'react';
 
 import { useOnlineOnly } from '@/features/shell/offline';
+import { PlaceField } from '@/features/shell/place-field';
 
 import { messageOf } from './labels';
 
@@ -65,6 +80,106 @@ export function NameSheet(props: {
         testID={`${props.testID}-name`}
       />
       {props.children}
+    </Sheet>
+  );
+}
+
+/**
+ * ✎ "Markt bearbeiten" (AC-044; spec 0042, REQ-002): the name and the place field with the map
+ * link. A short link is resolved on saving like at a restaurant, so "Route" knows the place.
+ */
+export function StoreEditSheet(props: { store: Store; onClose: () => void }) {
+  const online = useOnlineOnly();
+  const [name, setName] = useState(props.store.name);
+  const [nameError, setNameError] = useState<string | undefined>();
+  const [searchName, setSearchName] = useState('');
+  const [link, setLink] = useState(props.store.mapsUrl ?? '');
+  const [linkError, setLinkError] = useState<string | undefined>();
+  const [saving, setSaving] = useState(false);
+  const reading = link.trim() ? parseMapsLink(link) : undefined;
+
+  const changeLink = (text: string) => {
+    setLink(text);
+    setLinkError(text.trim() && !parseMapsLink(text) ? 'Das ist kein Karten-Link' : undefined);
+  };
+
+  const submit = async () => {
+    if (online.disabled || saving || linkError) return;
+    let mapsUrl = reading?.url;
+    if (reading?.kind === 'short') {
+      setSaving(true);
+      try {
+        mapsUrl = (await resolveMapsShortLink(reading.url)).mapsUrl ?? reading.url;
+      } catch (caught) {
+        setLinkError(messageOf(caught));
+        return;
+      } finally {
+        setSaving(false);
+      }
+    }
+    try {
+      updateStore(props.store.id, { name, mapsUrl });
+    } catch (caught) {
+      const problem = messageOf(caught);
+      if (problem === 'Das ist kein Karten-Link') setLinkError(problem);
+      else setNameError(problem);
+      return;
+    }
+    props.onClose();
+  };
+
+  return (
+    <Sheet
+      visible
+      size="m"
+      title="Markt bearbeiten"
+      onClose={props.onClose}
+      testID="store-rename-sheet"
+      actions={{
+        primary: {
+          label: 'Speichern',
+          disabled: online.disabled || saving,
+          hint: online.hint,
+          onPress: () => void submit(),
+          testID: 'store-rename-sheet-save',
+        },
+      }}
+    >
+      <Stack gap={16}>
+        <TextField
+          label="Name"
+          value={name}
+          onChangeText={(value) => {
+            setName(value);
+            setNameError(undefined);
+          }}
+          placeholder="z. B. Edeka Mitte"
+          error={nameError}
+          hint={online.hint}
+          editable={!online.disabled}
+          autoFocus
+          returnKeyType="done"
+          testID="store-rename-sheet-name"
+        />
+        <PlaceField
+          title="Ort (optional)"
+          testPrefix="store"
+          entryName={name}
+          searchName={searchName}
+          onSearchNameChange={setSearchName}
+          link={link}
+          onLinkChange={changeLink}
+          linkError={linkError}
+          linkHint={link ? undefined : 'Mit dem Karten-Link zeigt der Markt „Route“.'}
+          linkStatus={
+            reading?.kind === 'short' ? (
+              <Text variant="small" color="muted" testID="store-link-short">
+                Kurzlink erkannt – Ort wird beim Speichern abgerufen
+              </Text>
+            ) : null
+          }
+        />
+      </Stack>
     </Sheet>
   );
 }

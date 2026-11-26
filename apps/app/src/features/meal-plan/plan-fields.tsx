@@ -39,11 +39,13 @@ export function EaterPicker(props: {
   onGuests: (guests: number) => void;
   /** Offline: chips and counter greyed out (spec 0021, REQ-006). */
   disabled?: boolean;
+  /** "Wer ist dabei?" for activities (spec 0041, REQ-005). */
+  label?: string;
 }) {
   const { eaterIds, guests } = props;
   return (
     <View>
-      <FieldLabel>Wer isst mit?</FieldLabel>
+      <FieldLabel>{props.label ?? 'Wer isst mit?'}</FieldLabel>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
         {props.members.map((member) => {
           const selected = eaterIds.includes(member.id);

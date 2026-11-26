@@ -24,8 +24,9 @@ import { LINK_LIMIT_HINT, MAX_LINKS } from './web-link';
 // has a draft that lives in the page; "Fertig" checks it (validateSectionDraft) and turns it into a
 // patch of only this section's columns (sectionPatch), which the api sends as one apply_changes.
 // Switching sections or leaving the page saves the valid part (savablePart).
-// A collection (spec 0009, E3, E13) has the sections head (without time), ingredients ("Eigene
-// Zutaten", without variants) and notes; its contents are edited in collection-editor.ts.
+// A collection (spec 0009, E3, E13) has the sections head (with a time since spec 0037),
+// ingredients ("Eigene Zutaten", without variants), notes and links; its contents are edited in
+// collection-editor.ts. The page edits all sections at once (spec 0037, page-editor.ts).
 
 export type RecipeSection = 'head' | 'classification' | 'ingredients' | 'steps' | 'notes' | 'links';
 
@@ -133,7 +134,6 @@ export interface LinksFields {
 
 export interface HeadDraft extends HeadFields {
   section: 'head';
-  /** A collection has no time: it is neither checked nor sent. */
   kind: RecipeKind;
   /** The values when the section was opened: only fields changed since then are sent (AC-029). */
   base: HeadFields;
@@ -330,7 +330,6 @@ function headProblems(draft: HeadDraft): SectionProblem[] {
     problems.push({ field: 'servings', message: '1 bis 100 Portionen' });
   }
   if (
-    draft.kind === 'recipe' &&
     draft.totalMinutes.trim() !== '' &&
     !within(wholeNumber(draft.totalMinutes), 0, RECIPE_LIMITS.minutesMax)
   ) {
@@ -585,15 +584,15 @@ export interface SectionPatch {
   rules: { articleId: Id; rule: ShoppingRule }[];
 }
 
-function headValues(fields: HeadFields, kind: RecipeKind): RecipePatch {
-  const values: RecipePatch = {
+/** A collection has a time too since spec 0037 (REQ-005). */
+function headValues(fields: HeadFields): RecipePatch {
+  const minutes = fields.totalMinutes.trim();
+  return {
     title: fields.title.trim(),
     description: fields.description.trim() || undefined,
     servings: Number(fields.servings.trim()),
+    totalMinutes: minutes === '' ? undefined : Number(minutes),
   };
-  if (kind === 'collection') return values;
-  const minutes = fields.totalMinutes.trim();
-  return { ...values, totalMinutes: minutes === '' ? undefined : Number(minutes) };
 }
 
 function classificationValues(fields: ClassificationFields): RecipePatch {
@@ -761,7 +760,7 @@ export function sectionPatch(
   });
   switch (draft.section) {
     case 'head':
-      return only(changed(headValues(draft, draft.kind), headValues(draft.base, draft.kind)));
+      return only(changed(headValues(draft), headValues(draft.base)));
     case 'classification':
       return only(changed(classificationValues(draft), classificationValues(draft.base)));
     case 'ingredients':
@@ -778,6 +777,50 @@ export function sectionPatch(
     case 'links':
       return only(changed({ links: draft.links }, { links: draft.base.links }));
   }
+}
+
+/**
+ * Whether a section's draft differs from the stored values it was opened with (spec 0037, AC-005:
+ * "Änderungen verwerfen?" asks only then; only changed sections are saved). A field that cannot be
+ * saved as typed counts as changed.
+ */
+export function sectionChanged(draft: RecipeSectionDraft): boolean {
+  switch (draft.section) {
+    case 'head':
+      return !sameValue(headOf(draft), draft.base);
+    case 'classification':
+      return !sameValue(
+        { course: draft.course, cuisine: draft.cuisine, tags: draft.tags },
+        draft.base,
+      );
+    case 'ingredients':
+      return (
+        !sameValue(draft.variants, draft.base.variants) ||
+        !sameValue(draft.rows, draft.base.ingredients.map(rowFromIngredient))
+      );
+    case 'steps':
+      return !sameValue(
+        {
+          steps: draft.steps,
+          leadTimeText: draft.leadTimeText,
+          leadTimeHours: draft.leadTimeHours,
+        },
+        draft.base,
+      );
+    case 'notes':
+      return draft.notes !== draft.base.notes;
+    case 'links':
+      return !sameValue(draft.links, draft.base.links);
+  }
+}
+
+function headOf(fields: HeadFields): HeadFields {
+  return {
+    title: fields.title,
+    description: fields.description,
+    servings: fields.servings,
+    totalMinutes: fields.totalMinutes,
+  };
 }
 
 // ---------- Classification ----------

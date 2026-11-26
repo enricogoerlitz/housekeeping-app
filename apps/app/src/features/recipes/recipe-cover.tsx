@@ -64,6 +64,8 @@ export function RecipePhoto(props: {
   recipe: Recipe;
   photo: RecipePhotoState;
   style?: { flex: number };
+  /** "Teilen" at the right end of the photo's row (spec 0042, REQ-004). */
+  onShare?: () => void;
 }) {
   const online = useOnlineOnly();
   const image = useRecipeImage(props.recipe);
@@ -85,6 +87,7 @@ export function RecipePhoto(props: {
         disabled={online.disabled || props.photo.busy !== undefined}
         hint={online.hint}
         onChange={props.photo.change}
+        onShare={props.onShare}
         testPrefix="recipe"
       />
       <RecipePhotoStatus photo={props.photo} />

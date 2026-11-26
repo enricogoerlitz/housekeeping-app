@@ -1,14 +1,28 @@
-import { addPlanEntry, NOTE_MAX_LENGTH, useHousehold, useHouseholdClock } from '@housekeeping/api';
+import {
+  addPlanEntry,
+  createActivitySeries,
+  NOTE_MAX_LENGTH,
+  useHousehold,
+  useHouseholdClock,
+  useToday,
+} from '@housekeeping/api';
 import {
   checkEntryNote,
+  defaultRepeat,
+  repeatRule,
+  seriesRuleLabel,
   suggestedReminder,
   TIME_FIELD_WORDS,
+  withNote,
   type Id,
   type PlanChoice,
+  type RepeatDraft,
   type TimeOfDay,
 } from '@housekeeping/core';
 import { Stack, TextField, TimeField } from '@housekeeping/ui';
 import { useState } from 'react';
+
+import { RepeatFields } from '@/features/activities/series-fields';
 
 import { PlanSheet } from './plan-sheet';
 
@@ -30,6 +44,11 @@ export function PlanPlaceSheet(props: {
   const [note, setNote] = useState('');
   const [noteError, setNoteError] = useState<string | undefined>();
   const restaurant = props.kind === 'restaurant';
+  const today = useToday();
+  // Spec 0041, REQ-003: "Rhythmus" of an activity; while "Einmalig" it follows the day.
+  const [repeat, setRepeat] = useState<RepeatDraft>(() => defaultRepeat(today));
+  const ruleFor = (choice: PlanChoice) =>
+    !restaurant && choice.date ? repeatRule(repeat) : undefined;
 
   const plan = (choice: PlanChoice) => {
     if (!choice.slotId) return;
@@ -39,6 +58,21 @@ export function PlanPlaceSheet(props: {
       throw new Error(checked.error);
     }
     const time = choice.date ? startsAt : undefined;
+    const rule = ruleFor(choice);
+    if (rule && choice.date) {
+      createActivitySeries({
+        activityId: props.place.id,
+        rule,
+        startsOn: choice.date,
+        endsOn: repeat.until,
+        slotId: choice.slotId,
+        startsAt: time,
+        note,
+        eaterIds: choice.eaterIds,
+        guests: choice.guests,
+      });
+      return;
+    }
     const suggestion =
       choice.date && time
         ? suggestedReminder(choice.date, time, clock().now, household.timeZone)
@@ -48,23 +82,43 @@ export function PlanPlaceSheet(props: {
       slotId: choice.slotId,
       kind: props.kind,
       ...(restaurant ? { restaurantId: props.place.id } : { activityId: props.place.id }),
-      eaterIds: restaurant ? choice.eaterIds : [],
-      guests: restaurant ? choice.guests : 0,
+      // Spec 0041, REQ-005: "Wer ist dabei?" of an activity too.
+      eaterIds: choice.eaterIds,
+      guests: choice.guests,
       note,
       ...(time ? { startsAt: time } : {}),
       ...(suggestion ? { reminder: suggestion } : {}),
     });
   };
 
+  /** While "Einmalig" the weekday and day of month follow the chosen day. */
+  const repeatFollowing = (date: string): RepeatDraft =>
+    repeat.kind === 'none' ? defaultRepeat(date) : repeat;
+
   return (
     <PlanSheet
       title={props.place.name}
-      eaters={restaurant}
+      eatersLabel={restaurant ? undefined : 'Wer ist dabei?'}
+      eatersOptional={!restaurant}
       slot={restaurant ? 'last' : 'first'}
       onPlan={plan}
       onClose={props.onClose}
+      notice={(choice) => {
+        const rule = ruleFor(choice);
+        return rule && choice.date
+          ? `„${withNote(props.place.name, note)}“ ${seriesRuleLabel(rule, choice.date)} eingeplant`
+          : undefined;
+      }}
       extra={(choice) => (
         <Stack gap={18}>
+          {!restaurant && choice.date ? (
+            <RepeatFields
+              value={repeatFollowing(choice.date)}
+              onChange={setRepeat}
+              startsOn={choice.date}
+              today={today}
+            />
+          ) : null}
           {choice.date ? (
             <TimeField
               label="Uhrzeit (optional)"
