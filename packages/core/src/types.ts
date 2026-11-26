@@ -163,6 +163,11 @@ export interface Recipe {
   lastCookedOn?: ISODate;
   cookedCount: number;
   createdAt: string;
+  /**
+   * The server's `updated_at` of the row (read only): the edit mode remembers it and the save tells
+   * whether the recipe changed meanwhile (spec 0037, AC-006). Undefined before the first pull.
+   */
+  updatedAt?: string;
   /** At most 10, each address once (spec 0023, REQ-009). */
   links: RecipeLink[];
 }

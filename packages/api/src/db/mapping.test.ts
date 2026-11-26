@@ -82,7 +82,12 @@ const ratedNow = (ratings: Record<string, number>) =>
 function normalised(data: HouseholdData): HouseholdData {
   return {
     ...data,
-    recipes: data.recipes.map((recipe) => ({ ...recipe, ratedAt: ratedNow(recipe.ratings) })),
+    // Spec 0037: a recipe carries the server's updated_at (AC-006).
+    recipes: data.recipes.map((recipe) => ({
+      ...recipe,
+      ratedAt: ratedNow(recipe.ratings),
+      updatedAt: SERVER_TIME,
+    })),
     restaurants: data.restaurants.map((restaurant) => ({
       ...restaurant,
       ratedAt: ratedNow(restaurant.ratings),

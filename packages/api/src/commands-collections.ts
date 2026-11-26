@@ -128,33 +128,45 @@ export function saveCollectionContents(
   if (!getData().recipes.some((recipe) => recipe.id === collectionId)) return null;
   collectionOf(collectionId);
   if (isOffline()) throw new OfflineError();
+  if (contentsChanges(draft).length === 0) return { confirmed: Promise.resolve() };
+  const confirmed = commitConfirmed(
+    { path: 'diff', maxDeletes: { collection_recipes: removedContents(draft) } },
+    () => applyContents(collectionId, draft),
+  );
+  // The caller may not wait for it; a refusal is reported through onWriteRejected anyway.
+  confirmed.catch(() => {});
+  return { confirmed };
+}
+
+/** The rows "Enthält" removes: as many deletes as the diff may send. */
+export function removedContents(draft: ContentsDraft): number {
+  return contentsChanges(draft).filter((change) => change.type === 'delete').length;
+}
+
+/**
+ * Inside a running command: "Enthält" as drafted on the stored rows (core contentsChanges): order,
+ * portions and variant per row, removed rows go. Shared with the page (spec 0037).
+ */
+export function applyContents(collectionId: Id, draft: ContentsDraft): void {
   const changes = contentsChanges(draft);
-  if (changes.length === 0) return { confirmed: Promise.resolve() };
   const removed = new Set(
     changes.flatMap((change) => (change.type === 'delete' ? [change.id] : [])),
   );
   const patches = new Map(
     changes.flatMap((change) => (change.type === 'patch' ? [[change.id, change.values]] : [])),
   );
-  const confirmed = commitConfirmed(
-    { path: 'diff', maxDeletes: { collection_recipes: removed.size } },
-    () =>
-      updateData((data) => ({
-        ...data,
-        collectionRecipes: data.collectionRecipes.flatMap((row) => {
-          if (row.collectionId !== collectionId) return [row];
-          if (removed.has(row.id)) return [];
-          const values = patches.get(row.id);
-          if (!values) return [row];
-          const next: CollectionRecipe = { ...row, ...values };
-          // A key holding undefined clears the column ("übernimmt", the default variant).
-          if ('servings' in values && values.servings === undefined) delete next.servings;
-          if ('variantId' in values && values.variantId === undefined) delete next.variantId;
-          return [next];
-        }),
-      })),
-  );
-  // The caller may not wait for it; a refusal is reported through onWriteRejected anyway.
-  confirmed.catch(() => {});
-  return { confirmed };
+  updateData((data) => ({
+    ...data,
+    collectionRecipes: data.collectionRecipes.flatMap((row) => {
+      if (row.collectionId !== collectionId) return [row];
+      if (removed.has(row.id)) return [];
+      const values = patches.get(row.id);
+      if (!values) return [row];
+      const next: CollectionRecipe = { ...row, ...values };
+      // A key holding undefined clears the column ("übernimmt", the default variant).
+      if ('servings' in values && values.servings === undefined) delete next.servings;
+      if ('variantId' in values && values.variantId === undefined) delete next.variantId;
+      return [next];
+    }),
+  }));
 }
