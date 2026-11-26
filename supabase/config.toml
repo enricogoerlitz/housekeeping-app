@@ -433,6 +433,8 @@ FOUNDRY_LLM_DEPLOYMENT = "env(FOUNDRY_LLM_DEPLOYMENT)"
 FOUNDRY_SPEECH_REGION = "env(FOUNDRY_SPEECH_REGION)"
 FOUNDRY_STT_LANGUAGE = "env(FOUNDRY_STT_LANGUAGE)"
 FOUNDRY_STT_MODEL = "env(FOUNDRY_STT_MODEL)"
+# ai-image (spec 0040, ADR-0016): the FLUX.2-pro deployment of the same Foundry resource.
+FOUNDRY_IMAGE_DEPLOYMENT = "env(FOUNDRY_IMAGE_DEPLOYMENT)"
 # Not a secret: the browser origins of the local web app and the e2e server.
 ALLOWED_ORIGINS = "http://localhost:8081,http://127.0.0.1:8081,http://127.0.0.1:8790"
 # push-send (spec 0013, ADR-0014): VAPID key pair and the shared secret; the database signs each
@@ -466,6 +468,15 @@ verify_jwt = false
 import_map = "./functions/deno.json"
 
 [functions.fetch-image]
+verify_jwt = false
+import_map = "./functions/deno.json"
+
+# Spec 0040: "Mit KI ausfüllen" and the tab "KI" of the photo window (6 MB bodies with photos).
+[functions.ai-recipe-draft]
+verify_jwt = false
+import_map = "./functions/deno.json"
+
+[functions.ai-image]
 verify_jwt = false
 import_map = "./functions/deno.json"
 

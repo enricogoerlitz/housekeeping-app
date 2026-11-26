@@ -117,9 +117,24 @@ describe('request body', () => {
     const deps = fakeDeps();
     const big = JSON.stringify({ message: 'x'.repeat(MAX_BODY_BYTES) });
     const response = await handleRequest(post(undefined, { raw: big }), deps, echo);
-    expect(response.status).toBe(400);
-    expect(await json(response)).toEqual({ error: 'invalid_request' });
+    expect(response.status).toBe(413);
+    expect(await json(response)).toEqual({ error: 'payload_too_large' });
     expect(deps.client.rpcCalls).toEqual([]);
+  });
+
+  it('an endpoint may take a larger body (spec 0040: 6 MB with photos), and no more', async () => {
+    const roomy = {
+      ...echo,
+      schema: z.strictObject({ message: z.string() }),
+      maxBodyBytes: 200_000,
+    };
+    const fits = JSON.stringify({ message: 'x'.repeat(150_000) });
+    expect((await handleRequest(post(undefined, { raw: fits }), fakeDeps(), roomy)).status).toBe(
+      200,
+    );
+    const over = JSON.stringify({ message: 'x'.repeat(200_000) });
+    const response = await handleRequest(post(undefined, { raw: over }), fakeDeps(), roomy);
+    expect(response.status).toBe(413);
   });
 
   it('rejects invalid JSON, fields outside the contract and other methods', async () => {

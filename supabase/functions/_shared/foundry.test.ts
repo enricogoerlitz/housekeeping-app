@@ -108,6 +108,49 @@ describe('callFoundry', () => {
     }
   });
 
+  it('spec 0040: sends text and image parts (input_image as data URL) as they are', async () => {
+    const deps = fakeDeps({ fetch: async () => foundryReply({ text: 'Linsensuppe' }) });
+    const content = [
+      { type: 'input_text' as const, text: 'Was ist das?' },
+      { type: 'input_image' as const, image_url: 'data:image/jpeg;base64,/9j/4AAQ' },
+    ];
+    await callFoundry(deps, { ...request, input: [{ role: 'user', content }] });
+    const body = JSON.parse(String(deps.fetchMock.mock.calls[0]?.[1]?.body)) as {
+      input: unknown;
+    };
+    expect(body.input).toEqual([{ role: 'user', content }]);
+  });
+
+  it('spec 0040: attempts and time budget can be set per call (2 attempts, 60 s)', async () => {
+    const deps = fakeDeps({
+      fetch: (_url, init) =>
+        new Promise((_resolve, reject) =>
+          init?.signal?.addEventListener('abort', () => reject(new Error('aborted'))),
+        ),
+    });
+    const start = Date.now();
+    const promise = callFoundry(deps, { ...request, attempts: 2, budgetMs: 60_000 });
+    const settled = expectUnavailable(promise);
+    await vi.runAllTimersAsync();
+    await settled;
+    // One attempt waits the whole budget; a second one has no time left.
+    expect(Date.now() - start).toBe(60_000);
+    expect(deps.fetchMock).toHaveBeenCalledTimes(1);
+
+    let calls = 0;
+    const flaky = fakeDeps({
+      fetch: async () => {
+        calls += 1;
+        return new Response('busy', { status: 503 });
+      },
+    });
+    const twice = callFoundry(flaky, { ...request, attempts: 2, budgetMs: 60_000 });
+    const failed = expectUnavailable(twice);
+    await vi.runAllTimersAsync();
+    await failed;
+    expect(calls).toBe(2);
+  });
+
   it('never logs the key, the prompt or the model output', async () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
     const deps = fakeDeps({ fetch: async () => foundryReply({ nope: 'Geheimrezept' }) });

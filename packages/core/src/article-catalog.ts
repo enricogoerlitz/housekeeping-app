@@ -276,6 +276,28 @@ function bestSpelledAlike<T extends { name: string; synonyms: readonly string[] 
   return best?.hit;
 }
 
+function exactHit<T extends Article>(
+  key: string,
+  hits: readonly CatalogHit<T>[],
+): CatalogHit<T> | undefined {
+  return (
+    hits.find((hit) => normalizeText(hit.name) === key) ??
+    hits.find((hit) => hit.synonyms.some((synonym) => normalizeText(synonym) === key))
+  );
+}
+
+/**
+ * The article or available starter entry whose name, else one of whose synonyms, is `name`
+ * (after normalising) — the "sure" match of a pasted line, for one name (spec 0040, AC-002).
+ */
+export function exactCatalogHit<T extends Article>(
+  name: string,
+  articles: readonly T[],
+  catalog: readonly StarterCatalogEntry[],
+): CatalogHit<T> | undefined {
+  return exactHit(normalizeText(name), catalogHits(articles, catalog));
+}
+
 /**
  * Sorts the lines of a pasted block (REQ-002): sure when an article or available starter entry
  * has the name as name or synonym; similar ("Meinst du …?") when one is spelled alike
@@ -290,9 +312,7 @@ export function classifyIngredientLines<T extends Article>(
   const hits = catalogHits(articles, catalog);
   return parseIngredientBlock(text).map((line): IngredientLineClass<T> => {
     const key = normalizeText(line.name);
-    const exact =
-      hits.find((hit) => normalizeText(hit.name) === key) ??
-      hits.find((hit) => hit.synonyms.some((synonym) => normalizeText(synonym) === key));
+    const exact = exactHit(key, hits);
     if (exact) return { status: 'sure', line, hit: exact };
     const similar = bestSpelledAlike(key, hits);
     if (similar) return { status: 'similar', line, suggestion: similar };
