@@ -149,6 +149,10 @@ Entscheidung 3 A. Offline: nur online.
    - **Schalter:** `features.aiRecipes = true` (Entscheidung 1); `features.ai` bleibt aus.
    - **Mikrofon verweigert (AC-009):** Der Hinweis nennt jetzt den Weg „Einstellungen › Apps ›
      Safari › Mikrofon“; er gilt auch für den (ausgeschalteten) Assistenten.
+6. Enrico, 26.11. (nach der Vorschau): Beim Diktat (REQ-002) erscheinen die erkannten Wörter live
+   **im Feld** an der Cursorstelle, nicht mehr als Zeile „Ich höre: …“ darunter. Solange das
+   Mikrofon hört, ist das Feld nur lesbar; der zweite Tipp übernimmt den Text (AC-008 gilt
+   unverändert). Vor dem ersten Wort zeigt ein leeres Feld „Ich höre zu …“ als Platzhalter.
 
 ## Daten
 

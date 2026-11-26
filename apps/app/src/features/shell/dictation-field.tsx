@@ -1,6 +1,6 @@
 import { insertAtCursor } from '@housekeeping/core';
 import { IconButton, Text, TextField, type TextFieldProps } from '@housekeeping/ui';
-import { useLayoutEffect, useRef } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 
 import { useOnlineOnly } from '@/features/shell/offline';
@@ -9,8 +9,10 @@ import { useDictation } from '@/lib/use-dictation';
 
 /**
  * A text field of the AI (spec 0040, REQ-002) with a microphone: the first tap listens, the
- * second puts what was understood at the cursor (core insertAtCursor, AC-008). A refused
- * microphone shows how to allow it, and typing goes on (AC-009). Online only, like the AI.
+ * second puts what was understood at the cursor (core insertAtCursor, AC-008). While listening,
+ * the words appear live inside the field at the cursor, not in a line below it (spec 0040,
+ * decision 6); the field is read-only until the second tap. A refused microphone shows how to
+ * allow it, and typing goes on (AC-009). Online only, like the AI.
  */
 export function DictationField(
   props: Omit<TextFieldProps, 'value' | 'onChangeText' | 'right' | 'onSelectionChange'> & {
@@ -28,6 +30,13 @@ export function DictationField(
   });
   const listening = dictation.status === 'listening';
   const busy = dictation.status === 'starting' || dictation.status === 'stopping';
+  const hearing = listening || dictation.status === 'stopping';
+  // Where the live words go: the caret at the moment listening started.
+  const [anchor, setAnchor] = useState<{ start: number; end: number } | undefined>(undefined);
+  const shown =
+    hearing && dictation.transcript
+      ? insertAtCursor(value, anchor, dictation.transcript).text
+      : value;
 
   const press = () => {
     if (listening) {
@@ -38,7 +47,10 @@ export function DictationField(
       });
       return;
     }
-    if (dictation.status === 'idle') dictation.start();
+    if (dictation.status === 'idle') {
+      setAnchor(selection.current);
+      dictation.start();
+    }
   };
 
   const mic =
@@ -57,22 +69,21 @@ export function DictationField(
     <View style={{ gap: 6 }}>
       <TextField
         {...field}
-        value={value}
+        value={shown}
+        editable={hearing ? false : field.editable}
+        placeholder={hearing && !value ? 'Ich höre zu …' : field.placeholder}
         onChangeText={(text) => {
           onChangeText(text);
           if (dictation.error) dictation.dismissError();
         }}
         onSelectionChange={(event) => {
+          // The live words move the caret; the insert point stays where the person put it.
+          if (hearing) return;
           selection.current = event.nativeEvent.selection;
         }}
         right={mic}
         testID={testID}
       />
-      {listening || dictation.status === 'stopping' ? (
-        <Text variant="small" color="muted" testID={testID ? `${testID}-listening` : undefined}>
-          {dictation.transcript ? `Ich höre: ${dictation.transcript}` : 'Ich höre zu …'}
-        </Text>
-      ) : null}
       {dictation.error ? (
         <Text variant="small" color="warn" testID={testID ? `${testID}-mic-error` : undefined}>
           {dictation.error}
