@@ -23,6 +23,7 @@ import { useState } from 'react';
 import { View } from 'react-native';
 
 import { ValuePicker } from '@/features/recipes/sections/classification-section';
+import { PlaceField } from '@/features/shell/place-field';
 import {
   PhotoChoiceField,
   savePhotoChoice,
@@ -72,6 +73,8 @@ export function useRestaurantForm(
   });
   const [linkError, setLinkError] = useState<string | undefined>();
   const [name, setNameValue] = useState(initial.name);
+  // "Name für die Suche" (spec 0042, REQ-001): only for the pin, not stored.
+  const [searchName, setSearchName] = useState('');
   const [nameError, setNameError] = useState<string | undefined>();
   const [cuisine, setCuisine] = useState(restaurant?.cuisine ?? '');
   const [address, setAddress] = useState(restaurant?.address ?? '');
@@ -120,8 +123,10 @@ export function useRestaurantForm(
     }
     setLinkError(undefined);
     setReading(next);
+    // A name typed before the link (spec 0042: name, pin, link) stays.
+    const ownName = name.trim() !== '' && name !== filledName;
     if (next.status === 'place' && next.draft.name) {
-      setName(next.draft.name);
+      if (!ownName) setName(next.draft.name);
     } else if (filledName && name === filledName) {
       setNameValue('');
     }
@@ -182,6 +187,8 @@ export function useRestaurantForm(
     name,
     setName,
     nameError,
+    searchName,
+    setSearchName,
     /** Shows an error a command threw at the name field. */
     fail: (error: unknown) => setNameError(message(error)),
     cuisine,
@@ -242,67 +249,6 @@ export function RestaurantFormFields(props: {
   const taken = new Set(form.tags.map(normalizeText));
   return (
     <Stack gap={16}>
-      <Stack gap={8}>
-        <TextField
-          label="Karten-Link"
-          value={form.link}
-          onChangeText={form.changeLink}
-          placeholder="Link aus Google Maps oder Apple Karten einfügen"
-          autoFocus={props.focus === 'link'}
-          error={form.linkError}
-          hint={
-            form.reading || form.link
-              ? undefined
-              : 'In der Karten-App auf „Teilen“ tippen und den Link kopieren.'
-          }
-          left={<Icon name="link" size={18} color="muted" />}
-          testID="restaurant-link"
-        />
-        {confirmation ? (
-          <Row gap={6}>
-            <Icon name="circle-check" size={16} color="success" />
-            <Text
-              variant="small"
-              color="success"
-              testID="restaurant-link-ok"
-              style={{ flexShrink: 1 }}
-            >
-              {confirmation}
-            </Text>
-          </Row>
-        ) : null}
-        {form.reading?.status === 'short' ? (
-          <Row gap={6}>
-            <Icon name="info" size={16} color="muted" />
-            <Text
-              variant="small"
-              color="muted"
-              testID="restaurant-link-short"
-              style={{ flexShrink: 1 }}
-            >
-              Kurzlink erkannt – Ort wird beim Speichern abgerufen
-            </Text>
-          </Row>
-        ) : null}
-        {form.duplicate ? (
-          <Notice
-            testID="restaurant-duplicate"
-            text={`Gibt es schon: ${form.duplicate.name}`}
-            action={
-              <Button
-                label={props.openLabel ?? 'Öffnen'}
-                variant="link"
-                size="sm"
-                onPress={() => {
-                  if (form.duplicate) props.onOpenExisting(form.duplicate);
-                }}
-                testID="restaurant-duplicate-open"
-              />
-            }
-          />
-        ) : null}
-      </Stack>
-
       <TextField
         label="Name"
         value={form.name}
@@ -311,6 +257,71 @@ export function RestaurantFormFields(props: {
         autoFocus={props.focus === 'name'}
         error={form.nameError}
         testID="restaurant-name"
+      />
+      {/* The place field of restaurants, activities and stores (spec 0042, REQ-001). */}
+      <PlaceField
+        testPrefix="restaurant"
+        entryName={form.name}
+        searchName={form.searchName}
+        onSearchNameChange={form.setSearchName}
+        link={form.link}
+        onLinkChange={form.changeLink}
+        linkError={form.linkError}
+        linkHint={
+          form.reading || form.link
+            ? undefined
+            : 'In der Karten-App auf „Teilen“ tippen und den Link kopieren.'
+        }
+        linkAutoFocus={props.focus === 'link'}
+        address={{ value: form.address, onChange: form.setAddress }}
+        onWebsite={form.setWebsite}
+        linkStatus={
+          <>
+            {confirmation ? (
+              <Row gap={6}>
+                <Icon name="circle-check" size={16} color="success" />
+                <Text
+                  variant="small"
+                  color="success"
+                  testID="restaurant-link-ok"
+                  style={{ flexShrink: 1 }}
+                >
+                  {confirmation}
+                </Text>
+              </Row>
+            ) : null}
+            {form.reading?.status === 'short' ? (
+              <Row gap={6}>
+                <Icon name="info" size={16} color="muted" />
+                <Text
+                  variant="small"
+                  color="muted"
+                  testID="restaurant-link-short"
+                  style={{ flexShrink: 1 }}
+                >
+                  Kurzlink erkannt – Ort wird beim Speichern abgerufen
+                </Text>
+              </Row>
+            ) : null}
+            {form.duplicate ? (
+              <Notice
+                testID="restaurant-duplicate"
+                text={`Gibt es schon: ${form.duplicate.name}`}
+                action={
+                  <Button
+                    label={props.openLabel ?? 'Öffnen'}
+                    variant="link"
+                    size="sm"
+                    onPress={() => {
+                      if (form.duplicate) props.onOpenExisting(form.duplicate);
+                    }}
+                    testID="restaurant-duplicate-open"
+                  />
+                }
+              />
+            ) : null}
+          </>
+        }
       />
       {/* The household's cuisines as suggestions, like at a recipe (spec 0036, AC-009). */}
       <View style={{ gap: 6 }}>
@@ -336,13 +347,6 @@ export function RestaurantFormFields(props: {
           />
         )}
       </View>
-      <TextField
-        label="Adresse"
-        value={form.address}
-        onChangeText={form.setAddress}
-        placeholder="Straße, Ort"
-        testID="restaurant-address"
-      />
       <View style={{ gap: 6 }}>
         <Text variant="smallStrong">Preis</Text>
         <Row gap={8} wrap>

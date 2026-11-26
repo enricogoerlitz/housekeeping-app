@@ -356,7 +356,7 @@ describe('photos on the device (AC-011)', () => {
     const path = await photoFromNadja('act-bouldern');
     expect(await loadPhoto(path)).toBeDefined();
     expect(await fx.storage.get(`media:${path}`)).toBeDefined();
-    await fx.server.transport(NADJA).removeMember(H, ENRICO);
+    await fx.server.transport(ENRICO).removeMember(H, ENRICO);
     await engine.pull();
     expect(getState().households[H]).toBeUndefined();
     expect(await fx.storage.get(`household:${H}`)).toBeUndefined();
