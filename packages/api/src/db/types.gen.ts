@@ -2042,6 +2042,15 @@ export type Database = {
       restore_cleared_items: { Args: { p_household_id: string; p_items: Json }; Returns: number };
       restore_recipe: { Args: { recipe_id: string }; Returns: boolean };
       restore_restaurant: { Args: { restaurant_id: string }; Returns: boolean };
+      save_recipe_page: {
+        Args: {
+          p_household_id: string;
+          p_ops: Json;
+          p_recipe_id: string;
+          p_seen_updated_at: string;
+        };
+        Returns: Json;
+      };
       send_test_push: { Args: { p_endpoint: string }; Returns: undefined };
       set_activity_favorite: {
         Args: { activity_id: string; favorite: boolean };

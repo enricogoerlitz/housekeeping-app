@@ -52,7 +52,7 @@ export * from './packing-actions';
 export * from './prep';
 export * from './collections';
 export * from './collection-editor';
-export * from './section-editor';
+export * from './page-editor';
 export * from './cooking';
 export * from './cooking-history';
 export * from './notifications';

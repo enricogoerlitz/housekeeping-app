@@ -20,7 +20,6 @@ import {
   Badge,
   Chip,
   ChoiceChips,
-  EditableSection,
   List,
   ListRow,
   SearchOrCreate,
@@ -38,8 +37,8 @@ import { useOnlineOnly } from '@/features/shell/offline';
 
 import { COURSES } from '../recipe-filter-panel';
 
-import { SectionError, useSectionFrame } from './common';
-import type { SectionEditor } from './use-section-editor';
+import { RecipeSection } from './common';
+import type { PageEditor } from './use-page-editor';
 
 /**
  * Einordnung (REQ-007): Gerichtart, Küche and Schlagworte, and the diet that follows from the
@@ -52,15 +51,14 @@ export function ClassificationSection(props: {
   /** The chip of the shown variant (core recipeDietChip); undefined = no chip. */
   diet: Diet | undefined;
   variantId: Id | undefined;
-  editor: SectionEditor;
+  editor: PageEditor;
 }) {
   const { recipe, diet, editor } = props;
   const [why, setWhy] = useState(false);
-  const frame = useSectionFrame(editor, 'classification', 'Einordnung');
-  const draft = editor.draft?.section === 'classification' ? editor.draft : undefined;
+  const draft = editor.draft?.classification;
   const plant = diet === 'vegan' || diet === 'vegetarian';
   return (
-    <EditableSection {...frame} inline testID="recipe-classification">
+    <RecipeSection title="Einordnung" inline testID="recipe-classification">
       {draft ? (
         <ClassificationFields draft={draft} editor={editor} />
       ) : (
@@ -99,7 +97,7 @@ export function ClassificationSection(props: {
           onClose={() => setWhy(false)}
         />
       ) : null}
-    </EditableSection>
+    </RecipeSection>
   );
 }
 
@@ -173,7 +171,7 @@ function UnknownDietSheet(props: {
   );
 }
 
-function ClassificationFields(props: { draft: ClassificationDraft; editor: SectionEditor }) {
+function ClassificationFields(props: { draft: ClassificationDraft; editor: PageEditor }) {
   const { draft, editor } = props;
   const recipes = useRecipes();
   const set = (patch: Partial<ClassificationDraft>) => editor.change({ ...draft, ...patch });
@@ -241,7 +239,6 @@ function ClassificationFields(props: { draft: ClassificationDraft; editor: Secti
           />
         </Stack>
       </Field>
-      <SectionError editor={editor} testID="recipe-classification-error" />
     </Stack>
   );
 }

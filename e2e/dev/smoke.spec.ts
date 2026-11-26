@@ -68,7 +68,7 @@ test('dev smoke: every screen renders without a React warning or error', async (
     page.locator('[data-testid$="-article"][data-testid^="ingredient-menu-"]:visible'),
   ).toBeVisible();
   await page.keyboard.press('Escape');
-  await tid(page, 'recipe-ingredients-edit').click();
+  await tid(page, 'recipe-edit').click();
   await tid(page, 'recipe-add-ingredient').click();
   await tid(page, 'ingredient-article-search-input').fill('Kokos');
   await expect(
@@ -81,11 +81,11 @@ test('dev smoke: every screen renders without a React warning or error', async (
   await expect(tid(page, 'recipe-ingredients-missing')).toHaveText(
     '1 Zutat braucht noch einen Artikel',
   );
-  await tid(page, 'recipe-ingredients-done').click();
+  await tid(page, 'recipe-edit-save').click();
   await expect(tid(page, 'recipe-ingredients-missing')).toBeVisible();
   await page.locator('[data-testid^="open-row-"][data-testid$="-remove"]').click();
-  await tid(page, 'recipe-ingredients-done').click();
-  await expect(tid(page, 'recipe-ingredients-edit')).toBeVisible();
+  await tid(page, 'recipe-edit-save').click();
+  await expect(tid(page, 'recipe-edit')).toBeVisible();
   // "Einplanen" opens its window on the page, ⋯ offers "Löschen" (spec 0008, AC-020, AC-034).
   await tid(page, 'recipe-plan').click();
   await expect(tid(page, 'plan-recipe-save')).toContainText('Abend einplanen');
@@ -115,17 +115,16 @@ test('dev smoke: every screen renders without a React warning or error', async (
   await expect(tid(page, 'collection-badge')).toBeVisible();
   await expect(tid(page, `collection-content-${seedIds['rec-nudelsalat']}`)).toBeVisible();
   await expect(tid(page, 'start-cooking')).toBeHidden();
-  // "+ Rezept hinzufügen" opens "Rezepte zu …" with "schon enthalten" (AC-010); the pen at
-  // "Enthält" opens the rows with ⋯ and "Fertig" closes them again (spec 0009, T8).
+  // "+ Rezept hinzufügen" opens the edit mode with "Rezepte zu …" and "schon enthalten" (AC-010;
+  // spec 0037): the rows of "Enthält" have ⋯, "Speichern" closes the edit mode again.
   await tid(page, 'collection-add-recipes').click();
   await expect(tid(page, `collection-recipes-row-${seedIds['rec-nudelsalat']}`)).toContainText(
     'schon enthalten',
   );
   await tid(page, 'collection-recipes-sheet-close').click();
-  await tid(page, 'collection-contents-edit').click();
   await expect(tid(page, 'collection-rows-list')).toBeVisible();
-  await tid(page, 'collection-contents-done').click();
-  await expect(tid(page, 'collection-contents-edit')).toBeVisible();
+  await tid(page, 'recipe-edit-save').click();
+  await expect(tid(page, 'recipe-edit')).toBeVisible();
   await back(page);
   await tid(page, 'food-switch-restaurants').click();
   await tid(page, `restaurant-${seedIds['rest-pho']}`).click();

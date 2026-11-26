@@ -12,7 +12,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { IconButton } from './controls';
 import { PhotoCollage } from './display';
 import { closesViewer, viewerDrag } from './photo-viewer-gesture';
-import { useTheme } from './theme-context';
+import { ThemeProvider, useTheme } from './theme-context';
+import { getTheme } from './themes';
 
 export interface PhotoViewerProps {
   /** The photos; one fills the screen, several show as their collage. */
@@ -35,10 +36,12 @@ const LEAVE_MS = 160;
 
 /**
  * A photo on the whole screen (spec 0036, REQ-009): ✕, Escape (onRequestClose) or a swipe down
- * close it; the photo follows the finger and springs back when the swipe was too short.
+ * close it; the photo follows the finger and springs back when the swipe was too short. It always
+ * stands in the dark mode of the theme: a near-black stage and a light ✕, also in light mode.
  */
 export function PhotoViewer(props: PhotoViewerProps) {
-  const theme = useTheme();
+  const { id } = useTheme();
+  const stage = getTheme(id, 'dark');
   const insets = useSafeAreaInsets();
   const offset = useSharedValue(0);
   const height = useSharedValue(0);
@@ -71,55 +74,57 @@ export function PhotoViewer(props: PhotoViewerProps) {
   const [only] = props.sources;
   return (
     <Modal visible transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
-      <View
-        testID={props.testID}
-        accessibilityViewIsModal
-        onLayout={(event) => height.set(event.nativeEvent.layout.height)}
-        style={{ flex: 1, backgroundColor: theme.colors.bg }}
-      >
-        <Animated.View
-          {...responder.panHandlers}
-          style={[
-            {
-              flex: 1,
-              justifyContent: 'center',
-              paddingTop: insets.top,
-              paddingBottom: insets.bottom,
-            },
-            photoStyle,
-          ]}
+      <ThemeProvider themeId={id} mode="dark">
+        <View
+          testID={props.testID}
+          accessibilityViewIsModal
+          onLayout={(event) => height.set(event.nativeEvent.layout.height)}
+          style={{ flex: 1, backgroundColor: stage.colors.bg }}
         >
-          {/* The picture never takes the drag itself (on the web an image would be dragged). */}
-          <View pointerEvents="none" style={{ flex: 1, justifyContent: 'center' }}>
-            {props.sources.length > 1 ? (
-              <PhotoCollage
-                sources={props.sources}
-                aspectRatio={4 / 3}
-                radius={0}
-                alt={props.alt}
-              />
-            ) : only !== undefined ? (
-              <Image
-                source={only}
-                contentFit="contain"
-                accessibilityLabel={props.alt}
-                accessible={!!props.alt}
-                style={{ width: '100%', height: '100%' }}
-              />
-            ) : null}
+          <Animated.View
+            {...responder.panHandlers}
+            style={[
+              {
+                flex: 1,
+                justifyContent: 'center',
+                paddingTop: insets.top,
+                paddingBottom: insets.bottom,
+              },
+              photoStyle,
+            ]}
+          >
+            {/* The picture never takes the drag itself (on the web an image would be dragged). */}
+            <View pointerEvents="none" style={{ flex: 1, justifyContent: 'center' }}>
+              {props.sources.length > 1 ? (
+                <PhotoCollage
+                  sources={props.sources}
+                  aspectRatio={4 / 3}
+                  radius={0}
+                  alt={props.alt}
+                />
+              ) : only !== undefined ? (
+                <Image
+                  source={only}
+                  contentFit="contain"
+                  accessibilityLabel={props.alt}
+                  accessible={!!props.alt}
+                  style={{ width: '100%', height: '100%' }}
+                />
+              ) : null}
+            </View>
+          </Animated.View>
+          <View style={{ position: 'absolute', top: insets.top + 8, right: insets.right + 8 }}>
+            <IconButton
+              icon="x"
+              label={props.closeLabel}
+              variant="soft"
+              size={44}
+              onPress={onClose}
+              testID={props.testID ? `${props.testID}-close` : undefined}
+            />
           </View>
-        </Animated.View>
-        <View style={{ position: 'absolute', top: insets.top + 8, right: insets.right + 8 }}>
-          <IconButton
-            icon="x"
-            label={props.closeLabel}
-            variant="soft"
-            size={44}
-            onPress={onClose}
-            testID={props.testID ? `${props.testID}-close` : undefined}
-          />
         </View>
-      </View>
+      </ThemeProvider>
     </Modal>
   );
 }

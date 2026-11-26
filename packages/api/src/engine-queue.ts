@@ -135,7 +135,12 @@ export function recordChange<T>(
     changeset: { id: `changeset-${seq}`, householdId, ops: change.ops, status: 'pending' },
     send:
       spec.path === 'diff'
-        ? (wire) => wire.applyChanges(householdId, sendable(change.send))
+        ? (wire) => {
+            const ops = sendable(change.send);
+            return spec.send
+              ? spec.send(wire, householdId, ops)
+              : wire.applyChanges(householdId, ops);
+          }
         : (wire) => spec.send(wire, context),
   };
   if (spec.path === 'diff') {

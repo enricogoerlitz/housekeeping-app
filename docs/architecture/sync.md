@@ -594,3 +594,17 @@ Geräte anmelden und „Deine Geräte“ ansehen brauchen Netz.
   und nur für den Eigentümer der Funktionen.
 - Neue Schreibwege, alle online und je eine Transaktion: `set_manual_amount`,
   `remove_item_contributions` (auch für „Entfernen“), `create_store`.
+
+## Nachtrag Spec 0037 — Rezeptseite in einem Schritt speichern
+
+- Der Bearbeitungsmodus schickt alle geänderten Blöcke der Rezept- oder Sammlungsseite als **ein**
+  `save_recipe_page(p_household_id, p_recipe_id, p_seen_updated_at, p_ops)`: dieselben Ops wie
+  `apply_changes` (die Funktion ruft es auf, Security invoker, RLS), beschränkt auf die Zeilen der
+  Seite (Patch genau dieses Rezepts, neue Artikel und ihre Regel, `collection_recipes`, Planeinträge
+  einer entfernten Variante). Ein Fehler in einer Op lässt nichts gespeichert.
+- Geschickt werden nur geänderte Spalten und Zeilen; bei gleichzeitigem Speichern gewinnt je Spalte
+  der Letzte. `p_seen_updated_at` ist das `updated_at` des Rezepts beim Öffnen (`Recipe.updatedAt`
+  aus dem Cache, nur gelesen, nie gesendet); die Antwort `changed_meanwhile` zeigt den Hinweis
+  „Das Rezept wurde zwischendurch geändert“. Das eigene letzte Speichern zählt nicht, auch bevor
+  der Pull es bringt. „Rückgängig“ gibt es für das Speichern der Seite nicht.
+- Cache-Form unverändert (die Zeilen trugen `updated_at` schon), daher kein neuer `CACHE_VERSION`.

@@ -110,6 +110,10 @@ Wochentag und Datum. Quelle: H-02. Offline: offline vollständig.
 5. REQ-006: Auch der Wechsel ins nächste Jahr nennt keine Vorsilbe mehr: „Freitag, 1. Januar 2027“.
    Auf 390 und 430 px Breite ist die Überschrift an jedem Tag zweizeilig und gleich hoch (68 px);
    „einzeilig“ aus AC-014 gilt dort nicht, das Springen ist weg.
+6. REQ-002 (QA-Nachtrag 26.11.): Am Desktop öffnet „Öffnen“ ein Restaurant im Schnellblick neben
+   der Essen-Liste. Mit `von` aus einem anderen Bereich zeigt die Kopfzeile dort „‹ Kalender“, und
+   ✕ führt wie „‹ Kalender“ zurück (`quickViewOrigin`, core); ohne `von` schließt ✕ nur den
+   Schnellblick.
 
 ## Daten
 
@@ -137,3 +141,7 @@ offline deaktiviert mit Hinweis, „Im Verlauf öffnen“ öffnet den Eintrag im
 dem Kalender markiert nur „Aktivitäten“, „‹ Kalender“ führt zurück; Restaurant auf dem Handy
 markiert „Essen“; Tooltip nach 500 ms nur bei abgeschnittenem Text; Jahr 28 px/12 px, Januar 2027
 bei 1440 × 900 ohne Scrollen; Überschrift der Übersicht an jedem Tag gleich hoch.
+
+QA-Nachtrag 26.11. (Entscheidung 6): `place.test.ts` (`quickViewOrigin`, rot gezeigt, dann grün);
+Desktop 1440 × 900: „Trattoria Da Enzo“ aus dem Kalender zeigt „‹ Kalender“, ✕ und „‹ Kalender“
+führen zurück in den Kalender, ohne `von` schließt ✕ nur den Schnellblick.

@@ -27,3 +27,40 @@ export function toastBottom(input: {
   }
   return result > windowHeight / 2 ? bottom : result;
 }
+
+export interface Box extends Band {
+  left: number;
+  right: number;
+}
+
+const overlaps = (a: Box, b: Box) =>
+  a.top < b.bottom && b.top < a.bottom && a.left < b.right && b.left < a.right;
+
+/**
+ * Which edge the toast stands at (spec 0033, REQ-009, decision 12): at its place `bottom` above
+ * the bottom edge while that covers nothing to press; else `top` below the top edge when that is
+ * free; else at the bottom after all. The toast is centred horizontally.
+ */
+export function toastEdge(input: {
+  windowWidth: number;
+  windowHeight: number;
+  toastWidth: number;
+  toastHeight: number;
+  bottom: number;
+  top: number;
+  /** Everything to press on screen, in window coordinates. */
+  pressable: readonly Box[];
+}): { bottom: number } | { top: number } {
+  const left = (input.windowWidth - input.toastWidth) / 2;
+  const at = (top: number): Box => ({
+    top,
+    bottom: top + input.toastHeight,
+    left,
+    right: left + input.toastWidth,
+  });
+  const free = (box: Box) => !input.pressable.some((other) => overlaps(box, other));
+  if (free(at(input.windowHeight - input.bottom - input.toastHeight))) {
+    return { bottom: input.bottom };
+  }
+  return free(at(input.top)) ? { top: input.top } : { bottom: input.bottom };
+}

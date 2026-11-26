@@ -17,6 +17,8 @@ import {
 import { Chip, FilterSection, useBreakpoint } from '@housekeeping/ui';
 import { View } from 'react-native';
 
+import { TagFilter } from '@/features/shell/tag-filter';
+
 /** Gerichtart in the panel and in „Einordnung“, in the order of the concept (Konzept v2, 3.2). */
 export const COURSES: readonly Course[] = [
   'main',
@@ -42,13 +44,15 @@ function toggleIn<T>(values: readonly T[], value: T): T[] {
 /**
  * The fields of the filter panel on "Essen → Rezepte" (spec 0008, REQ-002): Schnell, Art
  * ("Rezepte" or "Sammlungen", one or none; spec 0009, AC-018), Ernährung, Gerichtart, Küche from
- * the household's recipes (left out when none has one, AC-009), Zeit and Bewertung. Every tap
- * applies at once.
+ * the household's recipes (left out when none has one, AC-009), Schlagworte (likewise, spec 0037,
+ * REQ-006), Zeit and Bewertung. Every tap applies at once.
  */
 export function RecipeFilterPanel(props: {
   filter: RecipeListFilter;
   onChange: (filter: RecipeListFilter) => void;
   cuisines: readonly CuisineFacet[];
+  /** The household's tags (core tagFacets). */
+  tags: readonly CuisineFacet[];
 }) {
   const { filter, onChange } = props;
   const { isPhone } = useBreakpoint();
@@ -112,6 +116,14 @@ export function RecipeFilterPanel(props: {
             />
           ))}
         </FilterSection>
+      ) : null}
+      {props.tags.length > 0 ? (
+        <TagFilter
+          facets={props.tags}
+          value={filter.tags}
+          onChange={(tags) => onChange({ ...filter, tags })}
+          testID="recipe-filter-tag"
+        />
       ) : null}
       <FilterSection title="Zeit" testID="recipe-filter-time">
         {TIME_LIMITS.map((minutes) => (

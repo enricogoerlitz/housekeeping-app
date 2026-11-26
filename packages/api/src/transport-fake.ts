@@ -74,6 +74,7 @@ import {
 
 type RpcName =
   | 'apply_changes'
+  | 'save_recipe_page'
   | 'set_shopping_item_checked'
   | 'set_shopping_item_not_available'
   | 'add_shopping_contributions'
@@ -622,7 +623,7 @@ function bookedAfter(a: Row, b: Row): boolean {
 /** recipes.kind, its default 'recipe' when a row carries none (spec 0009, E2). */
 const kindOf = (row: Row | undefined) => row?.kind ?? 'recipe';
 
-/** recipes_kind_valid and recipes_kind_fields (spec 0009, E2, E3). */
+/** recipes_kind_valid and recipes_kind_fields (spec 0009, E2, E3; a time since spec 0037). */
 function checkRecipeKind(row: Row): void {
   const kind = kindOf(row);
   if (kind !== 'recipe' && kind !== 'collection')
@@ -637,7 +638,6 @@ function checkRecipeKind(row: Row): void {
     kind === 'recipe'
       ? row.course != null
       : row.course == null &&
-        row.total_minutes == null &&
         row.cuisine == null &&
         row.lead_time == null &&
         empty(row.tags) &&
@@ -2098,6 +2098,34 @@ export function createFakeServer(): FakeServer {
     return result;
   }
 
+  /** The tables save_recipe_page writes (spec 0037): the page's rows, nothing else. */
+  const PAGE_TABLES = new Set(['recipes', 'articles', 'collection_recipes', 'meal_plan_entries']);
+
+  /** save_recipe_page: the recipe locked, compared with what the caller saw, then apply_changes. */
+  function saveRecipePage(
+    userId: string,
+    householdId: string,
+    recipeId: string,
+    seenUpdatedAt: string | undefined,
+    ops: readonly ChangeOp[],
+  ) {
+    if (!isMember(userId, householdId)) throw new TransportError('permanent', 'not_member', 403);
+    const outside = ops.some(
+      (op) =>
+        !('table' in op) ||
+        !PAGE_TABLES.has(op.table) ||
+        (op.table === 'recipes' && (op.kind !== 'patch' || op.id !== recipeId)),
+    );
+    if (outside) throw reject('invalid_change');
+    const row = data.get(householdId)?.recipes?.[recipeId];
+    if (!row) throw new TransportError('permanent', 'row_not_found', 404);
+    const changedMeanwhile =
+      seenUpdatedAt !== undefined && compareTimestamps(String(row.updated_at), seenUpdatedAt) > 0;
+    applyChanges(userId, householdId, ops);
+    const after = data.get(householdId)?.recipes?.[recipeId]?.updated_at;
+    return { changedMeanwhile, ...(after ? { updatedAt: String(after) } : {}) };
+  }
+
   // ---------- sync_pull ----------
 
   function syncPull(userId: string, request: PullRequest): RawPullResult {
@@ -2681,6 +2709,10 @@ export function createFakeServer(): FakeServer {
     return {
       applyChanges: (householdId, ops) =>
         run(userId, 'apply_changes', () => applyChanges(userId, householdId, ops)),
+      saveRecipePage: (householdId, recipeId, seenUpdatedAt, ops) =>
+        run(userId, 'save_recipe_page', () =>
+          saveRecipePage(userId, householdId, recipeId, seenUpdatedAt, ops),
+        ),
 
       setItemChecked: (requestedItemId, checked, seenCheckSeq, onList = false) =>
         run(userId, 'set_shopping_item_checked', () => {
