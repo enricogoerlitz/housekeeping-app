@@ -321,9 +321,8 @@ export function checkSeedData(row, environment) {
 }
 
 /**
- * Spec 0043, decision 8: the video bucket is private, takes at most 50 MiB and only video/mp4.
- * Missing is red: the backup treats a missing bucket as "no videos yet", so a bucket lost after
- * the release that created it has to show up here.
+ * Spec 0043: the video bucket is private, takes at most 50 MiB and only video/mp4. Missing is red:
+ * the app needs it, and since spec 0048 no backup reads it, so a lost bucket shows up only here.
  */
 export function checkVideoBucket(bucket) {
   if (!bucket) return result('Video-Bucket', [`Bucket ${VIDEO_BUCKET} fehlt`]);

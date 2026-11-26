@@ -50,6 +50,7 @@ Ablauf und Regeln: siehe `AGENTS.md`, Abschnitt „Workflow per feature“.
 | [0041](0041-aktivitaeten-arten-rhythmus-merken/spec.md)  | Aktivitäten: Arten, Rhythmus, Merken, Personen                         | freigegeben |
 | [0042](0042-orte-teilen-eigentuemer/spec.md)             | Orte, Einfügen, Teilen und Eigentümer                                  | freigegeben |
 | [0043](0043-rezeptvideo-aus-tiktok/spec.md)              | Rezeptvideo aus TikTok speichern und abspielen                         | freigegeben |
+| [0048](0048-sicherung-ohne-videos/spec.md)               | Sicherung ohne Videos                                                  | freigegeben |
 
 ## Welle 2 (0019–0028): Bau-Reihenfolge und Regeln
 

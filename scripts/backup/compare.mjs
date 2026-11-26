@@ -1,13 +1,14 @@
 #!/usr/bin/env node
-// Restore test (spec 0014, Task 9, AC-056; spec 0043, decision 8): compares the downloaded
-// archive, the restored throwaway database and the unpacked photos and videos with the companion
-// file written by manifest.mjs. Backups of format 1 (before spec 0043) hold no videos; for them
-// the videos folder is not read.
+// Restore test (spec 0014, Task 9, AC-056; spec 0048): compares the downloaded archive, the
+// restored throwaway database and the unpacked photos with the companion file written by
+// manifest.mjs. Videos are no longer backed up (format 3, spec 0048); backups of format 2 (spec
+// 0043 until 0048) still hold them, their video count is passed over. Format 1 (before 0043) has
+// the fields of format 3.
 // Messages name tables and numbers only, never data from the backup.
 //
 //   node scripts/backup/compare.mjs checksum --manifest <manifest.json> --archive <file.age>
 //   node scripts/backup/compare.mjs query    --manifest <manifest.json>            # count SQL to stdout
-//   node scripts/backup/compare.mjs counts   --manifest <manifest.json> --counts <psql -At output> --media <dir> --videos <dir>
+//   node scripts/backup/compare.mjs counts   --manifest <manifest.json> --counts <psql -At output> --media <dir>
 //
 // No dependencies: runs in the restore-test job, which installs no packages.
 import { readFileSync } from 'node:fs';
@@ -20,15 +21,12 @@ import { MANIFEST_FORMAT, countFiles, sha256File } from './manifest.mjs';
 const isCount = (n) => Number.isSafeInteger(n) && n >= 0;
 const isName = (s) => typeof s === 'string' && s.length > 0 && !s.includes('\0');
 
-/** Whether the backup holds videos (format 2 on, spec 0043). */
-const hasVideos = (manifest) => manifest.format >= 2;
-
-/** The manifest if it has a format manifest.mjs writes or wrote (1, 2); throws otherwise. */
+/** The manifest if it has a format manifest.mjs writes or wrote (1, 2, 3); throws otherwise. */
 export function validateManifest(manifest) {
   const format = manifest?.format;
   const valid =
-    (format === 1 || format === MANIFEST_FORMAT) &&
-    (format === 1 || isCount(manifest.videos)) &&
+    (format === 1 || format === 2 || format === MANIFEST_FORMAT) &&
+    (format !== 2 || isCount(manifest.videos)) &&
     Array.isArray(manifest.tables) &&
     manifest.tables.length > 0 &&
     manifest.tables.every((t) => isName(t?.schema) && isName(t?.table) && isCount(t?.rows)) &&
@@ -68,11 +66,8 @@ export function parseCounts(text) {
   return counts;
 }
 
-/**
- * null if every table, the photos and (from format 2) the videos match, otherwise the first
- * deviation.
- */
-export function compareCounts(manifest, counts, photos, videos) {
+/** null if every table and the photos match, otherwise the first deviation. */
+export function compareCounts(manifest, counts, photos) {
   for (const [i, { schema, table, rows }] of manifest.tables.entries()) {
     const name = `${schema}.${table}`;
     if (!counts.has(i)) return `Abweichung in ${name}: nicht gezählt`;
@@ -84,9 +79,6 @@ export function compareCounts(manifest, counts, photos, videos) {
   if (photos !== manifest.photos) {
     return `Abweichung bei den Fotos: Begleitdatei ${manifest.photos}, Archiv ${photos}`;
   }
-  if (hasVideos(manifest) && videos !== manifest.videos) {
-    return `Abweichung bei den Videos: Begleitdatei ${manifest.videos}, Archiv ${videos}`;
-  }
   return null;
 }
 
@@ -94,7 +86,7 @@ const USAGE = [
   'Aufruf:',
   '  node scripts/backup/compare.mjs checksum --manifest <datei> --archive <datei>',
   '  node scripts/backup/compare.mjs query --manifest <datei>',
-  '  node scripts/backup/compare.mjs counts --manifest <datei> --counts <datei> --media <ordner> --videos <ordner>',
+  '  node scripts/backup/compare.mjs counts --manifest <datei> --counts <datei> --media <ordner>',
 ].join('\n');
 
 function fail(message) {
@@ -110,11 +102,10 @@ async function main() {
       archive: { type: 'string' },
       counts: { type: 'string' },
       media: { type: 'string' },
-      videos: { type: 'string' },
     },
   });
   const [mode] = positionals;
-  const needs = { checksum: ['archive'], query: [], counts: ['counts', 'media', 'videos'] }[mode];
+  const needs = { checksum: ['archive'], query: [], counts: ['counts', 'media'] }[mode];
   if (!needs || !values.manifest || needs.some((name) => !values[name])) {
     console.error(USAGE);
     process.exit(2);
@@ -129,18 +120,15 @@ async function main() {
       console.log(countQuery(manifest));
     } else {
       const photos = countFiles(values.media);
-      const videos = hasVideos(manifest) ? countFiles(values.videos, 'Videoordner') : undefined;
       const problem = compareCounts(
         manifest,
         parseCounts(readFileSync(values.counts, 'utf8')),
         photos,
-        videos,
       );
       if (problem) fail(problem);
       const rows = manifest.tables.reduce((sum, t) => sum + t.rows, 0);
-      const media = videos === undefined ? `${photos} Fotos` : `${photos} Fotos, ${videos} Videos`;
       console.log(
-        `Wiederherstellung stimmt: ${manifest.tables.length} Tabellen, ${rows} Zeilen, ${media}`,
+        `Wiederherstellung stimmt: ${manifest.tables.length} Tabellen, ${rows} Zeilen, ${photos} Fotos`,
       );
     }
   } catch (error) {

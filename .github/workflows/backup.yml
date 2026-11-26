@@ -1,8 +1,9 @@
 # Backup of production (spec 0014, REQ-009, plan Task 9, decisions 15 to 18): roles, schema and data
-# through the session pooler with the read-only role backup_reader, the photos of household-media
-# and the recipe videos of household-videos (spec 0043, decision 8) through the S3 interface of
-# Supabase Storage, as one tar.gz encrypted with age to the public key of the environment, plus
-# manifest.json (rows per table, photo and video count, checksum; no data). Uploaded
+# through the session pooler with the read-only role backup_reader and the photos of
+# household-media through the S3 interface of Supabase Storage, as one tar.gz encrypted with age
+# to the public key of the environment, plus manifest.json (rows per table, photo count, checksum;
+# no data). The recipe videos are not backed up (spec 0048, decision 1: they can be saved again
+# from their TikTok link, and every night all of them would cost egress). Uploaded
 # with the identity of the environment, which may write blobs but not read or delete them; the
 # container keeps every blob immutable for 30 days.
 #
@@ -39,9 +40,7 @@ jobs:
   sicherung:
     name: Sicherung
     runs-on: ubuntu-24.04
-    # Videos (spec 0043) are up to 50 MiB each, but the hosted free plan holds 1 GB of storage in
-    # all: at most about 1 GB to sync, pack and upload, a few minutes on a hosted runner (14 GB of
-    # free disk). 45 minutes stay ample; the dumps were the slow part so far.
+    # Dumps and photos (at most 2 MiB each); 45 minutes stay ample, the dumps are the slow part.
     timeout-minutes: 45
     environment: backup
     permissions:
@@ -94,7 +93,7 @@ jobs:
           } >> "$GITHUB_ENV"
           sudo apt-get update -qq > /dev/null
           sudo apt-get install -y -qq age > /dev/null
-          mkdir -p "$W/dump" "$W/dump/media" "$W/dump/videos" "$W/out"
+          mkdir -p "$W/dump" "$W/dump/media" "$W/out"
 
       - name: Datenbank sichern
         working-directory: ${{ runner.temp }}/backup/dump
@@ -164,38 +163,12 @@ jobs:
             fi
           fi
 
-      - name: Videos sichern
-        working-directory: ${{ runner.temp }}/backup/dump
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.BACKUP_S3_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_S3_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: ${{ vars.BACKUP_S3_REGION }}
-          BACKUP_S3_ENDPOINT: ${{ vars.BACKUP_S3_ENDPOINT }}
-          AWS_REQUEST_CHECKSUM_CALCULATION: when_required
-          AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
-        run: |
-          aws configure set default.s3.addressing_style path
-          # Spec 0043, decision 8: the recipe videos, like the photos only from the bucket to the
-          # runner. The S3 key of the project reaches every bucket, so no new secret.
-          if ! out=$(aws s3 sync s3://household-videos ./videos --endpoint-url "$BACKUP_S3_ENDPOINT" --only-show-errors --no-progress 2>&1); then
-            # The release that brings spec 0043 backs up before it migrates, so the bucket is not
-            # there yet. The check after every delivery (verify.mjs, "Video-Bucket") requires it,
-            # so a bucket lost later still shows up there.
-            if printf '%s' "$out" | grep -q 'NoSuchBucket'; then
-              echo "::warning::Bucket household-videos fehlt – keine Videos gesichert (vor der Veröffentlichung von Spec 0043 erwartet)"
-              mkdir -p ./videos
-            else
-              printf '%s\n' "$out" >&2
-              exit 1
-            fi
-          fi
-
       - name: Verschlüsseln und Begleitdatei
         working-directory: ${{ runner.temp }}/backup/dump
         run: |
           # Straight from tar into age: no unencrypted archive on disk.
-          tar -cz roles.sql schema.sql data.sql media videos | age -r "$BACKUP_AGE_RECIPIENT" -o "$W/out/backup.tar.gz.age"
-          node "$GITHUB_WORKSPACE/scripts/backup/manifest.mjs" --data data.sql --media media --videos videos \
+          tar -cz roles.sql schema.sql data.sql media | age -r "$BACKUP_AGE_RECIPIENT" -o "$W/out/backup.tar.gz.age"
+          node "$GITHUB_WORKSPACE/scripts/backup/manifest.mjs" --data data.sql --media media \
             --archive "$W/out/backup.tar.gz.age" --out "$W/out/manifest.json"
 
       - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0

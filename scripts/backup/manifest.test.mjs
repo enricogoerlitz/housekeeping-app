@@ -1,7 +1,7 @@
-// scripts/backup/manifest.mjs (spec 0014, Task 9; spec 0043, decision 8): the companion file of a
-// backup. Rows per table are counted from the COPY blocks of the data dump, photos from the media
-// folder, videos from the videos folder, the checksum from the encrypted archive. Runs against throwaway files under tmp/ (git-ignored), removed
-// afterwards.
+// scripts/backup/manifest.mjs (spec 0014, Task 9; spec 0048): the companion file of a backup. Rows
+// per table are counted from the COPY blocks of the data dump, photos from the media folder, the
+// checksum from the encrypted archive; videos are no longer backed up (spec 0048, decision 1).
+// Runs against throwaway files under tmp/ (git-ignored), removed afterwards.
 //
 //   node --test scripts/backup/manifest.test.mjs
 import assert from 'node:assert/strict';
@@ -114,10 +114,6 @@ describe('photos and checksum', () => {
     assert.throws(() => countFiles(path.join(dir, 'missing')), /Fotoordner fehlt/);
   });
 
-  test('spec 0043, decision 8: a missing videos folder is an error named as such', () => {
-    assert.throws(() => countFiles(path.join(dir, 'missing'), 'Videoordner'), /Videoordner fehlt/);
-  });
-
   test('AC-052: SHA-256 of the archive', async () => {
     const file = path.join(dir, 'archive.age');
     writeFileSync(file, 'verschlüsselt');
@@ -127,55 +123,49 @@ describe('photos and checksum', () => {
 });
 
 describe('manifest', () => {
-  test('AC-052, spec 0043: names rows per table, photo and video count and checksum, nothing else', () => {
+  test('AC-002: format 3 names rows per table, photo count and checksum, no videos, nothing else', () => {
     const manifest = buildManifest({
       tables: [{ schema: 'public', table: 'recipes', rows: 3 }],
       photos: 2,
-      videos: 1,
       archive: { name: 'backup.tar.gz.age', bytes: 123, sha256: 'a'.repeat(64) },
       createdAt: new Date('2026-12-01T02:17:00Z'),
     });
     assert.deepEqual(manifest, {
-      format: 2,
+      format: 3,
       createdAt: '2026-12-01T02:17:00.000Z',
       tables: [{ schema: 'public', table: 'recipes', rows: 3 }],
       photos: 2,
-      videos: 1,
       archive: { name: 'backup.tar.gz.age', bytes: 123, sha256: 'a'.repeat(64) },
     });
   });
 
-  test('AC-052: the CLI writes manifest.json and prints only numbers, never data', () => {
+  test('AC-052, AC-006: the CLI writes manifest.json and prints only numbers and the photo size', () => {
     const data = path.join(dir, 'data.sql');
     const media = path.join(dir, 'cli-media');
-    const videos = path.join(dir, 'cli-videos');
     const archive = path.join(dir, 'backup.tar.gz.age');
     const out = path.join(dir, 'manifest.json');
     writeFileSync(data, DUMP);
-    mkdirSync(media, { recursive: true });
-    writeFileSync(path.join(media, 'foto.jpg'), 'x');
-    mkdirSync(path.join(videos, 'hh', 'recipes', 'r'), { recursive: true });
-    writeFileSync(path.join(videos, 'hh', 'recipes', 'r', 'v.mp4'), 'v');
-    writeFileSync(path.join(videos, 'hh', 'recipes', 'r', 'w.mp4'), 'w');
+    mkdirSync(path.join(media, 'hh', 'recipes', 'r'), { recursive: true });
+    writeFileSync(path.join(media, 'foto.jpg'), Buffer.alloc(1_000_000));
+    writeFileSync(path.join(media, 'hh', 'recipes', 'r', 'f.jpg'), Buffer.alloc(500_000));
     writeFileSync(archive, 'age-encrypted');
 
     const result = spawnSync(
       process.execPath,
-      [
-        script,
-        ...['--data', data, '--media', media, '--videos', videos],
-        ...['--archive', archive, '--out', out],
-      ],
+      [script, ...['--data', data, '--media', media, '--archive', archive, '--out', out]],
       { encoding: 'utf8' },
     );
     const output = `${result.stdout}${result.stderr}`;
     assert.equal(result.status, 0, output);
-    assert.match(output, /3 Tabellen, 5 Zeilen, 1 Fotos, 2 Videos/);
-    assert.doesNotMatch(output, /example\.com|Lasagne|recipes/);
+    assert.match(output, /3 Tabellen, 5 Zeilen, 2 Fotos \(1,5 MB\)$/m);
+    assert.doesNotMatch(output, /Videos|example\.com|Lasagne|recipes/);
 
     const manifest = JSON.parse(readFileSync(out, 'utf8'));
-    assert.equal(manifest.photos, 1);
-    assert.equal(manifest.videos, 2);
+    assert.equal(manifest.format, 3);
+    assert.equal(manifest.photos, 2);
+    assert.equal('videos' in manifest, false);
+    // The size is only logged; the manifest keeps its fields (AC-006).
+    assert.doesNotMatch(JSON.stringify(manifest), /bytes":1500000/);
     assert.equal(manifest.tables.length, 3);
     assert.equal(manifest.archive.name, 'backup.tar.gz.age');
     assert.equal(manifest.archive.bytes, 'age-encrypted'.length);
@@ -191,7 +181,7 @@ describe('manifest', () => {
     assert.notEqual(result.status, 0);
     assert.match(
       result.stderr,
-      /--data <datei> --media <ordner> --videos <ordner> --archive <datei> --out <datei>/,
+      /--data <datei> --media <ordner> --archive <datei> --out <datei>$/m,
     );
   });
 });
