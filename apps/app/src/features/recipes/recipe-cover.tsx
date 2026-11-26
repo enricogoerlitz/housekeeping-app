@@ -4,6 +4,7 @@ import {
   defaultImagePrompt,
   galleryItems,
   mainIngredientNames,
+  recipeImageContext,
   type Recipe,
   type RecipeVideo,
 } from '@housekeeping/core';
@@ -177,6 +178,7 @@ export function RecipePhoto(props: {
             props.recipe.title,
             props.recipe.kind === 'recipe' ? mainIngredientNames(props.recipe, articlesById) : [],
           )}
+          aiContext={recipeImageContext(props.recipe, articlesById)}
           placeholderIcon={props.recipe.kind === 'collection' ? 'layers' : 'chef-hat'}
           aspectRatio={PHOTO_ASPECT}
           onApply={props.photo.apply}

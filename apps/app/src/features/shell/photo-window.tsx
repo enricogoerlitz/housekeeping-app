@@ -1,5 +1,5 @@
 import { checkImageFile, loadPhotoFromAddress, preparePhoto } from '@housekeeping/api';
-import { imageAddress, unsuitableImageAddress } from '@housekeeping/core';
+import { imageAddress, unsuitableImageAddress, type AiImageContext } from '@housekeeping/core';
 import {
   Button,
   Notice,
@@ -79,6 +79,8 @@ export function PhotoWindow(props: {
   name: string;
   /** The prefilled prompt of "KI" (spec 0040, REQ-004); the name when not given. */
   aiPrompt?: string;
+  /** What the picture is for, sent with the wish (spec 0052, REQ-003). */
+  aiContext?: AiImageContext;
   placeholderIcon: IconName;
   aspectRatio: number;
   /** "Übernehmen" with the prepared JPEG; the window is closed already. */
@@ -242,6 +244,7 @@ export function PhotoWindow(props: {
         {view === 'ai' ? (
           <PhotoWindowAi
             prompt={props.aiPrompt ?? props.name}
+            context={props.aiContext}
             currentUri={
               props.hasPhoto && typeof props.current === 'object' ? props.current.uri : undefined
             }

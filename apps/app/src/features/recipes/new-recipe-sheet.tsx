@@ -9,6 +9,7 @@ import {
   useRecipes,
 } from '@housekeeping/api';
 import {
+  draftImageContext,
   NEW_ENTRY_KINDS,
   newEntryTakesIngredients,
   newEntryTitleProblem,
@@ -129,6 +130,7 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
       if (fill.generatePhoto && reply.draft.imagePrompt) {
         startPhotoSuggestions(recipe.id, {
           prompt: reply.draft.imagePrompt,
+          context: draftImageContext(reply.draft),
           coverUrl: reply.sources.find((source) => source.coverUrl)?.coverUrl,
         });
       }

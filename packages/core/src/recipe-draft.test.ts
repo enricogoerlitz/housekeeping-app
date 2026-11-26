@@ -9,7 +9,6 @@ import {
   draftLinks,
   draftToPageInput,
   imageFailureNotice,
-  imagePromptWithExtra,
   insertAtCursor,
   isDictationStopWord,
   isNewTag,
@@ -443,31 +442,6 @@ describe('messages', () => {
     expect(imageFailureNotice(0)).toBeUndefined();
     expect(imageFailureNotice(1)).toBe('Eine Variante ist fehlgeschlagen');
     expect(imageFailureNotice(2)).toBe('Zwei Varianten sind fehlgeschlagen');
-  });
-});
-
-describe('imagePromptWithExtra: "Neu generieren" with a wish (spec 0045, REQ-006)', () => {
-  it("AC-017: the wish follows the draft's image prompt", () => {
-    expect(imagePromptWithExtra('spaghetti with meatballs', ' heller, von oben ')).toBe(
-      'spaghetti with meatballs. heller, von oben',
-    );
-  });
-
-  it('AC-017: a prompt ending with a full stop gets no second one', () => {
-    expect(imagePromptWithExtra('no text, no people.', 'heller')).toBe(
-      'no text, no people. heller',
-    );
-  });
-
-  it('AC-017: without a wish the prompt stays as it is', () => {
-    expect(imagePromptWithExtra('spaghetti with meatballs', '  ')).toBe('spaghetti with meatballs');
-  });
-
-  it('AC-019: together at most 1000 characters; the wish is cut, the prompt stays', () => {
-    const prompt = 'p'.repeat(990);
-    const result = imagePromptWithExtra(prompt, 'heller, von oben');
-    expect(result).toHaveLength(1000);
-    expect(result.startsWith(`${prompt}. `)).toBe(true);
   });
 });
 

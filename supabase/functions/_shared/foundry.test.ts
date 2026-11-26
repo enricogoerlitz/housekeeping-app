@@ -121,6 +121,17 @@ describe('callFoundry', () => {
     expect(body.input).toEqual([{ role: 'user', content }]);
   });
 
+  it('spec 0052: a reasoning effort goes as reasoning.effort; without one there is none', async () => {
+    const deps = fakeDeps({ fetch: async () => foundryReply({ text: 'Curry' }) });
+    await callFoundry(deps, { ...request, reasoningEffort: 'none' });
+    await callFoundry(deps, request);
+    const [first, second] = deps.fetchMock.mock.calls.map(
+      ([, init]) => JSON.parse(String(init?.body)) as { reasoning?: unknown },
+    );
+    expect(first?.reasoning).toEqual({ effort: 'none' });
+    expect(second).not.toHaveProperty('reasoning');
+  });
+
   it('spec 0040: attempts and time budget can be set per call (2 attempts, 60 s)', async () => {
     const deps = fakeDeps({
       fetch: (_url, init) =>

@@ -211,21 +211,6 @@ export function mainIngredientNames(recipe: Recipe, articlesById: Record<Id, Art
   });
 }
 
-/** The longest prompt the image function takes (AiImageRequestSchema). */
-const MAX_IMAGE_PROMPT = 1000;
-
-/**
- * "Neu generieren" (spec 0045, REQ-006): the draft's image prompt with the person's wish behind
- * it (AC-017); when both are too long the wish is cut, never the prompt (AC-019).
- */
-export function imagePromptWithExtra(prompt: string, extra: string): string {
-  const base = prompt.trim();
-  const wish = extra.trim();
-  if (wish === '') return base;
-  const joined = /[.!?]$/u.test(base) ? `${base} ${wish}` : `${base}. ${wish}`;
-  return joined.slice(0, MAX_IMAGE_PROMPT);
-}
-
 /** AC-014: under the variants when some of them failed. */
 export function imageFailureNotice(failed: number): string | undefined {
   if (failed <= 0) return undefined;

@@ -6,7 +6,7 @@ import {
 } from '@housekeeping/api';
 import {
   IMAGE_EDIT_MAX_SIDE,
-  imagePromptWithExtra,
+  type AiImageContext,
   type Id,
   type PageDraftInput,
   type Recipe,
@@ -73,8 +73,18 @@ const suggestions = new Map<Id, PhotoSuggestions>();
 const listeners = new Set<() => void>();
 let round = 0;
 const rounds = new Map<Id, number>();
+/**
+ * What the suggestions are made from: the draft's image prompt, its title and description as the
+ * context (spec 0052), a TikTok cover; and for "Neu generieren" the person's wish.
+ */
+interface SuggestionRequest {
+  prompt: string;
+  context?: AiImageContext;
+  coverUrl?: string;
+  extra?: string;
+}
 /** The request of the first round, for "Neu generieren". */
-const requests = new Map<Id, { prompt: string; coverUrl?: string }>();
+const requests = new Map<Id, SuggestionRequest>();
 
 function set(recipeId: Id, next: PhotoSuggestions | undefined): void {
   const previous = suggestions.get(recipeId);
@@ -99,26 +109,23 @@ async function reference(coverUrl: string | undefined): Promise<Blob | undefined
  * AC-010: three suggestions from the draft's image prompt; with a TikTok link its cover is the
  * model's reference (REQ-006). A newer round for the same recipe replaces an older one.
  */
-export function startPhotoSuggestions(
-  recipeId: Id,
-  request: { prompt: string; coverUrl?: string },
-): void {
+export function startPhotoSuggestions(recipeId: Id, request: SuggestionRequest): void {
   requests.set(recipeId, request);
   generate(recipeId, request);
 }
 
 /**
  * "Neu generieren" (spec 0045, REQ-006): three new suggestions from the draft's image prompt with
- * the person's wish (AC-017). A photo taken before stays the draft's until another is taken
- * (AC-018): it lives in the editor, not here.
+ * the person's wish (AC-017), which goes as its own field (spec 0052, AC-011). A photo taken
+ * before stays the draft's until another is taken (AC-018): it lives in the editor, not here.
  */
 export function regeneratePhotoSuggestions(recipeId: Id, extra: string): void {
   const request = requests.get(recipeId);
   if (!request) return;
-  generate(recipeId, { ...request, prompt: imagePromptWithExtra(request.prompt, extra) });
+  generate(recipeId, { ...request, extra });
 }
 
-function generate(recipeId: Id, request: { prompt: string; coverUrl?: string }): void {
+function generate(recipeId: Id, request: SuggestionRequest): void {
   round += 1;
   const mine = round;
   rounds.set(recipeId, mine);
@@ -130,6 +137,8 @@ function generate(recipeId: Id, request: { prompt: string; coverUrl?: string }):
         prompt: request.prompt,
         styles: [],
         ...(image ? { image } : {}),
+        ...(request.extra ? { extra: request.extra } : {}),
+        ...(request.context ? { context: request.context } : {}),
       });
       if (rounds.get(recipeId) !== mine) return;
       set(recipeId, {

@@ -19,6 +19,8 @@ export interface FoundryRequest<T> {
   /** Attempts and time budget (fetchTextWithRetry; defaults 3 and 20 s). */
   attempts?: number;
   budgetMs?: number;
+  /** Spec 0052: the model's reasoning effort; the deployment's default when not set. */
+  reasoningEffort?: 'none' | 'low' | 'medium' | 'high';
 }
 
 function outputText(body: unknown): string | undefined {
@@ -66,6 +68,7 @@ export async function callFoundry<T>(
             },
           },
           max_output_tokens: request.maxOutputTokens,
+          ...(request.reasoningEffort ? { reasoning: { effort: request.reasoningEffort } } : {}),
         }),
       },
       { attempts: request.attempts, budgetMs: request.budgetMs },
