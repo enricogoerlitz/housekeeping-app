@@ -2,6 +2,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   AiImageReplySchema,
+  PlacePreviewReplySchema,
+  WebSearchReplySchema,
   AiSearchResultSchema,
   AssistantReplySchema,
   RecipeDraftReplySchema,
@@ -142,6 +144,12 @@ export interface SupabaseTransportOptions {
  */
 const AI_DRAFT_TIMEOUT_MS = 80_000;
 const AI_IMAGE_TIMEOUT_MS = 55_000;
+/**
+ * Spec 0049: a search asks Serper and maybe Brave (8 s each) and reads up to six recipe pages
+ * (6 s); a place preview reads the website (6 s) and gives the model 30 s.
+ */
+const WEB_SEARCH_TIMEOUT_MS = 30_000;
+const PLACE_PREVIEW_TIMEOUT_MS = 45_000;
 /**
  * Spec 0043, AC-001: the server reads the page (10 s), loads the video (60 s) and uploads it; the
  * app waits up to 90 s. A video of up to 50 MB downloads within 2 minutes.
@@ -456,6 +464,10 @@ export function createSupabaseTransport(
       invokeParsed(RecipeDraftReplySchema, 'ai-recipe-draft', request, AI_DRAFT_TIMEOUT_MS),
     aiImage: (request) =>
       invokeParsed(AiImageReplySchema, 'ai-image', request, AI_IMAGE_TIMEOUT_MS),
+    webSearch: (request) =>
+      invokeParsed(WebSearchReplySchema, 'web-search', request, WEB_SEARCH_TIMEOUT_MS),
+    placePreview: (request) =>
+      invokeParsed(PlacePreviewReplySchema, 'web-search', request, PLACE_PREVIEW_TIMEOUT_MS),
     fetchVideo: (request) =>
       invokeParsed(FetchVideoReplySchema, 'fetch-video', request, FETCH_VIDEO_TIMEOUT_MS),
     uploadMedia: async (path, photo) => {

@@ -55,6 +55,9 @@ import {
   type SmallRow,
   type TableRows,
   type Tombstone,
+  type PlacePreviewReply,
+  type WebSearchReply,
+  type WebSearchRequest,
 } from '@housekeeping/core';
 
 import {
@@ -139,6 +142,7 @@ type RpcName =
   | 'speech-token'
   | 'ai-recipe-draft'
   | 'ai-image'
+  | 'web-search'
   | 'storage_upload'
   | 'storage_download'
   | 'storage_remove'
@@ -151,6 +155,9 @@ export interface FakeAi {
   speechToken?: () => SpeechTokenReply;
   recipeDraft?: (request: RecipeDraftRequest) => RecipeDraftReply;
   image?: (request: AiImageRequest) => AiImageReply;
+  /** Spec 0049; throw a TransportError to play a provider that is down. */
+  webSearch?: (request: Extract<WebSearchRequest, { mode: 'search' }>) => WebSearchReply;
+  placePreview?: (request: Extract<WebSearchRequest, { mode: 'place' }>) => PlacePreviewReply;
 }
 
 interface FailureRule {
@@ -3645,6 +3652,22 @@ export function createFakeServer(): FakeServer {
             throw new TransportError('permanent', 'forbidden', 403);
           if (!ai.image) throw aiUnavailable();
           return ai.image(request);
+        }),
+      webSearch: (request) =>
+        run(userId, 'web-search', () => {
+          requireUser(userId);
+          if (!isMember(userId, request.householdId))
+            throw new TransportError('permanent', 'forbidden', 403);
+          if (!ai.webSearch) throw new TransportError('transient', 'search_unavailable', 503);
+          return ai.webSearch(request);
+        }),
+      placePreview: (request) =>
+        run(userId, 'web-search', () => {
+          requireUser(userId);
+          if (!isMember(userId, request.householdId))
+            throw new TransportError('permanent', 'forbidden', 403);
+          if (!ai.placePreview) throw aiUnavailable();
+          return ai.placePreview(request);
         }),
 
       // The Storage API answers a refused request with its status (413, 415, 403, 409).

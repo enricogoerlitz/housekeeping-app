@@ -66,3 +66,4 @@ export { TEST_ACCOUNTS, type TestAccountKey } from './dev-accounts';
 export { useHouseholdInvitations, useHouseholdOwnerId, useMyInvitations } from './households';
 export { starterCatalogEntries } from './starter/entries';
 export * from './ai-recipes';
+export * from './web-search';
