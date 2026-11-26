@@ -394,8 +394,8 @@ describe('a new cache version (AC-018)', () => {
     return itemId;
   }
 
-  it('spec 0042: version 19 for stores.maps_url (after 0031: 18); version 18 loads again', () => {
-    expect(CACHE_VERSION).toBe(19);
+  it('spec 0042: version 20 for stores.maps_url (after 0041: 19); version 19 loads again', () => {
+    expect(CACHE_VERSION).toBe(20);
   });
 
   it('spec 0012: a queued pack entry survives the version bump and is sent', async () => {

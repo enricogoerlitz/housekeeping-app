@@ -131,7 +131,9 @@ export function FilterBar(props: FilterBarProps) {
  */
 export function FilterSection(props: { title: string; children: ReactNode; testID?: string }) {
   return (
-    <View style={{ gap: 8, flexShrink: 1, maxWidth: '100%' }} testID={props.testID}>
+    // maxWidth keeps it inside the panel; it never shrinks, or the sheet of a phone (a column)
+    // squeezes it to its title (spec 0037).
+    <View style={{ gap: 8, flexShrink: 0, maxWidth: '100%' }} testID={props.testID}>
       <Text variant="smallStrong">{props.title}</Text>
       <Row wrap gap={8}>
         {props.children}

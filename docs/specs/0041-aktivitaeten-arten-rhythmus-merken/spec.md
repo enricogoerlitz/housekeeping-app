@@ -95,6 +95,29 @@ gemerkt“. Quelle: A-03. Offline: offline lesend.
 4. Enrico, 26.11.: Personen = Mitglieder + Anzahl Gäste (`eater_ids`, `guests` des Planeintrags).
 5. Symbolauswahl: feste Liste von etwa 40 Namen aus der Symbolbibliothek der App, in core als
    erlaubte Werte geprüft (DB-Check auf dieselbe Liste).
+6. Umsetzung, 26.11.: Neue Haushalte bekommen die Arten über einen Trigger auf `households` (deckt
+   `create_household`, Seed, `prod-bootstrap` und den Reset von Spec 0028 ab, ohne
+   `create_household` neu zu schreiben). Bestehende Aktivitäten bekommen keine Art zugeordnet.
+7. Umsetzung: „jährlich“ ist die eigene Form `yearly` von `SeriesRule`; „wöchentlich“, „alle N
+   Wochen“ und „monatlich“ sind die Formen der Aufgaben-`Recurrence` samt `recurrenceLabel`. Der
+   Rhythmus der Aufgaben selbst bleibt unverändert (dort heißt „alle 12 Monate“ schon „jährlich“),
+   damit die Benachrichtigungs-Parität in SQL nicht berührt wird.
+8. Umsetzung: „Serie bearbeiten“ beendet die Serie gestern und startet eine neue ab heute („alle N
+   Wochen“ ab der Woche des nächsten Termins, „jährlich“ ab dem nächsten Termin, damit Phase und
+   Datum bleiben); künftige Ausnahmen wandern mit. Eine noch nicht begonnene Serie wird als Ganzes
+   geändert. Alles in einem `apply_changes`-Aufruf.
+9. Umsetzung: Löschen einer Aktivität nimmt ihre Serien mit (auch deren vergangene Termine; einzelne
+   Einträge werden wie bisher Freitext); „Rückgängig“ bringt Serien und Ausnahmen zurück.
+10. Umsetzung: Ein Termin einer Serie wird nicht gezogen, sondern im Termin-Fenster verschoben;
+    „Termin absagen“ und „Serie löschen“ fragen vorher (Spec 0036).
+11. Umsetzung: „Wer ist dabei?“ (optional) gibt es auch im Fenster „Einplanen“ der Aktivität und im
+    Eintragsfenster; das hebt Spec 0024, REQ-006 („Aktivität ohne ‚Wer isst mit?‘“) auf. Die
+    Übersicht zeigt die Termine der Serien wie der Kalender.
+12. OFFEN: Termine einer Serie stehen nicht im Tagesüberblick und nicht in „Aktivitäten am Vortag“
+    (der Server rechnet nur mit `meal_plan_entries`) und haben kein „Erinnern“; dafür müsste die
+    Termin-Berechnung auch in SQL stehen.
+13. OFFEN: Ein entferntes Mitglied bleibt in `eater_ids` einer Serie stehen (wie bei
+    Planeinträgen); die Oberfläche zeigt nur aktuelle Mitglieder, „Rückgängig“ filtert.
 
 ## Daten
 
@@ -106,21 +129,34 @@ Sync-Registrierung (`db-change`). Cache-Version steigt.
 
 ## Risiken
 
-| Risiko                              | Gegenmaßnahme                             | Test                               |
-| ----------------------------------- | ----------------------------------------- | ---------------------------------- |
-| Fremder Haushalt liest Arten/Serien | RLS je Tabelle                            | pgTAP fremder Haushalt, abgemeldet |
-| Serie zeigt auf fremde Aktivität    | Prüfung gleicher Haushalt (Trigger/Check) | pgTAP                              |
-| Sync verpasst neue Tabellen         | Trigger + Registrierung                   | Sync-Test                          |
-| Termine am falschen Tag             | reine Funktion in core, Zeitzone Berlin   | Vitest AC-006–AC-011               |
+| Risiko                                                       | Gegenmaßnahme                                                                | Test                               |
+| ------------------------------------------------------------ | ---------------------------------------------------------------------------- | ---------------------------------- |
+| Fremder Haushalt liest Arten/Serien                          | RLS je Tabelle                                                               | pgTAP fremder Haushalt, abgemeldet |
+| Serie zeigt auf fremde Aktivität                             | Prüfung gleicher Haushalt (Trigger/Check)                                    | pgTAP                              |
+| Sync verpasst neue Tabellen                                  | Trigger + Registrierung                                                      | Sync-Test                          |
+| Termine am falschen Tag                                      | reine Funktion in core, Zeitzone Berlin                                      | Vitest AC-006–AC-011               |
+| Ausnahme zeigt auf fremde Serie, Art einer fremden Aktivität | zusammengesetzte Fremdschlüssel `(household_id, …)`                          | pgTAP                              |
+| Fremde Tageszeit / fremde Personen in Serie oder Ausnahme    | Trigger `assert_meal_slot`, `assert_members`                                 | pgTAP                              |
+| „Rückgängig“ setzt fremde Art/Serie ein                      | `restore_activity` nur eigene Löschung, Art und Serie nur im selben Haushalt | pgTAP                              |
+
+`/security-check` (26.11.): keine Befunde über „hinweis“. Hinweise: `rule` hat keine eigene
+Größengrenze, ist aber durch die genauen Schlüssel und begrenzten Werte klein; entfernte Mitglieder in
+`eater_ids` (Entscheidung 13).
 
 ## Umsetzung
 
-- [ ] 1. Migration Arten, Serien, Ausnahmen, Spalten + Vorgaben + pgTAP (`db-change`) (AC-004)
-- [ ] 2. core: Rhythmus „jährlich“, Termine einer Serie im Zeitraum (AC-006–AC-011)
-- [ ] 3. Formular: Art, Symbol, Merken (AC-001–AC-003, AC-005, AC-012)
-- [ ] 4. Liste: Filter Gemerkt/Alle/Nicht gemerkt (AC-012, AC-013)
-- [ ] 5. Einplanen mit Rhythmus, Serie bearbeiten, Termin absagen (AC-006–AC-009)
-- [ ] 6. Personen am Planeintrag (AC-014)
-- [ ] 7. Glossar „Aktivitätsart“, „Serie“
-- [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün;
+- [x] 1. Migration Arten, Serien, Ausnahmen, Spalten + Vorgaben + pgTAP (`db-change`) (AC-004)
+- [x] 2. core: Rhythmus „jährlich“, Termine einer Serie im Zeitraum (AC-006–AC-011)
+- [x] 3. Formular: Art, Symbol, Merken (AC-001–AC-003, AC-005, AC-012)
+- [x] 4. Liste: Filter Gemerkt/Alle/Nicht gemerkt (AC-012, AC-013)
+- [x] 5. Einplanen mit Rhythmus, Serie bearbeiten, Termin absagen (AC-006–AC-009)
+- [x] 6. Personen am Planeintrag (AC-014)
+- [x] 7. Glossar „Aktivitätsart“, „Serie“
+- [x] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün;
       `pnpm exec supabase test db`; `/security-check`
+
+**Nachweis (26.11.2026):** `pnpm format:check` grün; `pnpm check` grün (core 98,6 %, api 93,8 %,
+ui 98,0 % Zeilen); `pnpm build:web` grün; `pnpm exec supabase test db`: alle Dateien grün außer
+`collections.test.sql` (2 Fälle, kommt von der parallel angewandten Migration der Spec 0037 in der
+geteilten lokalen DB, nicht von 0041); neu `activity_kinds_and_series.test.sql` (113 Fälle).
+Oberfläche geprüft mit Playwright (390×844, 1440×900) gegen den Dev-Server.

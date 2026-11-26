@@ -139,7 +139,8 @@ end
 $$;
 
 -- ---------------------------------------------------------------------------------------------
--- apply_changes: stores.maps_url (REQ-002). Unchanged from 20261123070918 except the stores rule.
+-- apply_changes: stores.maps_url (REQ-002). Unchanged from 20261126111313 (spec 0041) except the
+-- stores rule.
 -- ---------------------------------------------------------------------------------------------
 
 create or replace function public.apply_changes(p_household_id uuid, p_ops jsonb)
@@ -171,6 +172,8 @@ declare
   -- A plan entry's time is starts_at (spec 0021); the reservation reminder is gone.
   -- Restaurants and activities are deleted only by delete_restaurant / delete_activity (spec 0024).
   -- "Nicht gemacht" is not_done on every kind (spec 0020, REQ-008).
+  -- An activity's kind, own symbol and "Merken" are patched; kinds, series and their exceptions
+  -- are written directly, a series keeps its activity (spec 0041).
   -- A trip may be a draft ("Entwurf", spec 0030, REQ-004): draft is set on insert and patched.
   -- The meal slots of a household are set by create_household and not written by members, and the
   -- bundled sample photo of a recipe (photo) is set only by the seed (spec 0031, REQ-014, REQ-026).
@@ -197,9 +200,19 @@ declare
                          "patch":  ["name", "address", "lat", "lng", "maps_url", "cuisine", "price_level", "tags",
                                     "notes", "website_url", "photo_path"], "delete": false},
     "activities":       {"insert": ["id", "household_id", "name", "name_key", "description", "photo_path", "place_name",
-                                    "address", "lat", "lng", "maps_url", "website_url", "created_by"],
+                                    "address", "lat", "lng", "maps_url", "website_url", "created_by", "kind_id", "icon",
+                                    "remembered"],
                          "patch":  ["name", "name_key", "description", "photo_path", "place_name", "address", "lat",
-                                    "lng", "maps_url", "website_url"], "delete": false},
+                                    "lng", "maps_url", "website_url", "kind_id", "icon", "remembered"], "delete": false},
+    "activity_kinds":   {"insert": ["id", "household_id", "name", "name_key", "icon"],
+                         "patch":  ["name", "name_key", "icon"], "delete": true},
+    "activity_series":  {"insert": ["id", "household_id", "activity_id", "rule", "starts_on", "ends_on", "slot_id",
+                                    "starts_at", "note", "eater_ids", "guests"],
+                         "patch":  ["rule", "starts_on", "ends_on", "slot_id", "starts_at", "note", "eater_ids",
+                                    "guests"], "delete": true},
+    "activity_series_exceptions": {"insert": ["id", "household_id", "series_id", "on_date", "moved_to", "slot_id",
+                                              "starts_at"],
+                                   "patch":  ["series_id", "moved_to", "slot_id", "starts_at"], "delete": true},
     "trips":            {"insert": ["id", "household_id", "from_on", "to_on", "note", "draft"],
                          "patch":  ["from_on", "to_on", "note", "draft"], "delete": true},
     "trip_members":     {"insert": ["id", "household_id", "trip_id", "member_id"],

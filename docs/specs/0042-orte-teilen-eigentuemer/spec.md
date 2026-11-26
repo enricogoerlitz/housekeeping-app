@@ -110,10 +110,10 @@ steht beim Eigentümer „Eigentümer“. Quelle: V-01. Offline: offline lesend.
    genannt); „Haushalt löschen“ bleibt beim letzten Mitglied.
 9. Bau, 26.11.: Das Teilen-Symbol sitzt in `PhotoActionRow` (`own-photo.tsx`) rechts; Spec 0039
    ersetzt die Foto-Knöpfe links durch „Foto ändern“, das Symbol bleibt am Zeilenende.
-10. OFFEN: `apply_changes` ersetzen auch Spec 0041 (`20261126111313`) und diese Migration
-    (`20261126111336`), beide auf Basis von `20261123070918`. Wer als Zweiter nach `develop` kommt,
-    muss seine Fassung auf die des anderen setzen (hier: nur `maps_url` bei `stores`), sonst fehlen
-    die Tabellen der anderen Spec in der Allowlist.
+10. Bau, 26.11. (nach dem Merge von 0041 und 0037): `apply_changes` dieser Migration baut auf der
+    Fassung von `20261126111313` (Spec 0041) auf und ergänzt nur `maps_url` bei `stores`;
+    Cache-Version 20 (0041: 19). `save_recipe_page` (0037) ruft `apply_changes(uuid, jsonb)`
+    unverändert auf.
 
 ## Daten
 
@@ -172,3 +172,7 @@ Pin öffnet nur `www.google.com/maps/search` mit kodierter Suche.
   Einfügen, Rückkehr aus Google Maps in die installierte App.
 - e2e: `rundgang-aktivitaeten` an `activity-search-name` angepasst, nicht ausgeführt (die Suite
   setzt die geteilte lokale DB zurück).
+- Nach dem Merge von `develop` (0037, 0041): `apply_changes` der Migration lokal neu eingespielt
+  (kein Reset); `pnpm exec supabase test db` komplett grün (58 Dateien, 2853 Tests, darunter
+  `apply_changes`, `schema_lint`, `sync_pull`, `recipe_page_save`,
+  `activity_kinds_and_series`); `pnpm format:check && pnpm check && pnpm build:web` grün.

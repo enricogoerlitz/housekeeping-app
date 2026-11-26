@@ -426,7 +426,7 @@ describe('spec 0009: planning, the list and the sections of a collection', () =>
     ]);
   });
 
-  it('E13: a collection saves its head without time; "Einordnung" and steps are refused', async () => {
+  it('E13: a collection saves its head with a time (spec 0037, AC-016); "Einordnung" and steps are refused', async () => {
     await fx.startEnrico();
     const collection = recipe(GRILLABEND);
     if (!collection) throw new Error('fixture');
@@ -439,7 +439,12 @@ describe('spec 0009: planning, the list and the sections of a collection', () =>
     await fx.settle();
     await save?.confirmed;
     expect(opsOf(0)).toEqual([
-      { kind: 'patch', table: 'recipes', id: GRILLABEND, changes: { servings: 10 } },
+      {
+        kind: 'patch',
+        table: 'recipes',
+        id: GRILLABEND,
+        changes: { servings: 10, total_minutes: 30 },
+      },
     ]);
     const steps = sectionDraft(recipe(NUDELSALAT) ?? collection, 'steps');
     expect(() => saveRecipeSection(GRILLABEND, steps)).toThrow(

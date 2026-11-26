@@ -239,6 +239,7 @@ describe('activityShareText (spec 0042, REQ-004)', () => {
       websiteUrl: 'https://eisstadion.de',
       favoriteOf: [],
       ratings: {},
+      remembered: false,
       createdAt: '2026-11-20T10:00:00Z',
     };
     expect(activityShareText(activity, `${APP}/aktivitaet/a1`)).toBe(

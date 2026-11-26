@@ -1,5 +1,6 @@
 import { EDGE_SWIPE_START, nextEdgeSwipe, systemSwipeNavigation } from '@housekeeping/ui';
 import { CardStyleInterpolators, type StackNavigationOptions } from 'expo-router/js-stack';
+import { SceneStyleInterpolators, type BottomTabNavigationOptions } from 'expo-router/tabs';
 import { Easing, Platform } from 'react-native';
 
 // Spec 0034, REQ-003: on phones a page opened in an area's stack slides in from the right and
@@ -83,6 +84,42 @@ function decidedLate(spec: TransitionSpec): TransitionSpec {
       return instant() ? INSTANT.config : spec.config;
     },
   } as TransitionSpec;
+}
+
+type TabOptions = Pick<BottomTabNavigationOptions, 'sceneStyleInterpolator' | 'transitionSpec'>;
+type TabInterpolator = NonNullable<BottomTabNavigationOptions['sceneStyleInterpolator']>;
+
+/**
+ * A page outside the tab bar ("Verwalten", its pages, the settings) is a tab of its own, not a
+ * page in a stack: it slides by its place in the tab order, in from the right going forward, out
+ * to the right going back (spec 0034, REQ-003).
+ */
+const forPage: TabInterpolator = ({ current }) => ({
+  sceneStyle: {
+    transform: [
+      {
+        translateX: current.progress.interpolate({
+          inputRange: [-1, 0, 1],
+          outputRange: ['-100%', '0%', '100%'],
+        }),
+      },
+    ],
+  },
+});
+/** A tab of the tab bar stays still: it is shown at once, and a page slides in over it. */
+const forStill: TabInterpolator = () => ({ sceneStyle: {} });
+
+/** The options of a tab on a phone on the web: `page` for one outside the tab bar. */
+export function phoneTabOptions(reducedMotion: boolean, page: boolean): TabOptions {
+  const spec = decidedLate(reducedMotion ? FADE : SLIDE);
+  return {
+    transitionSpec: spec as TabOptions['transitionSpec'],
+    sceneStyleInterpolator: !page
+      ? forStill
+      : reducedMotion
+        ? SceneStyleInterpolators.forFade
+        : forPage,
+  };
 }
 
 /** The options of a phone's area stack on the web. */

@@ -165,6 +165,8 @@ export function confirmPhotoRemoval(remove: () => void): void {
  */
 export function PhotoActionRow(props: {
   hasPhoto: boolean;
+  /** Only an own photo can be removed, not a sample photo (default: `hasPhoto`). */
+  removable?: boolean;
   disabled: boolean;
   hint: string | undefined;
   onChange: () => void;
@@ -204,7 +206,7 @@ function PhotoButtons(props: Parameters<typeof PhotoActionRow>[0]) {
         onPress={props.onChange}
         testID={`${props.testPrefix}-photo-change`}
       />
-      {props.hasPhoto ? (
+      {(props.removable ?? props.hasPhoto) ? (
         <Button
           label="Foto entfernen"
           icon="trash"

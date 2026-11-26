@@ -9,6 +9,7 @@ import {
   originFor,
   placeAfter,
   placeQuery,
+  quickViewOrigin,
   sectionHref,
   windowClosedByBack,
   type WindowEntry,
@@ -214,6 +215,17 @@ describe('originBackPlan', () => {
       historyBack: false,
       href: '/rezepte',
     });
+  });
+});
+
+describe('quickViewOrigin', () => {
+  it('AC-006: a restaurant opened from the calendar beside the Essen list leads back there', () => {
+    expect(quickViewOrigin('kalender', 'essen')).toBe('kalender');
+  });
+
+  it('AC-006: without `von` or from its own section ✕ only closes the quick view', () => {
+    expect(quickViewOrigin(undefined, 'essen')).toBeUndefined();
+    expect(quickViewOrigin('essen', 'essen')).toBeUndefined();
   });
 });
 

@@ -34,7 +34,7 @@ test('AC-001 / AC-003: "Neue Zutat" starts with the article, then "Menge"; witho
   page,
 }) => {
   await open(page, `/rezept/${LASAGNE}`);
-  await tid(page, 'recipe-ingredients-edit').click();
+  await tid(page, 'recipe-edit').click();
   await tid(page, 'recipe-add-ingredient').click();
   const search = tid(page, 'ingredient-article-search-input');
   await expect(search).toBeFocused();
@@ -53,7 +53,7 @@ test('AC-001 / AC-003: "Neue Zutat" starts with the article, then "Menge"; witho
   await expect(tid(page, 'recipe-ingredients')).toContainText('1 Prise Muskatnuss');
 });
 
-test('AC-004 / AC-005 / AC-007: "Zutat bearbeiten" from the read view saves at once with undo', async ({
+test('AC-004 / AC-005 / AC-007: "Zutat bearbeiten" from the read view opens the edit mode with the row (spec 0037)', async ({
   page,
 }) => {
   await open(page, `/rezept/${LASAGNE}`);
@@ -65,8 +65,9 @@ test('AC-004 / AC-005 / AC-007: "Zutat bearbeiten" from the read view saves at o
   await expect(page.getByText('für 4 Portionen')).toBeVisible();
   await tid(page, 'ingredient-amount').fill('200 g');
   await tid(page, 'ingredient-save').click();
+  await tid(page, 'recipe-edit-save').click();
   await expect(tid(page, `ingredient-amount-${LINSEN}`)).toHaveText('200 g');
-  await expect(toastMessage(page)).toHaveText('Zutat gespeichert');
+  await expect(toastMessage(page)).toHaveText('Gespeichert');
 });
 
 test('AC-008: offline the three entries are greyed out', async ({ page }) => {
@@ -83,14 +84,16 @@ test('AC-008: offline the three entries are greyed out', async ({ page }) => {
 
 test('AC-009 / AC-010: "Abbrechen" and Escape close a section without saving', async ({ page }) => {
   await open(page, `/rezept/${LASAGNE}`);
-  await tid(page, 'recipe-head-edit').click();
+  await tid(page, 'recipe-edit').click();
   await tid(page, 'recipe-head-title').fill('Lasagne neu');
   await page.keyboard.press('Escape');
+  // Spec 0037, AC-005: with changes it asks first.
+  await tid(page, 'confirm-discard-confirm').click();
   await expect(tid(page, 'recipe-title')).toHaveText('Lasagne');
-  await tid(page, 'recipe-steps-edit').click();
-  await expect(tid(page, 'recipe-steps-cancel')).toBeVisible();
-  await tid(page, 'recipe-steps-cancel').click();
-  await expect(tid(page, 'recipe-steps-done')).toBeHidden();
+  await tid(page, 'recipe-edit').click();
+  await expect(tid(page, 'recipe-edit-cancel')).toBeVisible();
+  await tid(page, 'recipe-edit-cancel').click();
+  await expect(tid(page, 'recipe-edit-save')).toBeHidden();
 });
 
 test('AC-013: ingredients without group first, then each group under its heading', async ({
@@ -103,7 +106,7 @@ test('AC-013: ingredients without group first, then each group under its heading
 
 test('AC-015 / AC-016: a step timer of 1 to 600 minutes', async ({ page }) => {
   await open(page, `/rezept/${LASAGNE}`);
-  await tid(page, 'recipe-steps-edit').click();
+  await tid(page, 'recipe-edit').click();
   const menu = page.locator('[data-testid^="recipe-step-menu-"]').first();
   await menu.click();
   await page.locator('[role="menuitem"]').filter({ hasText: 'Bearbeiten' }).click();
@@ -112,7 +115,7 @@ test('AC-015 / AC-016: a step timer of 1 to 600 minutes', async ({ page }) => {
   await expect(page.getByText('1 bis 600 Minuten')).toBeVisible();
   await tid(page, 'recipe-step-sheet-timer').fill('35');
   await tid(page, 'recipe-step-sheet-apply').click();
-  await tid(page, 'recipe-steps-done').click();
+  await tid(page, 'recipe-edit-save').click();
   await expect(tid(page, 'recipe-steps')).toContainText('35 Min');
 });
 
@@ -122,7 +125,7 @@ test('AC-031 / AC-032 / AC-033: links are checked, saved and open in a new tab',
 }) => {
   await open(page, `/rezept/${LASAGNE}`);
   await expect(tid(page, 'recipe-links')).toContainText('Noch keine Links.');
-  await tid(page, 'recipe-links-edit').click();
+  await tid(page, 'recipe-edit').click();
   await tid(page, 'recipe-links-add').click();
   await tid(page, 'recipe-link-url').fill('javascript:alert(1)');
   await tid(page, 'recipe-link-sheet-apply').click();
@@ -130,7 +133,7 @@ test('AC-031 / AC-032 / AC-033: links are checked, saved and open in a new tab',
   await tid(page, 'recipe-link-url').fill('chefkoch.de/r/1');
   await tid(page, 'recipe-link-label').fill('Omas Variante');
   await tid(page, 'recipe-link-sheet-apply').click();
-  await tid(page, 'recipe-links-done').click();
+  await tid(page, 'recipe-edit-save').click();
   const row = tid(page, 'recipe-link-0');
   await expect(row).toContainText('Omas Variante');
   await expect(row).toContainText('chefkoch.de');

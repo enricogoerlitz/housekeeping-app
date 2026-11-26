@@ -222,28 +222,7 @@ export function saveRecipeSection(recipeId: Id, draft: RecipeSectionDraft): Sect
   let failure: unknown;
   const confirmed = commitConfirmed({ path: 'diff' }, () => {
     try {
-      const data = getData();
-      const recipe = data.recipes.find((candidate) => candidate.id === recipeId);
-      if (!recipe) throw new Error('Rezept nicht gefunden');
-      const patch = sectionPatch(recipe, draft, {
-        articles: data.articles,
-        createArticle: chosenArticle,
-        newId,
-        entries: data.planEntries,
-      });
-      open = patch.open;
-      for (const { articleId, rule } of patch.rules) {
-        const article = getData().articles.find((candidate) => candidate.id === articleId);
-        if (article) rememberRule(article, rule);
-      }
-      patchRecipe(recipeId, (current) => ({ ...current, ...patch.recipe }));
-      if (patch.entries.length > 0) {
-        const changed = new Map(patch.entries.map((entry) => [entry.id, entry]));
-        updateData((current) => ({
-          ...current,
-          planEntries: current.planEntries.map((entry) => changed.get(entry.id) ?? entry),
-        }));
-      }
+      open = applySection(recipeId, draft);
     } catch (error) {
       failure = error;
       throw error;
@@ -255,6 +234,37 @@ export function saveRecipeSection(recipeId: Id, draft: RecipeSectionDraft): Sect
   const saved = getData().recipes.find((recipe) => recipe.id === recipeId);
   if (open.length === 0 || !saved) return { open, confirmed };
   return { open, reopened: addIngredientRows(sectionDraft(saved, 'ingredients'), open), confirmed };
+}
+
+/**
+ * Inside a running command: the draft's section on the recipe as it is now (core sectionPatch),
+ * with new articles, remembered rules and the plan entries of a removed variant. Returns the rows
+ * left open (no article). Shared by the sections and the page (spec 0037, saveRecipePage).
+ */
+export function applySection(recipeId: Id, draft: RecipeSectionDraft): IngredientRow[] {
+  const data = getData();
+  const recipe = data.recipes.find((candidate) => candidate.id === recipeId);
+  if (!recipe) throw new Error('Rezept nicht gefunden');
+  assertSectionFits(recipe, draft);
+  const patch = sectionPatch(recipe, draft, {
+    articles: data.articles,
+    createArticle: chosenArticle,
+    newId,
+    entries: data.planEntries,
+  });
+  for (const { articleId, rule } of patch.rules) {
+    const article = getData().articles.find((candidate) => candidate.id === articleId);
+    if (article) rememberRule(article, rule);
+  }
+  patchRecipe(recipeId, (current) => ({ ...current, ...patch.recipe }));
+  if (patch.entries.length > 0) {
+    const changed = new Map(patch.entries.map((entry) => [entry.id, entry]));
+    updateData((current) => ({
+      ...current,
+      planEntries: current.planEntries.map((entry) => changed.get(entry.id) ?? entry),
+    }));
+  }
+  return patch.open;
 }
 
 /**

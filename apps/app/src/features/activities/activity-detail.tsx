@@ -4,6 +4,7 @@ import {
   setActivityPhoto,
   toggleActivityFavorite,
   useActivity,
+  useActivityKindsById,
   useCurrentMember,
   useHousehold,
   useMembers,
@@ -36,7 +37,7 @@ import { openLink } from '@/lib/open-link';
 import { appLink, shareText, useShareFile } from '@/lib/share';
 
 import { ActivityFormSheet } from './activity-form';
-import { ACTIVITY_ICON } from './activity-photo';
+import { useActivityIcon } from './activity-photo';
 import { activityVisitsLabel } from './labels';
 
 /** The windows of an activity's detail; they stand in the address (spec 0019, REQ-013). */
@@ -99,6 +100,9 @@ export function ActivityDetail(props: ActivityDetailProps) {
 function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity }) {
   const { activity } = props;
   const online = useOnlineOnly();
+  const kindsById = useActivityKindsById();
+  const icon = useActivityIcon(activity);
+  const kind = activity.kindId === undefined ? undefined : kindsById[activity.kindId];
   const me = useCurrentMember();
   const members = useMembers();
   const household = useHousehold();
@@ -190,7 +194,7 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
         <DetailPhotoBlock
           photoPath={activity.photoPath}
           name={activity.name}
-          placeholderIcon={ACTIVITY_ICON}
+          placeholderIcon={icon}
           onChange={(photo) => setActivityPhoto(activity.id, photo)}
           onRemove={() => removeActivityPhoto(activity.id)}
           onShare={share}
@@ -201,6 +205,18 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
           {props.onBack ? null : (
             <Text variant="title" heading testID="activity-title">
               {activity.name}
+            </Text>
+          )}
+          {kind ? (
+            <Row gap={6}>
+              <Icon name={icon} size={16} color="muted" />
+              <Text variant="small" color="muted" testID="activity-kind">
+                {activity.remembered ? kind.name : `${kind.name} · nicht gemerkt`}
+              </Text>
+            </Row>
+          ) : activity.remembered ? null : (
+            <Text variant="small" color="muted" testID="activity-kind">
+              Nicht gemerkt
             </Text>
           )}
           {activity.description ? (

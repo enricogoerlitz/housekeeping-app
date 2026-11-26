@@ -219,7 +219,7 @@ Anfang gestern bis heute + 5 („heutiger Abschnitt“). Die Leiste springt um g
 
 - **Im Code:** kein eigener Typ
 - **Nicht verwenden:** Woche (für diesen Zeitraum), Seite
-- **Abgrenzung:** Nicht der _Abschnitt der Rezeptseite_ und nicht die Gruppen der Seiten „Heute
+- **Abgrenzung:** Nicht der _Bearbeitungsmodus_ der Rezeptseite und nicht die Gruppen der Seiten „Heute
   geplant“, „Noch offen“ usw.
 
 ### Kochbeginn
@@ -335,6 +335,35 @@ stehen. Andere Arten haben keine Uhrzeit (Spec 0021, REQ-013).
 - **Nicht verwenden:** Termin, Reservierungszeit (als Feldname)
 - **Abgrenzung:** Die _Uhrzeit (Aufgabe)_ gehört einer Aufgabe. Die _Tageszeit_ ist der Platz im Tag
   (Vormittag, Mittag, Abend), keine Uhrzeit.
+
+### Aktivitätsart
+
+Die Art einer Aktivität, z. B. Geburtstag, Sport, Ausflug, Kultur, Essen gehen, Treffen, Reise oder
+Sonstiges, jeweils mit einem Symbol aus einer festen Auswahl. Gilt für den ganzen Haushalt; jeder
+Haushalt beginnt mit diesen acht, weitere legt man beim Anlegen einer Aktivität an („„Wellness“ neu
+anlegen“), umbenannt und gelöscht wird unter „Verwalten“ → „Aktivitäten“ → „Arten“. Eine Aktivität
+hat höchstens eine Art; wird die Art gelöscht, bleibt die Aktivität ohne Art (Spec 0041).
+
+- **Im Code:** `ActivityKind`, `activity_kinds`, `Activity.kindId`/`activities.kind_id`; Symbol
+  `ActivityIcon` aus `ACTIVITY_ICONS`; in der Oberfläche heißt sie „Art“
+- **Nicht verwenden:** Kategorie, Typ, Gruppe
+- **Abgrenzung:** Die _Art_ eines Rezepts („Rezept“ oder „Sammlung“, `RecipeKind`) ist etwas anderes.
+  Das eigene Symbol einer Aktivität (`Activity.icon`) geht dem Symbol ihrer Art vor.
+
+### Serie
+
+Eine Aktivität, die mit einem [Rhythmus](#rhythmus) eingeplant ist: wöchentlich an Wochentagen,
+alle N Wochen, monatlich an einem Tag oder jährlich am Datum des Starts, ab einem Start bis zu
+einem Datum oder dauerhaft, mit Tageszeit, Uhrzeit, Zusatz und wer dabei ist. Ihre **Termine**
+werden für den sichtbaren Zeitraum berechnet, nicht als Einträge gespeichert. Einen einzelnen
+Termin kann man absagen oder verschieben (eine Ausnahme); „Serie bearbeiten“ ändert nur die Termine
+ab heute, die vergangenen bleiben (Spec 0041).
+
+- **Im Code:** `ActivitySeries`, `activity_series`; Termin `SeriesOccurrence` bzw. ein berechneter
+  `MealPlanEntry` mit `series`; Ausnahme `ActivitySeriesException`, `activity_series_exceptions`
+- **Nicht verwenden:** Wiederholung, Serientermin (für die Serie), Abo
+- **Abgrenzung:** Ein Eintrag im Wochenplan (`meal_plan_entries`) steht an genau einem Tag; eine
+  Serie hat keinen eigenen Eintrag. Der Rhythmus einer _Aufgabe_ ist keine Serie.
 
 ### Einkaufsliste
 
@@ -527,17 +556,21 @@ an die Standardvariante ab (Spec 0008).
   (`{ variantId, portions }`)
 - **Nicht verwenden:** Version, Abwandlung, Option
 
-### Abschnitt der Rezeptseite
+### Bearbeitungsmodus
 
-Ein Block der Rezeptseite, der für sich bearbeitet und gespeichert wird: Kopf, Einordnung, Zutaten,
-Zubereitung, Notizen. Höchstens einer ist zugleich offen; „Fertig“, ein anderer Stift oder das
-Verlassen der Seite speichert ihn und schickt nur seine Felder (Spec 0008, REQ-007).
+Der Zustand der Rezept- oder Sammlungsseite, in dem alle Blöcke (Kopf, Einordnung, Zutaten,
+Zubereitung, Notizen, Links, bei Sammlungen „Enthält“) zugleich bearbeitet werden. Der Stift oben
+rechts öffnet ihn, „Speichern“ sichert alle geänderten Blöcke in einem Schritt, „Abbrechen“ fragt
+„Änderungen verwerfen?“. Im Lesemodus hat die Seite keine Stifte in den Blöcken (Spec 0037,
+REQ-001; ersetzt den „Abschnitt der Rezeptseite“ aus Spec 0008, REQ-007).
 
-- **Im Code:** `RecipeSection` (`'head' | 'classification' | 'ingredients' | 'steps' | 'notes'`),
-  Entwurf `RecipeSectionDraft`, in der App `useSectionEditor`, Baustein `EditableSection`
-- **Nicht verwenden:** Karte, Bereich (ist der Gang im Markt), Formular
+- **Im Code:** `PageDraft`, `pageEditorReducer` (`packages/core`, `page-editor.ts`), Block-Entwurf
+  `RecipeSectionDraft` mit `RecipeSection`, Speichern `saveRecipePage` / `save_recipe_page`, in
+  der App `usePageEditor`
+- **Nicht verwenden:** Abschnitt der Rezeptseite, Formular, Editiermodus
 - **Abgrenzung:** Die Abschnitte der _Packliste_ (`packingSections`) und „Heute geplant“ auf der
-  _Übersicht_ sind Gruppen zum Lesen, keine Abschnitte der Rezeptseite.
+  _Übersicht_ sind Gruppen zum Lesen. Ein Fenster („Neue Zutat“) im Bearbeitungsmodus speichert
+  nichts selbst.
 
 ### Gerichtart
 
@@ -604,7 +637,8 @@ flexibel (z. B. etwa alle zwei Wochen nach der letzten Erledigung) oder **bei Be
 steht nur unter „Alle“ und wird in „Was anderes erledigt?“ gefunden (Spec 0011, D27).
 
 - **Im Code:** `Recurrence`; „bei Bedarf“ `type: 'asNeeded'` (eigener Topf `asNeeded` in
-  `choreBucket`)
+  `choreBucket`). Der Rhythmus einer [Serie](#serie) ist `SeriesRule`: die wöchentliche und
+  monatliche Form von `Recurrence` und zusätzlich „jährlich“ (`type: 'yearly'`, Spec 0041)
 - **Nicht verwenden:** Intervall, Turnus, Wiederholung; für „bei Bedarf“ auch: spontan, ohne
   Termin
 

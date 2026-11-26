@@ -14,6 +14,10 @@ export const ID_TABLES = [
   'collection_recipes',
   'restaurants',
   'activities',
+  // Spec 0041: kinds, series and their exceptions.
+  'activity_kinds',
+  'activity_series',
+  'activity_series_exceptions',
   'trips',
   'trip_members',
   'feedback',
@@ -114,7 +118,26 @@ export const WRITABLE_COLUMNS = {
     'maps_url',
     'website_url',
     'created_by',
+    // Spec 0041: "Art", "eigenes Symbol", "Merken".
+    'kind_id',
+    'icon',
+    'remembered',
   ],
+  activity_kinds: ['name', 'name_key', 'icon'],
+  // A series keeps its activity (see PATCH_COLUMNS).
+  activity_series: [
+    'activity_id',
+    'rule',
+    'starts_on',
+    'ends_on',
+    'slot_id',
+    'starts_at',
+    'note',
+    'eater_ids',
+    'guests',
+  ],
+  // An exception keeps its day; it moves to the next series on "Serie bearbeiten".
+  activity_series_exceptions: ['series_id', 'on_date', 'moved_to', 'slot_id', 'starts_at'],
   // Spec 0022: a trip and its people; people are only inserted and deleted (see PATCH_COLUMNS).
   trips: ['from_on', 'to_on', 'note', 'draft'],
   trip_members: ['trip_id', 'member_id'],
@@ -208,6 +231,18 @@ export const PATCH_COLUMNS: Partial<Record<WritableTable, readonly string[]>> = 
   // Spec 0022, REQ-009: name, count, "je Tag" and the link; sent by updatePackingItem itself.
   packing_items: ['name', 'quantity', 'per_day_quantity', 'bag_item_id', 'from_bag'],
   trip_members: [],
+  // Spec 0041: a series keeps its activity, an exception its day.
+  activity_series: [
+    'rule',
+    'starts_on',
+    'ends_on',
+    'slot_id',
+    'starts_at',
+    'note',
+    'eater_ids',
+    'guests',
+  ],
+  activity_series_exceptions: ['series_id', 'moved_to', 'slot_id', 'starts_at'],
 };
 
 /**
@@ -236,12 +271,16 @@ export const CASCADE_CHILDREN: Partial<Record<WritableTable, readonly ChildRefer
   ],
   packing_list_bags: [{ table: 'packing_items', column: 'list_bag_id' }],
   packing_bags: [{ table: 'packing_bag_items', column: 'bag_id' }],
+  // Spec 0041: a series goes with its activity (delete_activity), its exceptions with it.
+  activity_series: [{ table: 'activity_series_exceptions', column: 'series_id' }],
 };
 
 /** `on delete set null`: deleting the parent clears the reference; the diff does not send it. */
 export const SET_NULL_CHILDREN: Partial<Record<WritableTable, readonly ChildReference[]>> = {
   packing_bags: [{ table: 'packing_list_bags', column: 'bag_id' }],
   packing_bag_items: [{ table: 'packing_items', column: 'bag_item_id' }],
+  // Spec 0041, AC-003: deleting a kind keeps its activities, without a kind.
+  activity_kinds: [{ table: 'activities', column: 'kind_id' }],
 };
 
 /**

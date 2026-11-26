@@ -165,7 +165,10 @@ export function collectionFitsPreference(
   return dietFitsPreference(collectionDiet(collection, contents, articlesById), pref);
 }
 
-/** recipeFitsPreference for a recipe, collectionFitsPreference for a collection. */
+/**
+ * recipeFitsPreference for a recipe, collectionFitsPreference for a collection; an empty collection
+ * fits (spec 0037, AC-013).
+ */
 export function dishFitsPreference(
   recipe: Recipe,
   pref: DietPreference,
@@ -173,7 +176,10 @@ export function dishFitsPreference(
   book: RecipeBook,
 ): boolean {
   if (recipe.kind === 'collection') {
-    return collectionFitsPreference(recipe, contentsInBook(recipe, book), pref, articlesById);
+    const contents = contentsInBook(recipe, book);
+    // Spec 0037, AC-013: an empty collection fits every diet.
+    if (contents.length === 0 && recipe.ingredients.length === 0) return true;
+    return collectionFitsPreference(recipe, contents, pref, articlesById);
   }
   return recipeFitsPreference(recipe, pref, articlesById);
 }
