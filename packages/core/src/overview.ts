@@ -25,15 +25,12 @@ function dayWithMonth(shown: ISODate, today: ISODate): string {
 }
 
 /**
- * The title of the shown day (Offene Frage 2 c): "Freitag, 20. November" (also today, which
- * the greeting accompanies), "Morgen, Samstag 21. November", "Gestern, Donnerstag 19. November",
- * in another year "Freitag, 8. Januar 2027". "Morgen" and "Gestern" never need the year.
+ * The title of the shown day: always weekday and date, "Freitag, 20. November", in another year
+ * "Freitag, 8. Januar 2027". No "Morgen"/"Gestern" prefix, so the heading keeps one line and does
+ * not jump between days (spec 0035, AC-014; replaces spec 0011, Offene Frage 2 c).
  */
 export function overviewTitle(shown: ISODate, today: ISODate): string {
-  const weekday = weekdayLong(shown);
-  if (shown === addDays(today, 1)) return `Morgen, ${weekday} ${dayWithMonth(shown, shown)}`;
-  if (shown === addDays(today, -1)) return `Gestern, ${weekday} ${dayWithMonth(shown, shown)}`;
-  return `${weekday}, ${dayWithMonth(shown, today)}`;
+  return `${weekdayLong(shown)}, ${dayWithMonth(shown, today)}`;
 }
 
 // ---------- Seven days from yesterday (spec 0020, REQ-001, REQ-002) ----------
