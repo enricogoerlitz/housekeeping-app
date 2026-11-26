@@ -28,12 +28,7 @@ export function ListPlaceholder(props: ListPlaceholderProps) {
   if (!shown) return null;
   const rows = Array.from({ length: props.rows ?? 3 }, (_, index) => index);
   return (
-    <View
-      accessible
-      accessibilityLabel={props.label}
-      testID={props.testID}
-      style={{ gap: 8 }}
-    >
+    <View accessible accessibilityLabel={props.label} testID={props.testID} style={{ gap: 8 }}>
       {rows.map((row) => (
         <View
           key={row}

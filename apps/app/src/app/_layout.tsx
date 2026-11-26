@@ -10,6 +10,7 @@ import { AssistantSheet } from '@/features/assistant/assistant-sheet';
 import { AuthGate } from '@/features/auth/auth-gate';
 import { ReturnAfterSignIn } from '@/features/auth/return-path';
 import { NotificationBridge } from '@/features/notifications/use-notification-open';
+import { PortraitHint } from '@/features/shell/portrait-hint';
 import { AssistantProvider } from '@/lib/assistant';
 import { features } from '@/lib/features';
 import { SettingsProvider, useSettings } from '@/lib/settings';
@@ -32,6 +33,7 @@ export default function RootLayout() {
             </AssistantProvider>
           </AuthGate>
           <ToastHost />
+          <PortraitHint />
         </Themed>
       </SettingsProvider>
     </SafeAreaProvider>

@@ -184,11 +184,7 @@ export function Photo(props: PhotoProps) {
     return (
       <View
         testID={props.testID}
-        style={[
-          box,
-          { alignItems: 'center', justifyContent: 'center' },
-          props.style,
-        ]}
+        style={[box, { alignItems: 'center', justifyContent: 'center' }, props.style]}
       >
         {props.loading ? null : (
           <ToneContext.Provider value={undefined}>

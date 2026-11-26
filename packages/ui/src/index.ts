@@ -39,6 +39,8 @@ export {
 export { ViewTabs, ChoiceChips, Menu, type ChoiceOption, type MenuOption } from './choice';
 export { ariaRef, useSoftDisabled } from './hint';
 export { ListPlaceholder } from './placeholder';
+export { useWakeLock } from './use-wake-lock';
+export { needsPortraitHint } from './portrait-hint';
 export { Sheet, toast, ToastHost, useToastClearance, type SheetAction } from './overlay';
 export { useKeyboard } from './keyboard';
 export { tabSwipe, type TabSwipe } from './tab-swipe';
@@ -89,5 +91,6 @@ export {
 } from './drag-drop';
 export { MonthCalendar } from './month-calendar';
 export { openExternalLink } from './external-link';
+export { openByLink } from './open-in-new-tab';
 export { hatchStyle, withAlpha } from './hatch';
 export { stickyTopStyle } from './sticky';
