@@ -1049,6 +1049,7 @@ export type Database = {
       };
       notification_settings: {
         Row: {
+          acknowledged_notices: string[];
           activities_eve_at: string;
           activities_eve_enabled: boolean;
           chore_reminders_enabled: boolean;
@@ -1064,6 +1065,7 @@ export type Database = {
         };
         ComputedFields: never;
         Insert: {
+          acknowledged_notices?: string[];
           activities_eve_at?: string;
           activities_eve_enabled?: boolean;
           chore_reminders_enabled?: boolean;
@@ -1078,6 +1080,7 @@ export type Database = {
           updated_at?: string;
         };
         Update: {
+          acknowledged_notices?: string[];
           activities_eve_at?: string;
           activities_eve_enabled?: boolean;
           chore_reminders_enabled?: boolean;
@@ -1997,6 +2000,7 @@ export type Database = {
     };
     Functions: {
       accept_invitation: { Args: { invitation_id: string }; Returns: string };
+      acknowledge_notices: { Args: { household_id: string; keys: string[] }; Returns: undefined };
       add_recipe_video: {
         Args: { p_household_id: string; p_recipe_id: string; p_video: Json };
         Returns: boolean;
@@ -2028,28 +2032,12 @@ export type Database = {
       };
       delete_restaurant: { Args: { restaurant_id: string; today: string }; Returns: Json };
       invite_member: { Args: { email: string; household_id: string }; Returns: string };
-      list_push_subscriptions: {
-        Args: { p_current_endpoint?: string };
-        Returns: {
-          created_at: string;
-          device_label: string;
-          id: string;
-          is_current: boolean;
-          last_success_at: string;
-          status: string;
-        }[];
-      };
       merge_areas: { Args: { p_source_id: string; p_target_id: string }; Returns: number };
       merge_articles: { Args: { p_source_id: string; p_target_id: string }; Returns: Json };
       min_app_version: { Args: Record<PropertyKey, never>; Returns: string };
-      register_push_subscription: {
-        Args: { p_auth: string; p_device_label: string; p_endpoint: string; p_p256dh: string };
-        Returns: string;
-      };
       remove_contributions: { Args: { p_ids: string[] }; Returns: number };
       remove_item_contributions: { Args: { p_ids: string[]; p_item_id: string }; Returns: Json };
       remove_member: { Args: { household_id: string; profile_id: string }; Returns: undefined };
-      remove_push_subscription: { Args: { p_id: string }; Returns: boolean };
       remove_recipe_video: {
         Args: { p_household_id: string; p_path: string; p_recipe_id: string };
         Returns: Json;
@@ -2068,7 +2056,6 @@ export type Database = {
         };
         Returns: Json;
       };
-      send_test_push: { Args: { p_endpoint: string }; Returns: undefined };
       set_activity_favorite: {
         Args: { activity_id: string; favorite: boolean };
         Returns: undefined;
@@ -2082,10 +2069,6 @@ export type Database = {
       set_packing_items_packed: {
         Args: { p_changes: Json; p_household_id: string };
         Returns: Json;
-      };
-      set_push_subscription_enabled: {
-        Args: { p_enabled: boolean; p_endpoint: string };
-        Returns: undefined;
       };
       set_recipe_favorite: { Args: { favorite: boolean; recipe_id: string }; Returns: undefined };
       set_recipe_rating: { Args: { recipe_id: string; stars: number }; Returns: undefined };
@@ -2112,7 +2095,6 @@ export type Database = {
         Returns: Json;
       };
       sync_pull: { Args: { p_request: Json }; Returns: Json };
-      unregister_push_subscription: { Args: { p_endpoint: string }; Returns: undefined };
       update_profile: {
         Args: { color: string; diet_preference: string; dislikes: string[]; name: string };
         Returns: undefined;

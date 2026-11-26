@@ -246,13 +246,13 @@ Mitglieder (alles schon im Cache).
       Erlaubnisfragen (AC-003, AC-006, AC-014–AC-020)
 - [x] 5. Function, Service Worker, Skripte, Workflows, Doku, ADR-0017, Regeln (AC-004, AC-005)
 - [x] 6. Screenshots Handy 390×844 und Desktop 1440×900; `/security-check`
-- [x] Nachweis (26.11.2026): `pnpm format:check && pnpm check` grün (core 1.774, api 996 Tests,
-      Skripte, knip, Lint, Typen); `node scripts/with-env.mjs pnpm build:web` grün (Service Worker
-      ohne `push`/`notificationclick`); `pnpm exec supabase test db`: alle Dateien dieser Spec grün,
-      rot nur `recipe_video` und `schema_lint` wegen der Migration der parallelen Spec 0046 in der
-      geteilten lokalen DB (nicht in diesem Zweig). Glocke, Fenster, Bestätigen, „Alle bestätigen“,
-      Tipp aufs Ziel, offline und die alte Adresse am Dev-Server (Port 8097) geklickt; Screenshots
-      in `tmp/review-0003/0051/`. `/security-check`: 0 kritisch/hoch/mittel, 1 niedrig
-      (Enrico-Schritt 2), Hinweise umgesetzt (Tag-Grenze, `touch_updated_at`, Test-Helfer). Volle
-      e2e-Suite nicht gelaufen (Bau-Brief); `pnpm test:integration` nicht gelaufen (setzt die
-      geteilte DB zurück).
+- [x] Nachweis (26.11.2026, nach Rebase auf `develop` mit 0046, 0050, 0052):
+      `pnpm format:check && pnpm check` grün (core 1.805, api 1.007, edge 264, Skripte 414, knip, Lint, Typen);
+      `node scripts/with-env.mjs pnpm build:web` grün (Service Worker ohne `push`/`notificationclick`);
+      `pnpm exec supabase test db` grün (55 Dateien, 2.637 Tests); `types.gen.ts` mit `pnpm db:types`
+      aus der lokalen DB erzeugt; Cache-Version 23 (nach 0046: 22). Glocke, Fenster, Bestätigen,
+      „Alle bestätigen“, Tipp aufs Ziel, offline und die alte Adresse am Dev-Server (Port 8097)
+      geklickt; Screenshots in `tmp/review-0003/0051/`. `/security-check`: 0 kritisch/hoch/mittel,
+      1 niedrig (Enrico-Schritt 2), Hinweise umgesetzt (Tag-Grenze, `touch_updated_at`,
+      Test-Helfer). Volle e2e-Suite nicht gelaufen (Bau-Brief); `pnpm test:integration` nicht
+      gelaufen (setzt die geteilte DB zurück).

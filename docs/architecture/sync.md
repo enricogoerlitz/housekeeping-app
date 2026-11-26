@@ -515,7 +515,7 @@ pack_seq}]` der gefundenen Packstücke.
   Ergebnis sofort (Überlagerung, ADR-0011; gleiche Regel in `acknowledgedAfter`), die anderen
   Geräte bekommen die Zeile über den Delta-Sync. Kein Schreiben über `apply_changes` (Allowlist
   leer), kein Update-Recht auf die Spalte.
-- **Cache-Version 22.** Die Einstellungs-Spalten von Spec 0013 liest das Gerät nicht mehr; sie
+- **Cache-Version 23.** Die Einstellungs-Spalten von Spec 0013 liest das Gerät nicht mehr; sie
   bleiben bis zum Rückbau in der Tabelle.
 
 ## Nachtrag Spec 0013 — Benachrichtigungen (Versand entfernt)
