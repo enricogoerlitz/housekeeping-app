@@ -84,6 +84,8 @@ export function handler(request: Request, deps: Deps): Promise<Response> {
     schema: FetchVideoRequestSchema,
     run: async ({ input, client }): Promise<FetchVideoReply> => {
       await requireMember(client, input.householdId);
+      // A recipe id is a uuid; anything else names no recipe (and would make PostgREST fail).
+      if (!UUID.test(input.recipeId)) throw new HttpError('forbidden');
       const recipe = await recipeOf(client, input.householdId, input.recipeId);
       if (!recipe) throw new HttpError('forbidden');
       // AC-004: only a TikTok link the recipe has; nothing is fetched for anything else.

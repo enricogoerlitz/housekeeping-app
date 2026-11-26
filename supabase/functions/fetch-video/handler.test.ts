@@ -172,6 +172,13 @@ describe('fetch-video (spec 0043, REQ-001)', () => {
     expect(deps.fetchMock).not.toHaveBeenCalled();
   });
 
+  it('a recipe id that is no uuid is forbidden before the database is asked', async () => {
+    const deps = setup();
+    const response = await handler(post(body({ recipeId: "x' or 1=1" })), deps);
+    expect(response.status).toBe(403);
+    expect(deps.client.selects.filter((select) => select.table === 'recipes')).toEqual([]);
+  });
+
   it('AC-005: signed out (anon key or no JWT) is 401, no file', async () => {
     for (const jwt of [ANON_JWT, null]) {
       const deps = setup();

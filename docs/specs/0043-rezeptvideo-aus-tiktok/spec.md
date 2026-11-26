@@ -76,6 +76,21 @@ mit. Offline: nur online.
    auf fremde Domains aus der App.
 5. Der Aufräum-Lauf und das Löschen des Haushalts (Spec 0039, `begin_household_deletion`) schließen
    den neuen Bucket ein.
+6. Agent, 26.11. (Bau): `fetch-video` nimmt nur einen TikTok-Link, den das Rezept selbst hat
+   (sonst `not_a_tiktok_link`, ohne Abruf), und lädt `playAddr` mit den Cookies der Seite und
+   `Referer: https://www.tiktok.com/` (ohne beides antwortet TikTok mit 403, geprüft am
+   Beispiel-Link). `fetchPublic` bekommt dafür zusätzliche Kopfzeilen und gibt die Cookies der
+   Antworten zurück; beides nur zusammen mit `allowHost` (nur TikTok und seine CDNs).
+7. Agent, 26.11. (Bau): Das Video lädt erst beim Tippen auf Wiedergabe (kein Vorladen von 20 MB
+   beim Öffnen der Seite) und spielt dann gleich mit Ton; bis dahin zeigt der Rahmen das Foto des
+   Rezepts mit dem Wiedergabe-Knopf. `begin_household_deletion` liefert Fotos und Videos; die App
+   unterscheidet sie an der Endung `.mp4`. Ein gelöschtes Rezept nimmt sein Video mit, wenn
+   „Rückgängig“ abgelaufen ist (wie das Foto), sonst der nächtliche Aufräum-Lauf.
+8. OFFEN: Die Sicherung (`.github/workflows/backup.yml`) sichert nur `household-media`, keine
+   Videos; `scripts/reset-app-data.mjs` leert nur `household-media` (übrig gebliebene Videos räumt
+   der Aufräum-Lauf nach einem Tag ab). Empfehlung: Videos bewusst nicht sichern (bis 50 MB je
+   Video, die Quelle bleibt der Link); beim nächsten Reset den Bucket mit leeren. Entscheidung
+   Enrico.
 
 ## Daten
 
@@ -92,14 +107,38 @@ Löschfunktionen und Aufräum-Lauf um den Bucket erweitert. Keine personenbezoge
 | Speicher läuft voll                     | 50 MB je Video, ein Video je Rezept, Aufräumen | AC-003, AC-011                       |
 | Datei bleibt beim Löschen liegen        | Löschpfade + Aufräum-Lauf                      | AC-009–AC-011                        |
 | TikTok ändert die Seite                 | Fehler sauber gemeldet, Link bleibt            | AC-002                               |
+| Cookies/Referer gehen an fremde Hosts   | nur mit `allowHost` (TikTok + CDNs), je Hop    | Unit-Test fetch-public, tiktok       |
+| Datei ohne Zeile (Abbruch, Wettlauf)    | Datei sofort wieder gelöscht; sonst Aufräumen  | Unit-Test fetch-video, pgTAP         |
+
+`/security-check` (26.11.): 0 kritisch, 0 hoch, 0 mittel. Niedrig: zwei gleichzeitige Aufrufe
+für dasselbe Rezept können eine zweite Datei hinterlassen (der zweite Pfad gewinnt, die erste
+Datei räumt der Aufräum-Lauf nach einem Tag ab) — angenommen; eine Rezept-ID ohne UUID-Form gab
+500 statt 403 — behoben. Hinweise: kein Kontingent (Entscheidung 3, ein Mitglied kann viele
+Rezepte mit Video füllen); bis etwa 100 MB Speicher in der Edge Function beim Zusammensetzen
+eines 50-MB-Videos; Sicherung und Reset ohne Videos (Entscheidung 8, OFFEN).
 
 ## Umsetzung
 
-- [ ] 1. Migration: Spalte, Bucket, Policies, Allowlist, Löschpfade, Aufräum-Lauf (`db-change`, pgTAP)
+- [x] 1. Migration: Spalte, Bucket, Policies, Allowlist, Löschpfade, Aufräum-Lauf (`db-change`, pgTAP)
       (AC-005, AC-009–AC-011)
-- [ ] 2. `fetch-video` mit TikTok-Auflösung (gemeinsam mit Spec 0040) (AC-001–AC-005)
-- [ ] 3. App: „Video speichern“ an TikTok-Links, Video-Rahmen, „Video entfernen“, Kochmodus
+- [x] 2. `fetch-video` mit TikTok-Auflösung (gemeinsam mit Spec 0040) (AC-001–AC-005)
+- [x] 3. App: „Video speichern“ an TikTok-Links, Video-Rahmen, „Video entfernen“, Kochmodus
       (AC-001–AC-009)
-- [ ] 4. CSP `media-src` + Test in `check-web-export`
-- [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün;
+- [x] 4. CSP `media-src` + Test in `check-web-export`
+- [x] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün;
       `pnpm exec supabase test db`; `/security-check`; ein echter Download am Beispiel-Link
+
+**Nachweis (26.11.2026):** `pnpm exec supabase test db` grün (60 Dateien, neu
+`recipe_video.test.sql` mit 33 Tests: Bucket, Spalte, Allowlist, fremder Haushalt, abgemeldet,
+Storage-Policies, Aufräum-Lauf, Haushalt löschen, `restore_recipe`); `pnpm format:check && pnpm
+check && pnpm build:web` grün. **Ein echter Download beweist AC-001:** die App auf dem
+Entwicklungsserver (Port 8093) tippte „Video speichern“ an `https://vm.tiktok.com/ZGdXoJ8Ay/`;
+der echte Handler von `fetch-video` (unter Node, weil der gemeinsame lokale Edge-Runtime den
+Haupt-Checkout bedient) lud die Seite, `playAddr` und das MP4 (21 558 855 Byte, `ftyp`), lud es mit
+dem Schlüssel des Aufrufers in `household-videos` und setzte `video_path` über `apply_changes`:
+HTTP 200 nach 12,7 s, nach 13 s stand der Rahmen unter dem Foto. Wiedergabe (AC-007): Blob-Adresse,
+läuft, nicht stumm, 96 s; offline „Video braucht Netz“ (AC-008); „Video entfernen“ (AC-009):
+`video_path` leer, Bucket leer, „Video speichern“ wieder da. Testrezept danach gelöscht.
+Bildschirmfotos: Haupt-Checkout `tmp/review-0003/0043/`. Nur am iPhone prüfbar: Ton und Vollbild
+in Safari nach dem Laden (die Wiedergabe startet nach dem Download; verweigert Safari das, reicht
+ein zweiter Tipp auf die Steuerung).
