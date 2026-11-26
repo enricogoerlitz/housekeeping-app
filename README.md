@@ -90,7 +90,7 @@ Release und Wiederherstellung: [docs/architecture/betrieb.md](docs/architecture/
 | ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
 | Plugins (in `.claude/settings.json` aktiviert)         | Superpowers, Expo, impeccable, UI UX Pro Max                                                                                            |
 | Eingecheckte Skills (festgelegt in `skills-lock.json`) | Supabase, Emil Kowalski (Animation, Gesten, Apple-Design), Vercel (React Native, Web-Design-Guidelines), Addy Osmani (Barrierefreiheit) |
-| Eigene Skills                                          | `spec`, `db-change`, `ui-verify`, `adr`, `glossary`, `security-check`                                                                   |
+| Eigene Skills                                          | `spec`, `db-change`, `ui-verify`, `adr`, `glossary`, `security-check`, `recipe-crud`                                                    |
 | Subagents (`.claude/agents/`)                          | `spec-auditor`, `security-auditor`                                                                                                      |
 | Regeln (`.claude/rules/`)                              | werden je nach Dateipfad automatisch geladen                                                                                            |
 

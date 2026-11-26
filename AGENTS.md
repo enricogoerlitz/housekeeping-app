@@ -104,7 +104,7 @@ dependency bumps, typos). Say that you are making one.
 
 | Group            | Skills                                                                                      |
 | ---------------- | ------------------------------------------------------------------------------------------- |
-| Own              | `spec`, `db-change`, `ui-verify`, `adr`, `glossary`, `security-check`                       |
+| Own              | `spec`, `db-change`, `ui-verify`, `adr`, `glossary`, `security-check`, `recipe-crud`        |
 | Process (plugin) | `superpowers`                                                                               |
 | Expo (plugin)    | `expo-router`, `expo-native-ui`, `expo-design-system`, `expo-animation`, `expo-ui`, `eas-*` |
 | Design (plugins) | `impeccable`, `ui-ux-pro-max`                                                               |
