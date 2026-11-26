@@ -5,7 +5,7 @@
 -- invalid input, a merge that fails at its last step and changes nothing.
 begin;
 \ir _helpers.psql
-select plan(64);
+select plan(66);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 grant select on fx to anon, authenticated;
@@ -131,7 +131,17 @@ select lives_ok(
   format($$ insert into public.articles (household_id, name, name_key) values (%L, 'Kokosdrink', 'kokosdrink') $$,
          tests.fx('home_a')),
   'spec 0036 AC-011 articles: a name equal to a synonym of another article is allowed');
+select lives_ok(
+  format($$ update public.articles set name = 'Milchkokos', synonyms = '{Kokosdrink, Kokos-Getränk}',
+            synonym_keys = '{kokosdrink, kokosgetraenk}' where id = %L $$, tests.fx('milchkokos')),
+  'spec 0036 AC-011 articles: the article keeping that synonym can still be saved with a new one');
+select throws_ok(
+  format($$ update public.articles set synonyms = '{Kokos-Drink}', synonym_keys = '{kokosdrink}' where id = %L $$,
+         tests.fx('drachenfrucht')),
+  '23505', 'name_taken',
+  'spec 0036 AC-011 articles: a new synonym equal to that name is still rejected');
 select tests.clear_authentication();
+update public.articles set synonyms = '{Kokosdrink}', synonym_keys = '{kokosdrink}' where id = tests.fx('milchkokos');
 delete from public.articles where household_id = tests.fx('home_a') and name_key = 'kokosdrink';
 select tests.authenticate_as(tests.fx('enrico'));
 select throws_ok(

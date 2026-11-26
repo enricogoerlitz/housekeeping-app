@@ -156,7 +156,9 @@ jeweilige Aktion.
    (`apps/app/scripts/list-state.test.mjs`).
 6. REQ-005 braucht doch eine Migration (Bau): Der Datenbank-Trigger `articles_keys_unique` lehnte
    einen Namen ab, der Synonym eines anderen Artikels ist. Er erlaubt das jetzt; ein Synonym, das
-   Name oder Synonym eines anderen Artikels ist, bleibt verboten (Migration
+   Name oder Synonym eines anderen Artikels ist, bleibt verboten; geprüft werden nur Synonyme, die
+   ein Artikel neu bekommt, damit „Kochschinken“ mit seinem Synonym „Schinken“ bearbeitbar bleibt
+   (Hinweis aus `/security-check`; Migration
    `20261126094914_article_name_may_be_foreign_synonym.sql`, nur die Trigger-Funktion, additiv).
 7. REQ-012 (Bau): eine Nachfrage für die ganze App, `confirmFirst(…)` mit `ConfirmHost` an der
    Wurzel (`features/shell/confirm-dialog.tsx`), auch aus Wischgesten und Menüs. Wo schon ein
@@ -213,6 +215,9 @@ anderen Artikels ist (Entscheidung 6). REQ-002: `LocalSettings.listSorts` auf de
   AC-002, AC-003, AC-005, AC-006–AC-009, AC-013–AC-018, AC-020 (Abbrechen behält), AC-021
   (Abbrechen behält), Vollbild per Escape und Wisch nach unten (Touch) geprüft; keine
   Seitenfehler. Bilder in `tmp/review-0003/0036/`.
+- `/security-check` (security-auditor) auf dem Diff: 0 kritisch/hoch/mittel/niedrig, 1 Hinweis
+  (Synonym-Besitzer nach „Schinken“ nicht mehr speicherbar) behoben: Trigger und
+  `validateArticleDraft` prüfen nur neue Synonyme (pgTAP und Vitest rot, dann grün).
 - AC-022: `pnpm-lock.yaml` enthält kein `glob` < 14.0.2 und kein `minimatch` ≥ 7 < 11.0.1 mehr
   (`glob@14.0.6`, `minimatch@11.0.9`; 3.1.5 und 5.1.9 liegen außerhalb der Advisories).
   `workbox-build` 7.4.1 ist die neueste Version, daher gezielte `overrides` in

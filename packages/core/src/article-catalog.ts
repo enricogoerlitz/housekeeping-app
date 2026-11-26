@@ -382,7 +382,13 @@ export function validateArticleDraft<T extends Article>(
       message: 'Höchstens 2000 Zeichen in allen Synonymen',
     });
   }
+  // A synonym the article already has stays, also when another article took it as its name
+  // since (spec 0036, Entscheidung 2); only new synonyms are checked.
+  const kept = new Set(
+    (articles.find((article) => article.id === draft.id)?.synonyms ?? []).map(normalizeText),
+  );
   for (const synonym of synonyms) {
+    if (kept.has(normalizeText(synonym))) continue;
     const existing = findByKey(normalizeText(synonym), others);
     if (!existing) continue;
     problems.push({
