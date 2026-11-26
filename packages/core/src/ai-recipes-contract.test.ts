@@ -21,9 +21,11 @@ const draft: RecipeDraft = {
   servings: 4,
   totalMinutes: 70,
   course: 'dessert',
-  tags: ['backen'],
+  description: 'Saftiger Apfelkuchen mit knusprigen Streuseln.',
+  tags: [{ name: 'backen', isNew: false }],
+  variants: [],
   ingredients: [{ name: 'Weizenmehl Type 405', amount: '250 g' }],
-  steps: ['Streusel kneten', 'Backen'],
+  steps: [{ text: 'Streusel kneten' }, { text: 'Backen', timerMinutes: 45 }],
 };
 
 describe('RecipeDraftRequestSchema (REQ-001)', () => {
@@ -98,6 +100,47 @@ describe('RecipeDraftSchema and RecipeDraftReplySchema', () => {
     );
     expect(RecipeDraftSchema.safeParse({ ...draft, servings: 0 }).success).toBe(false);
     expect(RecipeDraftSchema.safeParse({ ...draft, course: 'party' }).success).toBe(false);
+  });
+
+  it('AC-001: a draft without a description is refused (spec 0045)', () => {
+    const { description: _, ...without } = draft;
+    expect(RecipeDraftSchema.safeParse(without).success).toBe(false);
+    expect(RecipeDraftSchema.safeParse({ ...draft, description: ' ' }).success).toBe(false);
+  });
+
+  it('AC-006, AC-007, AC-011: variants, groups and steps per variant fit the contract', () => {
+    const withVariants: RecipeDraft = {
+      ...draft,
+      variants: [{ name: 'Mit Rinderhack' }, { name: 'Vegetarisch' }],
+      ingredients: [
+        { name: 'Spaghetti', amount: '400 g' },
+        {
+          name: 'Rinderhackfleisch',
+          amount: '500 g',
+          group: 'Für die Bällchen',
+          variant: 'Mit Rinderhack',
+        },
+      ],
+      steps: [{ text: 'Linsenbällchen formen', variant: 'Vegetarisch' }],
+      leadTime: { text: 'Teig über Nacht gehen lassen', hoursBefore: 12 },
+    };
+    expect(RecipeDraftSchema.parse(withVariants)).toEqual(withVariants);
+  });
+
+  it('AC-013, AC-014: a timer is 1–600 minutes, a lead time 1–168 hours', () => {
+    const step = (timerMinutes: number) => ({
+      ...draft,
+      steps: [{ text: 'Kochen', timerMinutes }],
+    });
+    expect(RecipeDraftSchema.safeParse(step(600)).success).toBe(true);
+    expect(RecipeDraftSchema.safeParse(step(0)).success).toBe(false);
+    expect(RecipeDraftSchema.safeParse(step(601)).success).toBe(false);
+    const lead = (hoursBefore: number) => ({
+      ...draft,
+      leadTime: { text: 'Einweichen', hoursBefore },
+    });
+    expect(RecipeDraftSchema.safeParse(lead(168)).success).toBe(true);
+    expect(RecipeDraftSchema.safeParse(lead(169)).success).toBe(false);
   });
 
   it('AC-004, AC-016: a reply says per link whether it was read; TikTok brings its resolved link', () => {

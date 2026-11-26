@@ -27,7 +27,8 @@ import { revokeLater } from './revoke-later';
 // The tab "KI" of the photo window (spec 0040, REQ-004, REQ-005): a prompt (prefilled from the
 // title, for a recipe with its main ingredients), style chips and, with a photo, "Aus diesem
 // Foto". "Erzeugen" brings three variants; a tap makes one the window's new image, which
-// "Übernehmen" saves through the usual photo path. Variants are never stored (AC-012).
+// "Übernehmen" saves through the usual photo path. Variants are never stored (AC-012). While they
+// are made the tiles pulse (spec 0045, REQ-005).
 
 const STYLE_LABELS: Record<ImageStyle, string> = {
   glossy: 'Hochglanz',
@@ -178,7 +179,11 @@ export function PhotoWindowAi(props: {
           <Row gap={8}>
             {[0, 1, 2].map((index) => (
               <View key={index} style={{ flex: 1 }}>
-                <Photo loading aspectRatio={1} />
+                <Photo
+                  generating="Foto wird erzeugt"
+                  aspectRatio={1}
+                  testID={`${id}-generating-${index}`}
+                />
               </View>
             ))}
           </Row>

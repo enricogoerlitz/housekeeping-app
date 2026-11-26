@@ -9,7 +9,6 @@ import type { CollectionContent } from './collections';
 import { scaleAmount } from './amounts';
 import {
   addIngredientRows,
-  addStep,
   sectionChanged,
   sectionDraft,
   validateSectionDraft,
@@ -26,7 +25,15 @@ import {
 } from './recipe-editor';
 import { ingredientsForVariant } from './recipe-variants';
 import { normalizeText } from './text';
-import type { Course, Id, Recipe, RecipeKind, RecipeLink } from './types';
+import type {
+  Course,
+  Id,
+  Recipe,
+  RecipeKind,
+  RecipeLink,
+  RecipeStep,
+  RecipeVariant,
+} from './types';
 
 // The edit mode of the recipe page (spec 0037, REQ-001; replaces the sections of spec 0008,
 // REQ-007): a pen at the top opens every section of the page at once, "Speichern" saves the
@@ -162,20 +169,60 @@ export function withNewContents(
  */
 export interface PageDraftInput {
   title?: string;
+  /** Fills an empty description; "Ersetzen" replaces one (spec 0045, AC-002). */
+  description?: string;
   servings?: number;
   totalMinutes?: number;
+  /** Fills an empty Vorlauf; "Ersetzen" replaces it (recipes only). */
+  leadTime?: { text: string; hoursBefore: number };
   /** Einordnung (recipes only); tags are added, each spelling once. */
   course?: Course;
   cuisine?: string;
   tags?: readonly string[];
+  /**
+   * Variants the rows and steps point at (spec 0045, REQ-003); one with the name of a variant
+   * there is takes its place (AC-008). "Ersetzen" replaces the variants there are (AC-010).
+   */
+  variants?: readonly RecipeVariant[];
   /** Added after the rows there are. */
   ingredients?: readonly IngredientRow[];
   /** Added after the steps there are (recipes only). */
-  steps?: readonly string[];
+  steps?: readonly PageDraftStep[];
   /** Replaces the notes. */
   notes?: string;
   /** Added; an address that is there already is left out. */
   links?: readonly RecipeLink[];
+}
+
+/** A step of a draft from outside: its text, the variant it belongs to, its timer. */
+export interface PageDraftStep {
+  text: string;
+  variantId?: Id;
+  timerMinutes?: number;
+}
+
+/**
+ * The page's variants with those of the draft (AC-008, AC-010), and where each draft variant id
+ * went: to a variant of the same name there is, or to itself as a new one.
+ */
+function mergeVariants(
+  current: readonly RecipeVariant[],
+  drafted: readonly RecipeVariant[],
+): { variants: RecipeVariant[]; ids: Map<Id, Id> } {
+  const variants = [...current];
+  const ids = new Map<Id, Id>();
+  for (const variant of drafted) {
+    const same = variants.find(
+      (known) => normalizeText(known.name) === normalizeText(variant.name),
+    );
+    if (same) {
+      ids.set(variant.id, same.id);
+      continue;
+    }
+    variants.push({ ...variant, isDefault: variants.length === 0 });
+    ids.set(variant.id, variant.id);
+  }
+  return { variants, ids };
 }
 
 /**
@@ -191,8 +238,12 @@ export function fillPageDraft(
   options: { replace?: boolean } = {},
 ): PageDraft {
   let next = page;
+  const replace = options.replace === true;
   const head = { ...page.head };
   if (input.title !== undefined) head.title = input.title;
+  if (input.description !== undefined && (replace || head.description.trim() === '')) {
+    head.description = input.description;
+  }
   if (input.servings !== undefined) head.servings = String(input.servings);
   if (input.totalMinutes !== undefined) head.totalMinutes = String(input.totalMinutes);
   next = withSection(next, head);
@@ -209,18 +260,44 @@ export function fillPageDraft(
     }
     next = withSection(next, classification);
   }
-  if (options.replace && input.ingredients && input.ingredients.length > 0) {
-    next = withSection(next, { ...next.ingredients, rows: [] });
+  const newRows = input.ingredients ?? [];
+  if (replace && newRows.length > 0) {
+    next = withSection(next, { ...next.ingredients, rows: [], variants: [] });
   }
-  if (options.replace && next.steps && input.steps && input.steps.length > 0) {
-    next = withSection(next, { ...next.steps, steps: [] });
+  // A collection has no variants (spec 0009, E3): its rows stay shared.
+  const merged =
+    next.ingredients.kind === 'collection'
+      ? { variants: next.ingredients.variants, ids: new Map<Id, Id>() }
+      : mergeVariants(next.ingredients.variants, input.variants ?? []);
+  const variantOf = (id: Id | undefined) => (id === undefined ? undefined : merged.ids.get(id));
+  next = withSection(next, { ...next.ingredients, variants: merged.variants });
+  if (newRows.length > 0) {
+    const rows = newRows.map((row) => {
+      const { variantId: drafted, ...rest } = row;
+      const variantId = variantOf(drafted);
+      return variantId === undefined ? rest : { ...rest, variantId };
+    });
+    next = withSection(next, addIngredientRows(next.ingredients, rows));
   }
-  if (input.ingredients && input.ingredients.length > 0) {
-    next = withSection(next, addIngredientRows(next.ingredients, input.ingredients));
-  }
-  if (next.steps && input.steps && input.steps.length > 0) {
+  if (next.steps) {
     let steps = next.steps;
-    for (const text of input.steps) steps = addStep(steps, text, newId());
+    const newSteps = input.steps ?? [];
+    if (replace && newSteps.length > 0) steps = { ...steps, steps: [] };
+    const added = newSteps.map((step): RecipeStep => {
+      const made: RecipeStep = { id: newId(), text: step.text };
+      const variantId = variantOf(step.variantId);
+      if (variantId !== undefined) made.variantId = variantId;
+      if (step.timerMinutes !== undefined) made.timerMinutes = step.timerMinutes;
+      return made;
+    });
+    steps = { ...steps, steps: [...steps.steps, ...added] };
+    if (input.leadTime && (replace || steps.leadTimeText.trim() === '')) {
+      steps = {
+        ...steps,
+        leadTimeText: input.leadTime.text,
+        leadTimeHours: String(input.leadTime.hoursBefore),
+      };
+    }
     next = withSection(next, steps);
   }
   if (input.notes !== undefined) next = withSection(next, { ...next.notes, notes: input.notes });

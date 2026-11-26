@@ -4,7 +4,13 @@ import {
   OfflineError,
   preparePhoto,
 } from '@housekeeping/api';
-import { IMAGE_EDIT_MAX_SIDE, type Id, type PageDraftInput, type Recipe } from '@housekeeping/core';
+import {
+  IMAGE_EDIT_MAX_SIDE,
+  imagePromptWithExtra,
+  type Id,
+  type PageDraftInput,
+  type Recipe,
+} from '@housekeeping/core';
 import { useSyncExternalStore } from 'react';
 
 import { OFFLINE_EDIT_HINT } from '@/features/shell/offline';
@@ -67,6 +73,8 @@ const suggestions = new Map<Id, PhotoSuggestions>();
 const listeners = new Set<() => void>();
 let round = 0;
 const rounds = new Map<Id, number>();
+/** The request of the first round, for "Neu generieren". */
+const requests = new Map<Id, { prompt: string; coverUrl?: string }>();
 
 function set(recipeId: Id, next: PhotoSuggestions | undefined): void {
   const previous = suggestions.get(recipeId);
@@ -95,6 +103,22 @@ export function startPhotoSuggestions(
   recipeId: Id,
   request: { prompt: string; coverUrl?: string },
 ): void {
+  requests.set(recipeId, request);
+  generate(recipeId, request);
+}
+
+/**
+ * "Neu generieren" (spec 0045, REQ-006): three new suggestions from the draft's image prompt with
+ * the person's wish (AC-017). A photo taken before stays the draft's until another is taken
+ * (AC-018): it lives in the editor, not here.
+ */
+export function regeneratePhotoSuggestions(recipeId: Id, extra: string): void {
+  const request = requests.get(recipeId);
+  if (!request) return;
+  generate(recipeId, { ...request, prompt: imagePromptWithExtra(request.prompt, extra) });
+}
+
+function generate(recipeId: Id, request: { prompt: string; coverUrl?: string }): void {
   round += 1;
   const mine = round;
   rounds.set(recipeId, mine);
@@ -127,6 +151,7 @@ export function startPhotoSuggestions(
 /** Closes the suggestions (saved, discarded, or the person dismissed them). */
 export function dismissPhotoSuggestions(recipeId: Id): void {
   rounds.delete(recipeId);
+  requests.delete(recipeId);
   set(recipeId, undefined);
 }
 

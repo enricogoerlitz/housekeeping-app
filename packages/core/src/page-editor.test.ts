@@ -266,7 +266,7 @@ describe('a draft from outside, e.g. "Mit KI ausfüllen" (spec 0040 hooks in her
             article: { kind: 'new', name: 'Butter' },
           },
         ],
-        steps: ['Teig kneten', 'Backen'],
+        steps: [{ text: 'Teig kneten' }, { text: 'Backen' }],
         notes: 'Warm servieren',
         links: [{ url: 'https://example.org/apfelkuchen' }],
       },
@@ -294,7 +294,10 @@ describe('a draft from outside, e.g. "Mit KI ausfüllen" (spec 0040 hooks in her
     const page = pageDraft(grillabend, grillContents);
     const filled = fillPageDraft(
       page,
-      { steps: ['Kohle anzünden'], links: [{ url: 'https://a.de' }, { url: 'https://a.de' }] },
+      {
+        steps: [{ text: 'Kohle anzünden' }],
+        links: [{ url: 'https://a.de' }, { url: 'https://a.de' }],
+      },
       newId,
     );
     expect(filled.steps).toBeUndefined();

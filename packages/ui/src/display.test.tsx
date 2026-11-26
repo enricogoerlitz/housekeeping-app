@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { AccessibilityInfo } from 'react-native';
+import { AccessibilityInfo, Animated } from 'react-native';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { pointer } from '../test/setup';
@@ -121,6 +121,28 @@ describe('Photo', () => {
   it('without alt the picture is decorative', () => {
     render(<Photo testID="photo" source={PHOTO} />);
     expect(screen.queryByLabelText(/./)).toBeNull();
+  });
+
+  it('spec 0045 AC-015: while it is generated the tile pulses as a progress indicator with a symbol', async () => {
+    vi.spyOn(AccessibilityInfo, 'isReduceMotionEnabled').mockResolvedValue(false);
+    const loop = vi.spyOn(Animated, 'loop');
+    const { unmount } = render(
+      <Photo testID="photo" generating="Foto wird erzeugt" aspectRatio={1} width={80} />,
+    );
+    await act(async () => undefined);
+    const tile = screen.getByRole('progressbar', { name: 'Foto wird erzeugt' });
+    expect(tile.querySelector('svg')).toBeTruthy();
+    expect(loop).toHaveBeenCalled();
+    unmount();
+  });
+
+  it('spec 0045 AC-016: reduced motion: the tile stands still', async () => {
+    vi.spyOn(AccessibilityInfo, 'isReduceMotionEnabled').mockResolvedValue(true);
+    const loop = vi.spyOn(Animated, 'loop');
+    render(<Photo testID="photo" generating="Foto wird erzeugt" aspectRatio={1} width={80} />);
+    await act(async () => undefined);
+    expect(screen.getByRole('progressbar', { name: 'Foto wird erzeugt' })).toBeTruthy();
+    expect(loop).not.toHaveBeenCalled();
   });
 });
 
