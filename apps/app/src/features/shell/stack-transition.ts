@@ -127,6 +127,11 @@ export function phoneStackOptions(reducedMotion: boolean): StackNavigationOption
   const spec = decidedLate(reducedMotion ? FADE : SLIDE);
   return {
     headerShown: false,
+    // There is no header; 'float' only keeps the card a bounded box. With 'screen' a stack that
+    // fills the whole window ("Einkaufen", "Kochen": no tab bar) lets its card grow with the page
+    // (`minHeight: 100%`, meant for a scrolling document), but the app's body never scrolls, so
+    // the page's own ScrollView had no height limit and nothing scrolled (iPhone, 26.11.).
+    headerMode: 'float',
     // The JS stack does not animate on the web unless asked to.
     animation: 'default',
     // The system's edge swipe goes back; a second gesture of our own would fight it.
