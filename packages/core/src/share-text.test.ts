@@ -6,6 +6,7 @@ import {
   recipeShareText,
   restaurantShareText,
 } from './share-text';
+import { collectionContents } from './collections';
 import { makeRecipe } from './test-fixtures';
 import type { Activity, CollectionRecipe, Restaurant } from './types';
 
@@ -164,7 +165,7 @@ describe('collectionShareText (spec 0042, REQ-004)', () => {
     expect(
       collectionShareText({
         collection: grillabend,
-        book: { recipesById: { r9: salat, r1: apfelkuchen }, collectionRecipes: rows },
+        contents: collectionContents(grillabend, rows, { r9: salat, r1: apfelkuchen }),
         articleName,
         appUrl: `${APP}/rezept/c1`,
       }),

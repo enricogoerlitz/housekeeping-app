@@ -10,6 +10,7 @@ import {
   canPutRecipeOnList,
   chooseVariant,
   recipeDietChip,
+  recipeShareText,
   shownVariantId,
   type Id,
   type Recipe,
@@ -33,6 +34,7 @@ import { FavoriteButton } from '@/features/shell/favorite-button';
 import { MemberRatings } from '@/features/shell/member-ratings';
 import { useOnlineOnly } from '@/features/shell/offline';
 import { PantryCheckSheet } from '@/features/shopping/pantry-check-sheet';
+import { appLink, shareText, useShareFile } from '@/lib/share';
 import { usePageParams } from '@/lib/url-state';
 import { useBrowseSwipe } from '@/lib/browse-order';
 
@@ -188,6 +190,21 @@ function RecipeDetailBody(props: {
 
   const { remove, dialog: deleteDialog } = useDeleteRecipe(recipe, props.onBack, props.onDeleting);
 
+  // "Teilen" (spec 0042, AC-008): the portions and the variant shown here, with the own photo.
+  const shareFile = useShareFile(recipe.photoPath, recipe.title);
+  const share = () =>
+    void shareText({
+      title: recipe.title,
+      text: recipeShareText({
+        recipe,
+        articleName: (articleId) => articlesById[articleId]?.name ?? '',
+        servings: shownServings,
+        variantId: activeVariantId,
+        appUrl: appLink(`/rezept/${recipe.id}`),
+      }),
+      file: shareFile,
+    });
+
   const actions = (
     <RecipeActions
       recipe={recipe}
@@ -214,6 +231,7 @@ function RecipeDetailBody(props: {
         photo={photo}
         onDelete={remove}
         onAddToCollection={() => setAddingToCollection(true)}
+        onShare={share}
       />
       {deleteDialog}
     </>

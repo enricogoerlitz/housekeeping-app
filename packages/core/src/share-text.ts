@@ -1,5 +1,5 @@
 import { formatQty } from './amounts';
-import { collectionContentLabel, contentsInBook, type RecipeBook } from './collections';
+import { collectionContentLabel, type CollectionContent } from './collections';
 import { groupIngredients } from './ingredient-groups';
 import {
   defaultVariantId,
@@ -82,12 +82,13 @@ export function recipeShareText(input: {
 /** A collection ("Sammlung"): title, portions, the recipes it contains, its own ingredients. */
 export function collectionShareText(input: {
   collection: Recipe;
-  book: RecipeBook;
+  /** What it contains (collectionContents). */
+  contents: readonly CollectionContent[];
   articleName: (articleId: Id) => string;
   appUrl?: string;
 }): string {
   const { collection } = input;
-  const contents = contentsInBook(collection, input.book);
+  const { contents } = input;
   const description = collection.description?.trim();
   return blocks(
     [collection.title, portions(collection.servings)],
