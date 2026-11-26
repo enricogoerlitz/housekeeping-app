@@ -1,10 +1,12 @@
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
   useState,
   useSyncExternalStore,
   type ReactNode,
+  type RefObject,
 } from 'react';
 import {
   Modal,
@@ -13,14 +15,17 @@ import {
   ScrollView,
   View,
   type HostInstance,
+  type ScrollViewInstance,
   type ViewStyle,
 } from 'react-native';
 import Animated, {
   Easing,
   ReduceMotion,
+  cancelAnimation,
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
+  withSpring,
   withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -41,7 +46,13 @@ import {
 import { ToneContext, useBreakpoint, useTheme } from './theme-context';
 import { useKeyboard } from './keyboard';
 import { keyboardSheetFrame } from './keyboard-state';
+import { lockPageScroll } from './page-scroll-lock';
+import type { Band } from './scroll-reveal';
+import { sheetDragOffset, sheetDragRelease, upwardShadow } from './sheet-drag';
+import { useSheetDrag } from './sheet-drag-events';
 import { fadeOutCopy } from './sheet-exit';
+import { FOCUS_SETTLE_MS, SheetFocusContext, focusQuietly } from './sheet-focus';
+import { toastBottom } from './toast-place';
 import { createToastStore } from './toast-state';
 import { TopLayer } from './top-layer';
 
@@ -88,6 +99,10 @@ export interface SheetAction {
 const OPEN_MS = 250;
 const CLOSE_MS = 200;
 const EASE_OUT = Easing.bezier(0.23, 1, 0.32, 1);
+// Spec 0033, decision 1: after a drag the window springs back with a little give, or leaves at the
+// finger's speed.
+const SNAP_BACK = { duration: 300, dampingRatio: 0.8 } as const;
+const DRAG_AWAY = { duration: 300, dampingRatio: 1, overshootClamping: true } as const;
 
 /**
  * A bottom sheet on phones and a centred dialog on wider screens. On phones the scrim fades while
@@ -136,14 +151,121 @@ export function Sheet(props: SheetProps) {
     }
   }, [props.visible, progress]);
 
+  // Spec 0033, REQ-001: on phones the window follows a finger dragging it down.
+  const drag = useSharedValue(0);
+  useEffect(() => {
+    if (props.visible) drag.set(0);
+  }, [props.visible, drag]);
   const scrimStyle = useAnimatedStyle(() => ({ opacity: progress.get() }));
-  const sheetStyle = useAnimatedStyle(() =>
-    slide
-      ? { transform: [{ translateY: (1 - progress.get()) * travel.get() }] }
-      : { opacity: progress.get() },
-  );
+  const sheetStyle = useAnimatedStyle(() => {
+    if (!isPhone) return { opacity: progress.get() };
+    const entering = slide ? (1 - progress.get()) * travel.get() : 0;
+    return {
+      opacity: slide ? 1 : progress.get(),
+      transform: [{ translateY: entering + drag.get() }],
+    };
+  });
   // While fading out the window takes no taps, and a tap on the scrim closes nothing twice.
   const close = props.visible ? props.onClose : undefined;
+  // Dragged away it does what "Abbrechen" does (AC-004).
+  const dismiss = props.actions?.cancel?.onPress ?? props.onClose;
+  const live = useRef({ visible: props.visible, dismiss });
+  useLayoutEffect(() => {
+    live.current = { visible: props.visible, dismiss };
+  });
+  const panel = useRef<HostInstance>(null);
+  const content = useRef<ScrollViewInstance>(null);
+  const snapBack = (velocity = 0) =>
+    drag.set(
+      withSpring(0, { ...SNAP_BACK, velocity: velocity * 1000, reduceMotion: ReduceMotion.System }),
+    );
+  // The page may keep the window open (a question first, AC-004): then it comes back.
+  const keptOpen = () => {
+    if (live.current.visible) snapBack();
+  };
+  useSheetDrag(
+    isPhone && props.visible,
+    { panel, content },
+    {
+      onStart: () => cancelAnimation(drag),
+      onMove: (dy) => drag.set(sheetDragOffset(dy)),
+      onRelease: (dy, velocity, sheetHeight) => {
+        const offset = sheetDragOffset(dy);
+        if (sheetDragRelease({ offset, height: sheetHeight, velocity }) === 'stay') {
+          snapBack(velocity);
+          return;
+        }
+        drag.set(
+          withSpring(
+            Math.max(offset, sheetHeight),
+            { ...DRAG_AWAY, velocity: velocity * 1000, reduceMotion: ReduceMotion.System },
+            (finished) => {
+              if (finished) scheduleOnRN(keptOpen);
+            },
+          ),
+        );
+        live.current.dismiss();
+      },
+    },
+  );
+
+  // Spec 0033, REQ-004: the page behind stays where it is while the window is there.
+  useEffect(() => {
+    if (!mounted || !isPhone) return;
+    const release = lockPageScroll();
+    // Focus returning to the page as the window goes (in the same commit) would scroll it; the
+    // release comes after it and puts the page back.
+    return () => {
+      queueMicrotask(release);
+    };
+  }, [mounted, isPhone]);
+
+  // Spec 0033, REQ-006: the field that asks for it gets the cursor once the window is in.
+  const focusTarget = useRef<unknown>(null);
+  const claimFocus = useCallback((input: unknown) => {
+    focusTarget.current ??= input;
+    return () => {
+      if (focusTarget.current === input) focusTarget.current = null;
+    };
+  }, []);
+  useEffect(() => {
+    if (!props.visible) return;
+    let settle: ReturnType<typeof setTimeout> | undefined;
+    let reclaim: ((event: FocusEvent) => void) | undefined;
+    // A field of its own (a search field with autoFocus) took the focus as the window mounted.
+    const active = typeof document === 'undefined' ? null : document.activeElement;
+    const box = panel.current as unknown;
+    const mountedFocus =
+      active instanceof HTMLElement &&
+      /^(INPUT|TEXTAREA)$/.test(active.tagName) &&
+      box instanceof Node &&
+      box.contains(active)
+        ? active
+        : null;
+    const opened = setTimeout(() => {
+      const input = focusTarget.current ?? mountedFocus;
+      if (!input) return;
+      focusQuietly(input);
+      if (typeof document === 'undefined') return;
+      // A menu closing behind the window hands the focus back to its button for a moment.
+      reclaim = (event) => {
+        const box = panel.current as unknown;
+        if (box instanceof Node && event.target instanceof Node && box.contains(event.target))
+          return;
+        focusQuietly(input);
+      };
+      document.addEventListener('focusin', reclaim, true);
+      settle = setTimeout(() => {
+        if (reclaim) document.removeEventListener('focusin', reclaim, true);
+        reclaim = undefined;
+      }, FOCUS_SETTLE_MS);
+    }, OPEN_MS);
+    return () => {
+      clearTimeout(opened);
+      clearTimeout(settle);
+      if (reclaim) document.removeEventListener('focusin', reclaim, true);
+    };
+  }, [props.visible]);
 
   // Removed by its page while open: a copy fades out in its place (spec 0029, REQ-001).
   const layer = useRef<HostInstance>(null);
@@ -170,124 +292,157 @@ export function Sheet(props: SheetProps) {
     >
       <ToneContext.Provider value={undefined}>
         <PageScrollContext.Provider value={undefined}>
-          <View
-            ref={layer}
-            testID={props.testID ? `${props.testID}-layer` : undefined}
-            style={{
-              flex: 1,
-              justifyContent: isPhone ? 'flex-end' : 'center',
-              alignItems: isPhone ? 'stretch' : 'center',
-              // Clear of the status bar, the notch and, in landscape, the rounded corners (REQ-008).
-              paddingTop: insets.top,
-              paddingLeft: insets.left,
-              paddingRight: insets.right,
-              // The layer keeps the full height on iOS; the window stands on the keyboard.
-              paddingBottom: typing ? keyboard.inset : 0,
-            }}
-          >
-            <Animated.View
-              {...SCRIM_PART}
-              style={[{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }, scrimStyle]}
+          <SheetFocusContext.Provider value={claimFocus}>
+            <View
+              ref={layer}
+              testID={props.testID ? `${props.testID}-layer` : undefined}
+              style={{
+                flex: 1,
+                justifyContent: isPhone ? 'flex-end' : 'center',
+                alignItems: isPhone ? 'stretch' : 'center',
+                // Clear of the status bar, the notch and, in landscape, the rounded corners (REQ-008).
+                paddingTop: insets.top,
+                paddingLeft: insets.left,
+                paddingRight: insets.right,
+                // The layer keeps the full height on iOS; the window stands on the keyboard.
+                paddingBottom: typing ? keyboard.inset : 0,
+              }}
             >
-              <Pressable
-                accessibilityLabel="Schließen"
-                accessibilityRole="button"
-                onPress={close}
-                testID={props.testID ? `${props.testID}-scrim` : undefined}
-                style={{ flex: 1, backgroundColor: c.scrim }}
-              />
-            </Animated.View>
-            <Animated.View
-              {...PANEL_PART}
-              testID={props.testID}
-              accessibilityViewIsModal
-              pointerEvents={props.visible ? 'auto' : 'none'}
-              onLayout={(event) => travel.set(event.nativeEvent.layout.height)}
-              style={[
-                {
-                  backgroundColor: c.bg,
-                  borderTopLeftRadius: theme.shape.radius.sheet,
-                  borderTopRightRadius: theme.shape.radius.sheet,
-                  borderBottomLeftRadius: isPhone ? 0 : theme.shape.radius.sheet,
-                  borderBottomRightRadius: isPhone ? 0 : theme.shape.radius.sheet,
-                  maxHeight: frame.maxHeight,
-                  height: frame.height,
-                  width: frame.width,
-                  maxWidth: '100%',
-                  // Above the home bar with its gap (spec 0029, AC-007); on the keyboard none.
-                  paddingBottom: typing ? 0 : isPhone ? bottomInset(insets.bottom, 12) : 0,
-                },
-                sheetStyle,
-              ]}
-            >
-              {headerActions && props.actions ? (
-                <SheetActionsHeader
-                  title={props.title}
-                  actions={props.actions}
-                  onClose={props.onClose}
-                  testID={props.testID}
-                />
-              ) : (
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    paddingLeft: 20,
-                    paddingRight: 10,
-                    paddingTop: 14,
-                    paddingBottom: 6,
-                  }}
-                >
-                  <Text
-                    variant="heading"
-                    heading
-                    style={{ flex: 1 }}
-                    testID={props.testID ? `${props.testID}-title` : undefined}
-                  >
-                    {props.title}
-                  </Text>
-                  <IconButton
-                    icon="x"
-                    label="Schließen"
-                    onPress={props.onClose}
-                    testID={props.testID ? `${props.testID}-close` : undefined}
-                  />
-                </View>
-              )}
-              {props.header ? <View style={{ paddingHorizontal: 20 }}>{props.header}</View> : null}
-              <ScrollView
-                keyboardShouldPersistTaps="handled"
-                // Scrolled to the end, a drag does not move the page behind (AC-027).
-                style={[frame.height ? { flex: 1 } : null, OVERSCROLL_CONTAIN]}
-                contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 20, paddingTop: 6 }}
+              <Animated.View
+                {...SCRIM_PART}
+                style={[{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }, scrimStyle]}
               >
-                {/* A drag inside the sheet must not switch the page below. */}
-                <PageScrollControlContext.Provider value={undefined}>
-                  {props.children}
-                </PageScrollControlContext.Provider>
-                {headerActions && props.footer ? (
-                  <View style={{ marginTop: 20 }}>{props.footer}</View>
+                <Pressable
+                  accessibilityLabel="Schließen"
+                  accessibilityRole="button"
+                  onPress={close}
+                  testID={props.testID ? `${props.testID}-scrim` : undefined}
+                  // Spec 0033, REQ-002: on phones the page behind stays as it is.
+                  style={[{ flex: 1, backgroundColor: isPhone ? 'transparent' : c.scrim }, NO_PAN]}
+                />
+              </Animated.View>
+              <Animated.View
+                {...PANEL_PART}
+                ref={panel}
+                testID={props.testID}
+                accessibilityViewIsModal
+                pointerEvents={props.visible ? 'auto' : 'none'}
+                onLayout={(event) => travel.set(event.nativeEvent.layout.height)}
+                style={[
+                  {
+                    backgroundColor: c.bg,
+                    borderTopLeftRadius: theme.shape.radius.sheet,
+                    borderTopRightRadius: theme.shape.radius.sheet,
+                    borderBottomLeftRadius: isPhone ? 0 : theme.shape.radius.sheet,
+                    borderBottomRightRadius: isPhone ? 0 : theme.shape.radius.sheet,
+                    maxHeight: frame.maxHeight,
+                    height: frame.height,
+                    width: frame.width,
+                    maxWidth: '100%',
+                    // Above the home bar with its gap (spec 0029, AC-007); on the keyboard none.
+                    paddingBottom: typing ? 0 : isPhone ? bottomInset(insets.bottom, 12) : 0,
+                  },
+                  // Without the scrim the window stands out by its edge and shadow (decision 2).
+                  isPhone
+                    ? {
+                        borderTopWidth: 1,
+                        borderTopColor: c.border,
+                        boxShadow: upwardShadow(c.shadowRaised),
+                      }
+                    : null,
+                  sheetStyle,
+                ]}
+              >
+                <View {...SHEET_HEAD} style={isPhone ? NO_PAN : null}>
+                  {isPhone ? (
+                    <View
+                      testID={props.testID ? `${props.testID}-grabber` : undefined}
+                      aria-hidden
+                      style={{ alignItems: 'center', paddingTop: 6 }}
+                    >
+                      <View
+                        style={{ width: 36, height: 5, borderRadius: 3, backgroundColor: c.border }}
+                      />
+                    </View>
+                  ) : null}
+                  {headerActions && props.actions ? (
+                    <SheetActionsHeader
+                      title={props.title}
+                      actions={props.actions}
+                      onClose={props.onClose}
+                      testID={props.testID}
+                    />
+                  ) : (
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        paddingLeft: 20,
+                        paddingRight: 10,
+                        paddingTop: 14,
+                        paddingBottom: 6,
+                      }}
+                    >
+                      <Text
+                        variant="heading"
+                        heading
+                        style={{ flex: 1 }}
+                        testID={props.testID ? `${props.testID}-title` : undefined}
+                      >
+                        {props.title}
+                      </Text>
+                      <IconButton
+                        icon="x"
+                        label="Schließen"
+                        onPress={props.onClose}
+                        testID={props.testID ? `${props.testID}-close` : undefined}
+                      />
+                    </View>
+                  )}
+                </View>
+                {props.header ? (
+                  <View style={{ paddingHorizontal: 20 }}>{props.header}</View>
                 ) : null}
-              </ScrollView>
-              {!headerActions && (props.footer || props.actions) ? (
-                <View
-                  testID={props.testID ? `${props.testID}-footer` : undefined}
-                  style={{
+                <ScrollView
+                  ref={content}
+                  testID={props.testID ? `${props.testID}-content` : undefined}
+                  keyboardShouldPersistTaps="handled"
+                  // Scrolled to the end, a drag does not move the page behind (AC-027).
+                  style={[frame.height ? { flex: 1 } : null, OVERSCROLL_CONTAIN]}
+                  contentContainerStyle={{
                     paddingHorizontal: 20,
-                    paddingTop: 10,
-                    paddingBottom: isPhone ? 4 : 18,
-                    borderTopWidth: 1,
-                    borderTopColor: c.border,
-                    gap: 10,
+                    paddingBottom: 20,
+                    paddingTop: 6,
                   }}
                 >
-                  {props.footer}
-                  {props.actions ? <SheetActionsFooter actions={props.actions} /> : null}
-                </View>
-              ) : null}
-            </Animated.View>
-          </View>
+                  {/* A drag inside the sheet must not switch the page below. */}
+                  <PageScrollControlContext.Provider value={undefined}>
+                    {props.children}
+                  </PageScrollControlContext.Provider>
+                  {headerActions && props.footer ? (
+                    <View style={{ marginTop: 20 }}>{props.footer}</View>
+                  ) : null}
+                </ScrollView>
+                {!headerActions && (props.footer || props.actions) ? (
+                  <View
+                    testID={props.testID ? `${props.testID}-footer` : undefined}
+                    style={{
+                      paddingHorizontal: 20,
+                      paddingTop: 10,
+                      paddingBottom: isPhone ? 4 : 18,
+                      borderTopWidth: 1,
+                      borderTopColor: c.border,
+                      gap: 10,
+                    }}
+                  >
+                    {props.footer}
+                    {props.actions ? <SheetActionsFooter actions={props.actions} /> : null}
+                  </View>
+                ) : null}
+              </Animated.View>
+            </View>
+          </SheetFocusContext.Provider>
         </PageScrollContext.Provider>
       </ToneContext.Provider>
     </Modal>
@@ -395,6 +550,11 @@ function SheetActionsFooter(props: { actions: SheetActions }) {
 const SCRIM_PART = { dataSet: { sheetPart: 'scrim' } } as object;
 const PANEL_PART = { dataSet: { sheetPart: 'panel' } } as object;
 
+// The window's head, where a drag takes the whole window (sheet-drag-events.web.ts).
+const SHEET_HEAD = { dataSet: { sheetHead: 'true' } } as object;
+/** On the web: a swipe here moves nothing of the browser's own (spec 0033, AC-013). */
+const NO_PAN = (Platform.OS === 'web' ? { touchAction: 'none' } : null) as ViewStyle | null;
+
 /** On the web: a scrolling panel keeps its scroll to itself (spec 0019, REQ-009). */
 const OVERSCROLL_CONTAIN = { overscrollBehavior: 'contain' } as object;
 
@@ -402,9 +562,29 @@ const OVERSCROLL_CONTAIN = { overscrollBehavior: 'contain' } as object;
 
 const store = createToastStore();
 
+// Buttons of the page the toast must not cover, e.g. "Einplanen" (spec 0033, REQ-009).
+// Where they stood as the toast appeared: a store, so React (and its compiler) sees the change.
+const avoided = new Set<RefObject<unknown>>();
+let obstacles: Band[] = [];
+const obstacleListeners = new Set<() => void>();
+function setObstacles(next: Band[]) {
+  if (JSON.stringify(next) === JSON.stringify(obstacles)) return;
+  obstacles = next;
+  for (const listener of obstacleListeners) listener();
+}
+function subscribeObstacles(listener: () => void): () => void {
+  obstacleListeners.add(listener);
+  return () => obstacleListeners.delete(listener);
+}
+const obstaclesSnapshot = () => obstacles;
+
 /** Shows one short message at the bottom of the screen; a new toast replaces the previous one. */
 export const toast = {
-  show: store.show,
+  show: (options: Parameters<typeof store.show>[0]) => {
+    // Where the page's buttons stand as it appears; it keeps its place while shown (AC-025).
+    setObstacles(avoidedBands());
+    store.show(options);
+  },
   /** Ends the toast without its action; its `onExpire` runs. */
   hide: store.hide,
 };
@@ -435,22 +615,61 @@ export function useToastClearance(height: number | undefined): void {
   }, [height]);
 }
 
+/** Keeps the toast off this view (in window coordinates when the toast appears) while mounted. */
+export function useToastAvoid(ref: RefObject<unknown>): void {
+  useEffect(() => {
+    avoided.add(ref);
+    return () => {
+      avoided.delete(ref);
+    };
+  }, [ref]);
+}
+
+function avoidedBands(): Band[] {
+  const bands: Band[] = [];
+  for (const ref of avoided) {
+    const node = ref.current;
+    if (typeof HTMLElement === 'undefined' || !(node instanceof HTMLElement)) continue;
+    const rect = node.getBoundingClientRect();
+    if (rect.height > 0) bands.push({ top: rect.top, bottom: rect.bottom });
+  }
+  return bands;
+}
+
 /** Mount once near the root: above the tab bar and the home bar on phones (AC-024). */
 const WEB_TOAST_LAYER = { position: 'fixed', zIndex: 10000 } as unknown as ViewStyle;
+const TOAST_MIN_HEIGHT = 48;
 
 export function ToastHost() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const bottomEdge = useBottomInset();
-  const { isPhone } = useBreakpoint();
+  const { isPhone, height } = useBreakpoint();
   const state = useSyncExternalStore(store.subscribe, store.get, store.get);
   const bar = useSyncExternalStore(subscribeClearance, clearanceSnapshot, clearanceSnapshot);
   const keyboard = useKeyboard();
+  // The page may still change as the toast appears (a "wird gespeichert" line goes): once it has
+  // drawn, the buttons are measured again.
+  const avoid = useSyncExternalStore(subscribeObstacles, obstaclesSnapshot, obstaclesSnapshot);
+  const shownId = state?.id;
+  useEffect(() => {
+    if (shownId === undefined || typeof requestAnimationFrame === 'undefined') return;
+    const frame = requestAnimationFrame(() => setObstacles(avoidedBands()));
+    return () => cancelAnimationFrame(frame);
+  }, [shownId]);
   if (!state) return null;
   const c = theme.colors;
   const below = bar ?? (isPhone ? TAB_BAR_HEIGHT : 0);
   // On the keyboard, which hides the tab bar (spec 0032, REQ-002).
-  const bottom = keyboard.open ? keyboard.inset + 12 : bottomEdge + below + (isPhone ? 12 : 24);
+  const bottom = keyboard.open
+    ? keyboard.inset + 12
+    : toastBottom({
+        bottom: bottomEdge + below + (isPhone ? 12 : 24),
+        windowHeight: height,
+        toastHeight: TOAST_MIN_HEIGHT,
+        gap: 12,
+        obstacles: avoid,
+      });
   return (
     <TopLayer>
       <View
@@ -473,7 +692,7 @@ export function ToastHost() {
               flexDirection: 'row',
               alignItems: 'center',
               gap: 12,
-              minHeight: 48,
+              minHeight: TOAST_MIN_HEIGHT,
               maxWidth: 440,
               paddingLeft: 16,
               paddingRight: state.actionLabel ? 6 : 16,
