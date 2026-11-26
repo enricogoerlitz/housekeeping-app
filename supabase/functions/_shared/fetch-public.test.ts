@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   fetchPublic,
   isPublicAddress,
+  resolveAddresses,
   PublicFetchError,
   type PublicFetchDeps,
   type PublicFetchOptions,
@@ -292,5 +293,30 @@ describe('fetchPublic', () => {
       'https://down.example.org/a.jpg': () => Promise.reject(new TypeError('connection refused')),
     });
     expect(await reason(fetchPublic('https://down.example.org/a.jpg', IMAGE, d))).toBe('network');
+  });
+});
+
+describe('resolveAddresses (Deno.resolveDns, A and AAAA)', () => {
+  const notFound = () => Object.assign(new Error('no records found'), { name: 'NotFound' });
+
+  it('joins both families; a family without records counts as none', async () => {
+    const both = await resolveAddresses('example.org', async (_host, type) =>
+      type === 'A' ? ['93.184.215.14'] : ['2606:4700::1'],
+    );
+    expect(both).toEqual(['93.184.215.14', '2606:4700::1']);
+    const v4only = await resolveAddresses('example.org', async (_host, type) => {
+      if (type === 'AAAA') throw notFound();
+      return ['93.184.215.14'];
+    });
+    expect(v4only).toEqual(['93.184.215.14']);
+  });
+
+  it('fails closed when either lookup fails otherwise (timeout, SERVFAIL), so nothing goes unchecked', async () => {
+    await expect(
+      resolveAddresses('rebind.example.org', async (_host, type) => {
+        if (type === 'A') throw new Error('timed out');
+        return ['2606:4700::1'];
+      }),
+    ).rejects.toThrow('timed out');
   });
 });

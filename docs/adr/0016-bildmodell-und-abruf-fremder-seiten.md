@@ -80,7 +80,11 @@ signiert anstößt.
   Infrastruktur; die Optionen decken beide Fälle ab.
 - **Contra:** DNS-Rebinding bleibt als Restrisiko: `fetch` löst den Namen selbst noch einmal auf,
   die Edge Runtime kann die Verbindung nicht an die geprüfte Adresse binden. Ein Angreifer mit
-  eigener Domain und sehr kurzer TTL könnte zwischen Prüfung und Abruf umschalten.
+  eigener Domain und sehr kurzer TTL könnte zwischen Prüfung und Abruf umschalten. Entschärft:
+  nur Port 443 mit TLS — das Zertifikat eines internen Ziels passt nicht zum Namen des
+  Angreifers, also geht keine HTTP-Anfrage hinaus, und eine Antwort ohne Bildsignatur käme nicht
+  durch; übrig bleibt ein blinder Test, ob intern Port 443 antwortet. Scheitert eine der beiden
+  DNS-Abfragen anders als mit „keine Einträge“, wird nicht abgerufen.
 
 #### Option B — Abruf im Browser
 

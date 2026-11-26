@@ -145,6 +145,7 @@ export function DetailPhotoBlock(props: {
 /**
  * "Foto hinzufügen/ändern" right under a photo (spec 0036, REQ-008), at a restaurant, an
  * activity, a recipe and a collection; it opens the window "Foto" (spec 0039, REQ-001).
+ * `children` stand in the same row after it (spec 0042 puts the "Teilen" icon there).
  */
 export function PhotoActionRow(props: {
   hasPhoto: boolean;
@@ -152,10 +153,11 @@ export function PhotoActionRow(props: {
   hint: string | undefined;
   onChange: () => void;
   testPrefix: string;
+  children?: ReactNode;
 }) {
-  if (!CAN_PICK_PHOTO) return null;
+  if (!CAN_PICK_PHOTO) return <>{props.children}</>;
   return (
-    <Row gap={12} wrap>
+    <Row gap={12} wrap align="center">
       <Button
         label={props.hasPhoto ? 'Foto ändern' : 'Foto hinzufügen'}
         icon="camera"
@@ -166,6 +168,7 @@ export function PhotoActionRow(props: {
         onPress={props.onChange}
         testID={`${props.testPrefix}-photo-change`}
       />
+      {props.children}
     </Row>
   );
 }

@@ -150,6 +150,24 @@ export function isPublicAddress(address: string): boolean {
   return ipv6 ? isPublicIpv6(ipv6) : false;
 }
 
+/**
+ * Every A and AAAA address of a host. Only "no records" (Deno's NotFound: NXDOMAIN or no data)
+ * makes a family empty; any other failure of either lookup throws, so an address that could
+ * not be checked is never connected to (fail closed).
+ */
+export async function resolveAddresses(
+  hostname: string,
+  lookup: (hostname: string, type: 'A' | 'AAAA') => Promise<string[]>,
+): Promise<string[]> {
+  const families = await Promise.allSettled([lookup(hostname, 'A'), lookup(hostname, 'AAAA')]);
+  return families.flatMap((family) => {
+    if (family.status === 'fulfilled') return family.value;
+    const reason: unknown = family.reason;
+    if (reason instanceof Error && reason.name === 'NotFound') return [];
+    throw reason;
+  });
+}
+
 // ---------------------------------------------------------------------------------------------
 // One request
 // ---------------------------------------------------------------------------------------------

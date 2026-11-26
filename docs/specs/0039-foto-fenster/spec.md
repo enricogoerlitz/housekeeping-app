@@ -121,24 +121,35 @@ ohne sie warnt der Job `media_sweep_not_configured` und löscht nichts.
 
 ## Risiken
 
-| Risiko                                   | Gegenmaßnahme                                                         | Test                              |
-| ---------------------------------------- | --------------------------------------------------------------------- | --------------------------------- |
-| Server ruft interne Adressen ab (SSRF)   | DNS-Prüfung vor jedem Hop, nur 443                                    | Unit-Tests je Adressklasse        |
-| DNS-Rebinding zwischen Prüfung und Abruf | Restrisiko (ADR-0016): nur angemeldete Mitglieder                     | —                                 |
-| Riesige oder langsame Antwort            | Byte-Grenze beim Lesen, 10 s                                          | Tests 16 MB, Zeitüberschreitung   |
-| Abgemeldet / fremder Haushalt            | JWT + Mitgliedschaft                                                  | AC-008, Test 403                  |
-| Bild ist Code (SVG) oder lügt im Typ     | Signaturprüfung im Server und in der App                              | Test SVG / HTML                   |
-| Aufräumen löscht benutzte Datei          | nur ohne Verweis und älter als 1 Tag                                  | pgTAP mit `p_now` (AC-010–AC-012) |
-| Aufräum-Aufruf von außen                 | HMAC-Signatur wie `push-send`                                         | Test ohne/mit falscher Signatur   |
-| Server-Schlüssel in `media-sweep`        | nur dort, nur signiert, nur Namen der Foto-Ordner, keine Namen im Log | Tests 401/400                     |
-| Mitglied startet den Lauf selbst         | Funktionen ohne Grants                                                | pgTAP 42501                       |
+| Risiko                                   | Gegenmaßnahme                                                                                 | Test                              |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------- | --------------------------------- |
+| Server ruft interne Adressen ab (SSRF)   | DNS-Prüfung vor jedem Hop, nur 443                                                            | Unit-Tests je Adressklasse        |
+| DNS-Rebinding zwischen Prüfung und Abruf | Restrisiko (ADR-0016): nur Mitglieder, nur 443/TLS, Bildsignatur; DNS-Teilausfall fail-closed | Test `resolveAddresses`           |
+| Viele Abrufe ohne Kontingent             | gewollt (Enrico); bei Missbrauch `quota` im Endpoint                                          | —                                 |
+| Riesige oder langsame Antwort            | Byte-Grenze beim Lesen, 10 s                                                                  | Tests 16 MB, Zeitüberschreitung   |
+| Abgemeldet / fremder Haushalt            | JWT + Mitgliedschaft                                                                          | AC-008, Test 403                  |
+| Bild ist Code (SVG) oder lügt im Typ     | Signaturprüfung im Server und in der App                                                      | Test SVG / HTML                   |
+| Aufräumen löscht benutzte Datei          | nur ohne Verweis und älter als 1 Tag                                                          | pgTAP mit `p_now` (AC-010–AC-012) |
+| Aufräum-Aufruf von außen                 | HMAC-Signatur wie `push-send`                                                                 | Test ohne/mit falscher Signatur   |
+| Server-Schlüssel in `media-sweep`        | nur dort, nur signiert, nur Namen der Foto-Ordner, keine Namen im Log                         | Tests 401/400                     |
+| Mitglied startet den Lauf selbst         | Funktionen ohne Grants                                                                        | pgTAP 42501                       |
 
 ## Umsetzung
 
-- [ ] 1. `_shared/fetch-public.ts` + `fetch-image` (AC-006–AC-008), ADR-0016
-- [ ] 2. Fenster „Foto“ in der App, überall eingesetzt (AC-001, AC-002)
-- [ ] 3. Desktop: Ziehen, Einfügen, Prüfung (AC-003–AC-005)
-- [ ] 4. Handy: Mediathek, Kamera, Datei (AC-009)
-- [ ] 5. Aufräum-Funktion, Job, Edge Function (AC-010–AC-012)
-- [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün;
-      `pnpm exec supabase test db`; `/security-check`
+- [x] 1. `_shared/fetch-public.ts` + `fetch-image` (AC-006–AC-008), ADR-0016
+- [x] 2. Fenster „Foto“ in der App, überall eingesetzt (AC-001, AC-002)
+- [x] 3. Desktop: Ziehen, Einfügen, Prüfung (AC-003–AC-005)
+- [x] 4. Handy: Mediathek, Kamera, Datei (AC-009)
+- [x] 5. Aufräum-Funktion, Job, Edge Function (AC-010–AC-012)
+- [x] 6. Platz in der Zeile unter dem Foto für das „Teilen“-Symbol aus Spec 0042
+      (`PhotoActionRow` nimmt `children`).
+- [x] Nachweis (26.11.2026): `pnpm format:check && pnpm check && pnpm build:web` grün (Tests
+      core/api/ui/edge inkl. Abdeckung; `build:web` mit geladener Umgebung).
+      `pnpm exec supabase test db supabase/tests/media_orphan_sweep.test.sql` 19/19 ok; die ganze
+      Suite läuft auf der geteilten lokalen DB, in der schon Migrationen von 0037/0041/0042
+      liegen — deren Abweichungen (collections, schema_lint, sync_pull, household_rpcs, …) betreffen
+      0039 nicht. Live in der Edge Runtime 1.79: `fetchPublic` lädt Google-/Wikimedia-PNG und
+      picsum (Weiterleitung), sperrt `localtest.me` (→ 127.0.0.1), `127.0.0.1`, `localhost`.
+      Screenshots `tmp/review-0003/0039/`. `/security-check`: 0 kritisch/hoch/mittel, 2 niedrig
+      (DNS-Teilausfall → behoben, jetzt fail-closed; kein Kontingent → gewollt), 3 Hinweise.
+      Nur am iPhone prüfbar: Kamera (`capture`), System-Menü von „Fotomediathek“/„Datei wählen“.

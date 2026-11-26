@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 
 import type { ClaimsResult, DbResult, Deps, Query, UserClient } from './deps.ts';
 import { ConfigError, requireEnv } from './errors.ts';
+import { resolveAddresses } from './fetch-public.ts';
 
 /**
  * The publishable key from SUPABASE_PUBLISHABLE_KEYS ({"default": "sb_publishable_…"}), else the
@@ -56,19 +57,6 @@ function userClient(env: Deps['env'], authorization: string): UserClient {
   };
 }
 
-/**
- * A and AAAA addresses of a host; a family without records counts as none. Fails when both
- * lookups fail, so the caller refuses the address (fail closed).
- */
-async function resolveDns(hostname: string): Promise<string[]> {
-  const lookups = await Promise.allSettled([
-    Deno.resolveDns(hostname, 'A'),
-    Deno.resolveDns(hostname, 'AAAA'),
-  ]);
-  if (lookups.every((lookup) => lookup.status === 'rejected')) throw new Error('dns_failed');
-  return lookups.flatMap((lookup) => (lookup.status === 'fulfilled' ? lookup.value : []));
-}
-
 /** Real dependencies inside the Supabase Edge Runtime. Never uses a service-role or secret key. */
 export function liveDeps(): Deps {
   const env: Deps['env'] = (name) => Deno.env.get(name);
@@ -76,7 +64,8 @@ export function liveDeps(): Deps {
     env,
     fetch: (input, init) => fetch(input, init),
     now: () => new Date(),
-    resolveDns,
+    resolveDns: (hostname) =>
+      resolveAddresses(hostname, (host, type) => Deno.resolveDns(host, type)),
     createUserClient: (authorization) => userClient(env, authorization),
   };
 }
