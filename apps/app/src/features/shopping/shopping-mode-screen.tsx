@@ -39,8 +39,9 @@ import {
   WIDE_GUTTER,
   expandableA11y,
   useBottomInset,
+  useWakeLock,
 } from '@housekeeping/ui';
-import { useRouter } from 'expo-router';
+import { useIsFocused, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Platform, Pressable, View } from 'react-native';
 
@@ -180,6 +181,9 @@ export function ShoppingModeScreen() {
   const shopper = useActiveShopper();
   const theme = useTheme();
   const { isWide } = useBreakpoint();
+  // The screen stays on while shopping, the normal lock time returns on leaving (spec 0034,
+  // REQ-010).
+  useWakeLock(useIsFocused());
   // Above the home bar with its gap (spec 0029, REQ-002).
   const bottomEdge = useBottomInset();
   // Without the tab bar the toast stands above the input bar (spec 0019, AC-024).

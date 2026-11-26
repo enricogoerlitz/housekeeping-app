@@ -30,6 +30,7 @@ import { FavoriteButton } from '@/features/shell/favorite-button';
 import { MemberRatings } from '@/features/shell/member-ratings';
 import { useOnlineOnly } from '@/features/shell/offline';
 import { PantryCheckSheet } from '@/features/shopping/pantry-check-sheet';
+import { useBrowseSwipe } from '@/lib/browse-order';
 
 import { useOpenRecipe } from './navigation';
 import { NO_INGREDIENTS_HINT, RecipeMoreMenu, useRecipePhoto } from './recipe-actions';
@@ -57,6 +58,8 @@ export function CollectionDetailBody(props: {
   /** true while this page deletes its collection; false again when the deletion did not start. */
   onDeleting: (leaving: boolean) => void;
 }) {
+  // Phones: swipe to the neighbour in the list it was opened from (spec 0034, REQ-008).
+  const swipe = useBrowseSwipe();
   const { collection } = props;
   const online = useOnlineOnly();
   const me = useCurrentMember();
@@ -135,7 +138,13 @@ export function CollectionDetailBody(props: {
     <ContentsSection
       collection={collection}
       contents={contents}
-      onOpen={openRecipe}
+      // A recipe of the collection swipes through its contents (spec 0034, REQ-008).
+      onOpen={(recipeId) =>
+        openRecipe(
+          recipeId,
+          contents.map((content) => content.recipe.id),
+        )
+      }
       editor={editor}
     />
   );
@@ -161,6 +170,7 @@ export function CollectionDetailBody(props: {
     <Screen
       testID="recipe-screen"
       tone="essen"
+      tabSwipe={swipe}
       header={
         <ScreenHeader
           title={collection.title}

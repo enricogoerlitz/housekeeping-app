@@ -34,14 +34,13 @@ import {
   useBreakpoint,
   useToastClearance,
   useBottomInset,
+  useWakeLock,
 } from '@housekeeping/ui';
-import { Redirect, useRouter } from 'expo-router';
+import { Redirect, useIsFocused, useRouter } from 'expo-router';
 import { useEffect, useEffectEvent, useState } from 'react';
 import { Platform, Pressable, View } from 'react-native';
 
 import { usePageParams } from '@/lib/url-state';
-
-import { useWakeLock } from './use-wake-lock';
 
 /**
  * Cooking mode (spec 0023, REQ-010): one step per screen as calm reading text, the ingredients of
@@ -121,7 +120,8 @@ function Cooking(props: {
   // No tab bar here: the toast stands above the step buttons (AC-024).
   const [footerHeight, setFooterHeight] = useState<number | undefined>();
   useToastClearance(footerHeight === undefined ? undefined : footerHeight - bottomEdge);
-  useWakeLock();
+  // Only while it is the page on screen, not while a page lies above it.
+  useWakeLock(useIsFocused());
   useArrowKeys(index, steps.length, setIndex);
   const step = steps[Math.min(index, steps.length - 1)];
   const last = index >= steps.length - 1;

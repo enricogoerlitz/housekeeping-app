@@ -18,12 +18,12 @@ interface WebWindow {
   removeEventListener: (type: string, listener: () => void) => void;
 }
 
-function webWindow(): WebWindow | undefined {
+export function webWindow(): WebWindow | undefined {
   if (Platform.OS !== 'web') return undefined;
   return globalThis as unknown as WebWindow;
 }
 
-function installedIosApp(view: WebWindow): boolean {
+export function installedIosApp(view: WebWindow): boolean {
   return isInstalledIosApp({
     userAgent: view.navigator.userAgent,
     maxTouchPoints: view.navigator.maxTouchPoints ?? 0,

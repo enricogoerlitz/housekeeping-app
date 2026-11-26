@@ -154,6 +154,11 @@ export interface PhotoProps {
   source?: ImageSource | number;
   /** Shown as placeholder when there is no image. */
   placeholderIcon?: IconName;
+  /**
+   * The photo is on its way: a calm surface of the final size instead of the symbol, so nothing
+   * pops or shifts when it fades in (spec 0034, AC-010).
+   */
+  loading?: boolean;
   width?: number | `${number}%`;
   height?: number;
   aspectRatio?: number;
@@ -173,24 +178,19 @@ export function Photo(props: PhotoProps) {
     aspectRatio: props.aspectRatio,
     borderRadius: radius,
     overflow: 'hidden',
+    backgroundColor: theme.colors.surfaceSunken,
   };
   if (props.source === undefined) {
     return (
       <View
         testID={props.testID}
-        style={[
-          box,
-          {
-            backgroundColor: theme.colors.surfaceSunken,
-            alignItems: 'center',
-            justifyContent: 'center',
-          },
-          props.style,
-        ]}
+        style={[box, { alignItems: 'center', justifyContent: 'center' }, props.style]}
       >
-        <ToneContext.Provider value={undefined}>
-          <Icon name={props.placeholderIcon ?? 'utensils'} size={26} color="muted" />
-        </ToneContext.Provider>
+        {props.loading ? null : (
+          <ToneContext.Provider value={undefined}>
+            <Icon name={props.placeholderIcon ?? 'utensils'} size={26} color="muted" />
+          </ToneContext.Provider>
+        )}
       </View>
     );
   }

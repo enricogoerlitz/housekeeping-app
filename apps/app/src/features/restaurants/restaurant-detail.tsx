@@ -17,7 +17,6 @@ import {
   Icon,
   IconButton,
   Menu,
-  openExternalLink,
   Row,
   Section,
   Stack,
@@ -35,6 +34,7 @@ import { useOnlineOnly } from '@/features/shell/offline';
 import { DetailPhotoBlock } from '@/features/shell/own-photo';
 import { useDeletePlace } from '@/features/shell/use-delete-place';
 import { VisitList, VisitsLine, useVisitsJump, type SectionRef } from '@/features/shell/visits';
+import { openLink } from '@/lib/open-link';
 
 import { EditRestaurantSheet } from './add-restaurant-sheet';
 import { visitsLabel } from './labels';
@@ -258,7 +258,7 @@ function RestaurantDetailBody(props: RestaurantDetailProps & { restaurant: Resta
                 label="Webseite"
                 icon="external-link"
                 variant="secondary"
-                onPress={() => openExternalLink(website)}
+                onPress={() => openLink(website)}
                 testID="restaurant-website-open"
               />
             ) : null}
