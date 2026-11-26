@@ -1,8 +1,17 @@
-import { useActivities, useCurrentMember, usePlanEntries, useToday } from '@housekeeping/api';
+import {
+  useActivities,
+  useActivityKindsById,
+  useCurrentMember,
+  usePlanEntries,
+  useToday,
+} from '@housekeeping/api';
 import {
   ACTIVITY_SORTS,
   activityMatches,
+  filterRemembered,
+  REMEMBER_FILTERS,
   sortActivities,
+  type RememberFilter,
   visitsOf,
   type Activity,
   type ActivitySort,
@@ -31,7 +40,7 @@ import {
   openKeyboardNow,
 } from '@housekeeping/ui';
 import { useIsFocused, useRouter } from 'expo-router';
-import { type ComponentRef, useEffect, useRef } from 'react';
+import { type ComponentRef, useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, View, type TextInput } from 'react-native';
 
 import { useOnlineOnly } from '@/features/shell/offline';
@@ -41,6 +50,7 @@ import { useOriginBack, usePageParams } from '@/lib/url-state';
 
 import { ActivityDetail } from './activity-detail';
 import { ActivityFormSheet } from './activity-form';
+import { ActivityKindsSheet } from './activity-kinds-sheet';
 import { ActivityPhoto } from './activity-photo';
 import { activityPlaceLine, activityVisitsLabel } from './labels';
 
@@ -52,6 +62,9 @@ function sortShortLabel(sort: ActivitySort): string {
   if (sort === 'recent') return 'Zuletzt';
   return ACTIVITY_SORTS.find((entry) => entry.value === sort)?.label ?? '';
 }
+
+const rememberLabel = (filter: RememberFilter) =>
+  REMEMBER_FILTERS.find((entry) => entry.value === filter)?.label ?? '';
 
 /** The list column next to a chosen activity on wide screens ("Liste und Detail"). */
 const LIST_COLUMN_WIDTH = 380;
@@ -77,6 +90,14 @@ export function ActivitiesScreen() {
   // "‹ Verwalten", or the section it was opened from (spec 0019, REQ-006).
   const { label: backLabel, back } = useOriginBack(params.von, 'verwalten');
   const focused = useIsFocused();
+  // "Gemerkt", "Alle", "Nicht gemerkt" (spec 0041, REQ-004): never in the address, and back to
+  // "Gemerkt" whenever the list is left (AC-013).
+  const [remember, setRemember] = useState<RememberFilter>('remembered');
+  const [wasFocused, setWasFocused] = useState(focused);
+  if (focused !== wasFocused) {
+    setWasFocused(focused);
+    if (!focused) setRemember('remembered');
+  }
 
   const query = params.suche ?? '';
   const favoritesOnly = params.favoriten === '1';
@@ -86,6 +107,7 @@ export function ActivitiesScreen() {
     ? SORT_OF_SLUG[params.sortierung]
     : (settings.listSorts.activities ?? 'name');
   const creating = params.fenster === 'neu-aktivitaet' && focused;
+  const kindsOpen = params.fenster === 'arten' && focused;
   const setQuery = (next: string) => address.replace({ suche: next });
   const setFavoritesOnly = (next: boolean) =>
     address.replace({ favoriten: next ? '1' : undefined });
@@ -120,9 +142,13 @@ export function ActivitiesScreen() {
     activities.map((activity) => [activity.id, visitsOf('activity', activity.id, entries, today)]),
   );
   const results = sortActivities(
-    activities.filter(
-      (activity) =>
-        (!favoritesOnly || activity.favoriteOf.includes(me.id)) && activityMatches(query, activity),
+    filterRemembered(
+      activities.filter(
+        (activity) =>
+          (!favoritesOnly || activity.favoriteOf.includes(me.id)) &&
+          activityMatches(query, activity),
+      ),
+      remember,
     ),
     sort,
     { me: me.id, entries, today },
@@ -155,12 +181,27 @@ export function ActivitiesScreen() {
       testID="activity-add"
     />
   );
+  // Spec 0041, REQ-001: the kinds are renamed and deleted here.
+  const kindsButton = (
+    <IconButton
+      icon="layers"
+      label="Arten"
+      variant="soft"
+      onPress={() => address.open({ fenster: 'arten' })}
+      testID="activity-kinds-open"
+    />
+  );
   const header = (
     <ScreenHeader
       title="Aktivitäten"
       backLabel={backLabel}
       onBack={back}
-      right={addButton}
+      right={
+        <Row gap={8}>
+          {kindsButton}
+          {addButton}
+        </Row>
+      }
       testID="activities-title"
     />
   );
@@ -172,6 +213,8 @@ export function ActivitiesScreen() {
 
   const sheet = creating ? (
     <ActivityFormSheet onClose={() => setCreating(false)} onSaved={open} onOpenExisting={open} />
+  ) : kindsOpen ? (
+    <ActivityKindsSheet onClose={() => address.close({ fenster: undefined })} />
   ) : null;
 
   if (empty) {
@@ -238,6 +281,15 @@ export function ActivitiesScreen() {
           onChange={setSort}
           options={[...ACTIVITY_SORTS]}
           testID="activity-sort"
+        />
+        <Menu
+          label={rememberLabel(remember)}
+          accessibilityLabel={`Merken: ${rememberLabel(remember)}`}
+          icon="bookmark"
+          value={remember}
+          onChange={setRemember}
+          options={[...REMEMBER_FILTERS]}
+          testID="activity-remember"
         />
         <Chip
           label="Favoriten"
@@ -339,9 +391,11 @@ function ActivityCard(props: {
   onPress: () => void;
 }) {
   const theme = useTheme();
+  const kindsById = useActivityKindsById();
   const { activity } = props;
   const id = activity.id;
-  const placeLine = activityPlaceLine(activity);
+  const kind = activity.kindId === undefined ? undefined : kindsById[activity.kindId];
+  const placeLine = [kind?.name, activityPlaceLine(activity)].filter(Boolean).join(' · ');
   const last = props.visits ? activityVisitsLabel(props.visits) : undefined;
   return (
     <Pressable

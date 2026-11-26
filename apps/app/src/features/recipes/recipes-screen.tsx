@@ -14,6 +14,7 @@ import {
   canReshuffle,
   cookingHistory,
   cuisineFacets,
+  tagFacets,
   EMPTY_RECIPE_LIST_FILTER,
   filterButtonLabel,
   isQuickFilterActive,
@@ -141,6 +142,7 @@ export function RecipesScreen() {
   );
   const shuffle = list.shuffleFor(recipes.map((recipe) => recipe.id));
   const cuisines = useMemo(() => cuisineFacets(recipes), [recipes]);
+  const tags = useMemo(() => tagFacets(recipes), [recipes]);
   const results = useMemo(() => {
     const searched = searchRecipes(query, recipes, articlesById);
     const filtered = applyRecipeListFilter(searched, filter, {
@@ -331,7 +333,7 @@ export function RecipesScreen() {
               testID="recipe-reshuffle"
             />
           ) : null}
-          {activeFilterChips(filter, cuisines).map((chip) => (
+          {activeFilterChips(filter, cuisines, tags).map((chip) => (
             <Chip
               key={`${chip.kind}-${chip.value}`}
               label={chip.label}
@@ -355,7 +357,14 @@ export function RecipesScreen() {
         </>
       }
       panelTitle="Filter"
-      panel={<RecipeFilterPanel filter={filter} onChange={list.setFilter} cuisines={cuisines} />}
+      panel={
+        <RecipeFilterPanel
+          filter={filter}
+          onChange={list.setFilter}
+          cuisines={cuisines}
+          tags={tags}
+        />
+      }
       resetLabel="Zurücksetzen"
       onReset={() => list.setFilter(EMPTY_RECIPE_LIST_FILTER)}
       applyLabel={recipeShowLabel(results)}

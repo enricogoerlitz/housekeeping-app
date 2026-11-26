@@ -294,7 +294,7 @@ test('AC-019: the server refuses a recipe change; the old value is back with a c
     'ingredient-shopping-note-',
     '',
   );
-  await page.route('**/rest/v1/rpc/apply_changes', (route) =>
+  await page.route('**/rest/v1/rpc/save_recipe_page', (route) =>
     route.fulfill({
       status: 400,
       contentType: 'application/json',
@@ -306,16 +306,16 @@ test('AC-019: the server refuses a recipe change; the old value is back with a c
       },
     }),
   );
-  await tid(page, 'recipe-ingredients-edit').click();
+  await tid(page, 'recipe-edit').click();
   await tid(page, `recipe-row-menu-${ingredientId}`).click();
   await tid(page, `recipe-row-menu-${ingredientId}-edit`).click();
   await tid(page, 'ingredient-shopping-note').fill('Büffelmozzarella');
   await tid(page, 'ingredient-save').click();
-  await tid(page, 'recipe-ingredients-done').click();
+  await tid(page, 'recipe-edit-save').click();
   await expect(toastMessage(page)).toHaveText(REJECTED);
-  // Spec 0008 (E7): the section opens again with what was sent, so it can be tried again.
-  await expect(tid(page, 'recipe-ingredients-done')).toBeVisible();
-  await page.unroute('**/rest/v1/rpc/apply_changes');
+  // Spec 0037, AC-004: the edit mode stays open with what was sent, to try again.
+  await expect(tid(page, 'recipe-edit-save')).toBeVisible();
+  await page.unroute('**/rest/v1/rpc/save_recipe_page');
   await page.reload();
   await expect(tid(page, `ingredient-shopping-note-${ingredientId}`)).toHaveText('(Fior di Latte)');
 });
@@ -578,6 +578,7 @@ test('AC-001 (0018): a new recipe keeps its pasted ingredients, also after a rel
   await tid(page, 'recipe-new').click();
   await tid(page, 'recipe-new-recipe').click();
   await tid(page, 'new-recipe-title').fill(title);
+  await tid(page, 'new-recipe-open-ingredients').click();
   await tid(page, 'new-recipe-ingredients').fill('200 g rote Linsen\n1 Dose Kokosmilch');
   await tid(page, 'new-recipe-save').click();
   await expect(tid(page, 'recipe-title')).toHaveText(title);

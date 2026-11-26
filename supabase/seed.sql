@@ -631,10 +631,22 @@ insert into public.restaurant_ratings (household_id, restaurant_id, member_id, s
   ('c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'cbe4bb0b-38d0-5340-b60b-9f0245d2abb9', 'ecc63aaa-a39f-59d0-b7c7-55980a57c2f3', 4, now() + make_interval(days => -120, secs => 0.000003), now() + make_interval(days => -120, secs => 0.000003)),
   ('c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'f2ad4d16-d1d1-5659-b707-5b48c391e019', 'ecc63aaa-a39f-59d0-b7c7-55980a57c2f3', 4, now() + make_interval(days => -120, secs => 0.000004), now() + make_interval(days => -120, secs => 0.000004));
 
-insert into public.activities (id, household_id, name, name_key, description, photo_path, place_name, address, lat, lng, maps_url, website_url, created_by, created_at) values
-  ('4213331d-c8fc-5354-b6f7-95f03a0cba65', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'Bouldern', 'bouldern', 'In der Boulderhalle, Schuhe gibt es zum Ausleihen.', null, null, null, null, null, null, null, 'ecc63aaa-a39f-59d0-b7c7-55980a57c2f3', now() + make_interval(days => -40, secs => 0.000000)),
-  ('68941b3d-be5c-5b9d-9b56-2eb0a9d362ca', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'Eislaufen', 'eislaufen', 'Öffentlicher Lauf, Schlittschuhe gibt es zum Ausleihen.', null, 'Eisstadion Hohenschönhausen', null, 52.55, 13.5, 'https://www.google.com/maps/place/Eisstadion+Hohensch%C3%B6nhausen/@52.55,13.5,17z', null, 'ecc63aaa-a39f-59d0-b7c7-55980a57c2f3', now() + make_interval(days => -40, secs => -0.000001)),
-  ('be438327-21ac-55e4-b69c-1a3f8d58ad39', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'Spieleabend', 'spieleabend', 'Brettspiele zu Hause, gern mit Freunden.', null, null, null, null, null, null, null, '64399031-c98c-5692-9e99-923924bfff3d', now() + make_interval(days => -40, secs => -0.000002));
+delete from public.activity_kinds where household_id = 'c1437b0b-9d8a-50e6-b93b-6a826feaae34';
+
+insert into public.activity_kinds (id, household_id, name, name_key, icon, created_at) values
+  ('3f3a9be4-409b-5030-9cad-4b73a7735461', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'Geburtstag', 'geburtstag', 'cake', now() + make_interval(days => -120, secs => 0.000000)),
+  ('c954d3a0-7216-5ce6-9542-9668e3bb1bed', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'Sport', 'sport', 'dumbbell', now() + make_interval(days => -120, secs => 0.000001)),
+  ('01962c03-1556-54e5-8214-7c5c6fd815f6', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'Ausflug', 'ausflug', 'map', now() + make_interval(days => -120, secs => 0.000002)),
+  ('2932f840-17ec-53ea-b17d-d9980cde20c5', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'Kultur', 'kultur', 'drama', now() + make_interval(days => -120, secs => 0.000003)),
+  ('84a005b2-197e-5e1c-b04b-95c9b46fd602', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'Essen gehen', 'essen gehen', 'utensils', now() + make_interval(days => -120, secs => 0.000004)),
+  ('d2ade5b1-0695-517d-a3f2-d7236df85c76', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'Treffen', 'treffen', 'users', now() + make_interval(days => -120, secs => 0.000005)),
+  ('ea4f549d-e12a-5e75-b505-77005334ab0a', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'Reise', 'reise', 'plane', now() + make_interval(days => -120, secs => 0.000006)),
+  ('f3206c93-89f7-506b-ae58-006868f5750a', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'Sonstiges', 'sonstiges', 'sparkles', now() + make_interval(days => -120, secs => 0.000007));
+
+insert into public.activities (id, household_id, name, name_key, description, photo_path, place_name, address, lat, lng, maps_url, website_url, created_by, kind_id, icon, remembered, created_at) values
+  ('4213331d-c8fc-5354-b6f7-95f03a0cba65', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'Bouldern', 'bouldern', 'In der Boulderhalle, Schuhe gibt es zum Ausleihen.', null, null, null, null, null, null, null, 'ecc63aaa-a39f-59d0-b7c7-55980a57c2f3', 'c954d3a0-7216-5ce6-9542-9668e3bb1bed', null, true, now() + make_interval(days => -40, secs => 0.000000)),
+  ('68941b3d-be5c-5b9d-9b56-2eb0a9d362ca', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'Eislaufen', 'eislaufen', 'Öffentlicher Lauf, Schlittschuhe gibt es zum Ausleihen.', null, 'Eisstadion Hohenschönhausen', null, 52.55, 13.5, 'https://www.google.com/maps/place/Eisstadion+Hohensch%C3%B6nhausen/@52.55,13.5,17z', null, 'ecc63aaa-a39f-59d0-b7c7-55980a57c2f3', 'c954d3a0-7216-5ce6-9542-9668e3bb1bed', null, true, now() + make_interval(days => -40, secs => -0.000001)),
+  ('be438327-21ac-55e4-b69c-1a3f8d58ad39', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'Spieleabend', 'spieleabend', 'Brettspiele zu Hause, gern mit Freunden.', null, null, null, null, null, null, null, '64399031-c98c-5692-9e99-923924bfff3d', 'd2ade5b1-0695-517d-a3f2-d7236df85c76', null, true, now() + make_interval(days => -40, secs => -0.000002));
 
 insert into public.activity_favorites (household_id, activity_id, member_id, created_at) values
   ('c1437b0b-9d8a-50e6-b93b-6a826feaae34', '68941b3d-be5c-5b9d-9b56-2eb0a9d362ca', '64399031-c98c-5692-9e99-923924bfff3d', now() + make_interval(days => -120, secs => 0.000000)),
@@ -644,6 +656,8 @@ insert into public.activity_ratings (household_id, activity_id, member_id, stars
   ('c1437b0b-9d8a-50e6-b93b-6a826feaae34', '68941b3d-be5c-5b9d-9b56-2eb0a9d362ca', 'ecc63aaa-a39f-59d0-b7c7-55980a57c2f3', 5, now() + make_interval(days => -120, secs => 0.000000), now() + make_interval(days => -120, secs => 0.000000)),
   ('c1437b0b-9d8a-50e6-b93b-6a826feaae34', '68941b3d-be5c-5b9d-9b56-2eb0a9d362ca', '64399031-c98c-5692-9e99-923924bfff3d', 4, now() + make_interval(days => -120, secs => 0.000001), now() + make_interval(days => -120, secs => 0.000001)),
   ('c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'be438327-21ac-55e4-b69c-1a3f8d58ad39', 'ecc63aaa-a39f-59d0-b7c7-55980a57c2f3', 4, now() + make_interval(days => -120, secs => 0.000002), now() + make_interval(days => -120, secs => 0.000002));
+
+
 
 insert into public.meal_plan_entries (id, household_id, date, slot_id, kind, recipe_id, restaurant_id, activity_id, text, note, leftovers_of_entry_id, eater_ids, guests, portions, variants, cook_id, sort, not_done, starts_at, reminder_day_offset, reminder_at, reminder_text, created_at) values
   ('089c2b8f-6e70-56fd-9068-a33b5680ca6e', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', ((now() at time zone 'Europe/Berlin')::date - 6), 'b60c1058-0fa4-5d7a-b8f8-3b7f8895abcd', 'recipe', 'ccaae111-0f68-505f-9c45-ee2c9defceac', null, null, null, null, null, '{"ecc63aaa-a39f-59d0-b7c7-55980a57c2f3","64399031-c98c-5692-9e99-923924bfff3d"}', 0, 2, '[]'::jsonb, 'ecc63aaa-a39f-59d0-b7c7-55980a57c2f3', 0, false, null, null, null, null, now() + make_interval(days => -120, secs => 0.000000)),
@@ -1325,6 +1339,20 @@ update public.households set default_store_id = null where id = '263209f8-b95d-5
 
 
 
+
+
+
+delete from public.activity_kinds where household_id = '263209f8-b95d-525e-89fc-058960f220a2';
+
+insert into public.activity_kinds (id, household_id, name, name_key, icon, created_at) values
+  ('48b40aa6-f7c7-5697-a290-c998dc27d8a9', '263209f8-b95d-525e-89fc-058960f220a2', 'Geburtstag', 'geburtstag', 'cake', now() + make_interval(days => -120, secs => 0.000000)),
+  ('f245d2f5-4d2d-589d-bcf7-423a73302854', '263209f8-b95d-525e-89fc-058960f220a2', 'Sport', 'sport', 'dumbbell', now() + make_interval(days => -120, secs => 0.000001)),
+  ('f5a18fad-9bd1-51af-9a36-8c745905eb75', '263209f8-b95d-525e-89fc-058960f220a2', 'Ausflug', 'ausflug', 'map', now() + make_interval(days => -120, secs => 0.000002)),
+  ('1873db26-70f8-57cb-93d3-56eab0924e09', '263209f8-b95d-525e-89fc-058960f220a2', 'Kultur', 'kultur', 'drama', now() + make_interval(days => -120, secs => 0.000003)),
+  ('05821d8e-3f66-5b47-ac3d-7c3842d8e8f3', '263209f8-b95d-525e-89fc-058960f220a2', 'Essen gehen', 'essen gehen', 'utensils', now() + make_interval(days => -120, secs => 0.000004)),
+  ('fa5d9e8a-e7b7-512a-a9b5-3c5d5390251b', '263209f8-b95d-525e-89fc-058960f220a2', 'Treffen', 'treffen', 'users', now() + make_interval(days => -120, secs => 0.000005)),
+  ('b283b143-d840-54b3-8c50-55ccfda2d152', '263209f8-b95d-525e-89fc-058960f220a2', 'Reise', 'reise', 'plane', now() + make_interval(days => -120, secs => 0.000006)),
+  ('a176bbb6-84e7-5279-a1e5-c0d6d8cbc8d9', '263209f8-b95d-525e-89fc-058960f220a2', 'Sonstiges', 'sonstiges', 'sparkles', now() + make_interval(days => -120, secs => 0.000007));
 
 
 

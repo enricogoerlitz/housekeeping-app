@@ -1,5 +1,6 @@
 import {
   addPlanEntry,
+  createActivitySeries,
   defaultEaterIds,
   useActivities,
   useArticlesById,
@@ -12,8 +13,12 @@ import {
   addEntryReducer,
   addEntryRequest,
   addedNotice,
+  defaultRepeat,
   initialAddEntryState,
   offersReminder,
+  repeatRule,
+  seriesRuleLabel,
+  type RepeatDraft,
   type AddEntryChoice,
   type AddEntryContext,
   type AddEntryTarget,
@@ -23,7 +28,7 @@ import {
 } from '@housekeeping/core';
 import { Sheet, Text, toast, type SheetAction } from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
-import { useReducer } from 'react';
+import { useReducer, useState } from 'react';
 
 import { DEFAULT_SERVINGS } from '@/features/recipes/recipe-form';
 import { errorMessage, FAILED_MESSAGE } from '@/features/shell/error-message';
@@ -66,6 +71,15 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
   const date = addEntryDate(state);
   const slots = household.mealSlots;
   const slotName = slots.find((slot) => slot.id === slotId)?.name;
+  // Spec 0041, REQ-003: "Rhythmus"; while "Einmalig" it follows the chosen day.
+  const repeatDay = date ?? today;
+  const [repeat, setRepeat] = useState<RepeatDraft>(() => defaultRepeat(repeatDay));
+  const [repeatFor, setRepeatFor] = useState(repeatDay);
+  if (repeatFor !== repeatDay) {
+    setRepeatFor(repeatDay);
+    if (repeat.kind === 'none') setRepeat(defaultRepeat(repeatDay));
+  }
+  const rule = choice?.kind === 'activity' && date ? repeatRule(repeat) : undefined;
 
   // Spec 0017, REQ-001: "Erinnern" in the second step, only with a day (not for "Vormerken").
   const reminder = useReminderForm({
@@ -99,6 +113,27 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
     dispatch({ type: 'save' });
     const request = addEntryRequest(state, defaultEaterIds());
     if (!request) return;
+    if (rule && date && request.input.activityId) {
+      try {
+        createActivitySeries({
+          activityId: request.input.activityId,
+          rule,
+          startsOn: date,
+          endsOn: repeat.until,
+          slotId: request.input.slotId,
+          startsAt: request.input.startsAt,
+          note: request.input.note,
+          eaterIds: request.input.eaterIds,
+          guests: request.input.guests ?? 0,
+        });
+      } catch (caught) {
+        dispatch({ type: 'fail', error: errorMessage(caught, FAILED_MESSAGE) });
+        return;
+      }
+      props.onClose();
+      toast.show({ message: `„${request.title}“ ${seriesRuleLabel(rule, date)} eingeplant` });
+      return;
+    }
     // A reminder that cannot be saved keeps the window open with its hint (REQ-003).
     let checked: EntryReminder | undefined;
     if (remindable) {
@@ -184,6 +219,7 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
             router.push('/einstellungen/benachrichtigungen');
           }}
           onSave={save}
+          repeat={{ value: repeat, onChange: setRepeat }}
         />
       ) : (
         <AddEntrySearch

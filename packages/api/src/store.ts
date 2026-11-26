@@ -1,5 +1,8 @@
 import type {
   Activity,
+  ActivityKind,
+  ActivitySeries,
+  ActivitySeriesException,
   Area,
   Article,
   Chore,
@@ -26,7 +29,7 @@ import type {
 } from '@housekeeping/core';
 import { useSyncExternalStore } from 'react';
 
-import type { Transport } from './transport';
+import type { ChangeOp, Transport } from './transport';
 
 /** Everything that belongs to one household (one tenant). */
 export interface HouseholdData {
@@ -39,6 +42,10 @@ export interface HouseholdData {
   collectionRecipes: CollectionRecipe[];
   restaurants: Restaurant[];
   activities: Activity[];
+  /** Spec 0041: "Aktivitätsarten" (creation order), series and their exceptions. */
+  activityKinds: ActivityKind[];
+  activitySeries: ActivitySeries[];
+  activitySeriesExceptions: ActivitySeriesException[];
   planEntries: MealPlanEntry[];
   items: ShoppingItem[];
   chores: Chore[];
@@ -141,14 +148,26 @@ export type StoreAction =
 
 /**
  * How a command's change reaches the server (ADR-0011):
- * - diff: the rows before and after become one `apply_changes` call, limited to the writable
- *   columns; every delete per table must be declared in `maxDeletes` (default 0).
+ * - diff: the rows before and after become one `apply_changes` call (or `send`), limited to the
+ *   writable columns; every delete per table must be declared in `maxDeletes` (default 0).
  * - rpc: a dedicated RPC; the local effect is shown until it is confirmed. `inverse` makes it
  *   undoable.
  * The four store actions do not go through commit but through `queueStoreAction`.
  */
 export type CommitSpec<T> = (
-  | { path: 'diff'; maxDeletes?: Partial<Record<string, number>> }
+  | {
+      path: 'diff';
+      maxDeletes?: Partial<Record<string, number>>;
+      /**
+       * Sends the diff through another RPC than apply_changes that takes the same ops (spec 0037:
+       * save_recipe_page). "Rückgängig" still goes through apply_changes.
+       */
+      send?: (
+        transport: Transport,
+        householdId: string,
+        ops: readonly ChangeOp[],
+      ) => Promise<unknown>;
+    }
   | {
       path: 'rpc';
       send: (transport: Transport, context: RpcContext<T>) => Promise<unknown>;

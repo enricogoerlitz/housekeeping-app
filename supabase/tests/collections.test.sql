@@ -1,6 +1,6 @@
 -- Collections (spec 0009, plan E1–E4, E11): a collection is a row of recipes with the kind
 -- 'collection'. The kind never changes, and a collection has none of the recipe fields (course,
--- time, cuisine, tags, variants, steps, lead time, variant ingredients). collection_recipes holds
+-- cuisine, tags, variants, steps, lead time, variant ingredients; a time it has since spec 0037). collection_recipes holds
 -- the recipes a collection contains: only recipes, only in collections, at most 50, never across
 -- households. delete_recipe / restore_recipe take the rows along. Covers AC-009, AC-010, AC-011,
 -- AC-032, AC-033 (server), the conflict table and the negative tests of the risk table in plan.md.
@@ -117,9 +117,8 @@ select throws_ok(
 select throws_ok(tests.collection_sql('{"course": "main"}'),
   '23514', 'new row for relation "recipes" violates check constraint "recipes_kind_fields"',
   'E3 recipes: a collection with a course is rejected');
-select throws_ok(tests.collection_sql('{"total_minutes": 30}'),
-  '23514', 'new row for relation "recipes" violates check constraint "recipes_kind_fields"',
-  'E3 recipes: a collection with a time is rejected');
+select lives_ok(tests.collection_sql('{"total_minutes": 30}'),
+  'Spec 0037 AC-016 recipes: a collection has a time');
 select throws_ok(tests.collection_sql('{"cuisine": "Grill"}'),
   '23514', 'new row for relation "recipes" violates check constraint "recipes_kind_fields"',
   'E3 recipes: a collection with a cuisine is rejected');
@@ -154,11 +153,10 @@ select throws_ok(
     'id', tests.fx('kartoffelsalat'), 'changes', jsonb_build_object('course', null)))),
   '23514', 'new row for relation "recipes" violates check constraint "recipes_kind_fields"',
   'E3 recipes: a patch cannot clear the course of a recipe');
-select throws_ok(
+select lives_ok(
   tests.apply_sql('home_a', jsonb_build_array(jsonb_build_object('kind', 'patch', 'table', 'recipes',
     'id', tests.fx('grillabend'), 'changes', jsonb_build_object('total_minutes', 30)))),
-  '23514', 'new row for relation "recipes" violates check constraint "recipes_kind_fields"',
-  'E3 recipes: a patch cannot give a collection a time');
+  'Spec 0037 AC-016 recipes: a patch gives a collection a time');
 select throws_ok(format('update public.recipes set kind = %L where id = %L', 'recipe', tests.fx('grillabend')),
   '42501', null, 'E2 recipes: a member cannot update the kind directly');
 select throws_ok(

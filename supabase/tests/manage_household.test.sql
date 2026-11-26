@@ -274,7 +274,7 @@ select is((select count(*)::int from public.households where id in (tests.fx('ho
 -- Fill "WG Köln": a row in every table that holds household data, photos in the storage.
 insert into fx (key) values ('slot'), ('area'), ('article'), ('store'), ('recipe'), ('collection'),
   ('restaurant'), ('activity'), ('trip'), ('feedback'), ('chore'), ('event'), ('entry'),
-  ('item'), ('bag'), ('bag_item'), ('list_bag'), ('packing_item');
+  ('item'), ('bag'), ('bag_item'), ('list_bag'), ('packing_item'), ('series');
 update public.households set meal_slots = jsonb_build_array(jsonb_build_object('id', tests.fx('slot'), 'name', 'Abend', 'sort', 0))
 where id = tests.fx('wg');
 insert into public.areas (id, household_id, name) values (tests.fx('area'), tests.fx('wg'), 'Obst');
@@ -295,6 +295,10 @@ insert into public.activities (id, household_id, name, name_key, created_by)
 values (tests.fx('activity'), tests.fx('wg'), 'Eislaufen', 'eislaufen', tests.fx('enrico'));
 insert into public.activity_favorites (household_id, activity_id, member_id) values (tests.fx('wg'), tests.fx('activity'), tests.fx('enrico'));
 insert into public.activity_ratings (household_id, activity_id, member_id, stars) values (tests.fx('wg'), tests.fx('activity'), tests.fx('enrico'), 3);
+insert into public.activity_series (id, household_id, activity_id, rule, starts_on, slot_id)
+values (tests.fx('series'), tests.fx('wg'), tests.fx('activity'), '{"type": "yearly"}', '2027-03-14', tests.fx('slot'));
+insert into public.activity_series_exceptions (household_id, series_id, on_date)
+values (tests.fx('wg'), tests.fx('series'), '2028-03-14');
 insert into public.trips (id, household_id, from_on, to_on)
 values (tests.fx('trip'), tests.fx('wg'), '2026-12-01', '2026-12-03');
 insert into public.trip_members (household_id, trip_id, member_id) values (tests.fx('wg'), tests.fx('trip'), tests.fx('enrico'));

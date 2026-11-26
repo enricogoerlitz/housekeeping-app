@@ -78,6 +78,9 @@ insert into lint_private_functions_for_authenticated values
   ('private.restore_packing_items(uuid,jsonb)'),    -- spec 0012: domain op of apply_changes, undo of removing
   ('private.assert_restorable_size(jsonb)'), -- security invoker, a size check without data access
   ('private.is_five_minute_time(time without time zone)'), -- spec 0013: used by check constraints, no data access
+  ('private.is_activity_icon(text)'), -- spec 0041: used by check constraints, no data access
+  ('private.is_series_rule(jsonb)'), -- spec 0041: used by check constraints, no data access
+  ('private.assert_meal_slot(uuid,uuid)'), -- spec 0041: security invoker, called by slot-check triggers
   ('private.is_web_url(text)'),          -- spec 0023: used by check constraints, no data access
   ('private.recipe_links_valid(jsonb)'), -- spec 0023: used by check constraints, no data access
   ('private.register_push_subscription(text,text,text,text)'), -- spec 0013: push subscriptions (ADR-0014)

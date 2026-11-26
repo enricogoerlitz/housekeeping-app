@@ -92,6 +92,7 @@ describe('restaurant list (REQ-005)', () => {
       favorites: true,
       cuisines: ['italienisch'],
       priceLevels: [2],
+      tags: [],
       minRating: 4,
     };
     const chips = restaurantFilterChips(filter, cuisineFacets(all));

@@ -3,9 +3,13 @@
 // the place. Names are unique per household after normalizeText (AC-008, unique name_key).
 import {
   findDuplicateActivity,
+  findDuplicateKind,
   isHalfStar,
+  kindNameProblem,
   parseMapsLink,
   type Activity,
+  type ActivityIcon,
+  type ActivityKind,
   type GeoPoint,
   type Id,
 } from '@housekeeping/core';
@@ -28,6 +32,10 @@ export interface ActivityDraft extends ActivityPlace {
   description?: string;
   /** "Webseite" as typed; "https://" is added (spec 0024, REQ-003). */
   websiteUrl?: string;
+  /** Spec 0041: "Art", "eigenes Symbol" and "Merken" (on unless switched off). */
+  kindId?: Id;
+  icon?: ActivityIcon;
+  remembered?: boolean;
 }
 
 export type ActivityLinkReading =
@@ -39,7 +47,16 @@ export type ActivityLinkReading =
 type ActivityPatch = Partial<
   Pick<
     Activity,
-    'name' | 'description' | 'placeName' | 'address' | 'location' | 'mapsUrl' | 'websiteUrl'
+    | 'name'
+    | 'description'
+    | 'placeName'
+    | 'address'
+    | 'location'
+    | 'mapsUrl'
+    | 'websiteUrl'
+    | 'kindId'
+    | 'icon'
+    | 'remembered'
   >
 >;
 
@@ -73,6 +90,9 @@ export function createActivity(draft: ActivityDraft): Id {
       location: draft.location,
       mapsUrl: draft.mapsUrl,
       websiteUrl,
+      kindId: draft.kindId,
+      icon: draft.icon,
+      remembered: draft.remembered ?? true,
       favoriteOf: [],
       ratings: {},
       createdBy: getState().currentMemberId,
@@ -175,4 +195,54 @@ export async function resolveActivityShortLink(url: string): Promise<ActivityPla
     location: place.location,
     mapsUrl: place.mapsUrl,
   };
+}
+
+// ---------- Aktivitätsarten (spec 0041, REQ-001) ----------
+
+function checkKindName(name: string, ownId?: Id): string {
+  const problem = kindNameProblem(name);
+  if (problem) throw new Error(problem);
+  const duplicate = findDuplicateKind(name, getData().activityKinds, ownId);
+  if (duplicate) throw new Error(`Gibt es schon: ${duplicate.name}`);
+  return name.trim();
+}
+
+/** A new kind for the whole household (AC-002); "Gibt es schon: Sport" for a taken name. */
+export function createActivityKind(name: string, icon: ActivityIcon): Id {
+  const clean = checkKindName(name);
+  return commit({ path: 'diff' }, () => {
+    const kind: ActivityKind = { id: newId(), name: clean, icon };
+    updateData((data) => ({ ...data, activityKinds: [...data.activityKinds, kind] }));
+    return kind.id;
+  });
+}
+
+/** "Umbenennen" and another symbol under "Verwalten". */
+export function updateActivityKind(
+  id: Id,
+  patch: Partial<Pick<ActivityKind, 'name' | 'icon'>>,
+): void {
+  const clean = { ...patch };
+  if (patch.name !== undefined) clean.name = checkKindName(patch.name, id);
+  commit({ path: 'diff' }, () =>
+    updateData((data) => ({
+      ...data,
+      activityKinds: data.activityKinds.map((kind) =>
+        kind.id === id ? { ...kind, ...clean } : kind,
+      ),
+    })),
+  );
+}
+
+/** AC-003: the kind goes; its activities stay, without a kind (the database clears it). */
+export function deleteActivityKind(id: Id): void {
+  commit({ path: 'diff', maxDeletes: { activity_kinds: 1 } }, () =>
+    updateData((data) => ({
+      ...data,
+      activityKinds: data.activityKinds.filter((kind) => kind.id !== id),
+      activities: data.activities.map((activity) =>
+        activity.kindId === id ? { ...activity, kindId: undefined } : activity,
+      ),
+    })),
+  );
 }

@@ -9,6 +9,8 @@
 //   undefined.
 // - A removed member (`done_by` / `author_id` null) becomes '' in the domain and null again.
 // - `name_key` / `synonym_keys` (articles, activities) are always recomputed with `normalizeText`.
+// - Spec 0037: `updated_at` of a recipe is `Recipe.updatedAt`, written back only to keep the local
+//   view (NEVER_SENT_COLUMNS: a diff never sends it).
 // - Columns the domain does not have are not written back: `updated_at`, `check_seq`,
 //   `profiles.email`, and `created_at` of tables whose domain type has no `createdAt`.
 // - Spec 0011: `updated_at` of a rating row is `ratedAt` of that member (and is written back only
@@ -36,10 +38,19 @@
 //   like every time) and `reminder_text` ⇄ `MealPlanEntry.reminder` (none = all three null).
 //   `entry_reminders_enabled` missing reads as its column default, on. `households.timezone` is
 //   `Household.timeZone`, read only: the rows never write it back.
+// - Spec 0041: a symbol outside ACTIVITY_ICONS (the database refuses it) reads as none; a kind
+//   without a valid one as the default. A rule the database would refuse makes its series
+//   unreadable: such a series is left out. `remembered` missing reads as its default, on.
 import {
   compareTimestamps,
   normalizeText,
+  isActivityIcon,
+  SeriesRuleSchema,
   type Activity,
+  type ActivityIcon,
+  type ActivityKind,
+  type ActivitySeries,
+  type ActivitySeriesException,
   type Area,
   type Article,
   type Chore,
@@ -178,6 +189,7 @@ function recipeRows(householdId: string, recipe: Recipe): HouseholdRows {
         cooked_count: recipe.cookedCount,
         links: json(recipe.links),
         ...(recipe.createdAt ? { created_at: recipe.createdAt } : {}),
+        ...(recipe.updatedAt ? { updated_at: recipe.updatedAt } : {}),
       } satisfies Cached<'recipes'>,
     ],
     recipe_favorites: memberRows(householdId, 'recipe_id', recipe.id, recipe.favoriteOf),
@@ -238,6 +250,9 @@ function activityRows(householdId: string, activity: Activity): HouseholdRows {
         maps_url: activity.mapsUrl ?? null,
         website_url: activity.websiteUrl ?? null,
         created_by: activity.createdBy ?? null,
+        kind_id: activity.kindId ?? null,
+        icon: activity.icon ?? null,
+        remembered: activity.remembered,
         ...(activity.createdAt ? { created_at: activity.createdAt } : {}),
       } satisfies Cached<'activities'>,
     ],
@@ -364,6 +379,41 @@ const planRow = (householdId: string, entry: MealPlanEntry) =>
     reminder_day_offset: entry.reminder?.offsetDays ?? null,
     reminder_at: entry.reminder ? toDbTime(entry.reminder.at) : null,
     reminder_text: entry.reminder?.text ?? null,
+  }));
+
+const activityKindRow = (householdId: string, kind: ActivityKind) =>
+  single('activity_kinds', householdId, kind, () => ({
+    id: kind.id,
+    household_id: householdId,
+    name: kind.name,
+    name_key: normalizeText(kind.name),
+    icon: kind.icon,
+  }));
+
+const activitySeriesRow = (householdId: string, series: ActivitySeries) =>
+  single('activity_series', householdId, series, () => ({
+    id: series.id,
+    household_id: householdId,
+    activity_id: series.activityId,
+    rule: json(series.rule),
+    starts_on: series.startsOn,
+    ends_on: series.endsOn ?? null,
+    slot_id: series.slotId,
+    starts_at: series.startsAt === undefined ? null : toDbTime(series.startsAt),
+    note: series.note ?? null,
+    eater_ids: series.eaterIds,
+    guests: series.guests,
+  }));
+
+const seriesExceptionRow = (householdId: string, exception: ActivitySeriesException) =>
+  single('activity_series_exceptions', householdId, exception, () => ({
+    id: exception.id,
+    household_id: householdId,
+    series_id: exception.seriesId,
+    on_date: exception.on,
+    moved_to: exception.movedTo ?? null,
+    slot_id: exception.slotId ?? null,
+    starts_at: exception.startsAt === undefined ? null : toDbTime(exception.startsAt),
   }));
 
 const collectionRecipeRow = (householdId: string, row: CollectionRecipe) =>
@@ -536,7 +586,10 @@ export function householdToRows(data: HouseholdData): HouseholdRows {
     ...data.recipes.map((recipe) => recipeRows(householdId, recipe)),
     ...data.collectionRecipes.map((row) => collectionRecipeRow(householdId, row)),
     ...data.restaurants.map((restaurant) => restaurantRows(householdId, restaurant)),
+    ...data.activityKinds.map((kind) => activityKindRow(householdId, kind)),
     ...data.activities.map((activity) => activityRows(householdId, activity)),
+    ...data.activitySeries.map((series) => activitySeriesRow(householdId, series)),
+    ...data.activitySeriesExceptions.map((exception) => seriesExceptionRow(householdId, exception)),
     ...data.planEntries.map((entry) => planRow(householdId, entry)),
     ...data.items.map((item) => itemRows(householdId, item)),
     ...data.chores.map((chore) => choreRow(householdId, chore)),
@@ -563,9 +616,13 @@ export function householdToRows(data: HouseholdData): HouseholdRows {
     restaurants: [],
     restaurant_favorites: [],
     restaurant_ratings: [],
+    // Kinds before activities, series after them, exceptions after series (foreign keys).
+    activity_kinds: [],
     activities: [],
     activity_favorites: [],
     activity_ratings: [],
+    activity_series: [],
+    activity_series_exceptions: [],
     meal_plan_entries: [],
     shopping_items: [],
     shopping_contributions: [],
@@ -707,6 +764,7 @@ function toRecipe(row: Row, favorites: Row[], ratings: Row[]): Recipe {
     lastCookedOn: opt(r.last_cooked_on),
     cookedCount: r.cooked_count ?? 0,
     createdAt: r.created_at ?? '',
+    updatedAt: opt(r.updated_at),
     links: (r.links ?? []) as unknown as Recipe['links'],
   };
 }
@@ -759,6 +817,48 @@ function toActivity(row: Row, favorites: Row[], ratings: Row[]): Activity {
     ratedAt: ratedAtOf(ratings),
     createdBy: opt(r.created_by),
     createdAt: r.created_at ?? '',
+    kindId: opt(r.kind_id),
+    icon: iconOf(r.icon),
+    remembered: r.remembered !== false,
+  };
+}
+
+function iconOf(value: string | null | undefined): ActivityIcon | undefined {
+  return typeof value === 'string' && isActivityIcon(value) ? value : undefined;
+}
+
+function toActivityKind(row: Row): ActivityKind {
+  const r = row as Cached<'activity_kinds'>;
+  return { id: r.id, name: r.name ?? '', icon: iconOf(r.icon) ?? 'mountain' };
+}
+
+function toActivitySeries(row: Row): ActivitySeries | undefined {
+  const r = row as Cached<'activity_series'>;
+  const rule = SeriesRuleSchema.safeParse(r.rule);
+  if (!rule.success || !r.activity_id || !r.starts_on || !r.slot_id) return undefined;
+  return {
+    id: r.id,
+    activityId: r.activity_id,
+    rule: rule.data,
+    startsOn: r.starts_on,
+    endsOn: opt(r.ends_on),
+    slotId: r.slot_id,
+    startsAt: fromDbTime(r.starts_at),
+    note: opt(r.note),
+    eaterIds: r.eater_ids ?? [],
+    guests: r.guests ?? 0,
+  };
+}
+
+function toSeriesException(row: Row): ActivitySeriesException {
+  const r = row as Cached<'activity_series_exceptions'>;
+  return {
+    id: r.id,
+    seriesId: r.series_id ?? '',
+    on: r.on_date ?? '',
+    movedTo: opt(r.moved_to),
+    slotId: opt(r.slot_id),
+    startsAt: fromDbTime(r.starts_at),
   };
 }
 
@@ -1133,6 +1233,20 @@ export function rowsToHousehold(
     ),
     restaurants: reuse(previous?.restaurants, restaurants),
     activities: reuse(previous?.activities, activities),
+    activityKinds: reuse(
+      previous?.activityKinds,
+      plain(tables, 'activity_kinds', 'created', toActivityKind),
+    ),
+    activitySeries: reuse(
+      previous?.activitySeries,
+      rowsOfTable(tables, 'activity_series', 'created').flatMap(
+        (row) => cached(row, [], () => toActivitySeries(row)) ?? [],
+      ),
+    ),
+    activitySeriesExceptions: reuse(
+      previous?.activitySeriesExceptions,
+      plain(tables, 'activity_series_exceptions', 'created', toSeriesException),
+    ),
     planEntries: reuse(
       previous?.planEntries,
       plain(tables, 'meal_plan_entries', 'created', toPlanEntry),

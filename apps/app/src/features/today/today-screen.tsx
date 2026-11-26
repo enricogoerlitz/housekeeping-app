@@ -3,7 +3,6 @@ import {
   useHousehold,
   useHouseholdClock,
   useHouseholdsMap,
-  usePlanEntries,
   useToday,
 } from '@housekeeping/api';
 import {
@@ -22,6 +21,7 @@ import { View } from 'react-native';
 
 import { HouseholdLine } from '@/features/household/household-line';
 import { AddEntrySheet, type AddTarget } from '@/features/meal-plan/add-entry-sheet';
+import { usePlanEntriesWithSeries } from '@/features/meal-plan/series-entries';
 import { StartPageActions } from '@/features/shell/profile-button';
 import { useOnlineOnly } from '@/features/shell/offline';
 import { useHandedHousehold } from '@/lib/addressed';
@@ -69,7 +69,6 @@ export function TodayScreen() {
   const me = useCurrentMember();
   const household = useHousehold();
   const households = useHouseholdsMap();
-  const planEntries = usePlanEntries();
   const online = useOnlineOnly();
   // "+" and "Hinzufügen" of an empty day (spec 0020, REQ-005); one shown day, so not in the address.
   const [adding, setAdding] = useState<AddTarget | undefined>();
@@ -82,6 +81,8 @@ export function TodayScreen() {
   ) : null;
   // No day = today, so the page follows the date when the day changes while the app runs.
   const shown = address.params.tag ?? today;
+  // Spec 0041: the Termine of the series on the shown day too.
+  const shownEntries = usePlanEntriesWithSeries(shown, shown);
   const show = (date: ISODate) => address.replace({ tag: date === today ? undefined : date });
 
   const slots = household.mealSlots;
@@ -138,7 +139,7 @@ export function TodayScreen() {
     <TodayMeals
       shown={shown}
       title={sections.planned}
-      entries={entriesForDay(planEntries, shown, slotOrder)}
+      entries={entriesForDay(shownEntries, shown, slotOrder)}
       slotNames={slotNames}
       grid={!isPhone}
       onAdd={() => addTo(shown)}

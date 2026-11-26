@@ -10,6 +10,8 @@ import {
 import { Chip, FilterSection, useBreakpoint } from '@housekeeping/ui';
 import { View } from 'react-native';
 
+import { TagFilter } from '@/features/shell/tag-filter';
+
 function toggleIn<T>(values: readonly T[], value: T): T[] {
   return values.includes(value)
     ? values.filter((candidate) => candidate !== value)
@@ -19,12 +21,15 @@ function toggleIn<T>(values: readonly T[], value: T): T[] {
 /**
  * The fields of the filter panel on "Essen → Restaurants" (spec 0008, REQ-005): Schnell
  * (Favoriten), Küche from the household's restaurants (left out when none has one), Preisniveau
- * (several) and the own rating. Every tap applies at once.
+ * (several), Schlagworte (spec 0037, REQ-006; left out without any) and the own rating. Every tap
+ * applies at once.
  */
 export function RestaurantFilterPanel(props: {
   filter: RestaurantListFilter;
   onChange: (filter: RestaurantListFilter) => void;
   cuisines: readonly CuisineFacet[];
+  /** The household's tags of restaurants (core tagFacets). */
+  tags: readonly CuisineFacet[];
 }) {
   const { filter, onChange } = props;
   const { isPhone } = useBreakpoint();
@@ -73,6 +78,14 @@ export function RestaurantFilterPanel(props: {
           />
         ))}
       </FilterSection>
+      {props.tags.length > 0 ? (
+        <TagFilter
+          facets={props.tags}
+          value={filter.tags}
+          onChange={(tags) => onChange({ ...filter, tags })}
+          testID="restaurant-filter-tag"
+        />
+      ) : null}
       <FilterSection title="Bewertung" testID="restaurant-filter-rating">
         {MIN_RATINGS.map((stars) => (
           <Chip
