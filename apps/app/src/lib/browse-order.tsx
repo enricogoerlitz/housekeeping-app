@@ -2,6 +2,8 @@ import { browseNeighbour, browsePosition, type Id } from '@housekeeping/core';
 import type { TabSwipe } from '@housekeeping/ui';
 import { createContext, useContext } from 'react';
 
+import { skipStackTransition } from '@/features/shell/stack-transition';
+
 // Spec 0034, REQ-008: the order of the list a recipe, collection or restaurant was opened from,
 // only in memory while the app runs. Opening from anywhere else (calendar, overview, AI search)
 // forgets it, so there is nothing to swipe to (AC-019).
@@ -31,7 +33,10 @@ export function browseSwipe(
     ...position,
     onStep: (step) => {
       const next = browseNeighbour(order, id, step);
-      if (next) open(next);
+      if (!next) return;
+      // The swipe moves the content itself; the stack does not slide the new page in as well.
+      skipStackTransition();
+      open(next);
     },
   };
 }
