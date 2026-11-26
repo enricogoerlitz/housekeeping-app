@@ -50,6 +50,7 @@ Ablauf und Regeln: siehe `AGENTS.md`, Abschnitt „Workflow per feature“.
 | [0041](0041-aktivitaeten-arten-rhythmus-merken/spec.md)     | Aktivitäten: Arten, Rhythmus, Merken, Personen                         | freigegeben |
 | [0042](0042-orte-teilen-eigentuemer/spec.md)                | Orte, Einfügen, Teilen und Eigentümer                                  | freigegeben |
 | [0043](0043-rezeptvideo-aus-tiktok/spec.md)                 | Rezeptvideo aus TikTok speichern und abspielen                         | freigegeben |
+| [0044](0044-tastatur-und-fenster-iphone/spec.md)            | Tastatur und Fenster auf dem iPhone                                    | freigegeben |
 | [0045](0045-ki-rezeptentwurf-v2/spec.md)                    | KI-Rezeptentwurf v2: Varianten, Beschreibung, Schlagworte, Foto-Laden  | freigegeben |
 | [0047](0047-feinschliff-teilen-foto-links-kalender/spec.md) | Feinschliff: Teilen, Foto-Fenster, „+ Link“, Foto im Plan-Eintrag      | freigegeben |
 | [0048](0048-sicherung-ohne-videos/spec.md)                  | Sicherung ohne Videos                                                  | freigegeben |

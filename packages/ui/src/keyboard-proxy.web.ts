@@ -9,6 +9,7 @@
 // text field does nothing. Only on iPhone and iPad; elsewhere the window's own focus is enough.
 
 import { isAppleTouchBrowser } from './field-autofill';
+import { expectKeyboard } from './keyboard';
 
 /**
  * How long a tap's keyboard waits for its window (spec 0033, decision 10).
@@ -87,6 +88,8 @@ export function openKeyboardNow(): void {
   clearTimeout(timer);
   // No window took it (nothing to type after all): the keyboard goes again.
   timer = setTimeout(release, HANDOVER_MS);
+  // The window that opens now waits where the keyboard will be (spec 0044, decision 4).
+  expectKeyboard(HANDOVER_MS);
 }
 
 /**
