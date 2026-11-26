@@ -10,6 +10,7 @@ import {
 } from '@housekeeping/api';
 import {
   draftImageContext,
+  imageWishPrompt,
   NEW_ENTRY_KINDS,
   newEntryTakesIngredients,
   newEntryTitleProblem,
@@ -174,7 +175,15 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
       servings: reply.draft.servings,
       createdAt: new Date().toISOString(),
     });
-    handOverNewRecipe(recipe, input, taken.photo ?? photo);
+    // REQ-008: an image wish makes the photo (three suggestions); without one the page's photo,
+    // and a page without a photo gets one made from the title (AC-030).
+    const pagePhoto = taken.imageWish ? undefined : (taken.photo ?? photo);
+    handOverNewRecipe(recipe, input, pagePhoto);
+    if (!pagePhoto) {
+      startPhotoSuggestions(recipe.id, {
+        prompt: imageWishPrompt(taken.imageWish, { title: recipe.title, kind: 'recipe' }),
+      });
+    }
     close();
     props.onCreated(recipe.id);
   };

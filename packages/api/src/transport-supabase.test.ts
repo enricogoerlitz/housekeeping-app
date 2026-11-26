@@ -1065,8 +1065,11 @@ describe('supabase transport: web-search (spec 0049)', () => {
     const { client, invoked } = stubClient(
       [],
       [
-        { data: { provider: 'serper', results: [card] }, error: null },
-        { data: { provider: 'serper', results: [{ ...card, url: 'http://a.de' }] }, error: null },
+        { data: { provider: 'serper', query: 'x', results: [card] }, error: null },
+        {
+          data: { provider: 'serper', query: 'x', results: [{ ...card, url: 'http://a.de' }] },
+          error: null,
+        },
         { data: { proposal: { cuisine: 'Vietnamesisch' } }, error: null },
         { data: { proposal: { command: 'delete' } }, error: null },
       ],
@@ -1075,6 +1078,7 @@ describe('supabase transport: web-search (spec 0049)', () => {
     const search = { mode: 'search', householdId: 'h1', kind: 'recipe', query: 'x' } as const;
     await expect(transport.webSearch(search)).resolves.toEqual({
       provider: 'serper',
+      query: 'x',
       results: [card],
     });
     await expect(transport.webSearch(search)).rejects.toMatchObject({ code: 'invalid_response' });

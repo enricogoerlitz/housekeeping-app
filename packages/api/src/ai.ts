@@ -14,7 +14,7 @@ export const AI_UNAVAILABLE_MESSAGE = 'Der Assistent ist gerade nicht erreichbar
 export const AI_SIGN_IN_MESSAGE = 'Bitte melde dich neu an';
 export const AI_FAILED_MESSAGE = 'Das hat gerade nicht geklappt – bitte noch einmal versuchen';
 /** Spec 0049, AC-023: neither Serper nor Brave answered. */
-export const WEB_SEARCH_UNAVAILABLE_MESSAGE =
+const WEB_SEARCH_UNAVAILABLE_MESSAGE =
   'Die Websuche ist gerade nicht erreichbar. Versuch es gleich noch einmal.';
 
 export type AiErrorReason = 'quota' | 'unavailable' | 'unauthorized' | 'failed' | 'search';

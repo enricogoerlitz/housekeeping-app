@@ -20,27 +20,34 @@ const madameHien: WebResult = {
 };
 
 describe('placeValuesFromResult (REQ-004)', () => {
-  it('AC-015: name, address, cuisine, price, website and maps link of a restaurant', () => {
-    expect(placeValuesFromResult('restaurant', madameHien, { cuisine: 'Vietnamesisch' })).toEqual({
+  it('AC-015, AC-029: name, address, cuisine, tags, price, website and maps link of a restaurant', () => {
+    expect(
+      placeValuesFromResult(
+        'restaurant',
+        { ...madameHien, title: 'Madame Hien – Vietnamese Kitchen' },
+        { name: 'Madame Hien', cuisine: 'Vietnamesisch', tags: ['Pho', 'Mittagstisch'] },
+      ),
+    ).toEqual({
       name: 'Madame Hien',
       address: 'Torstraße 59, 10119 Berlin, Deutschland',
       cuisine: 'Vietnamesisch',
+      tags: 'Pho, Mittagstisch',
       priceLevel: '2',
       websiteUrl: 'https://madamehienberlin.de/',
       mapsUrl: 'https://maps.google.com/?cid=1',
     });
   });
 
-  it('an activity takes the kind and description of the preview; the place name is the title', () => {
+  it('AC-026: an activity takes name, kind and description of the preview; the place name is the title', () => {
     expect(
       placeValuesFromResult(
         'activity',
-        { ...madameHien, title: 'Magic Mountain', category: 'Kletterhalle' },
-        { kind: 'Klettern', description: 'Große Kletterhalle im Wedding.' },
+        { ...madameHien, title: 'Magic Mountain Kletterhallen GmbH', category: 'Kletterhalle' },
+        { name: 'Magic Mountain', kind: 'Klettern', description: 'Große Kletterhalle im Wedding.' },
       ),
     ).toEqual({
       name: 'Magic Mountain',
-      placeName: 'Magic Mountain',
+      placeName: 'Magic Mountain Kletterhallen GmbH',
       address: 'Torstraße 59, 10119 Berlin, Deutschland',
       kind: 'Klettern',
       description: 'Große Kletterhalle im Wedding.',

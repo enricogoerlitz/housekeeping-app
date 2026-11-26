@@ -51,7 +51,8 @@ class ProviderFailed extends Error {
 const TIMEOUT_MS = 8000;
 const MAX_URL = 2048;
 const MAX_TEXT = 400;
-const ZOOM = 13;
+/** City scale: "botanischer garten" finds the one of the city, not the nearest park (probe 26.11.). */
+const ZOOM = 11;
 
 const text = z.string().trim().min(1).catch('').optional();
 const num = z.number().finite().optional().catch(undefined);

@@ -189,6 +189,7 @@ describe('web-search: recipes (REQ-002)', () => {
     expect(response.status).toBe(200);
     expect(await body(response)).toEqual({
       provider: 'serper',
+      query: 'Spaghetti Bolognese',
       results: [
         {
           url: CHEFKOCH,
@@ -236,6 +237,7 @@ describe('web-search: recipes (REQ-002)', () => {
     const { deps } = setup({ [SERPER_SEARCH]: () => json({ organic: [] }) });
     expect(await body(await handler(search('xyzzy'), deps))).toEqual({
       provider: 'serper',
+      query: 'xyzzy',
       results: [],
     });
   });
@@ -251,6 +253,68 @@ describe('web-search: recipes (REQ-002)', () => {
   });
 });
 
+describe('web-search: short and sloppy texts (REQ-008)', () => {
+  const BERTA = 'Suche Bertablock und befülle Daten, Bild soll Frau in Boulderhalle sein';
+  const berta = { ...madameHien, title: 'Berta Block Boulderhalle', type: 'Kletterhalle' };
+
+  it('AC-026: a sentence with commands and an image wish: the model splits it, the provider gets the search', async () => {
+    const { deps, modelBody, calledUrls } = setup({
+      [RESPONSES]: () =>
+        foundryReply({ query: 'Bertablock Boulderhalle', imageWish: 'Frau in Boulderhalle' }),
+      [SERPER_MAPS]: () => json({ places: [berta] }),
+    });
+    const reply = await body(await handler(search(BERTA, 'activity'), deps));
+    expect(reply).toMatchObject({
+      query: 'Bertablock Boulderhalle',
+      imageWish: 'Frau in Boulderhalle',
+    });
+    expect((reply.results as WebResult[])[0]?.title).toBe('Berta Block Boulderhalle');
+    const [, init] = deps.fetchMock.mock.calls.find(([url]) => String(url) === SERPER_MAPS) ?? [];
+    expect(JSON.parse(String(init?.body)).q).toBe('Bertablock Boulderhalle');
+    // The person's text reaches the model as data; it can only answer search and wish.
+    const texts = modelBody().input.flatMap((item) => item.content.map((part) => part.text ?? ''));
+    expect(texts.join('')).toContain('text_nur_daten');
+    expect(calledUrls()[0]).toBe(RESPONSES);
+  });
+
+  it('AC-027: a short text ("bouldern bertablock", "mutzenbacher", "dal") is searched as it is, without the model', async () => {
+    for (const [text, kind] of [
+      ['bouldern bertablock', 'activity'],
+      ['mutzenbacher', 'restaurant'],
+      ['dal', 'recipe'],
+    ] as const) {
+      const { deps, calledUrls } = setup({
+        [SERPER_MAPS]: () => json({ places: [berta] }),
+        [SERPER_SEARCH]: () => json({ organic: [] }),
+      });
+      const reply = await body(await handler(search(text, kind), deps));
+      expect(reply.query).toBe(text);
+      expect(reply.imageWish).toBeUndefined();
+      expect(calledUrls()).not.toContain(RESPONSES);
+    }
+  });
+
+  it('AC-028: the model failing is no failure: the text is searched as it is', async () => {
+    const { deps } = setup({
+      [RESPONSES]: () => json({}, 500),
+      [SERPER_MAPS]: () => json({ places: [berta] }),
+    });
+    const reply = await body(await handler(search(BERTA, 'activity'), deps));
+    expect(reply.query).toBe(BERTA);
+    expect(reply.results).toHaveLength(1);
+  });
+
+  it('an image word alone ("Foto") sends even a short text through the model', async () => {
+    const { deps, calledUrls } = setup({
+      [RESPONSES]: () => foundryReply({ query: 'Dal' }),
+      [SERPER_SEARCH]: () => json({ organic: [] }),
+    });
+    const reply = await body(await handler(search('dal, foto von oben'), deps));
+    expect(calledUrls()[0]).toBe(RESPONSES);
+    expect(reply.query).toBe('Dal');
+  });
+});
+
 describe('web-search: places (REQ-002)', () => {
   it('AC-008: restaurants from /maps around the household, as cards with maps link', async () => {
     const { deps } = setup({ [SERPER_MAPS]: () => json({ places: [madameHien] }) });
@@ -260,6 +324,7 @@ describe('web-search: places (REQ-002)', () => {
     );
     expect(await body(response)).toEqual({
       provider: 'serper',
+      query: 'vietnamesisch',
       results: [
         {
           url: 'https://maps.google.com/?cid=8138665074501765423',
@@ -278,7 +343,7 @@ describe('web-search: places (REQ-002)', () => {
       ],
     });
     const [, init] = deps.fetchMock.mock.calls[0] ?? [];
-    expect(JSON.parse(String(init?.body)).ll).toBe('@52.515,13.454,13z');
+    expect(JSON.parse(String(init?.body)).ll).toBe('@52.515,13.454,11z');
   });
 
   it('at most 5 cards', async () => {
@@ -315,15 +380,16 @@ describe('web-search: place preview (REQ-003)', () => {
     const reply = (kind: string) =>
       setup({
         'https://madamehienberlin.de/': () => html('<p>Klettern</p>'),
-        [RESPONSES]: () => foundryReply({ kind, description: 'Große Kletterhalle.' }),
+        [RESPONSES]: () =>
+          foundryReply({ name: 'Magic Mountain', kind, description: 'Große Kletterhalle.' }),
       });
     const fits = reply('klettern');
     expect(await body(await handler(place('activity'), fits.deps))).toEqual({
-      proposal: { kind: 'Klettern', description: 'Große Kletterhalle.' },
+      proposal: { name: 'Magic Mountain', kind: 'Klettern', description: 'Große Kletterhalle.' },
     });
     const other = reply('Bouldern');
     expect(await body(await handler(place('activity'), other.deps))).toEqual({
-      proposal: { description: 'Große Kletterhalle.' },
+      proposal: { name: 'Magic Mountain', description: 'Große Kletterhalle.' },
     });
   });
 

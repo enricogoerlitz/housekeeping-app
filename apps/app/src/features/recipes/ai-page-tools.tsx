@@ -4,6 +4,7 @@ import {
   draftImageContext,
   IMAGE_EXTRA_MAX,
   imageFailureNotice,
+  imageWishPrompt,
   proposalIsEmpty,
   recipeProposal,
   type FieldChange,
@@ -45,7 +46,7 @@ export function AiPageTools(props: { recipe: Recipe; editor: PageEditor }) {
     return article?.name ?? row.name ?? '';
   };
   // Spec 0049, REQ-005: a draft for a recipe that has content opens the Änderungsansicht first.
-  const propose = ({ reply, replace, generatePhoto, photo }: AiFillResult) => {
+  const propose = ({ reply, replace, generatePhoto, photo, imageWish }: AiFillResult) => {
     const before = editor.draft;
     if (!before) return;
     const input = draftInput(reply);
@@ -58,6 +59,11 @@ export function AiPageTools(props: { recipe: Recipe; editor: PageEditor }) {
         prompt: reply.draft.imagePrompt,
         context: draftImageContext(reply.draft),
         coverUrl: reply.sources.find((source) => source.coverUrl)?.coverUrl,
+      });
+    } else if (imageWish || (!photo && !hadPhoto && reply.sources.length > 0)) {
+      // Spec 0049, REQ-008: the image wish makes the photo; a found page without one gets one.
+      startPhotoSuggestions(recipe.id, {
+        prompt: imageWishPrompt(imageWish, { title: reply.draft.title, kind: 'recipe' }),
       });
     }
     if (proposalIsEmpty(proposal)) {

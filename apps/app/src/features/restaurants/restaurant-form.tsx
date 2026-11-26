@@ -183,6 +183,7 @@ export function useRestaurantForm(
     name,
     address,
     cuisine,
+    tags: tags.join(', '),
     priceLevel: priceLevel === undefined ? '' : String(priceLevel),
     websiteUrl: website,
     mapsUrl: place?.draft.mapsUrl ?? kept.mapsUrl ?? '',
@@ -192,6 +193,11 @@ export function useRestaurantForm(
     if (values.name) setName(values.name);
     if (values.address) setAddress(values.address);
     if (values.cuisine) setCuisine(values.cuisine);
+    if (values.tags) {
+      let next = tags;
+      for (const tag of values.tags.split(',')) if (tag.trim()) next = addTag(next, tag.trim());
+      setTags(next);
+    }
     if (values.priceLevel) setPriceLevel(Number(values.priceLevel) as Restaurant['priceLevel']);
     if (values.websiteUrl) setWebsite(values.websiteUrl);
     if (values.mapsUrl) {

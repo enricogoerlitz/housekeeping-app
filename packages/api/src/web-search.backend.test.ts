@@ -17,7 +17,7 @@ const card: WebResult = {
   rating: 4.7,
   ratingCount: 638,
 };
-const reply: WebSearchReply = { provider: 'serper', results: [card] };
+const reply: WebSearchReply = { provider: 'serper', query: 'Bolognese', results: [card] };
 
 describe('webSearchAsync (REQ-002)', () => {
   it('AC-005, AC-008: sends kind, query and centre for the active household', async () => {
@@ -31,7 +31,11 @@ describe('webSearchAsync (REQ-002)', () => {
     });
     const before = getData().recipes.length;
     await expect(webSearchAsync({ kind: 'recipe', query: ' Bolognese ' })).resolves.toEqual(reply);
-    await webSearchAsync({ kind: 'restaurant', query: 'vietnamesisch', near: { lat: 52.5, lng: 13.4 } });
+    await webSearchAsync({
+      kind: 'restaurant',
+      query: 'vietnamesisch',
+      near: { lat: 52.5, lng: 13.4 },
+    });
     expect(sent).toEqual([
       { mode: 'search', householdId: H, kind: 'recipe', query: 'Bolognese' },
       {

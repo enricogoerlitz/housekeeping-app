@@ -56,6 +56,7 @@ function Colors(props: { fallback?: ColorToken }) {
     warn: useColor('warn'),
     star: useColor('star'),
     due: useColor('due'),
+    removed: useColor('removed'),
     none: useColor(undefined, props.fallback),
   };
   return <span data-testid="colors">{JSON.stringify(resolved)}</span>;
@@ -81,6 +82,7 @@ describe('useColor', () => {
       warn: c.warnText,
       star: c.star,
       due: c.due,
+      removed: c.removedText,
       none: c.text,
     });
   });

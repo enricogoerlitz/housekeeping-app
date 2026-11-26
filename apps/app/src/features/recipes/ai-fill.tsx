@@ -336,6 +336,8 @@ export interface AiFillResult {
   generatePhoto: boolean;
   /** The photo of the page found on the web (spec 0049, REQ-004). */
   photo?: Blob;
+  /** Spec 0049, REQ-008: the photo is made from this wish instead. */
+  imageWish?: string;
 }
 
 /**
@@ -370,7 +372,8 @@ export function AiFillSheet(props: {
       reply: taken.recipe,
       replace: mode === 'replace',
       generatePhoto: false,
-      ...(taken.photo ? { photo: taken.photo } : {}),
+      ...(taken.photo && !taken.imageWish ? { photo: taken.photo } : {}),
+      ...(taken.imageWish ? { imageWish: taken.imageWish } : {}),
     });
   };
   return (

@@ -40,7 +40,12 @@ import { confirmFirst } from '@/features/shell/confirm-dialog';
 import { errorMessage, FAILED_MESSAGE } from '@/features/shell/error-message';
 import { OFFLINE_EDIT_HINT } from '@/features/shell/offline';
 
-import { dismissPhotoSuggestions, forgetUnsavedRecipe, takeAiDraft } from '../ai-draft';
+import {
+  dismissPhotoSuggestions,
+  forgetUnsavedRecipe,
+  peekAiDraftPhoto,
+  takeAiDraft,
+} from '../ai-draft';
 import { takeHandedOverRows } from './ingredient-handover';
 
 // The edit mode of the recipe and collection page (spec 0037, REQ-001): the pen at the top opens
@@ -132,8 +137,11 @@ export function usePageEditor(
   const contents = useCollectionContents(recipeId);
   const [state, dispatch] = useReducer(pageEditorReducer, {});
   const [intent, setIntent] = useState<EditIntent>();
-  const photo = useRef<Blob | undefined>(undefined);
-  const [chosenPhoto, setChosenPhoto] = useState<Blob>();
+  // The photo handed over with a draft ("Neu → Mit KI ausfüllen", spec 0049 AC-014: the photo of
+  // the page found on the web) shows as the pending photo from the first render.
+  const [handedPhoto] = useState(() => peekAiDraftPhoto(recipeId));
+  const photo = useRef<Blob | undefined>(handedPhoto);
+  const [chosenPhoto, setChosenPhoto] = useState<Blob | undefined>(handedPhoto);
   const choosePhoto = useCallback((next: Blob | undefined) => {
     photo.current = next;
     setChosenPhoto(next);
@@ -300,8 +308,7 @@ export function usePageEditor(
     // "Neu → Mit KI ausfüllen" (spec 0040): the edit mode opens with the AI's draft.
     const handed = takeAiDraft(recipeId);
     if (handed) {
-      // Shown as the pending photo (spec 0049, AC-014: the photo of the page found on the web).
-      if (handed.photo) choosePhoto(handed.photo);
+      if (handed.photo) photo.current = handed.photo;
       dispatch({
         type: 'open',
         draft: fillPageDraft(pageDraft(recipe, contents), handed.input, newId),

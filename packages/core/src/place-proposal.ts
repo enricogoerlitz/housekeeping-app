@@ -10,6 +10,7 @@ const RESTAURANT_LABELS = {
   name: 'Name',
   address: 'Adresse',
   cuisine: 'Küche',
+  tags: 'Schlagworte',
   priceLevel: 'Preis',
   websiteUrl: 'Webseite',
   mapsUrl: 'Karten-Link',
@@ -43,7 +44,8 @@ export function placeValuesFromResult(
   preview: PlaceProposal,
 ): PlaceValues {
   const shared = {
-    name: result.title,
+    // AC-029: the name as people say it ("Phê", not "Phê - Fresh Bánh mì & Phở Bar").
+    name: preview.name ?? result.title,
     address: result.address,
     websiteUrl: result.websiteUrl,
     mapsUrl: result.mapsUrl,
@@ -52,6 +54,7 @@ export function placeValuesFromResult(
     return defined({
       ...shared,
       cuisine: preview.cuisine,
+      tags: preview.tags && preview.tags.length > 0 ? preview.tags.join(', ') : undefined,
       priceLevel: result.priceLevel === undefined ? undefined : String(result.priceLevel),
     });
   }

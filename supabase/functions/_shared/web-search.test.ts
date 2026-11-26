@@ -133,7 +133,7 @@ describe('Serper', () => {
       q: 'vietnamesisch',
       gl: 'de',
       hl: 'de',
-      ll: '@52.515,13.454,13z',
+      ll: '@52.515,13.454,11z',
     });
   });
 

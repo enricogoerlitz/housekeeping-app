@@ -1,5 +1,7 @@
+import { generateImagesAsync } from '@housekeeping/api';
 import {
   applyFieldChanges,
+  imageWishPrompt,
   placeProposal,
   placeValuesFromResult,
   proposalIsEmpty,
@@ -8,9 +10,9 @@ import {
   type PlaceValues,
   type ProposalPlaceKind,
 } from '@housekeeping/core';
-import { Button, Sheet, toast } from '@housekeeping/ui';
-import { useEffect, useState } from 'react';
-import { View } from 'react-native';
+import { Button, Photo, Row, Sheet, Stack, Text, toast, useTheme } from '@housekeeping/ui';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Pressable, View } from 'react-native';
 
 import { useOnlineOnly } from '@/features/shell/offline';
 import { features } from '@/lib/features';
@@ -31,6 +33,109 @@ export interface WebPlace {
 }
 
 const PHOTO_FIELD = 'photo';
+const TILE_MAX = 160;
+const GENERATING_LABEL = 'Foto wird erzeugt';
+
+type Suggestions =
+  | { status: 'loading' }
+  | { status: 'done'; photos: { photo: Blob; uri: string }[] }
+  | { status: 'failed' };
+
+/** Three photos made from the image wish or the place's name (REQ-008, AC-030); none is stored. */
+function usePhotoSuggestions() {
+  const [suggestions, setSuggestions] = useState<Suggestions>();
+  const [chosen, setChosen] = useState<number>();
+  const round = useRef(0);
+  const shown = useRef<Suggestions | undefined>(undefined);
+  useLayoutEffect(() => {
+    shown.current = suggestions;
+  });
+  const free = (current: Suggestions | undefined) => {
+    if (current?.status === 'done')
+      for (const entry of current.photos) URL.revokeObjectURL(entry.uri);
+  };
+  useEffect(
+    () => () => {
+      round.current += 1;
+      free(shown.current);
+    },
+    [],
+  );
+  const suggest = (prompt: string) => {
+    round.current += 1;
+    const mine = round.current;
+    free(shown.current);
+    setChosen(undefined);
+    setSuggestions({ status: 'loading' });
+    generateImagesAsync({ prompt, styles: [] }).then(
+      (result) => {
+        if (round.current !== mine) return;
+        setSuggestions({
+          status: 'done',
+          photos: result.images.map((photo) => ({ photo, uri: URL.createObjectURL(photo) })),
+        });
+      },
+      () => {
+        if (round.current === mine) setSuggestions({ status: 'failed' });
+      },
+    );
+  };
+  return { suggestions, suggest, chosen, choose: setChosen };
+}
+
+function SuggestionStrip(props: {
+  suggestions: Suggestions;
+  chosen: number | undefined;
+  onChoose: (index: number, photo: Blob) => void;
+  testID: string;
+}) {
+  const theme = useTheme();
+  const { suggestions } = props;
+  if (suggestions.status === 'failed') {
+    return (
+      <Text variant="small" color="muted" testID={`${props.testID}-failed`}>
+        Die Fotovorschläge sind gerade nicht gelungen. Du kannst unten selbst ein Foto wählen.
+      </Text>
+    );
+  }
+  return (
+    <Stack gap={8}>
+      <Text variant="smallStrong" testID={props.testID}>
+        {suggestions.status === 'loading'
+          ? 'Fotovorschläge werden erzeugt …'
+          : 'Fotovorschläge – tippe eins an'}
+      </Text>
+      <Row gap={8}>
+        {suggestions.status === 'loading'
+          ? [0, 1, 2].map((index) => (
+              <View key={index} style={{ flex: 1, maxWidth: TILE_MAX }}>
+                <Photo generating={GENERATING_LABEL} aspectRatio={1} />
+              </View>
+            ))
+          : suggestions.photos.map((entry, index) => (
+              <Pressable
+                key={entry.uri}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: index === props.chosen }}
+                accessibilityLabel={`Vorschlag ${index + 1}`}
+                onPress={() => props.onChoose(index, entry.photo)}
+                testID={`${props.testID}-${index}`}
+                style={{
+                  flex: 1,
+                  maxWidth: TILE_MAX,
+                  borderRadius: theme.shape.radius.tile,
+                  borderWidth: 3,
+                  borderColor: index === props.chosen ? theme.colors.accent : 'transparent',
+                  overflow: 'hidden',
+                }}
+              >
+                <Photo source={{ uri: entry.uri }} aspectRatio={1} alt={`Vorschlag ${index + 1}`} />
+              </Pressable>
+            ))}
+      </Row>
+    </Stack>
+  );
+}
 
 interface Review {
   proposal: ChangeProposal;
@@ -103,6 +208,7 @@ export function PlaceWebFill(props: {
   const [open, setOpen] = useState(false);
   const [review, setReview] = useState<Review>();
   const search = useWebSearch(props.kind);
+  const { suggestions, suggest, chosen, choose } = usePhotoSuggestions();
   if (!features.aiRecipes) return null;
   const { testID } = props;
 
@@ -110,16 +216,39 @@ export function PlaceWebFill(props: {
     const after = placeValuesFromResult(props.kind, taken.card, taken.place ?? {});
     const location = taken.card.location;
     setOpen(false);
+    // REQ-008: an image wish makes the photo; without one the card's photo, and a place without
+    // one gets one made from its name (AC-030), unless it has a photo already.
+    const photo = taken.imageWish ? undefined : taken.photo;
+    if (taken.imageWish || (!photo && !props.hasPhoto)) {
+      suggest(
+        imageWishPrompt(taken.imageWish, {
+          title: after.name ?? taken.card.title,
+          kind: props.kind,
+        }),
+      );
+    }
     if (!props.current) {
       props.onApply({
         values: after,
         ...(location ? { location } : {}),
-        ...(taken.photo ? { photo: taken.photo } : {}),
+        ...(photo ? { photo } : {}),
       });
       return;
     }
+    // Tags are added to the ones there are, never replace them.
+    if (after.tags && props.current.tags) {
+      const known = props.current.tags
+        .split(',')
+        .map((tag) => tag.trim())
+        .filter(Boolean);
+      const added = after.tags.split(',').map((tag) => tag.trim());
+      const lower = new Set(known.map((tag) => tag.toLowerCase()));
+      after.tags = [...known, ...added.filter((tag) => tag && !lower.has(tag.toLowerCase()))].join(
+        ', ',
+      );
+    }
     const proposal = placeProposal(props.kind, props.current, after);
-    if (taken.photo) {
+    if (photo) {
       proposal.fields.push({
         id: PHOTO_FIELD,
         label: 'Foto',
@@ -136,7 +265,7 @@ export function PlaceWebFill(props: {
       proposal,
       after,
       ...(location ? { location } : {}),
-      ...(taken.photo ? { photo: taken.photo } : {}),
+      ...(photo ? { photo } : {}),
     });
   };
 
@@ -183,6 +312,17 @@ export function PlaceWebFill(props: {
             testID={testID}
           />
         </Sheet>
+      ) : null}
+      {suggestions ? (
+        <SuggestionStrip
+          suggestions={suggestions}
+          chosen={chosen}
+          onChoose={(index, photo) => {
+            choose(index);
+            props.onApply({ values: {}, photo });
+          }}
+          testID={`${testID}-photos`}
+        />
       ) : null}
       {review && props.current ? (
         <ReviewSheet

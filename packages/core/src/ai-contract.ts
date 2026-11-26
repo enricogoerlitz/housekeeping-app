@@ -415,11 +415,26 @@ export type WebSearchRequest = z.infer<typeof WebSearchRequestSchema>;
 export const WebSearchReplySchema = z.strictObject({
   results: z.array(WebResultSchema).max(WEB_SEARCH_LIMITS.results),
   provider: z.enum(['serper', 'brave']),
+  /** What was searched: the person's text without commands and image wishes (REQ-008). */
+  query: z.string().trim().min(1).max(WEB_SEARCH_LIMITS.query),
+  /** "Bild soll Frau in Boulderhalle sein": the photo is made from it, not taken from the page. */
+  imageWish: z.string().trim().min(1).max(300).optional(),
 });
 export type WebSearchReply = z.infer<typeof WebSearchReplySchema>;
 
+/** How the model reads the person's search text (REQ-008): what to search, what to picture. */
+export const SearchIntentSchema = z.strictObject({
+  query: z.string().trim().min(1).max(WEB_SEARCH_LIMITS.query),
+  imageWish: z.string().trim().min(1).max(300).optional(),
+});
+export type SearchIntent = z.infer<typeof SearchIntentSchema>;
+
 /** What the model may answer for a place preview (REQ-003, AC-025): place data, nothing else. */
 export const PlaceProposalSchema = z.strictObject({
+  /** The place's name as people say it, without "GmbH" or a slogan. */
+  name: z.string().trim().min(1).max(120).optional(),
+  /** Restaurants: up to 3 Schlagworte, the household's when they fit. */
+  tags: z.array(z.string().trim().min(1).max(40)).max(3).optional(),
   /** Restaurants: one of the household's cuisines when one fits, else a short German one. */
   cuisine: z.string().trim().min(1).max(80).optional(),
   /** Activities: exactly the name of one of the household's kinds, else none. */

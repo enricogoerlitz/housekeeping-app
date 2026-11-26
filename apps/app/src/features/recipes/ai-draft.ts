@@ -47,6 +47,11 @@ export function forgetUnsavedRecipe(recipeId: Id): void {
   drafts.delete(recipeId);
 }
 
+/** The photo handed over with the draft, without taking it (the page shows it from the start). */
+export function peekAiDraftPhoto(recipeId: Id): Blob | undefined {
+  return drafts.get(recipeId)?.photo;
+}
+
 /** The draft handed over for this page, once; call it from an effect, not while rendering. */
 export function takeAiDraft(recipeId: Id): HandedOverDraft | undefined {
   const draft = drafts.get(recipeId);

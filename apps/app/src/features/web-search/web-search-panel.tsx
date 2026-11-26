@@ -43,6 +43,8 @@ export interface WebTake {
   photo?: Blob;
   recipe?: RecipeDraftReply;
   place?: PlaceProposal;
+  /** REQ-008: the photo is made from this instead of taking `photo`. */
+  imageWish?: string;
 }
 
 /** The primary action of the window: "Suchen", or "Übernehmen" in a preview. */
@@ -69,6 +71,7 @@ export function webSearchPrimary(
           ...(photo?.status === 'ready' ? { photo: photo.photo } : {}),
           ...(preview.status === 'recipe' ? { recipe: preview.reply } : {}),
           ...(preview.status === 'place' ? { place: preview.proposal } : {}),
+          ...(search.imageWish ? { imageWish: search.imageWish } : {}),
         });
       },
     };

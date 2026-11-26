@@ -14,6 +14,7 @@ under Node.
 | `ai-recipe-draft`   | `RecipeDraftRequestSchema` | none      | recipe pages, TikTok, Foundry LLM                    |
 | `ai-image`          | `AiImageRequestSchema`     | none      | Foundry LLM (1 call), FLUX.2-pro (3 in parallel)     |
 | `fetch-video`       | `FetchVideoRequestSchema`  | none      | TikTok and its CDNs only, then Storage as the caller |
+| `web-search`        | `WebSearchRequestSchema`   | none      | Serper.dev, else Brave; recipe pages; Foundry LLM    |
 | `media-sweep`       | `{ names, videos? }`       | none      | Storage API (deletes orphan photos and videos)       |
 
 Every function: CORS allowlist → POST only → JWT verified with `auth.getClaims()` and
@@ -65,6 +66,24 @@ the latest (AC-012, the LLM step included); a variant still running then counts 
 keeps running until its own 45 s (cost accepted, spec "Risiken"). Answer
 `{ images: [base64, …], failed }`; no variant at all is 503. Variants are never stored: only
 "Übernehmen" in the app uploads one through the normal photo path.
+
+**`web-search`** (spec 0049, "Websuche"): the common path (64 KB), no quota, membership of
+`householdId` (403) before any provider is asked. `mode: 'search'`: a text of more than 4 words or
+with "Bild/Foto" first goes to the Foundry LLM as data (`text_nur_daten`, strict
+`SearchIntentSchema`: `query` and an optional `imageWish`; 12 s, one try; failing it the text is
+searched as typed). `_shared/web-search.ts` asks Serper.dev (`/search`, places from `/maps` with
+`ll` at zoom 11, key `SERPER_API_KEY` in `X-API-KEY`) and, when Serper fails, is out of credits or
+answers in an unknown shape, the Brave Search API (`BRAVE_SEARCH_API_KEY` in
+`X-Subscription-Token`); 8 s each, one try; both failing is 503 `search_unavailable`. Recipe hits
+that can be single recipes (`web-results.gen.ts`) are loaded through `fetchPublic` (html, 3 MB,
+6 s, 3 redirects, at most 6) and only pages with a schema.org Recipe become cards
+(`_shared/page-meta.ts`); well rated chefkoch.de first. Places become cards with rating, address,
+category, hours, price, maps link (`?cid=`) and thumbnail. `mode: 'place'`: the card (sent back by
+the app, checked by the contract) and the website's text (`fetchPublic`, 6000 characters) go to the
+LLM as data with the household's cuisines and tags or activity kinds (select under RLS); the
+answer is `PlaceProposalSchema` (name, cuisine/tags or kind/description), a kind only if the
+household has it. Logs carry provider and status, never a key, a query or an address. The recipe
+preview is `ai-recipe-draft` with the card's link.
 
 **`fetch-video`** (spec 0043, spec 0046, "Video speichern"): the common path, membership of
 `householdId` (403), the recipe under the caller's RLS (a collection or a recipe she cannot see is

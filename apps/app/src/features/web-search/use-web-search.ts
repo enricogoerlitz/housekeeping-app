@@ -50,6 +50,8 @@ export interface WebSearch {
   setQuery: (query: string) => void;
   state: SearchState;
   preview: PreviewState | undefined;
+  /** REQ-008: what the photo should show, read from the search text; then no page photo is used. */
+  imageWish: string | undefined;
   photos: Record<string, CardPhoto>;
   search: () => void;
   open: (card: WebResult) => void;
@@ -83,6 +85,7 @@ export function useWebSearch(kind: WebSearchKind, initialQuery = ''): WebSearch 
   const [query, setQuery] = useState(initialQuery);
   const [state, setState] = useState<SearchState>({ status: 'idle' });
   const [preview, setPreview] = useState<PreviewState>();
+  const [imageWish, setImageWish] = useState<string>();
   const [photos, setPhotos] = useState<Record<string, CardPhoto>>({});
   const [focusRequest, setFocusRequest] = useState(0);
   const round = useRef(0);
@@ -140,6 +143,7 @@ export function useWebSearch(kind: WebSearchKind, initialQuery = ''): WebSearch 
       (reply) => {
         if (round.current !== mine) return;
         setState({ status: 'results', results: reply.results });
+        setImageWish(reply.imageWish);
         loadPhotos(mine, reply.results);
       },
       (error: unknown) => {
@@ -186,6 +190,7 @@ export function useWebSearch(kind: WebSearchKind, initialQuery = ''): WebSearch 
     setQuery,
     state,
     preview,
+    imageWish,
     photos,
     search,
     open,
@@ -201,6 +206,7 @@ export function useWebSearch(kind: WebSearchKind, initialQuery = ''): WebSearch 
         if (photo.status === 'ready') URL.revokeObjectURL(photo.uri);
       setPhotos({});
       setPreview(undefined);
+      setImageWish(undefined);
       setState({ status: 'idle' });
       setQuery('');
     },
