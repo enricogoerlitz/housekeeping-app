@@ -278,6 +278,28 @@ describe('mapping between domain and rows', () => {
     );
   });
 
+  it('spec 0043: the recipe video survives a round trip; a recipe without one writes null', () => {
+    const { data, members } = demo();
+    const path = 'hh-demo/recipes/rec-lasagne/v.mp4';
+    const withVideo: HouseholdData = {
+      ...data,
+      recipes: data.recipes.map((recipe) =>
+        recipe.id === 'rec-lasagne' ? { ...recipe, videoPath: path } : recipe,
+      ),
+    };
+    const rows = householdToRows(withVideo);
+    expect(rows.recipes?.find((row) => row.id === 'rec-lasagne')).toMatchObject({
+      video_path: path,
+    });
+    expect(rows.recipes?.find((row) => row.id !== 'rec-lasagne')).toMatchObject({
+      video_path: null,
+    });
+    const { tables, small } = asServerTables({ ...rows, ...membersToRows(members) });
+    const domain = rowsToHousehold(tables, small, DEMO_HOUSEHOLD_ID);
+    expect(domain.recipes.find((recipe) => recipe.id === 'rec-lasagne')?.videoPath).toBe(path);
+    expect(domain.recipes.find((recipe) => recipe.id !== 'rec-lasagne')?.videoPath).toBeUndefined();
+  });
+
   it('spec 0041: kinds, series and exceptions survive a round trip; unknown symbols and rules are dropped', () => {
     const { data, members } = demo();
     const withSeries: HouseholdData = {

@@ -3,6 +3,7 @@ import {
   LINK_LIMIT_HINT,
   linkDisplay,
   MAX_LINKS,
+  offersVideo,
   validateLink,
   type LinksDraft,
   type Recipe,
@@ -27,17 +28,21 @@ import type { PageEditor } from './use-page-editor';
 import { errorMessage } from '@/features/shell/error-message';
 import { openLink } from '@/lib/open-link';
 
+import { SaveVideoButton, useSaveVideo } from '../recipe-video';
+
 type LinkAction = 'edit' | 'up' | 'down' | 'remove';
 
 /**
  * "Links" under "Notizen" of a recipe or a collection (spec 0023, REQ-009): at most 10, each row
  * the label over the host (or the host alone) with the symbol "öffnet extern"; a tap opens the page
  * in a new tab and the app stays. The app never loads the page. A link that fails the check on the
- * device is plain text. Read and open offline; editing online only.
+ * device is plain text. Read and open offline; editing online only. A TikTok link of a recipe
+ * without a video has "Video speichern" (spec 0043, REQ-001).
  */
 export function LinksSection(props: { recipe: Recipe; editor: PageEditor }) {
   const { recipe, editor } = props;
   const draft = editor.draft?.links;
+  const video = useSaveVideo(recipe);
   return (
     <RecipeSection title="Links" testID="recipe-links">
       {draft ? (
@@ -45,17 +50,43 @@ export function LinksSection(props: { recipe: Recipe; editor: PageEditor }) {
       ) : recipe.links.length === 0 ? (
         <Text color="muted">Noch keine Links.</Text>
       ) : (
-        <List>
-          {recipe.links.map((link, index) => (
-            <LinkRow key={link.url} link={link} testID={`recipe-link-${index}`} />
-          ))}
-        </List>
+        <Stack gap={8}>
+          <List>
+            {recipe.links.map((link, index) => (
+              <LinkRow
+                key={link.url}
+                link={link}
+                testID={`recipe-link-${index}`}
+                controls={
+                  offersVideo(recipe, link.url) ? (
+                    <SaveVideoButton
+                      link={link}
+                      video={video}
+                      testID={`recipe-link-video-${index}`}
+                    />
+                  ) : undefined
+                }
+              />
+            ))}
+          </List>
+          {video.error ? (
+            <Text variant="small" color="warn" testID="recipe-link-video-error">
+              {video.error}
+            </Text>
+          ) : null}
+        </Stack>
       )}
     </RecipeSection>
   );
 }
 
-function LinkRow(props: { link: RecipeLink; testID: string; trailing?: ReactNode }) {
+function LinkRow(props: {
+  link: RecipeLink;
+  testID: string;
+  trailing?: ReactNode;
+  /** Buttons of their own beside the row (spec 0043: "Video speichern"). */
+  controls?: ReactNode;
+}) {
   const shown = linkDisplay(props.link);
   const href = shown.href;
   return (
@@ -71,6 +102,7 @@ function LinkRow(props: { link: RecipeLink; testID: string; trailing?: ReactNode
       trailing={
         props.trailing ?? (href ? <Icon name="external-link" size={18} color="muted" /> : undefined)
       }
+      controls={props.controls}
       testID={props.testID}
     />
   );

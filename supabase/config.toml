@@ -471,6 +471,11 @@ import_map = "./functions/deno.json"
 verify_jwt = false
 import_map = "./functions/deno.json"
 
+# Spec 0043: "Video speichern" (TikTok only, uploads as the caller).
+[functions.fetch-video]
+verify_jwt = false
+import_map = "./functions/deno.json"
+
 # Spec 0040: "Mit KI ausfüllen" and the tab "KI" of the photo window (6 MB bodies with photos).
 [functions.ai-recipe-draft]
 verify_jwt = false

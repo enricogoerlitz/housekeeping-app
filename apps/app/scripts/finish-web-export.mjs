@@ -89,6 +89,8 @@ function contentSecurityPolicy(html) {
     'script-src': ["'self'", ...inlineScriptHashes(html)],
     'style-src': ["'self'", "'unsafe-inline'"],
     'img-src': ["'self'", 'data:', 'blob:'],
+    // Spec 0043: the recipe video, downloaded with the session, plays from a blob: URL.
+    'media-src': ["'self'", 'blob:'],
     'font-src': ["'self'"],
     'connect-src': [
       "'self'",

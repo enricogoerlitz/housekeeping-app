@@ -89,6 +89,8 @@ export const WRITABLE_COLUMNS = {
     'last_cooked_on',
     'cooked_count',
     'links',
+    // Spec 0043: set by fetch-video as the caller, cleared by "Video entfernen".
+    'video_path',
   ],
   // Spec 0009, E4: a contained recipe keeps its collection and its recipe (see PATCH_COLUMNS).
   collection_recipes: ['collection_id', 'recipe_id', 'servings', 'variant_id', 'sort'],

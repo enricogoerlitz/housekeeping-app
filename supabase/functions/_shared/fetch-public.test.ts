@@ -322,6 +322,45 @@ describe('fetchPublic', () => {
     expect(agents[1]).toMatch(/^Mozilla\/5\.0 \(compatible; HousekeepingApp/);
   });
 
+  it('spec 0043: sends the extra headers on every hop and hands back the cookies of every hop', async () => {
+    const d = deps({
+      'https://vm.example.org/s': () =>
+        new Response(null, {
+          status: 301,
+          headers: [
+            ['location', 'https://www.example.org/v'],
+            ['set-cookie', 'first=1; Path=/; Secure'],
+          ],
+        }),
+      'https://www.example.org/v': () =>
+        new Response('<html></html>', {
+          status: 200,
+          headers: [
+            ['content-type', 'text/html'],
+            ['set-cookie', 'ttwid=abc; Domain=.example.org; HttpOnly'],
+            ['set-cookie', 'msToken=x=y; Path=/'],
+            ['set-cookie', 'broken'],
+          ],
+        }),
+    });
+    const page = await fetchPublic(
+      'https://vm.example.org/s',
+      {
+        ...IMAGE,
+        contentTypes: ['text/html'],
+        headers: { referer: 'https://www.example.org/', cookie: 'a=b' },
+      },
+      d,
+    );
+    expect(page.cookies).toEqual(['first=1', 'ttwid=abc', 'msToken=x=y']);
+    for (const [, init] of d.fetchMock.mock.calls) {
+      const headers = new Headers(init?.headers);
+      expect(headers.get('referer')).toBe('https://www.example.org/');
+      expect(headers.get('cookie')).toBe('a=b');
+      expect(headers.get('accept')).toBe('text/html');
+    }
+  });
+
   it('a network error is "network"', async () => {
     const d = deps({
       'https://down.example.org/a.jpg': () => Promise.reject(new TypeError('connection refused')),

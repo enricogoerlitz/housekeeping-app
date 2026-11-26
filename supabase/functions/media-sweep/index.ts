@@ -15,8 +15,8 @@ function createRemover(config: { url: string; key: string }): Remover {
   const client = createClient(config.url, config.key, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
-  return async (names) => {
-    const { data, error } = await client.storage.from('household-media').remove(names);
+  return async (bucket, names) => {
+    const { data, error } = await client.storage.from(bucket).remove(names);
     if (error) throw new Error('storage_remove_failed');
     return { removed: data.length };
   };

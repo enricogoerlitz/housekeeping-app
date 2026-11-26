@@ -1,7 +1,7 @@
 // Fakes for handler tests: an in-memory Supabase client and a deps builder.
 import { vi } from 'vitest';
 
-import type { DbResult, Deps, Query, UserClient } from './deps.ts';
+import type { DbResult, Deps, Query, StorageResult, UserClient } from './deps.ts';
 
 export type Row = { [column: string]: unknown };
 
@@ -16,11 +16,15 @@ export interface FakeClientOptions {
   rpc?: (fn: string, args: { [name: string]: unknown }) => DbResult;
   /** At most this many rows per answer, like PostgREST's max_rows (1000 in config.toml). */
   maxRows?: number;
+  /** The answer to an upload or remove; success by default. */
+  storage?: (op: 'upload' | 'remove', bucket: string, paths: string[]) => StorageResult;
 }
 
 export interface FakeClient extends UserClient {
   rpcCalls: { fn: string; args: { [name: string]: unknown } }[];
   selects: { table: string; columns: string }[];
+  uploads: { bucket: string; path: string; bytes: Uint8Array; contentType: string }[];
+  removes: { bucket: string; paths: string[] }[];
 }
 
 function query(rows: Row[], maxRows = Number.POSITIVE_INFINITY): Query {
@@ -41,9 +45,23 @@ export function fakeClient(options: FakeClientOptions = {}): FakeClient {
     [USER_JWT]: { role: 'authenticated', sub: USER_ID },
     [ANON_JWT]: { role: 'anon' },
   };
+  const stored = (op: 'upload' | 'remove', bucket: string, paths: string[]) =>
+    Promise.resolve(options.storage ? options.storage(op, bucket, paths) : { error: null });
   const client: FakeClient = {
     rpcCalls: [],
     selects: [],
+    uploads: [],
+    removes: [],
+    storage: {
+      upload: (bucket, path, bytes, contentType) => {
+        client.uploads.push({ bucket, path, bytes, contentType });
+        return stored('upload', bucket, [path]);
+      },
+      remove: (bucket, paths) => {
+        client.removes.push({ bucket, paths });
+        return stored('remove', bucket, paths);
+      },
+    },
     auth: {
       getClaims: async (jwt) => {
         const found = claims[jwt];
