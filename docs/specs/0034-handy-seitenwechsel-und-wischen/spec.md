@@ -191,6 +191,17 @@ Netz).
     Aufwand etwa 2–3 Tage; Risiken: zwei Listen gleichzeitig auf dem iPhone (Leistung), Blitzen
     beim Übergang von Vorschau zu echter Seite, Seiteneffekte der Listen-Hooks. Entscheidung durch
     Enrico.
+13. REQ-003 (QA-Nachtrag 26.11.): „Verwalten“, seine Seiten und die Einstellungen sind eigene Tabs
+    der Tab-Navigation, kein Stack; darum glitten sie auf dem Handy nicht. Ohne Umbau der Routen
+    bekommen sie auf dem Handy im Browser eine Gleit-Animation des Tab-Navigators
+    (`phoneTabOptions`, `stack-transition.ts`): nach der Reihenfolge der Tabs gleitet die neue
+    Seite von rechts herein („⊞ → Verwalten“, „Verwalten → Aktivitäten“) und bei „‹ Verwalten“
+    nach rechts hinaus, 300 ms; mit „Bewegung reduzieren“ nur Überblenden; nach der Randgeste ohne
+    zweite Animation. Die Tabs der Tab-Leiste wechseln weiter sofort.
+    OFFEN: „‹ Haushalt“ (Zurück von „Verwalten“ auf eine Seite der Tab-Leiste) gleitet nicht
+    sichtbar: der Tab-Navigator legt die neue Seite immer oben auf, die gehende Seite gleitet
+    darunter. Abhilfe nur durch Umbau (Verwalten-Seiten als Stack über den Tabs, alle Adressen und
+    `backBehavior` betroffen); Empfehlung: so lassen, nach der iPhone-Abnahme entscheiden.
 
 ## Daten
 
@@ -233,3 +244,6 @@ Entfällt: nur Oberfläche und lokale Reihenfolge der Liste (REQ-008, nur im Spe
 - Nur am iPhone prüfbar: AC-004/AC-007 (Flackern, Randgeste), AC-020 (Android-Sperre), AC-021
   (installierte App), AC-022 (Wake Lock ab iOS 18.4), AC-024 (Link ohne leeres Fenster), Gefühl
   der Wisch-Gesten.
+- QA-Nachtrag 26.11. (Entscheidung 13): Dev-Server 390 × 844 – „⊞ → Verwalten“ und „Verwalten →
+  Aktivitäten“ gleiten in ~300 ms von rechts herein, „‹ Verwalten“ nach rechts hinaus; Tabs der
+  Tab-Leiste wechseln sofort. `pnpm check` grün.

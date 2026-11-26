@@ -284,9 +284,9 @@ describe('Sheet with the keyboard moving (spec 0033, REQ-003)', () => {
     report(700);
     report(520);
     report(400);
-    expect(screen.getByTestId('sheet').style.height).toBe('760px');
+    expect(screen.getByTestId('sheet').style.maxHeight).toBe('760px');
     act(() => vi.advanceTimersByTime(200));
-    expect(screen.getByTestId('sheet').style.height).toBe('388px');
+    expect(screen.getByTestId('sheet').style.maxHeight).toBe('388px');
     expect(screen.getByTestId('sheet-layer').style.paddingBottom).toBe('444px');
   });
 
@@ -381,5 +381,22 @@ describe('Toast clear of the page buttons (spec 0033, REQ-009)', () => {
     stubRect(screen.getByTestId('buttons'), { top: 300, height: 46 });
     act(() => toast.show({ message: 'Foto gespeichert' }));
     expect(bottomOf()).toBe('74px');
+  });
+
+  it('AC-025: above the buttons it would cover the rating stars: it stands at the top (decision 12)', () => {
+    setWindow(390, 844);
+    render(
+      <>
+        <RecipeButtons />
+        <View accessibilityRole="button" accessibilityLabel="4 Sterne" testID="stars" />
+        <ToastHost />
+      </>,
+    );
+    stubRect(screen.getByTestId('buttons'), { top: 717, height: 46 });
+    stubRect(screen.getByTestId('stars'), { top: 660, height: 30 });
+    act(() => toast.show({ message: 'Foto gespeichert' }));
+    const layer = screen.getByTestId('toast').parentElement as HTMLElement;
+    expect(layer.style.bottom).toBe('');
+    expect(layer.style.top).toBe('8px');
   });
 });
