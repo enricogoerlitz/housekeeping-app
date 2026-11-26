@@ -211,7 +211,9 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       # Docker is available on the GitHub Ubuntu runner.
-      - run: pnpm exec supabase db start
+      # The CLI sometimes loses a race for port 54322 on hosted runners ("address already in use");
+      # one stop-and-retry clears it (26.11.2026, several PRs of review 0003).
+      - run: pnpm exec supabase db start || (pnpm exec supabase stop --no-backup && sleep 5 && pnpm exec supabase db start)
       - run: pnpm exec supabase test db
 
   integration:
@@ -238,7 +240,8 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec supabase start -x studio,logflare,vector
+      # See "Datenbank (pgTAP)": one stop-and-retry for the port race on hosted runners.
+      - run: pnpm exec supabase start -x studio,logflare,vector || (pnpm exec supabase stop --no-backup && sleep 5 && pnpm exec supabase start -x studio,logflare,vector)
       # Resets the database, then runs the files one after another in random order (AC-012).
       - run: pnpm test:integration
 
