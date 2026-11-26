@@ -16,6 +16,7 @@ import {
   searchRecipes,
   sortRecipes,
   type Id,
+  type LinePicks,
   type RecipeKind,
 } from '@housekeeping/core';
 import {
@@ -40,6 +41,7 @@ import { CAN_PICK_PHOTO, pickPhotoFile } from '@/lib/pick-photo';
 
 import { handOverNewRecipe, startPhotoSuggestions } from './ai-draft';
 import { AiFillFields, toastUnreadLinks, useAiFill, useDraftInput } from './ai-fill';
+import { IngredientLinesField } from './ingredient-lines-field';
 import { NewRecipeFields } from './recipe-form';
 import { handOverIngredientRows, rowsFromText } from './sections/ingredient-handover';
 
@@ -71,6 +73,7 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
   const [kind, setKind] = useState<RecipeKind>(preset);
   const [title, setTitle] = useState('');
   const [ingredients, setIngredients] = useState('');
+  const [picks, setPicks] = useState<LinePicks>(() => new Map());
   const [recipeIds, setRecipeIds] = useState<Id[]>([]);
   const [photo, setPhoto] = useState<Blob | undefined>();
   const [extras, setExtras] = useState<ReadonlySet<Extra>>(() => new Set());
@@ -87,6 +90,7 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
   const close = () => {
     setTitle('');
     setIngredients('');
+    setPicks(new Map());
     setRecipeIds([]);
     setPhoto(undefined);
     setExtras(new Set());
@@ -144,7 +148,10 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
       if (takesIngredients) {
         // E-01 (spec 0018): the rows with an article are saved with the recipe; only the orange
         // ones wait for its page.
-        const created = createRecipeWithIngredients({ title }, rowsFromText(ingredients, articles));
+        const created = createRecipeWithIngredients(
+          { title },
+          rowsFromText(ingredients, articles, picks),
+        );
         recipeId = created.recipeId;
         handOverIngredientRows(recipeId, created.open);
       } else if (kind === 'collection') {
@@ -217,13 +224,14 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
         {withAi ? <AiFillFields fill={fill} testID="new-recipe-ai" /> : null}
         {extras.has('photo') ? <NewPhotoSlot photo={photo} onChange={setPhoto} /> : null}
         {takesIngredients && extras.has('ingredients') ? (
-          <TextField
+          <IngredientLinesField
             label="Zutaten einfügen"
             placeholder={'200 ml Kokosmilch\n1 Mango'}
             hint="Eine Zutat pro Zeile, z. B. 200 ml Kokosmilch"
-            value={ingredients}
+            text={ingredients}
             onChangeText={setIngredients}
-            multiline
+            picks={picks}
+            onChangePicks={setPicks}
             autoFocus
             testID="new-recipe-ingredients"
           />

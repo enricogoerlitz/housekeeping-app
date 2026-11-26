@@ -112,4 +112,5 @@ export { MonthCalendar } from './month-calendar';
 export { openExternalLink } from './external-link';
 export { openByLink } from './open-in-new-tab';
 export { hatchStyle, withAlpha } from './hatch';
-export { stickyTopStyle } from './sticky';
+export { stickyBottomStyle, stickyTopStyle } from './sticky';
+export { revealInScrollParent } from './scroll-reveal';

@@ -25,6 +25,14 @@ describe('matchSearchOrCreate', () => {
     expect(names('Kokos')).toEqual(['Kokosmilch', 'Kokosmilch light']);
   });
 
+  it('spec 0050, AC-002: a rank orders hits of equal quality, never a worse hit before a better', () => {
+    const rank = (item: SearchOrCreateItem) => (item.id === 'kokosmilch-light' ? 5 : 0);
+    const ranked = (query: string) =>
+      matchSearchOrCreate(query, items, { rank }).matches.map((match) => match.item.name);
+    expect(ranked('Kokos')).toEqual(['Kokosmilch light', 'Kokosmilch']);
+    expect(ranked('Kokosmilch')).toEqual(['Kokosmilch', 'Kokosmilch light']);
+  });
+
   it('AC-033: an unknown name offers "neu anlegen" without a brake', () => {
     const result = matchSearchOrCreate('Drachenfrucht', items);
     expect(result.matches).toEqual([]);
