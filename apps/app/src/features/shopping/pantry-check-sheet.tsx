@@ -362,7 +362,13 @@ export function PantryCheckSheet(props: PantryCheckSheetProps) {
         // Selected reads as normal text with a tick; deselected ("haben wir") is faded and struck
         // through (REQ-009).
         strike={!isKept}
-        subtitle={[row.sources.join(' · '), row.onList ? `schon auf der Liste: ${row.onList}` : '']
+        // A pack ("1×") says what the recipes need, so "Für N Personen" shows (spec 0037, AC-020).
+        subtitle={[
+          row.recipeAmount
+            ? `${row.recipeAmount} für ${row.sources.join(' · ')}`
+            : row.sources.join(' · '),
+          row.onList ? `schon auf der Liste: ${row.onList}` : '',
+        ]
           .filter(Boolean)
           .join(' · ')}
         // The row is the checkbox; its amount buttons sit beside it (spec 0031, REQ-028).

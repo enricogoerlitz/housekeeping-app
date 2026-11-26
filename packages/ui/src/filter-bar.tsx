@@ -5,7 +5,7 @@ import { Button, Chip } from './controls';
 import { Row, Surface, Text } from './primitives';
 import { Sheet } from './overlay';
 import { ScrollRow } from './scroll-row';
-import { useBreakpoint } from './theme-context';
+import { useBreakpoint, useTheme } from './theme-context';
 
 export interface FilterBarProps {
   /** First row: the search field. */
@@ -41,6 +41,7 @@ export interface FilterBarProps {
  */
 export function FilterBar(props: FilterBarProps) {
   const { isPhone } = useBreakpoint();
+  const c = useTheme().colors;
   const [open, setOpen] = useState(false);
   const unfolded = open && !isPhone;
   useEffect(() => {
@@ -56,8 +57,8 @@ export function FilterBar(props: FilterBarProps) {
   const reset = (
     <Button
       label={props.resetLabel}
-      variant={isPhone ? 'ghost' : 'link'}
-      size={isPhone ? 'md' : 'sm'}
+      variant="link"
+      size="sm"
       onPress={props.onReset}
       testID={id('reset')}
     />
@@ -80,7 +81,21 @@ export function FilterBar(props: FilterBarProps) {
             {props.chips}
           </ScrollRow>
         </View>
-        {props.trailing}
+        {props.trailing ? (
+          <>
+            {/* A hairline keeps the chips that scroll apart from what stays (review 0003). */}
+            <View
+              aria-hidden
+              style={{
+                width: 1,
+                alignSelf: 'stretch',
+                marginVertical: 6,
+                backgroundColor: c.border,
+              }}
+            />
+            {props.trailing}
+          </>
+        ) : null}
       </View>
       {isPhone ? (
         <Sheet
@@ -89,10 +104,11 @@ export function FilterBar(props: FilterBarProps) {
           title={props.panelTitle}
           size="m"
           testID={id('panel')}
+          // The live count ("24 Rezepte · 2 Sammlungen zeigen") gets the whole width, so it stays
+          // on one line at 390 px; "Zurücksetzen" below it (review 0003).
           footer={
-            <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
-              {reset}
-              <View style={{ flex: 1 }}>
+            <View style={{ gap: 2, alignItems: 'center' }}>
+              <View style={{ alignSelf: 'stretch' }}>
                 <Button
                   label={props.applyLabel}
                   full
@@ -100,6 +116,8 @@ export function FilterBar(props: FilterBarProps) {
                   testID={id('apply')}
                 />
               </View>
+              {/* A Button aligns itself to the start; the wrapper centres it. */}
+              <View>{reset}</View>
             </View>
           }
         >

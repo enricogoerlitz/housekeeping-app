@@ -50,5 +50,9 @@ export function revealInScrollParent(
     align: options.align,
   });
   if (top === null) return;
-  parent.scrollTo({ top, behavior: options.smooth ? 'smooth' : 'auto' });
+  // A React Native Web ScrollView replaces its node's scrollTo with its own ({ x, y }), which
+  // reads `{ top }` as 0: the browser's own method, or plain scrollTop, moves it as asked.
+  if (options.smooth)
+    Reflect.apply(HTMLElement.prototype.scrollTo, parent, [{ top, behavior: 'smooth' }]);
+  else parent.scrollTop = top;
 }

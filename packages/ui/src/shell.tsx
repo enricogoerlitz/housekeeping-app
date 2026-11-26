@@ -28,6 +28,7 @@ import { icons, type IconName } from './icons';
 import { Divider, Icon, Text } from './primitives';
 import { AreaToneContext, ToneContext, useBreakpoint, useTheme } from './theme-context';
 import type { Tone } from './themes';
+import { useTitleFit } from './use-title-fit';
 
 export const TAB_BAR_HEIGHT = 62;
 
@@ -489,46 +490,70 @@ export function ScreenHeader(props: ScreenHeaderProps) {
   );
 }
 
-/** The one-row header of `titleOnScroll`: back, the title once `showTitle`, the buttons. */
+const TITLE_BAR_GAP = 12;
+
+/**
+ * The header of `titleOnScroll`: back, the title once `showTitle`, the buttons. When the buttons
+ * leave the title too little room (the edit mode's "Abbrechen" and "Speichern" on a phone), the
+ * title takes a line of its own below them instead of shrinking to "Q…" (review 0003).
+ */
 function TitleBar(props: ScreenHeaderProps & { showTitle: boolean }) {
+  const {
+    ownLine: titleBelow,
+    onRow,
+    titleRef,
+    onTitle,
+    onAction,
+  } = useTitleFit({ padding: 0, gap: TITLE_BAR_GAP, actions: 2 });
+  const title = props.showTitle ? (
+    // Keyed by the text: a new title is measured anew, even where its box keeps its size.
+    <View key={`title-${props.title}`} style={{ flex: 1, minWidth: 0 }} onLayout={onTitle}>
+      <Text
+        ref={titleRef}
+        variant="cardTitle"
+        heading
+        numberOfLines={1}
+        testID={props.testID ?? 'screen-title'}
+      >
+        {props.title}
+      </Text>
+    </View>
+  ) : null;
+  const ownLine = props.showTitle && titleBelow;
   return (
-    <View
-      style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 12,
-        minHeight: 44,
-        paddingTop: 8,
-        paddingBottom: 8,
-      }}
-    >
-      {props.onBack ? (
-        props.backLabel ? (
-          // BackLink aligns itself to the start; the wrapper centres it in the row.
-          <View>
-            <BackLink label={props.backLabel} onPress={props.onBack} />
-          </View>
+    <View style={{ paddingTop: 8, paddingBottom: 8, gap: 4 }}>
+      <View
+        onLayout={onRow}
+        style={{ flexDirection: 'row', alignItems: 'center', gap: TITLE_BAR_GAP, minHeight: 44 }}
+      >
+        <View onLayout={onAction(0)}>
+          {props.onBack ? (
+            props.backLabel ? (
+              // BackLink aligns itself to the start; the wrapper centres it in the row.
+              <View>
+                <BackLink label={props.backLabel} onPress={props.onBack} />
+              </View>
+            ) : (
+              <View style={{ marginLeft: -8 }}>
+                <IconButton icon="arrow-left" label="Zurück" onPress={props.onBack} testID="back" />
+              </View>
+            )
+          ) : null}
+        </View>
+        {ownLine ? (
+          <View key="spacer" style={{ flex: 1 }} />
         ) : (
-          <View style={{ marginLeft: -8 }}>
-            <IconButton icon="arrow-left" label="Zurück" onPress={props.onBack} testID="back" />
-          </View>
-        )
-      ) : null}
-      <View style={{ flex: 1, minWidth: 0 }}>
-        {props.showTitle ? (
-          <Text
-            variant="cardTitle"
-            heading
-            numberOfLines={1}
-            testID={props.testID ?? 'screen-title'}
-          >
-            {props.title}
-          </Text>
-        ) : null}
+          (title ?? <View key="spacer" style={{ flex: 1 }} />)
+        )}
+        <View onLayout={onAction(1)}>
+          {props.right ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              {props.right}
+            </View>
+          ) : null}
+        </View>
       </View>
-      {props.right ? (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>{props.right}</View>
-      ) : null}
+      {ownLine ? <View style={{ flexDirection: 'row' }}>{title}</View> : null}
     </View>
   );
 }
