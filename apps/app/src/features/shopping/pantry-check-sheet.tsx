@@ -1,6 +1,7 @@
 import {
   addPlannedToList,
   pantryCheckRows,
+  pantryRecipeFor,
   snapshot,
   useHousehold,
   usePlanEntries,
@@ -199,6 +200,16 @@ export function PantryCheckSheet(props: PantryCheckSheetProps) {
   const [rows, setRows] = useState<PantryCheckRow[]>(() =>
     direct ? pantryCheckRows([], props.recipes) : [],
   );
+  // "Für N Personen" (spec 0037, REQ-007): one recipe or collection from its page, preset with
+  // the portions it was opened with; the amounts follow at once.
+  const single = props.recipes?.length === 1 ? props.recipes[0] : undefined;
+  const [people, setPeople] = useState(single?.portions ?? 1);
+  const changePeople = (value: number) => {
+    if (!single) return;
+    const next = Math.max(1, value);
+    setPeople(next);
+    setRows(pantryCheckRows([], [pantryRecipeFor(single, next)]));
+  };
   const [kept, setKept] = useState<Set<string>>(() => defaultKept(rows));
   // "Vorrat & Gewürze" starts open, its rows still deselected (spec 0025, AC-026).
   const [showPantry, setShowPantry] = useState(true);
@@ -405,6 +416,7 @@ export function PantryCheckSheet(props: PantryCheckSheetProps) {
             },
       }}
     >
+      {single ? <PeopleStepper value={people} onChange={changePeople} /> : null}
       {rows.length === 0 ? (
         <Text color="muted" testID="pc-nothing">
           Für diese Gerichte ist nichts einzukaufen.
@@ -457,6 +469,46 @@ export function PantryCheckSheet(props: PantryCheckSheetProps) {
         </View>
       )}
     </Sheet>
+  );
+}
+
+/** "Für 4 Personen" with − and + at the top of the pantry check (spec 0037, REQ-007). */
+function PeopleStepper(props: { value: number; onChange: (value: number) => void }) {
+  const { value } = props;
+  return (
+    <View
+      style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 12 }}
+      testID="pc-people"
+    >
+      <Text variant="bodyStrong" style={{ flex: 1 }}>
+        {value === 1 ? 'Für 1 Person' : `Für ${value} Personen`}
+      </Text>
+      <IconButton
+        icon="minus"
+        size={44}
+        variant="soft"
+        label="Eine Person weniger"
+        disabled={value <= 1}
+        onPress={() => props.onChange(value - 1)}
+        testID="pc-people-minus"
+      />
+      <Text
+        variant="bodyStrong"
+        style={{ minWidth: 28, textAlign: 'center', fontVariant: ['tabular-nums'] }}
+        testID="pc-people-value"
+      >
+        {value}
+      </Text>
+      <IconButton
+        icon="plus"
+        size={44}
+        variant="soft"
+        label="Eine Person mehr"
+        disabled={value >= 100}
+        onPress={() => props.onChange(value + 1)}
+        testID="pc-people-plus"
+      />
+    </View>
   );
 }
 

@@ -15,7 +15,6 @@ import {
 } from '@housekeeping/core';
 import {
   Button,
-  EditableSection,
   Icon,
   Menu,
   Notice,
@@ -31,8 +30,8 @@ import {
 import { useState } from 'react';
 import { View } from 'react-native';
 
-import { SectionError, useSectionFrame } from './common';
-import type { SectionEditor } from './use-section-editor';
+import { RecipeSection } from './common';
+import type { PageEditor } from './use-page-editor';
 
 type StepAction = 'text' | 'up' | 'down' | 'remove';
 
@@ -49,14 +48,13 @@ const stepLength = (text: string) => Array.from(text.trim()).length;
 export function StepsSection(props: {
   recipe: Recipe;
   variantId: Id | undefined;
-  editor: SectionEditor;
+  editor: PageEditor;
 }) {
   const { recipe, editor } = props;
-  const frame = useSectionFrame(editor, 'steps', 'Zubereitung');
-  const draft = editor.draft?.section === 'steps' ? editor.draft : undefined;
+  const draft = editor.draft?.steps;
   const steps = stepsForVariants(recipe, props.variantId ? [props.variantId] : undefined);
   return (
-    <EditableSection {...frame} testID="recipe-steps">
+    <RecipeSection title="Zubereitung" testID="recipe-steps">
       {draft ? (
         <StepsFields recipe={recipe} draft={draft} editor={editor} />
       ) : (
@@ -92,11 +90,11 @@ export function StepsSection(props: {
           )}
         </Stack>
       )}
-    </EditableSection>
+    </RecipeSection>
   );
 }
 
-function StepsFields(props: { recipe: Recipe; draft: StepsDraft; editor: SectionEditor }) {
+function StepsFields(props: { recipe: Recipe; draft: StepsDraft; editor: PageEditor }) {
   const { recipe, draft, editor } = props;
   // The step whose text is edited in the window; a new step starts blank and goes if left blank.
   const [editing, setEditing] = useState<{ id: Id; added: boolean } | undefined>();
@@ -193,7 +191,6 @@ function StepsFields(props: { recipe: Recipe; draft: StepsDraft; editor: Section
           testID="recipe-steps-add"
         />
       </Row>
-      <SectionError editor={editor} testID="recipe-steps-error" />
 
       {editingStep ? (
         <StepSheet

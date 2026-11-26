@@ -1,6 +1,7 @@
 // Spec 0037, REQ-001: the recipe page saved in one step (AC-003, AC-004, AC-006) and the time of
 // a collection (REQ-005, AC-016), against the fake server.
 import {
+  contentsInBook,
   newIngredientRow,
   pageDraft,
   withSection,
@@ -10,6 +11,7 @@ import {
 import { describe, expect, it } from 'vitest';
 
 import { H, withBackend } from './backend-test-helpers';
+import { createCollection } from './commands-collections';
 import { saveRecipePage } from './commands-recipe-page';
 import { NADJA } from './seed/demo';
 import { getData, OfflineError, simulateOffline } from './store';
@@ -22,14 +24,15 @@ const byTitle = (title: string): Recipe => {
   return recipe;
 };
 const recipeById = (id: string) => getData().recipes.find((recipe) => recipe.id === id);
-const contentsOf = (collectionId: string) =>
-  getData()
-    .collectionRecipes.filter((row) => row.collectionId === collectionId)
-    .map((row) => {
-      const recipe = recipeById(row.recipeId);
-      if (!recipe) throw new Error('recipe missing');
-      return { row, recipe };
-    });
+const contentsOf = (collectionId: string) => {
+  const collection = recipeById(collectionId);
+  if (!collection) throw new Error('collection missing');
+  const data = getData();
+  return contentsInBook(collection, {
+    recipesById: Object.fromEntries(data.recipes.map((recipe) => [recipe.id, recipe])),
+    collectionRecipes: data.collectionRecipes,
+  });
+};
 const articleId = (name: string) => {
   const article = getData().articles.find((candidate) => candidate.name === name);
   if (!article) throw new Error(`article ${name} missing`);
@@ -96,16 +99,14 @@ describe('saveRecipePage (spec 0037, REQ-001)', () => {
     const lasagne = byTitle('Lasagne');
     const page = edited(lasagne);
     await fx.settle();
-    await fx.server
-      .transport(NADJA)
-      .applyChanges(H, [
-        {
-          kind: 'patch',
-          table: 'recipes',
-          id: lasagne.id,
-          changes: { description: 'Wie bei Oma' },
-        },
-      ]);
+    await fx.server.transport(NADJA).applyChanges(H, [
+      {
+        kind: 'patch',
+        table: 'recipes',
+        id: lasagne.id,
+        changes: { description: 'Wie bei Oma' },
+      },
+    ]);
     const saved = saveRecipePage(page);
     await fx.settle();
     await expect(saved?.confirmed).resolves.toEqual({ changedMeanwhile: true });
@@ -165,5 +166,29 @@ describe('saveRecipePage (spec 0037, REQ-001)', () => {
     expect(fx.calls.map((call) => call.fn)).toEqual(['saveRecipePage']);
     expect(recipeById(grillabend.id)?.totalMinutes).toBe(90);
     expect(contentsOf(grillabend.id)).toHaveLength(contents.rows.length - 1);
+  });
+});
+
+describe('"Neu → Sammlung" with recipes (spec 0037, REQ-002)', () => {
+  it('AC-009: „Grillfest“ with two recipes in one call', async () => {
+    await fx.startEnrico();
+    const lasagne = byTitle('Lasagne');
+    const second = getData().recipes.find(
+      (recipe) => recipe.kind === 'recipe' && recipe.id !== lasagne.id,
+    );
+    if (!second) throw new Error('fixture');
+    const id = createCollection({ title: 'Grillfest', recipeIds: [lasagne.id, second.id] });
+    await fx.settle();
+    expect(fx.calls.map((call) => call.fn)).toEqual(['applyChanges']);
+    expect(contentsOf(id).map((content) => content.recipe.id)).toEqual([lasagne.id, second.id]);
+  });
+
+  it('AC-008: a title alone is enough; a collection cannot go in', async () => {
+    await fx.startEnrico();
+    const id = createCollection({ title: 'Linsen-Abend', recipeIds: [] });
+    expect(recipeById(id)?.kind).toBe('collection');
+    expect(() =>
+      createCollection({ title: 'Doppelt', recipeIds: [byTitle('Grillabend').id] }),
+    ).toThrow('Eine Sammlung enthält nur Rezepte');
   });
 });

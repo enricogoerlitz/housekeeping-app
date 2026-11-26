@@ -255,6 +255,8 @@ export type PageEditorAction =
   | { type: 'saving' }
   /** The server refused: nothing is saved, the edit mode stays with the message (AC-004). */
   | { type: 'failed'; error: string }
+  /** "+ Rezept" while editing a collection: the rows the window put in (withNewContents). */
+  | { type: 'contents'; contents: readonly CollectionContent[] }
   /** Saved, "Abbrechen" (after "Verwerfen"), or the recipe is gone. */
   | { type: 'close' };
 
@@ -277,6 +279,11 @@ export function pageEditorReducer(
     case 'failed': {
       const { draft } = state;
       return draft ? { draft, error: action.error } : state;
+    }
+    case 'contents': {
+      if (!state.draft) return state;
+      const draft = withNewContents(state.draft, action.contents);
+      return draft === state.draft ? state : { ...state, draft };
     }
     case 'close':
       return {};

@@ -8,22 +8,11 @@ import {
   type Recipe,
   type RecipeLink,
 } from '@housekeeping/core';
-import {
-  Button,
-  EditableSection,
-  Icon,
-  List,
-  ListRow,
-  Menu,
-  Sheet,
-  Stack,
-  Text,
-  TextField,
-} from '@housekeeping/ui';
+import { Button, Icon, List, ListRow, Menu, Sheet, Stack, Text, TextField } from '@housekeeping/ui';
 import { useState, type ReactNode } from 'react';
 
-import { SectionError, useSectionFrame } from './common';
-import type { SectionEditor } from './use-section-editor';
+import { RecipeSection } from './common';
+import type { PageEditor } from './use-page-editor';
 import { errorMessage } from '@/features/shell/error-message';
 import { openLink } from '@/lib/open-link';
 
@@ -35,12 +24,11 @@ type LinkAction = 'edit' | 'up' | 'down' | 'remove';
  * in a new tab and the app stays. The app never loads the page. A link that fails the check on the
  * device is plain text. Read and open offline; editing online only.
  */
-export function LinksSection(props: { recipe: Recipe; editor: SectionEditor }) {
+export function LinksSection(props: { recipe: Recipe; editor: PageEditor }) {
   const { recipe, editor } = props;
-  const frame = useSectionFrame(editor, 'links', 'Links');
-  const draft = editor.draft?.section === 'links' ? editor.draft : undefined;
+  const draft = editor.draft?.links;
   return (
-    <EditableSection {...frame} testID="recipe-links">
+    <RecipeSection title="Links" testID="recipe-links">
       {draft ? (
         <LinksFields draft={draft} editor={editor} />
       ) : recipe.links.length === 0 ? (
@@ -52,7 +40,7 @@ export function LinksSection(props: { recipe: Recipe; editor: SectionEditor }) {
           ))}
         </List>
       )}
-    </EditableSection>
+    </RecipeSection>
   );
 }
 
@@ -77,7 +65,7 @@ function LinkRow(props: { link: RecipeLink; testID: string; trailing?: ReactNode
   );
 }
 
-function LinksFields(props: { draft: LinksDraft; editor: SectionEditor }) {
+function LinksFields(props: { draft: LinksDraft; editor: PageEditor }) {
   const { draft, editor } = props;
   const [editing, setEditing] = useState<{ index?: number } | undefined>();
   const set = (links: RecipeLink[]) => editor.change({ ...draft, links });
@@ -145,7 +133,6 @@ function LinksFields(props: { draft: LinksDraft; editor: SectionEditor }) {
           {LINK_LIMIT_HINT}
         </Text>
       ) : null}
-      <SectionError editor={editor} testID="recipe-links-error" />
       {editing ? (
         <LinkSheet
           links={draft.links}

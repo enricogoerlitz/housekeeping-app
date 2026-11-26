@@ -27,9 +27,23 @@ import {
   updateData,
 } from './store';
 
-/** "Sammlung" in the window "Neu" (AC-001, AC-002): a new, empty collection. */
-export function createCollection(input: { title: string; servings?: number }): Id {
-  return createRecipe({ ...input, kind: 'collection' });
+/**
+ * "Sammlung" in the window "Neu" (AC-001, AC-002): a new collection, empty or with the recipes
+ * chosen there in that order (spec 0037, AC-009), in one call. Throws like createRecipe and
+ * addRecipesToCollection before anything changes.
+ */
+export function createCollection(input: {
+  title: string;
+  servings?: number;
+  recipeIds?: readonly Id[];
+}): Id {
+  const { recipeIds = [], ...fields } = input;
+  assertRecipes(recipeIds);
+  return commit({ path: 'diff' }, () => {
+    const collectionId = createRecipe({ ...fields, kind: 'collection' });
+    putIn(collectionId, recipeIds);
+    return collectionId;
+  });
 }
 
 function collectionOf(collectionId: Id): Recipe {

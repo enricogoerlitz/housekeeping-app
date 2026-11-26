@@ -1,16 +1,15 @@
 import type { Recipe } from '@housekeeping/core';
-import { EditableSection, Stack, Text, TextField } from '@housekeeping/ui';
+import { Stack, Text, TextField } from '@housekeeping/ui';
 
-import { SectionError, useSectionFrame } from './common';
-import type { SectionEditor } from './use-section-editor';
+import { RecipeSection } from './common';
+import type { PageEditor } from './use-page-editor';
 
 /** Notizen (REQ-007): always there, so it can be written into (AC-023). */
-export function NotesSection(props: { recipe: Recipe; editor: SectionEditor }) {
+export function NotesSection(props: { recipe: Recipe; editor: PageEditor }) {
   const { recipe, editor } = props;
-  const frame = useSectionFrame(editor, 'notes', 'Notizen');
-  const draft = editor.draft?.section === 'notes' ? editor.draft : undefined;
+  const draft = editor.draft?.notes;
   return (
-    <EditableSection {...frame} testID="recipe-notes">
+    <RecipeSection title="Notizen" testID="recipe-notes">
       {draft ? (
         <Stack gap={10}>
           <TextField
@@ -23,7 +22,6 @@ export function NotesSection(props: { recipe: Recipe; editor: SectionEditor }) {
             autoFocus
             testID="recipe-notes-input"
           />
-          <SectionError editor={editor} testID="recipe-notes-error" />
         </Stack>
       ) : recipe.notes ? (
         <Text selectable testID="recipe-notes-text">
@@ -32,6 +30,6 @@ export function NotesSection(props: { recipe: Recipe; editor: SectionEditor }) {
       ) : (
         <Text color="muted">Noch keine Notizen.</Text>
       )}
-    </EditableSection>
+    </RecipeSection>
   );
 }

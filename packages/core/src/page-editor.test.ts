@@ -178,6 +178,8 @@ describe('"+ Rezept" while editing a collection', () => {
     const added: CollectionContent = {
       row: { id: 'cr-hummus', collectionId: grillabend.id, recipeId: hummus.id, sort: 2 },
       recipe: hummus,
+      servings: 6,
+      inherits: true,
     };
     const next = withNewContents(editedPage, [...grillContents, added]);
     expect(next.contents?.rows.map((row) => [row.id, row.servings])).toEqual([
@@ -227,6 +229,14 @@ describe('the edit mode state (spec 0037, REQ-001)', () => {
     expect(invalid.attempted).toBe(true);
     const typed = pageEditorReducer({ ...invalid, error: 'x' }, { type: 'change', draft: page });
     expect(typed).toEqual({ draft: page, attempted: true });
+  });
+
+  it('"+ Rezept" while editing: rows put in join the draft; nothing new keeps the state', () => {
+    const collection = pageEditorReducer({}, { type: 'open', draft: pageDraft(grillabend, []) });
+    const next = pageEditorReducer(collection, { type: 'contents', contents: grillContents });
+    expect(next.draft?.contents?.rows).toHaveLength(grillContents.length);
+    expect(pageEditorReducer(next, { type: 'contents', contents: grillContents })).toBe(next);
+    expect(pageEditorReducer({}, { type: 'contents', contents: grillContents })).toEqual({});
   });
 
   it('changes while closed or saving are ignored', () => {
@@ -338,7 +348,7 @@ describe('"Aus Rezept übernehmen" (spec 0037, REQ-003)', () => {
       { kind: 'article', articleId: 'art-salz' },
     ]);
     // A copy: changing the source afterwards changes nothing here.
-    const source = structuredClone(pizzateig);
+    const source: Recipe = { ...pizzateig, ingredients: [...pizzateig.ingredients] };
     const copy = copyIngredientsFrom(draft, source, 4, newKey);
     source.ingredients[0] = { ...pizzateig.ingredients[0]!, amount: parseAmount('1 kg') };
     if (!('draft' in copy)) throw new Error('draft expected');

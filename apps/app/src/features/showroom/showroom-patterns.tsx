@@ -15,7 +15,6 @@ import {
   Chip,
   Disclosure,
   DockedPanel,
-  EditableSection,
   EmptyState,
   FilterBar,
   Icon,
@@ -94,7 +93,6 @@ export function usePatternBlocks(): ReactNode[] {
     <FilterBlock key="filter" />,
     <ReorderBlock key="reorder" />,
     <MenuBlock key="menu" />,
-    <EditableSectionBlock key="editable" />,
     <TitleBarBlock key="titlebar" />,
     <MemberRatingsBlock key="ratings" />,
     <ExpiringToastBlock key="expire" />,
@@ -962,80 +960,6 @@ function MenuBlock() {
         Sortierung: {SAMPLE_SORTS.find((s) => s.value === sort)?.label}
         {action ? ` · zuletzt gewählt: ${action}` : ''}
       </Text>
-    </Block>
-  );
-}
-
-type SampleSection = 'notizen' | 'zubereitung';
-
-function EditableSectionBlock() {
-  const [open, setOpen] = useState<SampleSection>();
-  const [offline, setOffline] = useState(false);
-  const [notes, setNotes] = useState('Mit doppelt Béchamel noch besser.');
-  const [draft, setDraft] = useState(notes);
-  const [error, setError] = useState<string>();
-  const edit = (section: SampleSection) => {
-    // Switching saves the open section, as "Fertig" does (spec 0008, AC-028).
-    if (open === 'notizen') setNotes(draft);
-    setDraft(notes);
-    setError(undefined);
-    setOpen(section);
-  };
-  const done = () => {
-    if (open === 'notizen' && draft.trim() === '') {
-      setError('Notiz fehlt');
-      return;
-    }
-    if (open === 'notizen') setNotes(draft);
-    setOpen(undefined);
-  };
-  return (
-    <Block
-      title="Abschnitt bearbeiten"
-      note="Stift öffnet genau einen Abschnitt, „Fertig“ schließt ihn. Ein anderer Stift speichert den offenen. Offline sind die Stifte ausgegraut."
-      testID="showroom-editable"
-    >
-      <SwitchRow label="Offline" value={offline} onValueChange={setOffline} />
-      <EditableSection
-        title="Notizen"
-        editing={open === 'notizen'}
-        onEdit={() => edit('notizen')}
-        onDone={done}
-        editLabel="Notizen bearbeiten"
-        doneLabel="Fertig"
-        disabled={offline}
-        hint={offline ? OFFLINE_HINT : undefined}
-        testID="showroom-editable-notes"
-      >
-        {open === 'notizen' ? (
-          <TextField
-            accessibilityLabel="Notizen"
-            value={draft}
-            onChangeText={setDraft}
-            multiline
-            error={error}
-          />
-        ) : (
-          <Text testID="showroom-editable-notes-text">{notes}</Text>
-        )}
-      </EditableSection>
-      <EditableSection
-        title="Zubereitung"
-        editing={open === 'zubereitung'}
-        onEdit={() => edit('zubereitung')}
-        onDone={done}
-        editLabel="Zubereitung bearbeiten"
-        doneLabel="Fertig"
-        disabled={offline}
-        hint={offline ? OFFLINE_HINT : undefined}
-        testID="showroom-editable-steps"
-      >
-        <Text color={open === 'zubereitung' ? 'text' : 'muted'}>
-          {open === 'zubereitung'
-            ? 'Hier stünden die Felder der Schritte.'
-            : '1. Kichererbsen kochen · 2. Pürieren · 3. Abschmecken'}
-        </Text>
-      </EditableSection>
     </Block>
   );
 }
