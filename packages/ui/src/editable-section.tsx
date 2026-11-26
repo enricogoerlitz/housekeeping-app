@@ -4,6 +4,7 @@ import { Platform, View, type HostInstance } from 'react-native';
 import { Button, IconButton } from './controls';
 import { Section } from './lists';
 import { Row } from './primitives';
+import { revealInScrollParent } from './scroll-reveal';
 
 export interface EditableSectionProps {
   title: string;
@@ -84,11 +85,9 @@ export function EditableSection(props: EditableSectionProps) {
 
   useEffect(() => {
     if (!editing || !scrollOnOpen || Platform.OS !== 'web' || typeof window === 'undefined') return;
-    const node = box.current as unknown as {
-      scrollIntoView?: (options: { block: 'start'; behavior: 'auto' | 'smooth' }) => void;
-    } | null;
+    // Spec 0033, AC-012: only a section not fully in view scrolls, and only its own scroll area.
     const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
-    node?.scrollIntoView?.({ block: 'start', behavior: reduced ? 'auto' : 'smooth' });
+    revealInScrollParent(box.current, { align: 'start', smooth: !reduced });
   }, [editing, scrollOnOpen]);
 
   const id = (part: string) => (props.testID ? `${props.testID}-${part}` : undefined);

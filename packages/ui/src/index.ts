@@ -38,7 +38,15 @@ export {
 } from './display';
 export { ViewTabs, ChoiceChips, Menu, type ChoiceOption, type MenuOption } from './choice';
 export { ariaRef, useSoftDisabled } from './hint';
-export { Sheet, toast, ToastHost, useToastClearance, type SheetAction } from './overlay';
+export {
+  Sheet,
+  toast,
+  ToastHost,
+  useToastAvoid,
+  useToastClearance,
+  type SheetAction,
+} from './overlay';
+export { pickImageFile } from './pick-image';
 export { useKeyboard } from './keyboard';
 export { tabSwipe, type TabSwipe } from './tab-swipe';
 export { useFinePointer, useHover } from './pointer';

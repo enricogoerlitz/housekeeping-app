@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
+import type { ReactElement } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { Modal, TextInput } from 'react-native';
@@ -166,43 +167,59 @@ describe('EditableSection "Abbrechen" (spec 0023, REQ-003)', () => {
   });
 });
 
-describe('EditableSection scrollOnOpen (spec 0023, AC-012)', () => {
-  const scrollIntoView = vi.fn();
+describe('EditableSection scrollOnOpen (spec 0023, AC-012; spec 0033, REQ-004)', () => {
   const matchMedia = window.matchMedia;
+  const rect = HTMLElement.prototype.getBoundingClientRect;
+  let page: HTMLDivElement;
+  const scrollTo = vi.fn();
   afterEach(() => {
-    scrollIntoView.mockReset();
-    delete (HTMLElement.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    scrollTo.mockReset();
+    page.remove();
+    HTMLElement.prototype.getBoundingClientRect = rect;
     Object.defineProperty(window, 'matchMedia', { configurable: true, value: matchMedia });
   });
-  const mockScroll = () =>
-    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
-      configurable: true,
-      value: scrollIntoView,
-    });
 
-  it('AC-012: opened, the head scrolls to the top, smoothly', () => {
-    mockScroll();
-    const { rerender } = render(section({ scrollOnOpen: true }));
-    expect(scrollIntoView).not.toHaveBeenCalled();
+  /** Renders into a scroll area spanning 100–700 px; the section stands at `top`, 200 high. */
+  function inPage(element: ReactElement, top: number) {
+    page = document.createElement('div');
+    page.style.overflowY = 'auto';
+    page.scrollTop = 300;
+    page.scrollTo = scrollTo as unknown as typeof page.scrollTo;
+    page.getBoundingClientRect = () => ({ top: 100, bottom: 700 }) as DOMRect;
+    HTMLElement.prototype.getBoundingClientRect = () => ({ top, bottom: top + 200 }) as DOMRect;
+    document.body.append(page);
+    return render(element, { container: page.appendChild(document.createElement('div')) });
+  }
+
+  it('spec 0033, AC-012: a section fully in view does not scroll the page', () => {
+    const { rerender } = inPage(section({ scrollOnOpen: true }), 200);
     rerender(section({ scrollOnOpen: true, editing: true }));
-    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'start', behavior: 'smooth' });
+    expect(scrollTo).not.toHaveBeenCalled();
+  });
+
+  it('AC-012: a section partly out of view scrolls its head to the top, smoothly, once', () => {
+    const { rerender } = inPage(section({ scrollOnOpen: true }), 600);
+    expect(scrollTo).not.toHaveBeenCalled();
+    rerender(section({ scrollOnOpen: true, editing: true }));
+    expect(scrollTo).toHaveBeenCalledTimes(1);
+    expect(scrollTo).toHaveBeenCalledWith({ top: 800, behavior: 'smooth' });
   });
 
   it('AC-012: with reduced motion it jumps', () => {
-    mockScroll();
     Object.defineProperty(window, 'matchMedia', {
       configurable: true,
       value: (query: string) => ({ matches: query.includes('prefers-reduced-motion') }),
     });
-    render(section({ scrollOnOpen: true, editing: true, inline: true }));
-    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'start', behavior: 'auto' });
+    const { rerender } = inPage(section({ scrollOnOpen: true, inline: true }), 600);
+    rerender(section({ scrollOnOpen: true, editing: true, inline: true }));
+    expect(scrollTo).toHaveBeenCalledWith({ top: 800, behavior: 'auto' });
   });
 
   it('without scrollOnOpen nothing scrolls', () => {
-    mockScroll();
+    const { rerender } = inPage(section(), 600);
     act(() => {
-      render(section({ editing: true }));
+      rerender(section({ editing: true }));
     });
-    expect(scrollIntoView).not.toHaveBeenCalled();
+    expect(scrollTo).not.toHaveBeenCalled();
   });
 });
