@@ -178,7 +178,7 @@ describe('spec 0020 REQ-006: the prep lines under the Tagesleiste', () => {
     ]);
   });
 
-  it('a Vorlauf the editor never writes (1.5 h, 0 h, over 168 h) is no line, as in SQL', () => {
+  it('a Vorlauf the editor never writes (1.5 h, 0 h, over 168 h) is no line', () => {
     for (const hoursBefore of [1.5, 0, 169, 2000000000]) {
       const odd = makeRecipe({ id: 'odd', title: 'Odd', leadTime: { text: 'x', hoursBefore } });
       const input: PrepInput = {

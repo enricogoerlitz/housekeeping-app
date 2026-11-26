@@ -30,7 +30,8 @@ export const ID_TABLES = [
   'packing_bag_items',
   'packing_list_bags',
   'packing_items',
-  // Spec 0013: one row per member, readable only by herself (RLS); created by the server.
+  // Spec 0013, 0051: one row per member, readable only by herself (RLS); created by the server;
+  // her acknowledged notices, written only through acknowledge_notices.
   'notification_settings',
 ] as const;
 
@@ -204,16 +205,8 @@ export const WRITABLE_COLUMNS = {
     'bag_item_id',
     'from_bag',
   ],
-  // Spec 0013, Decision 3: only these are patched, never household_id or member_id.
-  notification_settings: [
-    'daily_summary_enabled',
-    'daily_summary_at',
-    'daily_summary_parts',
-    'activities_eve_enabled',
-    'activities_eve_at',
-    'chore_reminders_enabled',
-    'entry_reminders_enabled',
-  ],
+  // Spec 0051: nothing is patched; acknowledged_notices changes only through acknowledge_notices.
+  notification_settings: [],
 } as const satisfies Record<IdTable | 'households', readonly string[]>;
 
 export type WritableTable = keyof typeof WRITABLE_COLUMNS;

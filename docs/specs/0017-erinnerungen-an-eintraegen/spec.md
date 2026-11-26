@@ -5,6 +5,10 @@ datum: 2026-11-22
 
 # 0017 — Erinnerungen an Kalendereinträgen
 
+> **Teilweise abgelöst durch Spec 0051 (26.11.2026):** REQ-005 (Zustellen per Web Push) und REQ-007
+> (je Person und je Gerät) gelten nicht mehr; eine fällige Erinnerung erscheint als Mitteilung in
+> der App (Glocke). REQ-001 bis REQ-004 und REQ-006 gelten weiter.
+
 ## Problem
 
 Wer am Samstag Lasagne plant, muss selbst daran denken, am Freitag das Fleisch aus dem Tiefkühler zu

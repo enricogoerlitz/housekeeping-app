@@ -14,7 +14,7 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test && pnpm test:scripts",
-    "test:scripts": "node --test scripts/push-keys.test.mjs scripts/api-schemas.test.mjs scripts/prod-bootstrap.test.mjs scripts/preview-invites.test.mjs scripts/reset-app-data.test.mjs \"scripts/ci/*.test.mjs\" \"scripts/backup/*.test.mjs\" \"scripts/release/*.test.mjs\" e2e/serve.test.mjs",
+    "test:scripts": "node --test scripts/api-schemas.test.mjs scripts/prod-bootstrap.test.mjs scripts/preview-invites.test.mjs scripts/reset-app-data.test.mjs \"scripts/ci/*.test.mjs\" \"scripts/backup/*.test.mjs\" \"scripts/release/*.test.mjs\" e2e/serve.test.mjs",
     "check": "node scripts/gen-edge.mjs --check && tsx scripts/gen-seed.ts --check && pnpm test:scripts && pnpm knip && turbo run lint typecheck test",
     "knip": "knip --no-progress",
     "gen:edge": "node scripts/gen-edge.mjs",

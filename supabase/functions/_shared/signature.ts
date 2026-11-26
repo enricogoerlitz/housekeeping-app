@@ -1,4 +1,4 @@
-// Requests the database sends through pg_net (push-send, spec 0013; media-sweep, spec 0039): an
+// Requests the database sends through pg_net (media-sweep, spec 0039): an
 // HMAC-SHA256 over "<timestamp>.<body>" with a secret shared between the Vault and the function,
 // in hex, next to the timestamp in Unix seconds. The secret itself never sits in pg_net's queue.
 

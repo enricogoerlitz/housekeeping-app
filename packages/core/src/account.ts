@@ -3,8 +3,8 @@ import { householdClock } from './reminder';
 import type { DietPreference, FeedbackEntry, Id, Member } from './types';
 
 // Spec 0027 "Verwalten und Konto": the words and checks of invitations, the own profile, renaming
-// and deleting a household, the own feedback, the household of "Benachrichtigungen" and
-// "Jetzt abgleichen". The server checks the same (supabase migration manage_household_and_account).
+// and deleting a household, the own feedback and "Jetzt abgleichen"
+// (spec 0051: the household of "Benachrichtigungen" is gone with Web Push). The server checks the same (supabase migration manage_household_and_account).
 
 // ---------- Invitations (REQ-001, REQ-002) ----------
 
@@ -193,22 +193,6 @@ export function feedbackDeletePrompt(
 /** AC-028, Decision 10: above the filters, without a person's name. */
 export const FEEDBACK_STATUS_NOTE =
   'Den Status setzt der Entwickler der App, wenn er ein Feedback bearbeitet hat.';
-
-// ---------- Notifications per household (REQ-008) ----------
-
-/** AC-032, AC-034: the household of `fuer-haushalt` when it is one of mine, else the active. */
-export function notificationsHouseholdId(
-  requested: Id | undefined,
-  ownIds: readonly Id[],
-  activeId: Id,
-): Id {
-  return requested !== undefined && ownIds.includes(requested) ? requested : activeId;
-}
-
-/** Under the choice (AC-032). */
-export function kindsScopeNote(householdName: string): string {
-  return `Gilt für „${householdName}“ auf allen deinen Geräten.`;
-}
 
 // ---------- "Jetzt abgleichen" (REQ-010) ----------
 

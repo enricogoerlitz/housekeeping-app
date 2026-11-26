@@ -19,7 +19,7 @@ Ablauf und Regeln: siehe `AGENTS.md`, Abschnitt „Workflow per feature“.
 | [0010](0010-kalender-abwesenheiten/spec.md)                 | Kalender und Abwesenheiten                                             | freigegeben |
 | [0011](0011-heute-haushalt/spec.md)                         | Übersicht und Haushalt                                                 | umgesetzt   |
 | [0012](0012-reisetaschen/spec.md)                           | Reisetaschen                                                           | umgesetzt   |
-| [0013](0013-benachrichtigungen/spec.md)                     | Benachrichtigungen                                                     | umgesetzt   |
+| [0013](0013-benachrichtigungen/spec.md)                     | Benachrichtigungen (Web Push abgelöst durch 0051)                      | umgesetzt   |
 | [0014](0014-betrieb-ci-cd-release/spec.md)                  | Betrieb: Branching, CI/CD und Release (Welle 6, nach 0013)             | freigegeben |
 | [0015](0015-native-apps-anmeldung-speicher/spec.md)         | Native Apps (geparkt, nur PWA)                                         | entwurf     |
 | [0016](0016-kalender-direkt-bedienen/spec.md)               | Kalender direkt bedienen: Ziehen, Tages-Fenster, Reisen                | freigegeben |
@@ -56,6 +56,7 @@ Ablauf und Regeln: siehe `AGENTS.md`, Abschnitt „Workflow per feature“.
 | [0047](0047-feinschliff-teilen-foto-links-kalender/spec.md) | Feinschliff: Teilen, Foto-Fenster, „+ Link“, Foto im Plan-Eintrag      | freigegeben |
 | [0048](0048-sicherung-ohne-videos/spec.md)                  | Sicherung ohne Videos                                                  | freigegeben |
 | [0050](0050-zutaten-vorschlaege-beim-einfuegen/spec.md)     | Zutaten einfügen: Vorschläge beim Tippen und Vorschau                  | freigegeben |
+| [0051](0051-mitteilungen-in-der-app-statt-push/spec.md)     | Mitteilungen in der App statt Push                                     | freigegeben |
 | [0052](0052-bildprompt-aufbereitung/spec.md)                | Bild-Prompt aufbereiten: aus einem kurzen Wunsch drei gute Bilder      | freigegeben |
 
 ## Welle 2 (0019–0028): Bau-Reihenfolge und Regeln

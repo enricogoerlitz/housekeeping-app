@@ -3,15 +3,9 @@ import {
   useCurrentMember,
   useHousehold,
   useHouseholdClock,
-  useNotificationSettings,
   useSyncState,
 } from '@housekeeping/api';
-import {
-  dietPreferenceLabel,
-  notificationsRowLabel,
-  syncRow,
-  thisDeviceRegistered,
-} from '@housekeeping/core';
+import { dietPreferenceLabel, syncRow } from '@housekeeping/core';
 import {
   Avatar,
   Button,
@@ -31,16 +25,10 @@ import {
   useBreakpoint,
 } from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { View } from 'react-native';
 
 import { useSignedInEmail } from '@/features/household/household-forms';
-import { loadDevicePushState, useDevicePushState } from '@/features/notifications/device-store';
-import {
-  NotificationsContent,
-  NotificationsScreen,
-} from '@/features/notifications/notifications-screen';
-import { devicePushSupport } from '@/features/notifications/web-push-platform';
 import { useOnlineOnly } from '@/features/shell/offline';
 import { ScrollColumn } from '@/features/shell/scroll-column';
 import { ownAppVersion } from '@/lib/app-version';
@@ -53,46 +41,40 @@ import { useSignOut } from './sign-out';
 import { ThemePicker } from './theme-picker';
 import { errorMessage } from '@/features/shell/error-message';
 
-export type SettingsSection = 'profile' | 'appearance' | 'ai' | 'notifications';
+export type SettingsSection = 'profile' | 'appearance' | 'ai';
 
 /** The section in the address, `?abschnitt=…` (spec 0019, REQ-014). */
 const SECTION_OF_SLUG = {
   profil: 'profile',
   darstellung: 'appearance',
   ki: 'ai',
-  benachrichtigungen: 'notifications',
 } as const satisfies Record<string, SettingsSection>;
 const SLUG_OF_SECTION = {
   profile: 'profil',
   appearance: 'darstellung',
   ai: 'ki',
-  notifications: 'benachrichtigungen',
 } as const satisfies Record<SettingsSection, keyof typeof SECTION_OF_SLUG>;
 
 const SECTION_TITLES: Record<SettingsSection, string> = {
   profile: 'Profil',
   appearance: 'Darstellung',
   ai: 'KI',
-  notifications: 'Benachrichtigungen',
 };
 
 /**
- * The personal settings behind the avatar (spec 0005, AC-055): profile, appearance, AI,
- * notifications, sign-out. Everything about the household is under "Verwalten". Phones show the
- * sections one below the other and "Benachrichtigungen" as a page of its own; from tablet width
- * the settings are a list with the chosen section beside it (spec 0013, AC-002, Decision 25).
- * `section` is what the route opens: `/einstellungen/benachrichtigungen` → "notifications".
+ * The personal settings behind the avatar (spec 0005, AC-055): profile, appearance, AI, sign-out.
+ * Everything about the household is under "Verwalten". Phones show the sections one below the
+ * other; from tablet width the settings are a list with the chosen section beside it. Spec 0051:
+ * "Benachrichtigungen" is gone with Web Push; notices live behind the bell.
  */
-export function SettingsScreen(props: { section?: SettingsSection }) {
+export function SettingsScreen() {
   const router = useRouter();
   const { isPhone } = useBreakpoint();
   const address = usePageParams('einstellungen');
   const slug = address.params.abschnitt;
-  const chosen: SettingsSection = slug ? SECTION_OF_SLUG[slug] : (props.section ?? 'profile');
+  const chosen: SettingsSection = slug ? SECTION_OF_SLUG[slug] : 'profile';
   const setChosen = (next: SettingsSection) =>
     address.replace({ abschnitt: next === 'profile' ? undefined : SLUG_OF_SECTION[next] });
-
-  if (isPhone && props.section === 'notifications') return <NotificationsScreen />;
 
   const back = () => (router.canGoBack() ? router.back() : router.replace('/'));
   const header = <ScreenHeader title="Einstellungen" onBack={back} />;
@@ -101,7 +83,6 @@ export function SettingsScreen(props: { section?: SettingsSection }) {
     return (
       <Screen testID="settings" clearFab={false} header={header}>
         <ProfileSection withSignOut />
-        <NotificationsRow onPress={() => router.push('/einstellungen/benachrichtigungen')} />
         <AppearanceSection />
         {features.ai ? <AiSection /> : null}
         <VersionLine />
@@ -110,8 +91,8 @@ export function SettingsScreen(props: { section?: SettingsSection }) {
   }
 
   const sections: SettingsSection[] = features.ai
-    ? ['profile', 'appearance', 'ai', 'notifications']
-    : ['profile', 'appearance', 'notifications'];
+    ? ['profile', 'appearance', 'ai']
+    : ['profile', 'appearance'];
   return (
     <Screen
       testID="settings"
@@ -134,10 +115,8 @@ export function SettingsScreen(props: { section?: SettingsSection }) {
             <ProfileSection />
           ) : chosen === 'appearance' ? (
             <AppearanceSection />
-          ) : chosen === 'ai' ? (
-            <AiSection />
           ) : (
-            <NotificationsContent />
+            <AiSection />
           )
         }
         placeholder={{ icon: 'settings', title: 'Wähl links eine Einstellung' }}
@@ -153,7 +132,6 @@ function SettingsList(props: {
   chosen: SettingsSection;
   onChoose: (section: SettingsSection) => void;
 }) {
-  const notifications = useNotificationsRowLabel();
   const signOut = useSignOut();
   return (
     <>
@@ -162,9 +140,6 @@ function SettingsList(props: {
           <ListRow
             key={section}
             title={SECTION_TITLES[section]}
-            // Under the title, so the narrow list of a tablet keeps the title whole (spec 0031,
-            // ui-verify of REQ-033).
-            subtitle={section === 'notifications' ? notifications : undefined}
             selected={section === props.chosen}
             onPress={() => props.onChoose(section)}
             testID={`settings-nav-${section}`}
@@ -180,52 +155,6 @@ function SettingsList(props: {
       </List>
       {signOut.dialog}
     </>
-  );
-}
-
-/**
- * "2 an · dieses Gerät aus" or "2 an" (AC-001, spec 0018 AC-022), from what this device remembers
- * about its registration, so it works offline. Undefined until the settings are loaded.
- */
-function useNotificationsRowLabel(): string | undefined {
-  const settings = useNotificationSettings();
-  const device = useDevicePushState();
-  useEffect(() => {
-    void loadDevicePushState();
-  }, []);
-  if (!settings) return undefined;
-  const deviceOn = thisDeviceRegistered({
-    support: devicePushSupport(),
-    wanted: device.wanted,
-    ...(device.endpoint ? { storedEndpoint: device.endpoint } : {}),
-  });
-  return notificationsRowLabel(settings, deviceOn);
-}
-
-/** "Benachrichtigungen · 2 an ›" on phones (AC-001). */
-function NotificationsRow(props: { onPress: () => void }) {
-  const label = useNotificationsRowLabel();
-  return (
-    <Section testID="settings-notifications">
-      <List>
-        <ListRow
-          title="Benachrichtigungen"
-          leading={<Icon name="bell" color="muted" />}
-          trailing={
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-              {label ? (
-                <Text variant="small" color="muted" testID="settings-notifications-summary">
-                  {label}
-                </Text>
-              ) : null}
-              <Icon name="chevron-right" color="muted" />
-            </View>
-          }
-          onPress={props.onPress}
-          testID="settings-notifications-row"
-        />
-      </List>
-    </Section>
   );
 }
 

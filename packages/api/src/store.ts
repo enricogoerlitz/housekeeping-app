@@ -60,8 +60,8 @@ export interface HouseholdData {
   packingListBags: PackingListBag[];
   packingItems: PackingItem[];
   /**
-   * Spec 0013: the signed-in member's own "Benachrichtigungs-Einstellungen" in this household
-   * (created by the server; undefined until the first pull brought it).
+   * The signed-in member's own row of notification_settings in this household (created by the
+   * server; undefined until the first pull brought it): her acknowledged notices (spec 0051).
    */
   notificationSettings?: NotificationSettings;
 }
@@ -263,27 +263,6 @@ export function commit<T>(spec: CommitSpec<T>, run: () => T): T {
   // inner one runs as part of the outer commit.
   if (committing) return run();
   return record(requireBackend(), spec, run);
-}
-
-/**
- * Like commit, for another household than the one the app shows (spec 0027, REQ-008: the
- * notification settings of another household): the change is recorded for `householdId`, and
- * the app stays in its household. An unknown household throws.
- */
-export function commitIn<T>(householdId: string, spec: CommitSpec<T>, run: () => T): T {
-  const original = getState().activeHouseholdId;
-  if (householdId === original) return commit(spec, run);
-  if (!getState().households[householdId]) throw new Error(`Unknown household ${householdId}`);
-  state = { ...getState(), activeHouseholdId: householdId };
-  try {
-    return commit(spec, run);
-  } finally {
-    const current = getState();
-    if (current.activeHouseholdId !== original) {
-      state = { ...current, activeHouseholdId: original };
-      notify();
-    }
-  }
 }
 
 /** One of the four store actions (ADR-0008 addendum): queued, shown at once, works offline. */

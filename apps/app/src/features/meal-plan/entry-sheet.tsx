@@ -52,7 +52,6 @@ import {
   TimeField,
   toast,
 } from '@housekeeping/ui';
-import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 
@@ -102,7 +101,6 @@ export function EntrySheet(props: {
   /** "Verschieben" first: the screen reader's way to move an entry (spec 0016, platforms). */
   moveFirst?: boolean;
 }) {
-  const router = useRouter();
   const entries = usePlanEntries();
   const recipesById = useRecipesById();
   const restaurantsById = useRestaurantsById();
@@ -552,10 +550,6 @@ export function EntrySheet(props: {
             form={reminder}
             disabled={online.disabled}
             hint={online.hint}
-            onOpenSettings={() => {
-              props.onClose();
-              router.push('/einstellungen/benachrichtigungen');
-            }}
             entryTitle={title}
             afterStart={entry.reminder ? reminderAfterStart(entry.reminder, startsAt) : false}
             testID="entry-reminder"

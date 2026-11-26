@@ -117,7 +117,6 @@ jobs:
       # Public values only (they end up in the bundle anyway).
       EXPO_PUBLIC_SUPABASE_URL: ${{ vars.PRODUCTION_SUPABASE_URL }}
       EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.PRODUCTION_SUPABASE_PUBLISHABLE_KEY }}
-      EXPO_PUBLIC_VAPID_PUBLIC_KEY: ${{ vars.PRODUCTION_VAPID_PUBLIC_KEY }}
       EXPO_PUBLIC_APP_VERSION: ${{ needs.version.outputs.version }}
       VERSION: ${{ needs.version.outputs.version }}
     steps:
@@ -131,9 +130,9 @@ jobs:
           cache: pnpm
       - name: Variablen vorhanden
         run: |
-          for name in EXPO_PUBLIC_SUPABASE_URL EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY EXPO_PUBLIC_VAPID_PUBLIC_KEY; do
+          for name in EXPO_PUBLIC_SUPABASE_URL EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY; do
             if [ -z "${!name}" ]; then
-              echo "::error::Variable für $name fehlt (PRODUCTION_SUPABASE_URL, PRODUCTION_SUPABASE_PUBLISHABLE_KEY, PRODUCTION_VAPID_PUBLIC_KEY)"
+              echo "::error::Variable für $name fehlt (PRODUCTION_SUPABASE_URL, PRODUCTION_SUPABASE_PUBLISHABLE_KEY)"
               exit 1
             fi
           done
@@ -292,14 +291,12 @@ jobs:
         # After the migrations: the hook points at a function they create (AC-040).
         run: supabase config push --remote="$SUPABASE_PROJECT_REF" --yes
       - name: Functions
-        # Docker bundling (no --use-api), so the frozen deno.lock of push-send applies (AC-074);
+        # Docker bundling (no --use-api), as the deploy of every function;
         # --prune removes functions that left the repo (AC-044).
         run: supabase functions deploy --remote="$SUPABASE_PROJECT_REF" --prune --yes
       - name: Secrets der Functions
-        # AC-045: only the allowed origin; never FOUNDRY_*, push values are Enrico's (runbook C6).
-        # Fixed values of [edge_runtime.secrets] in config.toml are pushed too; every one is
-        # overridden here so no local value (VAPID_SUBJECT = https://localhost) reaches the project.
-        run: supabase secrets set --remote="$SUPABASE_PROJECT_REF" --yes "ALLOWED_ORIGINS=$PRODUCTION_WEB_ORIGIN" "VAPID_SUBJECT=$PRODUCTION_WEB_ORIGIN"
+        # AC-045: only the allowed origin; never FOUNDRY_*.
+        run: supabase secrets set --remote="$SUPABASE_PROJECT_REF" --yes "ALLOWED_ORIGINS=$PRODUCTION_WEB_ORIGIN"
 
   web-ausliefern:
     name: Web ausliefern v${{ needs.version.outputs.version }}

@@ -366,17 +366,11 @@ export const packingBagItems: PackingBagItem[] = [
   ]),
 ];
 
-/** The defaults of a new member's row, as the column defaults set them (spec 0013, AC-011). */
+/** A new member's row (spec 0051): nothing acknowledged yet. */
 export const notificationDefaults: NotificationSettings = {
   id: 'ns-enrico',
   memberId: enrico.id,
-  dailySummaryEnabled: false,
-  dailySummaryAt: '07:30',
-  dailySummaryParts: ['meals', 'activities', 'chores', 'prep'],
-  activitiesEveEnabled: false,
-  activitiesEveAt: '19:00',
-  choreRemindersEnabled: true,
-  entryRemindersEnabled: true,
+  acknowledgedNotices: [],
 };
 
 /** A trip of these people; the rows of trip_members get ids "<trip>:<member>". */

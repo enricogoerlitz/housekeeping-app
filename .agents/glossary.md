@@ -208,9 +208,8 @@ wählt den Tag, darunter stehen die [Vorbereitungszeilen](#vorbereitungszeile) u
 - **Nicht verwenden:** Heute (für den Tab oder die Seite), Start, Dashboard, Home
 - **Abgrenzung:** „Heute“ bleibt das Wort für den heutigen Tag: der Knopf „Heute“ führt in der
   Übersicht und im Kalender zum heutigen Tag zurück; „Heute geplant“ ist ein Abschnitt. Das
-  _Layout „Übersicht“_ (Spec 0005) ist das Desktop-Layout dieser Seite, kein zweiter Begriff. Der
-  _Tagesüberblick_ ist eine Benachrichtigung (Spec 0013).
-- **Siehe auch:** [Kalender](#kalender), [Tagesüberblick](#tagesüberblick)
+  _Layout „Übersicht“_ (Spec 0005) ist das Desktop-Layout dieser Seite, kein zweiter Begriff.
+- **Siehe auch:** [Kalender](#kalender), [Mitteilung](#mitteilung)
 
 ### Tagesleiste
 
@@ -769,16 +768,15 @@ bedienbar, ab 700 px steht es rechts neben dem Raster (Spec 0016, REQ-006, Entwu
 
 ### Erinnerung
 
-Eine Benachrichtigung, die jemand an einem einzelnen Planeintrag einschaltet, mit Tag und Uhrzeit;
-ohne Einschalten kommt keine (Spec 0017). Sie geht mit, wenn der Eintrag verschoben wird. Die Art
-auf der Seite „Benachrichtigungen“ heißt „Erinnerungen an Einträgen“.
+Was jemand an einem einzelnen Planeintrag einschaltet, mit Tag und Uhrzeit; ohne Einschalten gibt
+es keine (Spec 0017). Sie geht mit, wenn der Eintrag verschoben wird. Zu ihrem Zeitpunkt wird sie
+eine [Mitteilung](#mitteilung) an der Glocke (Spec 0051).
 
 - **Im Code:** Spalten `reminder_day_offset`, `reminder_at`, `reminder_text` an `meal_plan_entries`;
-  Einstellung `entry_reminders_enabled`; Art `entry_reminder`; core `reminder.ts`
+  core `reminder.ts`; als Mitteilung Art `entryReminder`
 - **Abgrenzung:** Eine eigene _Reservierungs-Erinnerung_ („Erinnern 2 h vorher“, Spec 0013) gibt es
   seit Spec 0021 nicht mehr; sie geht in diese Erinnerung auf (Uhrzeit am Eintrag setzen schaltet sie
-  ein, 2 Stunden vorher). Der _Tagesüberblick_ und „Aktivitäten am Vortag“
-  sind Arten von Benachrichtigungen je Person, keine Erinnerungen an einem Eintrag.
+  ein, 2 Stunden vorher).
 - **Nicht verwenden:** Alarm, Wecker, Termin
 
 ### Reise-Streifen
@@ -973,8 +971,8 @@ jeder Tab-Startseite (Spec 0005, D2, D30).
 
 ### Einstellungen
 
-Die persönlichen Einstellungen hinter dem Avatar: Profil, Darstellung, ab Spec 0013
-Benachrichtigungen, Abmelden. Alles, was den Haushalt betrifft, steht unter „Verwalten“ (Spec
+Die persönlichen Einstellungen hinter dem Avatar: Profil, Darstellung, KI, Abmelden (die Seite
+„Benachrichtigungen“ von Spec 0013 ist mit Spec 0051 entfallen). Alles, was den Haushalt betrifft, steht unter „Verwalten“ (Spec
 0005, D28).
 
 - **Im Code:** Adresse `/einstellungen`
@@ -995,81 +993,38 @@ und Packstücke sofort beim Tipp (Spec 0006; Spec 0012, Offene Frage 3), Aufgabe
 - **Nicht verwenden:** Verzögerung, Debounce (außer im Code), Rückgängig-Fenster
 - **Abgrenzung:** Im Vorratscheck ist der Haken eine Auswahl, kein Abhaken.
 
-### Tagesüberblick
+### Mitteilung
 
-Die eine Benachrichtigung am Morgen mit dem eigenen Teil des Tages: Essen (Rezepte, Sammlungen,
-Restaurants), Aktivitäten, fällige und überfällige Aufgaben, Vorbereitung für morgen; je Person
-Uhrzeit (Standard 7:30) und Teile wählbar, am Anfang aus. Kommt nur, wenn es etwas gibt (Spec 0013,
-D37).
+Was für die angemeldete Person gerade ansteht, an der Glocke oben gezählt (roter Kreis mit Zahl,
+ab 10 „9+“) und im Fenster „Mitteilungen“ gelistet (Spec 0051): fällige Erinnerungen an Einträgen,
+Aufgaben mit Uhrzeit ab der Uhrzeit für wer dran ist, heutiger Vorlauf, „Du kochst“ heute und
+Aktivitäten ab 19 Uhr am Vortag. Entsteht auf dem Gerät aus dem lokalen Speicher; während einer
+eigenen Reise gibt es keine. Ein Tipp öffnet den Eintrag oder die Aufgabe.
 
-- **Im Code:** Art `dailySummary` (`NotificationKind`); Felder `dailySummaryEnabled`,
-  `dailySummaryAt`, `dailySummaryParts` (`DailySummaryPart`: `meals`, `activities`, `chores`,
-  `prep`), Spalten `daily_summary_*`
-- **Nicht verwenden:** Tageszusammenfassung (Feature-Konzept F1), Morgen-Nachricht, Digest
+- **Im Code:** `Notice`, `dueNotices` (core `notices.ts`), Arten `NoticeKind`; Glocke `NoticeBell`
+  (`features/notices`), Zähler `WithBadge`
+- **Nicht verwenden:** Benachrichtigung, Push, Notification (in der Oberfläche)
 
-### Benachrichtigungs-Einstellungen
+### Bestätigen (Mitteilung)
 
-Was eine Person wann bekommt: je Art an/aus, Uhrzeiten, beim Tagesüberblick die Teile. Gilt je
-Mitglied und Haushalt auf allen Geräten der Person; je Gerät gibt es nur „an“ oder „aus“ (Spec
-0013, D38). Nur die Person selbst liest und schreibt sie; synchronisiert.
+Eine Mitteilung als gesehen markieren („✓“) oder alle auf einmal („Alle bestätigen“); sie
+verschwindet dann auf allen Geräten der Person. Online (Spec 0051). Gespeichert wird nur der
+Schlüssel `<art>:<id>[:<zusatz>]:<tag>`; Bestätigungen von Tagen vor mehr als 14 Tagen fallen weg.
 
-- **Im Code:** `NotificationSettings` (Zod-Schema `NotificationSettingsSchema`),
-  `notification_settings`; Arten `NotificationKind`
-- **Nicht verwenden:** Push-Einstellungen, Profil-Einstellungen
+- **Im Code:** `acknowledgeNotices`, RPC `acknowledge_notices`, Spalte
+  `notification_settings.acknowledged_notices` (`NotificationSettings.acknowledgedNotices`)
+- **Nicht verwenden:** Gelesen, Erledigt (das ist Abhaken einer Aufgabe), Wegklicken
 
-### Push-Abo
+### Entfallen mit Spec 0051
 
-Die Anmeldung eines Geräts bzw. Browsers für Web Push: Push-Adresse, Schlüssel, Gerätename,
-an/aus, letzter Erfolg. Gehört einer Person, nicht einem Haushalt, und wird nicht synchronisiert
-(Ausnahme von Regel 5, Spec 0013). In der Oberfläche „Deine Geräte“. Mit Spec 0015 (Entwurf) ist
-auch die Anmeldung einer [nativen App](#native-app) über ihr Expo-Push-Token ein Push-Abo, mit
-Gerätename „Android · native App“ bzw. „iPhone · native App“.
-
-- **Im Code:** Tabelle `private.push_subscriptions`; die eigene Liste ohne Push-Adresse und
-  Schlüssel `OwnPushSubscription` (aus `list_push_subscriptions`). Nicht `PushSubscription`: Das
-  ist der Typ des Browsers.
-- **Nicht verwenden:** Abo (allein, das meint nichts), Gerät (für den Datensatz), Token
-
-### Zustell-Protokoll
-
-Ein Eintrag je zugestellter Nachricht und Gerät mit eindeutigem Schlüssel, Zeitpunkt und Status;
-verhindert doppelte Nachrichten. 30 Tage aufbewahrt, nur für den Zeitplaner, nie aus der App
-lesbar (Spec 0013).
-
-- **Im Code:** `private.notification_deliveries`
-- **Nicht verwenden:** Log, Versandliste
-
-### Zeitplaner
-
-Die Datenbankfunktion, die `pg_cron` alle 5 Minuten startet („Takt“): Sie findet fällige
-Nachrichten in der Zeitzone des Haushalts, schreibt sie ins Zustell-Protokoll und gibt sie per
-`pg_net` an die Edge Function `push-send`, die nur zustellt und keinen Datenbankzugang hat (Spec
-0013, D40).
-
-- **Im Code:** `private.run_notification_tick` (`pg_cron`-Job `notification-tick`), Kandidaten aus
-  `private.notification_candidates`; Edge Function `push-send`
-- **Nicht verwenden:** Cronjob (für das Ganze), Scheduler (in der Oberfläche)
-
-### Takt
-
-Ein Lauf des Zeitplaners, alle 5 Minuten zur vollen 5. Minute. Eine Nachricht kommt in dem Takt,
-der ihre Uhrzeit erreicht; was mehr als 30 Minuten zu spät käme, entfällt (Spec 0013).
-
-- **Im Code:** `private.run_notification_tick(p_now)`
-- **Nicht verwenden:** Tick (in der Oberfläche), Durchlauf
-
-### Probe
-
-Eine Nachricht „Probe: So sehen deine Benachrichtigungen aus.“, die „Probe senden“ sofort an
-dieses Gerät schickt, und nur an dieses (Spec 0013, REQ-003). Höchstens 3 in 10 Minuten.
-
-- **Im Code:** `send_test_push`; Art `test` im Zustell-Protokoll
-- **Nicht verwenden:** Test-Nachricht (in der Oberfläche), Ping
+_Tagesüberblick_, _Benachrichtigungs-Einstellungen_, _Push-Abo_, _Zustell-Protokoll_,
+_Zeitplaner_, _Takt_ und _Probe_ gehörten zu Web Push (Spec 0013, ADR-0014) und sind mit ADR-0017
+entfernt. Die Tabelle `notification_settings` bleibt als Zeile der [Bestätigungen](#bestätigen-mitteilung).
 
 ### Uhrzeit (Aufgabe)
 
-Die optionale Uhrzeit einer Aufgabe, zu der am Fälligkeitstag erinnert wird, wer dran ist („Müll
-rausbringen · 19:00“). In 5-Minuten-Schritten, Ortszeit des Haushalts; ✕ entfernt sie (Spec 0013,
+Die optionale Uhrzeit einer Aufgabe, ab der am Fälligkeitstag eine Mitteilung erinnert, wer dran
+ist („Müll rausbringen · 19:00“, Spec 0051). In 5-Minuten-Schritten, Ortszeit des Haushalts; ✕ entfernt sie (Spec 0013,
 D42). Rezepte und Sammlungen haben keine Uhrzeit; Restaurants und Aktivitäten haben die _Uhrzeit
 (Eintrag)_. Mit dem Schalter „Erinnern“ je Aufgabe (Spec 0027, REQ-009) lässt sich die Erinnerung
 ausschalten; die Uhrzeit wird dann nur angezeigt.
@@ -1096,7 +1051,7 @@ Veröffentlichung aus `main`; nie Seed, nie Reset, keine Testkonten (Spec 0014, 
 
 Die eine Umgebung, die immer den neuesten Stand von `develop` zeigt, zum Ausprobieren auf dem Handy
 vor der Freigabe: eigene Static Web App und eigenes Supabase-Projekt, bei jedem Vorschau-Lauf neu
-aufgesetzt mit Beispieldaten ohne Testkonten, Anmeldung nur mit Google und Einladung, Push aus
+aufgesetzt mit Beispieldaten ohne Testkonten, Anmeldung nur mit Google und Einladung
 (Spec 0014). Feature-Zweige und PRs haben keine eigene Vorschau.
 
 - **Im Code:** GitHub-Umgebung `preview`, Variablen `PREVIEW_*`, Workflow `preview.yml`, Static

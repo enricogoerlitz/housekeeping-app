@@ -24,9 +24,9 @@ all places a change touches.
 - A pgTAP test proving: a member can do what the spec allows; a member of another household and a
   signed-out user can do nothing.
 - Registered in the delta sync (see `31-sync.md`).
-- **Exceptions (ADR-0014):** a table that belongs to a person or to the server, not to a
-  household (push subscriptions, notification deliveries), goes into the `private` schema with
-  RLS enabled, no policies and no grants. It is not synced, has no delete trigger, and is reached
+- **Exceptions:** a table that belongs to a person or to the server, not to a household (the AI
+  quota `ai_usage`, deletion snapshots `deletions`), goes into the `private` schema with RLS
+  enabled, no policies and no grants. It is not synced, has no delete trigger, and is reached
   only through `security definer` functions that filter by `auth.uid()` or run from `pg_cron`.
   Its pgTAP test proves that `anon` and `authenticated` cannot touch it directly and that the
   functions never return another person's rows.

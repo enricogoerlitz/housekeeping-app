@@ -52,7 +52,6 @@ function buildInputs(env: NodeJS.ProcessEnv): string {
       env.EXPO_PUBLIC_SUPABASE_URL,
       env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
       env.EXPO_PUBLIC_DEV_LOGIN,
-      env.EXPO_PUBLIC_VAPID_PUBLIC_KEY,
       env.EXPO_PUBLIC_APP_VERSION,
       git(['rev-parse', 'HEAD']),
       git(['diff', 'HEAD', '--', ...sources]),

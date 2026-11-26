@@ -232,11 +232,11 @@ describe('AC-044: functions without authorization', () => {
 
   test('404 (function missing) and 500 are FEHLER too', () => {
     assert.equal(
-      checkFunctions([{ name: 'push-send', origin: 'eigene', response: res(404) }]).ok,
+      checkFunctions([{ name: 'media-sweep', origin: 'eigene', response: res(404) }]).ok,
       false,
     );
     assert.equal(
-      checkFunctions([{ name: 'push-send', origin: 'eigene', response: res(500) }]).ok,
+      checkFunctions([{ name: 'media-sweep', origin: 'eigene', response: res(500) }]).ok,
       false,
     );
   });
@@ -247,7 +247,7 @@ describe('AC-044: functions without authorization', () => {
 
   test('the functions of the repository are the folders with an index.ts', () => {
     const names = repoFunctions();
-    assert.ok(names.includes('push-send'));
+    assert.ok(names.includes('media-sweep'));
     assert.ok(names.includes('ai-search'));
     assert.ok(!names.includes('_shared'));
     assert.ok(!names.includes('node_modules'));

@@ -205,14 +205,11 @@ test('dev smoke: every screen renders without a React warning or error', async (
   // household and members, feedback. The AI is switched off, so there is no assistant to open.
   await nav(page, 'index');
   await openSettings(page);
-  // "Benachrichtigungen" (spec 0013) and its window for the Tagesüberblick.
-  await tid(page, 'settings-notifications-row').click();
-  await expect(tid(page, 'notifications-screen')).toBeVisible();
-  await tid(page, 'notif-kind-daily-summary-detail').click();
-  await expect(tid(page, 'notif-kind-sheet')).toBeVisible();
-  await tid(page, 'notif-kind-sheet-close').click();
   await back(page);
-  await back(page);
+  // The bell with the notices (spec 0051).
+  await tid(page, 'notices-bell').click();
+  await expect(tid(page, 'notices-sheet')).toBeVisible();
+  await tid(page, 'notices-sheet-close').click();
   // "Artikel" (spec 0007): search, "Artikel bearbeiten" with its area step, "+ Neu".
   await openManaged(page, 'articles');
   await expect(tid(page, 'articles-screen')).toBeVisible();

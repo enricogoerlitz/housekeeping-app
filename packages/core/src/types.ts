@@ -545,55 +545,19 @@ export interface PackingItem {
 // ---------- Notifications (spec 0013) ----------
 
 /**
- * A time of day "HH:MM" (24 h) in the household's local time, always in five-minute steps like
- * the scheduler's tick (plan, Decision 4; `private.is_five_minute_time` in the database).
+ * A time of day "HH:MM" (24 h) in the household's local time, always in five-minute steps
+ * (spec 0013, Decision 4; `private.is_five_minute_time` in the database).
  */
 export const TimeOfDaySchema = z.string().regex(/^([01]\d|2[0-3]):[0-5][05]$/);
 export type TimeOfDay = z.infer<typeof TimeOfDaySchema>;
 
-/** The parts of the "Tagesüberblick": Essen, Aktivitäten, Aufgaben, Vorbereitung. */
-export const DailySummaryPartSchema = z.enum(['meals', 'activities', 'chores', 'prep']);
-export type DailySummaryPart = z.infer<typeof DailySummaryPartSchema>;
-
 /**
- * "Benachrichtigungs-Einstellungen" of one member in one household (one row per member, created
- * by the server with the defaults; the member changes only these fields).
+ * The own row of `notification_settings` in one household (one per member, created by the
+ * server; spec 0051): the acknowledged in-app notices, written only through acknowledge_notices.
  */
-export const NotificationSettingsSchema = z.object({
-  id: z.string(),
-  memberId: z.string(),
-  dailySummaryEnabled: z.boolean(),
-  dailySummaryAt: TimeOfDaySchema,
-  /** 1–4 parts, each at most once. */
-  dailySummaryParts: z
-    .array(DailySummaryPartSchema)
-    .min(1)
-    .max(4)
-    .refine((parts) => new Set(parts).size === parts.length),
-  activitiesEveEnabled: z.boolean(),
-  activitiesEveAt: TimeOfDaySchema,
-  choreRemindersEnabled: z.boolean(),
-  /** Spec 0017, REQ-007: "Erinnerungen an Einträgen", on at the start. */
-  entryRemindersEnabled: z.boolean(),
-});
-export type NotificationSettings = z.infer<typeof NotificationSettingsSchema>;
-
-/** What the server says about a push subscription ("Deine Geräte"). */
-export const PushSubscriptionStatusSchema = z.enum(['active', 'off', 'unreachable']);
-export type PushSubscriptionStatus = z.infer<typeof PushSubscriptionStatusSchema>;
-
-/**
- * One of the person's own "Push-Abos" as `list_push_subscriptions` returns it: never the push
- * address or keys. Not `PushSubscription`, which is the browser's type.
- */
-export const OwnPushSubscriptionSchema = z.object({
-  id: z.string(),
-  /** "Mac · Chrome" (deviceLabel). */
-  label: z.string(),
-  status: PushSubscriptionStatusSchema,
-  /** The subscription of the device that asks. */
-  isCurrent: z.boolean(),
-  createdAt: z.string(),
-  lastSuccessAt: z.string().optional(),
-});
-export type OwnPushSubscription = z.infer<typeof OwnPushSubscriptionSchema>;
+export interface NotificationSettings {
+  id: Id;
+  memberId: Id;
+  /** Keys of acknowledged notices (`<kind>:<id>[:<more>]:<day>`, notices.ts). */
+  acknowledgedNotices: string[];
+}

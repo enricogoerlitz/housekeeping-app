@@ -150,7 +150,6 @@ export function AddEntryDetails(props: {
   reminder: ReminderForm;
   remindable: boolean;
   online: { disabled: boolean; hint: string | undefined };
-  onOpenSettings: () => void;
   onSave: () => void;
   /** Spec 0041, REQ-003: "Rhythmus" of an activity with a day. */
   repeat?: { value: RepeatDraft; onChange: (next: RepeatDraft) => void };
@@ -325,7 +324,6 @@ export function AddEntryDetails(props: {
           form={reminder}
           disabled={props.online.disabled}
           hint={props.online.hint}
-          onOpenSettings={props.onOpenSettings}
           testID="add-entry-reminder"
         />
       ) : null}

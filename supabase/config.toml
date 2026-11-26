@@ -437,13 +437,6 @@ FOUNDRY_STT_MODEL = "env(FOUNDRY_STT_MODEL)"
 FOUNDRY_IMAGE_DEPLOYMENT = "env(FOUNDRY_IMAGE_DEPLOYMENT)"
 # Not a secret: the browser origins of the local web app and the e2e server.
 ALLOWED_ORIGINS = "http://localhost:8081,http://127.0.0.1:8081,http://127.0.0.1:8790"
-# push-send (spec 0013, ADR-0014): VAPID key pair and the shared secret; the database signs each
-# request with it (HMAC, x-push-signature), the secret itself is never sent. Values come from .env (`node scripts/push-keys.mjs`); never print them.
-VAPID_PUBLIC_KEY = "env(VAPID_PUBLIC_KEY)"
-VAPID_PRIVATE_KEY = "env(VAPID_PRIVATE_KEY)"
-PUSH_SEND_SECRET = "env(PUSH_SEND_SECRET)"
-# Not a secret: the VAPID `sub` claim for the local stack (production: the https web origin).
-VAPID_SUBJECT = "https://localhost"
 # media-sweep (spec 0039): the shared secret the database signs the nightly sweep with (Vault
 # media_sweep_secret). Never print it.
 MEDIA_SWEEP_SECRET = "env(MEDIA_SWEEP_SECRET)"
@@ -485,16 +478,10 @@ import_map = "./functions/deno.json"
 verify_jwt = false
 import_map = "./functions/deno.json"
 
-# media-sweep is called by pg_net like push-send: no JWT, it checks the shared secret itself.
+# media-sweep is called by pg_net, not by the app: no JWT, it checks the shared secret itself.
 [functions.media-sweep]
 verify_jwt = false
 import_map = "./functions/deno.json"
-
-# push-send is called by pg_net, not by the app: no JWT, it checks the shared secret itself.
-# Its own import map, so the web push library stays out of the other functions.
-[functions.push-send]
-verify_jwt = false
-import_map = "./functions/push-send/deno.json"
 
 [analytics]
 enabled = true

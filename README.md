@@ -6,7 +6,7 @@ Schreiben geht online, nur Einkaufen im Markt und Packen funktionieren auch ohne
 
 Funktionen: Übersicht, Kalender mit Reisen, Rezepte mit Kochmodus, Restaurants, Aktivitäten,
 Einkaufsliste und Einkaufen im Markt (Laufreihenfolge), Haushaltsaufgaben, Reisetaschen mit
-Packlisten, Benachrichtigungen (Web Push). Anmeldung nur mit Google, nur auf Einladung; die Daten
+Packlisten, Mitteilungen in der App (Glocke mit Zähler, Spec 0051). Anmeldung nur mit Google, nur auf Einladung; die Daten
 sind je Haushalt getrennt.
 
 Betrieb: Supabase (Postgres, Auth, Storage, Edge Functions) und Azure Static Web Apps, mit einer
@@ -76,7 +76,7 @@ Coding-Agents; der Ablauf steht in [AGENTS.md](AGENTS.md).
 
 `.github/workflows/checks.yml` läuft bei jedem Pull Request nach `develop` oder `main` und nach
 jedem Merge auf `develop`. Jobs: Änderungen, Konventionen, Geheimnisse, Migrationen, Prüfungen
-(Format, `pnpm check`, Web-Build), Datenbank (pgTAP), Integration (API), Deno-Lock.
+(Format, `pnpm check`, Web-Build), Datenbank (pgTAP), Integration (API).
 
 ### Branches und Release
 

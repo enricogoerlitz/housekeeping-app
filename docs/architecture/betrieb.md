@@ -18,19 +18,19 @@ ST=sthousekeepingbkpger
 
 ## Stand der Einrichtung (21.11.2026)
 
-| Teil                     | Stand                                                                                                                                                                                                                                                                                                                                                                              |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Zweige                   | `develop` ist der Standard-Zweig; `main` ist immer auslieferbar                                                                                                                                                                                                                                                                                                                    |
-| GitHub-Umgebungen        | `preview` (nur Zweig `develop`), `production`, `backup`, `restore-test` (je nur Zweig `main`)                                                                                                                                                                                                                                                                                      |
-| Static Web Apps          | `swa-housekeeping-app-prd` (Produktion) und `swa-housekeeping-app-preview` (Vorschau), beide Tarif Free in **East US 2** (West Europe am 21.11.2026 erneut abgelehnt; dort liegen nur App-Dateien), beide ohne Staging-Umgebungen (`Disabled`)                                                                                                                                     |
-| Web-Adressen             | Produktion `https://house.kuschel-nest.de` (Variable `PRODUCTION_WEB_ORIGIN`), Vorschau `https://test.house.kuschel-nest.de` (Variable `PREVIEW_WEB_ORIGIN`)                                                                                                                                                                                                                       |
-| Alte Adressen            | `https://brave-bush-089e7a80f.6.azurestaticapps.net` (Produktion) und die `azurestaticapps.net`-Adresse der Vorschau: leitet um (Variablen `PRODUCTION_OLD_WEB_ORIGIN`, `PREVIEW_OLD_WEB_ORIGIN`), siehe [Eigene Domain als Standard](#eigene-domain-als-standard)                                                                                                                 |
-| Storage für Sicherungen  | `sthousekeepingbkpger` in **Germany West Central** (West Europe abgelehnt), Container `backups`, Unveränderlichkeit 30 Tage (**noch nicht gesperrt**, siehe [unten](#unveränderlichkeit-sperren)), Lebenszyklus aus `infra/azure/backup-lifecycle.json`                                                                                                                            |
-| Eigene Rollen            | „Housekeeping SWA Deploy Token Reader“ (je an einer SWA), „Housekeeping Backup Writer“ (am Container); Vorlagen in `infra/azure/`                                                                                                                                                                                                                                                  |
-| Identitäten (Azure)      | `id-housekeeping-web-prd`, `id-housekeeping-web-preview`, `id-housekeeping-backup`, `id-housekeeping-restore` in Germany West Central, je mit föderierten Anmeldedaten für genau eine GitHub-Umgebung                                                                                                                                                                              |
-| Budget                   | 10 € im Monat, E-Mail bei 80 % und 100 %                                                                                                                                                                                                                                                                                                                                           |
-| GitHub-Variablen gesetzt | `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `AZURE_CLIENT_ID` (je Umgebung), `SWA_NAME` (je Umgebung), `SWA_RESOURCE_GROUP`, `BACKUP_STORAGE_ACCOUNT`, `PRODUCTION_WEB_ORIGIN`, `PREVIEW_WEB_ORIGIN`                                                                                                                                                                               |
-| Noch offen               | `SUPABASE_PROJECT_REF` (je Umgebung) und Runbook B5: die Supabase-CLI ist noch nicht angemeldet, beides macht Enrico. Dazu C1 bis C11 (Secrets, Google, Push, Sicherung) und B7 (Rulesets). Spec 0027: eigene Domain als Standard in beiden Static Web Apps und die Variablen `PRODUCTION_OLD_WEB_ORIGIN`, `PREVIEW_OLD_WEB_ORIGIN` (Enrico, [unten](#eigene-domain-als-standard)) |
+| Teil                     | Stand                                                                                                                                                                                                                                                                                                                                                                        |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Zweige                   | `develop` ist der Standard-Zweig; `main` ist immer auslieferbar                                                                                                                                                                                                                                                                                                              |
+| GitHub-Umgebungen        | `preview` (nur Zweig `develop`), `production`, `backup`, `restore-test` (je nur Zweig `main`)                                                                                                                                                                                                                                                                                |
+| Static Web Apps          | `swa-housekeeping-app-prd` (Produktion) und `swa-housekeeping-app-preview` (Vorschau), beide Tarif Free in **East US 2** (West Europe am 21.11.2026 erneut abgelehnt; dort liegen nur App-Dateien), beide ohne Staging-Umgebungen (`Disabled`)                                                                                                                               |
+| Web-Adressen             | Produktion `https://house.kuschel-nest.de` (Variable `PRODUCTION_WEB_ORIGIN`), Vorschau `https://test.house.kuschel-nest.de` (Variable `PREVIEW_WEB_ORIGIN`)                                                                                                                                                                                                                 |
+| Alte Adressen            | `https://brave-bush-089e7a80f.6.azurestaticapps.net` (Produktion) und die `azurestaticapps.net`-Adresse der Vorschau: leitet um (Variablen `PRODUCTION_OLD_WEB_ORIGIN`, `PREVIEW_OLD_WEB_ORIGIN`), siehe [Eigene Domain als Standard](#eigene-domain-als-standard)                                                                                                           |
+| Storage für Sicherungen  | `sthousekeepingbkpger` in **Germany West Central** (West Europe abgelehnt), Container `backups`, Unveränderlichkeit 30 Tage (**noch nicht gesperrt**, siehe [unten](#unveränderlichkeit-sperren)), Lebenszyklus aus `infra/azure/backup-lifecycle.json`                                                                                                                      |
+| Eigene Rollen            | „Housekeeping SWA Deploy Token Reader“ (je an einer SWA), „Housekeeping Backup Writer“ (am Container); Vorlagen in `infra/azure/`                                                                                                                                                                                                                                            |
+| Identitäten (Azure)      | `id-housekeeping-web-prd`, `id-housekeeping-web-preview`, `id-housekeeping-backup`, `id-housekeeping-restore` in Germany West Central, je mit föderierten Anmeldedaten für genau eine GitHub-Umgebung                                                                                                                                                                        |
+| Budget                   | 10 € im Monat, E-Mail bei 80 % und 100 %                                                                                                                                                                                                                                                                                                                                     |
+| GitHub-Variablen gesetzt | `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `AZURE_CLIENT_ID` (je Umgebung), `SWA_NAME` (je Umgebung), `SWA_RESOURCE_GROUP`, `BACKUP_STORAGE_ACCOUNT`, `PRODUCTION_WEB_ORIGIN`, `PREVIEW_WEB_ORIGIN`                                                                                                                                                                         |
+| Noch offen               | `SUPABASE_PROJECT_REF` (je Umgebung) und Runbook B5: die Supabase-CLI ist noch nicht angemeldet, beides macht Enrico. Dazu C1 bis C11 (Secrets, Google, Sicherung) und B7 (Rulesets). Spec 0027: eigene Domain als Standard in beiden Static Web Apps und die Variablen `PRODUCTION_OLD_WEB_ORIGIN`, `PREVIEW_OLD_WEB_ORIGIN` (Enrico, [unten](#eigene-domain-als-standard)) |
 
 ## Zweige und Schutz
 
@@ -56,7 +56,7 @@ GitHub-Actions-App das Tag-Ruleset, damit die Veröffentlichung ihren Tag anlegt
 
 Pflicht-Checks sind die Jobnamen aus `.github/workflows/checks.yml` ohne „Änderungen“:
 `Konventionen`, `Geheimnisse`, `Migrationen`, `Prüfungen`, `Datenbank (pgTAP)`,
-`Integration (API)` (Spec 0031, REQ-004), `Deno-Lock`, jeweils nur von GitHub Actions erfüllbar (`integration_id` 15368). „Up to date“ wird nicht
+`Integration (API)` (Spec 0031, REQ-004), jeweils nur von GitHub Actions erfüllbar (`integration_id` 15368). „Up to date“ wird nicht
 verlangt; Freigaben (Reviews) auch nicht, weil es nur einen Besitzer gibt. Ein Jobname und die
 Rulesets ändern sich immer zusammen; `scripts/ci/workflows.test.mjs` prüft das. Nach jedem Merge
 nach `develop` laufen dieselben Checks noch einmal auf dem Merge-Commit, je Commit in einer eigenen
@@ -253,8 +253,7 @@ vorige grün ist:
 
 1. **Probe in der Vorschau** (Spec 0028, AC-012; Reihenfolge nach Spec 0031, P-2). Das Skript setzt
    die Vorschau zurück, `preview.yml` spielt die Migrationen (dann die neue Basis) ein und legt die
-   Testhaushalte aus `preview-seed.sql` und die Einladungen an. Push bleibt in der Vorschau aus
-   (Entscheidung 8 von Spec 0014); Benachrichtigungen werden erst in der Produktion geprüft:
+   Testhaushalte aus `preview-seed.sql` und die Einladungen an. Die Probe läuft so:
 
    ```sh
    node scripts/reset-app-data.mjs --project "<preview-ref>"
@@ -341,8 +340,8 @@ Die Historie nie mit `migration repair` flicken.
 - Inhalt des Archivs: `roles.sql`, `schema.sql`, `data.sql` (Datenbank) und `media/` (Fotos aus
   `household-media`). **Nicht enthalten** sind die Rezeptvideos aus `household-videos` (Spec
   0048, Entscheidung 1: über ihren TikTok-Link neu speicherbar, und jede Nacht alle Videos kostete
-  zu viel Egress), die Function-Secrets und die Vault-Einträge `push_send_secret` und
-  `push_send_url`.
+  zu viel Egress), die Function-Secrets und die Vault-Einträge (`media_sweep_secret`,
+  `media_sweep_url`).
 - `manifest.json` nennt Zeilen je Tabelle, die Zahl der Fotos und die Prüfsumme (Format 3).
   Ältere Sicherungen: Format 2 (Spec 0043 bis 0048) enthält zusätzlich `videos/` und zählt sie,
   Format 1 (vor Spec 0043) ist wie Format 3. `compare.mjs` liest alle drei und vergleicht nur
@@ -474,15 +473,7 @@ neu speichern (das Entfernen klappt auch ohne Datei).
 **5. Was die Sicherung nicht enthält, neu setzen** (Runbook C3 bis C8 im Plan, jeweils für das neue
 Projekt):
 
-- **Vault-Einträge `push_send_secret` und `push_send_url` müssen nach jeder Wiederherstellung neu
-  gesetzt werden**, sonst stellt der Zeitplaner keine Benachrichtigungen zu. Im SQL-Editor des
-  neuen Projekts: `select vault.create_secret('<PUSH_SEND_SECRET>', 'push_send_secret');` und
-  `select vault.create_secret('https://<neue-ref>.supabase.co/functions/v1/push-send', 'push_send_url');`
-  (gibt es sie schon, `vault.update_secret(<id>, '<Wert>')`). Der Wert von `push_send_secret` muss
-  dem Function-Secret `PUSH_SEND_SECRET` entsprechen.
-- Function-Secrets `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `PUSH_SEND_SECRET`
-  (`supabase secrets set --env-file …`, Runbook C6). Dieselben VAPID-Schlüssel wie vorher behalten,
-  dann bleiben die Push-Anmeldungen der Geräte gültig.
+- **Vault-Einträge `media_sweep_secret` und `media_sweep_url`** neu setzen (siehe `supabase/functions/README.md`), sonst räumt die nächtliche Foto-Bereinigung nicht auf; dazu die Function-Secrets (`supabase secrets set --env-file …`, Runbook C6).
 - Session-Pooler-Adresse des neuen Projekts (Benutzer `postgres.<neue-ref>`, Datenbank-Passwort) →
   `SUPABASE_POOLER_URL` in `production`.
 - Neues eingeschränktes Zugangstoken → `SUPABASE_ACCESS_TOKEN` in `production`; Variablen
@@ -525,8 +516,6 @@ abwarten, dann den alten widerrufen.
 | Supabase-Zugangstoken (ein Token für beide Umgebungen) | Account → Access Tokens, Einstellungen wie unter „Supabase-Zugangstoken: Einstellungen“, Ablauf 90 Tage → `gh secret set SUPABASE_ACCESS_TOKEN --env production` und `--env preview` | Access Tokens → altes löschen                                                                    |
 | Google-Client-Secret                                   | Google Auth Platform → Client „Housekeeping Web“ → neues Secret → `GOOGLE_CLIENT_SECRET` in `production` und `preview`                                                               | nach der nächsten Veröffentlichung und Vorschau das alte deaktivieren                            |
 | Deployment-Token einer SWA                             | `az staticwebapp secrets reset-api-key -n <SWA_NAME> -g "$RG"`; die Pipeline holt es zur Laufzeit                                                                                    | entfällt (das alte ist damit ungültig)                                                           |
-| Push-Geheimnis `PUSH_SEND_SECRET`                      | `supabase secrets set PUSH_SEND_SECRET=…` und im SQL-Editor `vault.update_secret(<id von push_send_secret>, '<neu>')`                                                                | entfällt                                                                                         |
-| VAPID-Schlüsselpaar                                    | nur bei Abfluss: `node scripts/push-keys.mjs --out …`, Function-Secrets, `PRODUCTION_VAPID_PUBLIC_KEY`, neue Veröffentlichung                                                        | entfällt; alle Geräte müssen Benachrichtigungen neu einschalten                                  |
 | Passwort von `backup_reader`                           | SQL-Editor: `alter role backup_reader with password '<neu>';` → `BACKUP_DB_URL` in `backup`                                                                                          | entfällt                                                                                         |
 | S3-Schlüssel Storage                                   | Storage → Settings → S3 Connection → neuer Schlüssel → `BACKUP_S3_ACCESS_KEY_ID`, `BACKUP_S3_SECRET_ACCESS_KEY`                                                                      | alten Schlüssel löschen                                                                          |
 | Sicherungsschlüssel (`age`)                            | `age-keygen -o …` → `BACKUP_AGE_RECIPIENT` (`backup`), `BACKUP_AGE_IDENTITY` (`restore-test`)                                                                                        | **den alten privaten Schlüssel 12 Monate aufheben**: ältere Sicherungen sind damit verschlüsselt |

@@ -5,6 +5,11 @@ datum: 2026-11-20
 
 # 0013 — Benachrichtigungen
 
+> **Abgelöst durch Spec 0051 (26.11.2026):** Web Push ist entfernt (ADR-0017 löst ADR-0014 ab).
+> REQ-001 bis REQ-010 gelten nicht mehr; ersetzt durch die Mitteilungen in der App (Glocke).
+> Weiter gelten nur die Uhrzeit einer Aufgabe (AC-022 bis AC-025) und die Zeitfelder in
+> Fünf-Minuten-Schritten. Dieses Dokument bleibt als Verlauf unverändert.
+
 ## Problem
 
 Die App meldet sich nie von selbst. Wer morgens nicht hineinschaut, merkt erst am Abend, dass er

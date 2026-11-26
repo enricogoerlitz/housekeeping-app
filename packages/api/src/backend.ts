@@ -57,7 +57,7 @@ export {
  * Bump when the cached shape changes: the device then drops its cache and loads again (AC-018).
  * What is not cache survives the bump: the store queue and the choices made on this device.
  */
-export const CACHE_VERSION = 22;
+export const CACHE_VERSION = 23;
 /** Retention of `deleted_records` on the server (pg_cron). */
 const RETENTION_DAYS = 30;
 
@@ -600,7 +600,7 @@ export async function householdCall<T>(send: (transport: Transport) => Promise<T
 }
 
 /**
- * A request that needs the server's answer (edge functions, storage, push devices); refused
+ * A request that needs the server's answer (edge functions, storage); refused
  * offline. Not refused below the minimum app version: the UI disables its edit actions there,
  * and reads such as photo downloads go on (spec 0014, AC-025).
  */

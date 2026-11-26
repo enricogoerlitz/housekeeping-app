@@ -131,16 +131,3 @@ export function reminderDayChoices(
       range === undefined || (chip.key === 'dayBefore' && addDays(entryDate, -1) < range.from),
   }));
 }
-
-/**
- * Under the switch (REQ-007): why the reminder would not reach me here. The kind switched off for
- * me comes first, since then no device gets it.
- */
-export function reminderReachHint(input: {
-  kindEnabled: boolean;
-  deviceRegistered: boolean;
-}): string | undefined {
-  if (!input.kindEnabled) return 'Erinnerungen an Einträgen sind bei dir aus';
-  if (!input.deviceRegistered) return 'Auf diesem Gerät kommen keine Benachrichtigungen an';
-  return undefined;
-}

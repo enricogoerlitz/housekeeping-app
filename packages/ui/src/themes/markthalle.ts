@@ -81,6 +81,8 @@ const light: ThemeColors = {
   scrim: 'rgba(43,33,25,0.45)',
   fabBg: '#B4411F',
   fabText: '#FFF9F2',
+  badge: '#D70015',
+  onBadge: '#FFFFFF',
   tones: {
     essen: { bg: '#F5DFD3', fg: '#8A3016' },
     plan: { bg: '#F6E7C4', fg: '#6B4A00' },
@@ -122,6 +124,8 @@ const dark: ThemeColors = {
   scrim: 'rgba(0,0,0,0.6)',
   fabBg: '#EC8A66',
   fabText: '#2A1108',
+  badge: '#D70015',
+  onBadge: '#FFFFFF',
   tones: {
     essen: { bg: '#4B2A1D', fg: '#F6C2AC' },
     plan: { bg: '#463710', fg: '#F2D58E' },

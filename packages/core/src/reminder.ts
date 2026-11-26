@@ -19,8 +19,8 @@ import {
   type TimeOfDay,
 } from './types';
 
-// Spec 0017 "Erinnerungen an Kalendereinträgen": defaults, day chips, labels, checks and the text
-// of the notification. A reminder stores the distance in days before the entry's day and a time
+// Spec 0017 "Erinnerungen an Kalendereinträgen": defaults, day chips, labels and checks; spec
+// 0051: a reminder becomes an in-app notice at its moment (notices.ts). A reminder stores the distance in days before the entry's day and a time
 // (plan, Decision 1), so it moves along when the entry is moved (REQ-006). Every judgement of
 // "past" uses the household's time zone (`households.timezone`, Decision 5), never the device's.
 
@@ -28,8 +28,6 @@ import {
 export const MAX_REMINDER_OFFSET_DAYS = 366;
 /** REQ-004: "Woran erinnern?" holds up to 80 characters. */
 export const MAX_REMINDER_TEXT = 80;
-/** REQ-005: the body of the notification holds at most 400 characters. */
-export const MAX_REMINDER_MESSAGE = 400;
 
 // C0, DEL, C1 and invisible or direction-changing characters, exactly as the database refuses
 // them (check `meal_plan_entries_reminder_text_valid`).
@@ -110,7 +108,7 @@ export function householdTime(now: Date, timeZone: string): HouseholdTime {
 
 /**
  * Whether the reminder's moment is not in the future (REQ-003): compared as wall-clock time in
- * the household's zone, like the scheduler (`(day + time) at time zone households.timezone`).
+ * the household's zone, like the database check `meal_plan_entries_check_reminder`.
  */
 export function isReminderPast(
   entryDate: ISODate,
@@ -306,10 +304,10 @@ export function reminderAccessibilityLabel(
   return `${title}, Erinnerung ${when} ${spokenTime(reminder.at)}`;
 }
 
-// ---------- The notification ----------
+// ---------- The entry's name ----------
 
 /**
- * What the plan shows as the entry's name, and what the notification names (REQ-004): recipe
+ * What the plan shows as the entry's name, and what a notice names (REQ-004): recipe
  * title, free text, "Reste von Donnerstag", the restaurant's name or the activity with its Zusatz,
  * "Eislaufen (Hohenschönhausen)". Unknown kinds fall back to their text, so a newer entry never
  * breaks the plan. Same behaviour as the app's `entryTitle`, which moves here.
@@ -422,55 +420,25 @@ export function timeReminder(input: {
   return suggestedReminder(input.entryDate, input.after, input.now, input.timeZone);
 }
 
-const MESSAGE_PREFIX = 'Erinnerung: ';
-const ELLIPSIS = '…';
-
 /**
- * The body of the notification (REQ-005); the title is "Housekeeping". The scheduler builds the
- * same text in SQL, and a parity test holds both to this format:
- *
- *   "Erinnerung: " + <name> + " · " + <when> [+ " · " + <text>]
- *
- * - <name>: `planEntryTitle` of the entry.
- * - <when>, by `offsetDays` (the entry lies that many days after the sending day):
- *   0 → "heute <Tageszeit>", 1 → "morgen <Tageszeit>", otherwise
- *   "<Mo|Di|Mi|Do|Fr|Sa|So> <day>.<month>., <Tageszeit>" of the entry's day, day and month without
- *   leading zeros ("Sa 28.11., Abend", "Fr 5.3., Abend"). <Tageszeit> is the slot's name as is;
- *   an empty name (the entry's slot is unknown) leaves it out: "heute", "Sa 28.11.". An entry
- *   with a time (spec 0021) names it instead, H:MM: "heute 19:30", "Sa 28.11., 9:05".
- * - <text>: the reminder's text when set (already trimmed, 1–80 characters).
- * - At most 400 characters, counted in code points (`char_length`): when longer, only the name
- *   is cut, to its first (400 − length of the rest − 1) characters followed by "…".
+ * When an entry lies, seen from a day `offsetDays` before it: "heute Abend", "morgen 19:30",
+ * "Sa 28.11., Abend": the line of an in-app notice (spec 0051). An entry with a time names it instead of the Tageszeit; an empty Tageszeit is left out.
  */
-export function reminderMessage(input: {
-  title: string;
+export function entryWhen(input: {
   entryDate: ISODate;
   slotName: string;
   offsetDays: number;
-  text?: string;
-  /** Spec 0021, REQ-014: the entry's time, named instead of the Tageszeit ("heute 19:30"). */
   startsAt?: TimeOfDay;
 }): string {
   const { entryDate, offsetDays } = input;
-  // Without a (known) Tageszeit it is left out, as the scheduler does (no trailing space or comma).
+  // Without a (known) Tageszeit it is left out (no trailing space or comma).
   const slot =
     input.startsAt !== undefined
       ? formatTime(input.startsAt)
       : input.slotName === ''
         ? undefined
         : input.slotName;
-  const when =
-    offsetDays === 0
-      ? `heute${slot ? ` ${slot}` : ''}`
-      : offsetDays === 1
-        ? `morgen${slot ? ` ${slot}` : ''}`
-        : `${weekdayShort(entryDate)} ${formatShortDate(entryDate)}${slot ? `, ${slot}` : ''}`;
-  const rest = ` · ${when}${input.text ? ` · ${input.text}` : ''}`;
-  const room = MAX_REMINDER_MESSAGE - charLength(MESSAGE_PREFIX) - charLength(rest);
-  const name = [...input.title];
-  const title =
-    name.length <= room
-      ? input.title
-      : `${name.slice(0, Math.max(room - 1, 0)).join('')}${ELLIPSIS}`;
-  return `${MESSAGE_PREFIX}${title}${rest}`;
+  if (offsetDays === 0) return `heute${slot ? ` ${slot}` : ''}`;
+  if (offsetDays === 1) return `morgen${slot ? ` ${slot}` : ''}`;
+  return `${weekdayShort(entryDate)} ${formatShortDate(entryDate)}${slot ? `, ${slot}` : ''}`;
 }

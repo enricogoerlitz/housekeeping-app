@@ -29,7 +29,6 @@ import {
   MergeAreasResultSchema,
   NotAvailableResultSchema,
   PackResultSchema,
-  PushSubscriptionRowSchema,
   RawPullResultSchema,
   RemovedRecipeVideoSchema,
   RestoredRecipeSchema,
@@ -440,27 +439,8 @@ export function createSupabaseTransport(
     beginHouseholdDeletion: (householdId) =>
       parsed(z.array(z.string()), 'begin_household_deletion', { household_id: householdId }),
     deleteHousehold: (householdId) => nothing('delete_household', { household_id: householdId }),
-    registerPushSubscription: (endpoint, p256dh, auth, deviceLabel) =>
-      id('register_push_subscription', {
-        p_endpoint: endpoint,
-        p_p256dh: p256dh,
-        p_auth: auth,
-        p_device_label: deviceLabel,
-      }),
-    setPushSubscriptionEnabled: (endpoint, enabled) =>
-      nothing('set_push_subscription_enabled', { p_endpoint: endpoint, p_enabled: enabled }),
-    unregisterPushSubscription: (endpoint) =>
-      nothing('unregister_push_subscription', { p_endpoint: endpoint }),
-    removePushSubscription: async (subscriptionId) => {
-      const data = await call('remove_push_subscription', { p_id: subscriptionId });
-      if (typeof data !== 'boolean') throw new TransportError('permanent', 'invalid_response');
-      return data;
-    },
-    listPushSubscriptions: (currentEndpoint) =>
-      parsed(z.array(PushSubscriptionRowSchema), 'list_push_subscriptions', {
-        p_current_endpoint: currentEndpoint ?? null,
-      }),
-    sendTestPush: (endpoint) => nothing('send_test_push', { p_endpoint: endpoint }),
+    acknowledgeNotices: (householdId, keys) =>
+      nothing('acknowledge_notices', { household_id: householdId, keys: [...keys] }),
     resolveMapsLink: (url) =>
       invokeParsed(ResolveMapsLinkReplySchema, 'resolve-maps-link', { url }),
     fetchImage: async (request) => {

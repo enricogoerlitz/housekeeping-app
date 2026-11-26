@@ -34,7 +34,7 @@ import type { Chore, ISODate } from './types';
 
 // Spec 0026. Today is Sunday 22 November 2026; household "Enrico & Nadja" (E, N in this order).
 // "Urlaub Mallorca" Fri 4.12.–Thu 10.12.2026 for both, "Dienstreise Hamburg" Fri 18.12.–Sat
-// 19.12.2026 only Enrico. The same fixtures and names are in notification_parity.test.sql.
+// 19.12.2026 only Enrico.
 const today = '2026-11-22';
 const members = [enrico, nadja];
 const mallorca = trip(
@@ -597,7 +597,7 @@ describe('REQ-001: day labels', () => {
   });
 });
 
-// ---------- AC-056: parity with the scheduler (notification_parity.test.sql) ----------
+// ---------- AC-056: the trip rule in one line per chore ----------
 
 const parityChores = [
   badNadja,
@@ -638,7 +638,6 @@ describe('REQ-014: notifications by the same rule', () => {
   });
 });
 
-// The same lines are expected from SQL in notification_parity.test.sql (AC-056).
 const PARITY: Record<string, string> = {
   bad: '2026-12-11 ..........toooooooooooooooo nnnnnnnnnnnnnnnnnnnnnnnnnnn',
   fenster: '2026-12-11 ..........toooooo..oooooooo eeeeeeeeeeeeeeeeeeeeeeeeeee',

@@ -1,6 +1,6 @@
 // media-sweep (spec 0039, REQ-005, ADR-0016): deletes photo files no row refers to any more. The
 // database decides which (private.media_orphans: no reference, older than one day) and sends the
-// names nightly through pg_net, signed like push-send (HMAC over "<timestamp>.<body>", headers
+// names nightly through pg_net, signed (HMAC over "<timestamp>.<body>", headers
 // x-sweep-timestamp and x-sweep-signature, secret MEDIA_SWEEP_SECRET from the Vault). Deleting
 // has to go through the Storage API (a direct delete in storage.objects leaves the file in the
 // storage backend), and only a server key may delete across households: this is the one function

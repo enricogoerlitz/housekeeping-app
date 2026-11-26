@@ -5,9 +5,8 @@
 //
 // Creates a test account and household with scripts/edge-smoke-fixture.sql (psql as postgres via
 // `docker exec` into the db container), signs in with password, calls every function and removes
-// the fixture again. Makes two real Foundry LLM calls and one speech-token call, and with
-// PUSH_SEND_SECRET set one push to a made-up FCM address. Prints status codes, reply keys and
-// timings only — never tokens, keys or push addresses.
+// the fixture again. Makes two real Foundry LLM calls and one speech-token call. Prints status codes, reply keys and
+// timings only — never tokens or keys.
 //
 // Optional env: SUPABASE_URL (default: API URL of `supabase status`), ANON_KEY (default: the
 // legacy anon key of `supabase status`), DB_CONTAINER (default supabase_db_housekeeping-app).
@@ -99,93 +98,6 @@ async function call(name, jwt, body, headers = {}) {
     text,
     detail: `HTTP ${response.status} {${keys}}${error} ${ms} ms`,
   };
-}
-
-// push-send (spec 0013): called like pg_net does — no JWT, no apikey, signed with the shared secret
-// (HMAC-SHA256 over "<timestamp>.<body>" in x-push-timestamp / x-push-signature, as
-// private.post_push_bundle does). The subscription keys are made here and belong to no device; FCM answers the
-// made-up address with an error status, which push-send must hand back as a number.
-async function smokePushSend() {
-  const secret = process.env.PUSH_SEND_SECRET;
-  if (!secret) {
-    console.log('skip push-send: PUSH_SEND_SECRET not set in this shell');
-    return;
-  }
-  const signed = async (text, key = secret, timestamp = Math.floor(Date.now() / 1000)) => {
-    const hmacKey = await crypto.subtle.importKey(
-      'raw',
-      new TextEncoder().encode(key.trim()),
-      { name: 'HMAC', hash: 'SHA-256' },
-      false,
-      ['sign'],
-    );
-    const mac = await crypto.subtle.sign(
-      'HMAC',
-      hmacKey,
-      new TextEncoder().encode(`${timestamp}.${text}`),
-    );
-    return {
-      'x-push-timestamp': String(timestamp),
-      'x-push-signature': Buffer.from(mac).toString('hex'),
-    };
-  };
-  const post = async (body, sign) => {
-    const text = JSON.stringify(body);
-    const response = await fetch(`${base}/functions/v1/push-send`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', ...(sign ? await sign(text) : {}) },
-      body: text,
-    });
-    const json = await response.json().catch(() => undefined);
-    return { status: response.status, json };
-  };
-  const pair = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, [
-    'deriveBits',
-  ]);
-  const p256dh = Buffer.from(await crypto.subtle.exportKey('raw', pair.publicKey)).toString(
-    'base64url',
-  );
-  const auth = Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString('base64url');
-  const message = {
-    id: 1,
-    endpoint: 'https://fcm.googleapis.com/fcm/send/edge-smoke-not-a-device',
-    keys: { p256dh, auth },
-    ttl: 60,
-    urgency: 'normal',
-    notification: { title: 'Housekeeping', body: 'Edge smoke', url: '/' },
-  };
-  const valid = { messages: [message] };
-
-  const missing = await post(valid);
-  check('push-send: no signature → 401', missing.status === 401, `HTTP ${missing.status}`);
-  const wrong = await post(valid, (text) => signed(text, 'wrong'));
-  check('push-send: wrong key → 401', wrong.status === 401, `HTTP ${wrong.status}`);
-  const stale = await post(valid, (text) =>
-    signed(text, secret, Math.floor(Date.now() / 1000) - 301),
-  );
-  check(
-    'push-send: signature older than 5 minutes → 401',
-    stale.status === 401,
-    `HTTP ${stale.status}`,
-  );
-  const invalid = await post({ messages: [] }, signed);
-  check('push-send: no messages → 400', invalid.status === 400, `HTTP ${invalid.status}`);
-  const internal = await post(
-    { messages: [{ ...message, endpoint: 'https://127.0.0.1:54321/rest/v1/' }] },
-    signed,
-  );
-  check(
-    'push-send: internal address → 200, rejected',
-    internal.status === 200 && internal.json?.results?.[0]?.status === 'rejected',
-    `HTTP ${internal.status}`,
-  );
-  const sent = await post(valid, signed);
-  const pushStatus = sent.json?.results?.[0]?.status;
-  check(
-    'push-send: made-up FCM address → 200 with the status of FCM',
-    sent.status === 200 && typeof pushStatus === 'number',
-    `HTTP ${sent.status} push status ${pushStatus ?? '-'}`,
-  );
 }
 
 psql(fixture, false);
@@ -314,8 +226,6 @@ try {
   check('ai-assistant: quota used up → 429', exhausted.status === 429, exhausted.detail);
   const exhaustedSearch = await call('ai-search', jwt, bodies['ai-search']);
   check('ai-search: quota used up → 429', exhaustedSearch.status === 429, exhaustedSearch.detail);
-
-  await smokePushSend();
 } catch (error) {
   failures += 1;
   console.log(`FAIL ${error instanceof Error ? error.message : 'unexpected error'}`);

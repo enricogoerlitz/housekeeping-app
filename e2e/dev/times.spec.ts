@@ -17,7 +17,7 @@ import {
 import { seedIds } from '../seed-ids';
 
 // Spec 0013, task 9 — times on a chore and the reservation of a restaurant entry, and the pages a
-// notification opens (`/haushalt?aufgabe=…`, `/kalender?tag=…&eintrag=…`). Runs in the dev smoke
+// notice opens (`/haushalt?aufgabe=…`, `/kalender?tag=…&eintrag=…`). Runs in the dev smoke
 // (playwright.dev.config.ts) on a phone after one fresh seed: "Bad putzen" is due today,
 // "Müll rausbringen" the day after tomorrow at 19:00, and "Trattoria Da Enzo" (plan-enzo-2) is
 // planned the day after tomorrow in the evening, reserved for 19:30.
