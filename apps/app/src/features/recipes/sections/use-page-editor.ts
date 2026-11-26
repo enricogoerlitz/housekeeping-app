@@ -300,7 +300,8 @@ export function usePageEditor(
     // "Neu → Mit KI ausfüllen" (spec 0040): the edit mode opens with the AI's draft.
     const handed = takeAiDraft(recipeId);
     if (handed) {
-      if (handed.photo) photo.current = handed.photo;
+      // Shown as the pending photo (spec 0049, AC-014: the photo of the page found on the web).
+      if (handed.photo) choosePhoto(handed.photo);
       dispatch({
         type: 'open',
         draft: fillPageDraft(pageDraft(recipe, contents), handed.input, newId),

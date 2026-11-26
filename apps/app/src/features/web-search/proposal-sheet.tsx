@@ -123,56 +123,48 @@ function RowLine(props: {
       </View>
     );
   }
-  if (row.status === 'removed') {
-    // "↺ behalten" (rejected) keeps the row: it reads normal again.
-    return (
-      <Tinted active={false} testID={testID}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <Text
-            variant="small"
-            color={rejected ? 'text' : 'removed'}
-            strike={!rejected}
-            style={{ flexShrink: 1 }}
-          >
-            {row.label}
-          </Text>
-          <Badge label={rejected ? 'behalten' : WORDS.removed} testID={`${testID}-word`} />
-        </View>
-        <View style={{ alignItems: 'flex-start' }}>
-          <Button
-            label={rejected ? 'Doch entfernen' : '↺ behalten'}
-            variant="link"
-            size="sm"
-            onPress={props.onToggle}
-            testID={`${testID}-toggle`}
-          />
-        </View>
-      </Tinted>
-    );
-  }
+  const removed = row.status === 'removed';
+  // A removed row reads red and struck through until "↺ behalten"; a dropped new row greys out.
+  const struck = removed ? !rejected : rejected && row.status === 'new';
+  const word = removed
+    ? rejected
+      ? 'behalten'
+      : WORDS.removed
+    : rejected
+      ? undefined
+      : WORDS[row.status];
+  const toggle = removed
+    ? rejected
+      ? 'Doch entfernen'
+      : '↺ behalten'
+    : rejected
+      ? '↺ Vorschlag nehmen'
+      : row.status === 'new'
+        ? '× Weglassen'
+        : '↺ Alter Wert';
   return (
-    <Tinted active={!rejected} testID={testID}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        <Text
-          variant="small"
-          color={rejected && row.status === 'new' ? 'muted' : 'text'}
-          strike={rejected && row.status === 'new'}
-          style={{ flexShrink: 1 }}
-        >
-          {rejected && row.beforeLabel ? row.beforeLabel : row.label}
-        </Text>
-        {rejected ? null : <Badge label={WORDS[row.status]} testID={`${testID}-word`} />}
-      </View>
-      {row.status === 'changed' && row.beforeLabel && !rejected ? (
-        <Text variant="small" color="removed" strike testID={`${testID}-before`}>
-          {row.beforeLabel}
-        </Text>
-      ) : null}
-      <View style={{ alignItems: 'flex-start' }}>
+    <Tinted active={!removed && !rejected} testID={testID}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <View style={{ flex: 1, gap: 2 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <Text
+              variant="small"
+              color={removed && !rejected ? 'removed' : struck ? 'muted' : 'text'}
+              strike={struck}
+              style={{ flexShrink: 1 }}
+            >
+              {rejected && row.beforeLabel ? row.beforeLabel : row.label}
+            </Text>
+            {word ? <Badge label={word} testID={`${testID}-word`} /> : null}
+          </View>
+          {row.status === 'changed' && row.beforeLabel && !rejected ? (
+            <Text variant="small" color="removed" strike testID={`${testID}-before`}>
+              {row.beforeLabel}
+            </Text>
+          ) : null}
+        </View>
         <Button
-          label={
-            rejected ? '↺ Vorschlag nehmen' : row.status === 'new' ? '× Weglassen' : '↺ Alter Wert'
-          }
+          label={toggle}
           variant="link"
           size="sm"
           onPress={props.onToggle}
