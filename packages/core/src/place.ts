@@ -43,10 +43,9 @@ export function placeQuery(params: RawParams): string {
 /** The state after the router showed `pathname` with `params`. */
 export function placeAfter(state: PlaceState, pathname: string, params: RawParams): PlaceState {
   const href = pathname + placeQuery(params);
-  const von = typeof params.von === 'string' ? params.von : undefined;
   const start = sectionOfStartPath(pathname);
   return {
-    current: { href, section: sectionOfPath(pathname, von) },
+    current: { href, section: sectionOfPath(pathname) },
     previous: pathOf(state.current) === pathname ? state.previous : state.current,
     startPages: start ? { ...state.startPages, [start]: startPageHref(href) } : state.startPages,
   };

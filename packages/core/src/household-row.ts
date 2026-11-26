@@ -28,6 +28,8 @@ export interface HouseholdRowItem {
   status: 'done' | 'open' | 'planned';
   /** Flexible chores: "etwa", drawn dashed. */
   approximate: boolean;
+  /** A done item's entry in the history, to take it back (spec 0035, REQ-001). */
+  eventId?: Id;
 }
 
 // Guards the stepping through a rhythm against broken dates; a range is at most a year.
@@ -134,6 +136,7 @@ export function householdRow(input: {
     push(event.doneOn, {
       key: `done-${event.id}`,
       choreId: event.choreId,
+      eventId: event.id,
       title: event.title,
       memberIds: [event.doneBy],
       status: 'done',

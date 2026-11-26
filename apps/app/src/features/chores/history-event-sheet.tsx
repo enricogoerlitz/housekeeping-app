@@ -1,8 +1,6 @@
 import {
   changeChoreEventDay,
   reassignChoreEvent,
-  removeChoreEvent,
-  snapshot,
   useChores,
   useMembers,
   useToday,
@@ -18,14 +16,14 @@ import {
   Stack,
   Surface,
   Text,
-  toast,
 } from '@housekeeping/ui';
 import { useState, type ReactNode } from 'react';
 
-import { undoAction, useOnlineOnly } from '@/features/shell/offline';
+import { useOnlineOnly } from '@/features/shell/offline';
 import { PlanDateCalendar } from '@/lib/plan-date-calendar';
 
 import { dayWithDate } from './chore-labels';
+import { removeEventWithToast } from './done-entry-sheet';
 
 interface HistoryEventProps {
   event: ChoreEvent;
@@ -48,16 +46,8 @@ function useHistoryEvent(props: HistoryEventProps): { title: string; body: React
   const choreExists = chores.some((chore) => chore.id === event.choreId);
 
   const remove = () => {
-    const restore = snapshot();
-    const removal = removeChoreEvent(event.id);
     props.onClose();
-    if (!removal) return;
-    toast.show({
-      message: removal.restoresChore
-        ? `Entfernt – „${event.title}“ ist wieder dran`
-        : 'Eintrag entfernt',
-      ...(removal.undoable ? { actionLabel: 'Rückgängig', onAction: undoAction(restore) } : {}),
-    });
+    removeEventWithToast(event, 'Entfernt');
   };
 
   return {

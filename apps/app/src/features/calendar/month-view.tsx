@@ -2,6 +2,7 @@ import {
   addPresetSlot,
   dayKinds,
   fittingItems,
+  MONTH_MIN_LINES,
   formatLongDate,
   monthGrid,
   parseISODate,
@@ -333,12 +334,12 @@ function MonthGridDesktop(props: MonthViewProps) {
           const segment = stripeSegment(stripe, weekFirst, weekLast);
           return segment ? [{ stripe, segment }] : [];
         });
-        // At least three lines and "+n weitere" (Decision 1).
+        // At least two lines and "+n weitere" (spec 0035, REQ-004; before three, spec 0021).
         const rowMin =
           2 * ROW_PAD +
           NUMBER_ROW +
           segments.length * STRIPE_ROW +
-          3 * LINE_CHORE +
+          MONTH_MIN_LINES * LINE_CHORE +
           MORE_HEIGHT +
           CELL_END;
         const rowHeight = share === undefined ? undefined : Math.max(share, rowMin);
@@ -448,7 +449,12 @@ function MonthGridDesktop(props: MonthViewProps) {
                   ...entries.map(() => LINE_ENTRY),
                   ...dayChores.map(() => LINE_CHORE),
                 ];
-                const shown = fittingItems(lines, (area ?? 0) - CELL_END, MORE_HEIGHT);
+                const shown = fittingItems(
+                  lines,
+                  (area ?? 0) - CELL_END,
+                  MORE_HEIGHT,
+                  MONTH_MIN_LINES,
+                );
                 const more = lines.length - shown;
                 const shownEntries = entries.slice(0, shown);
                 const shownChores = dayChores.slice(0, Math.max(0, shown - entries.length));

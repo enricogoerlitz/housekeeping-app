@@ -250,6 +250,14 @@ const KIND_NAMES: Record<CountRole, [one: string, many: string]> = {
 };
 
 /**
+ * The tooltip of a cut off calendar line (spec 0035, REQ-005): its kind and its whole text,
+ * "Aktivität: Bouldern (Power vs. Balance) · 18:00".
+ */
+export function lineTooltip(role: CountRole, text: string): string {
+  return `${KIND_NAMES[role][0]}: ${text}`;
+}
+
+/**
  * The text of a day for screen readers (spec 0016, platforms): "Freitag, 27. November: 1 Aktivität,
  * 1 Rezept, Nadja unterwegs"; `roles` holds one role per item of the day.
  */
@@ -317,12 +325,24 @@ export function addPresetSlot(
 
 /**
  * The height each of `count` rows gets from `available` px on the desktop (spec 0021, REQ-001):
- * an equal share, at least `min`.
+ * an equal share, at least `min` and, so a tall window does not pull the rows apart, at most `max`
+ * (spec 0035, REQ-003); the minimum wins.
  */
-export function sharedHeight(available: number, count: number, min: number): number {
+export function sharedHeight(
+  available: number,
+  count: number,
+  min: number,
+  max = Number.POSITIVE_INFINITY,
+): number {
   if (count <= 0) return min;
-  return Math.max(min, Math.floor(available / count));
+  return Math.max(min, Math.min(max, Math.floor(available / count)));
 }
+
+/**
+ * Lines a desktop month day shows at least above "+n weitere" (spec 0021, Entscheidung 1: three;
+ * spec 0035, REQ-004: two, so a week is about 15 % lower).
+ */
+export const MONTH_MIN_LINES = 2;
 
 /**
  * How many lines of a desktop month day, `lineHeights` in px in their order, show in `height` px

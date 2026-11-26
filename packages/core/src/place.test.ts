@@ -35,14 +35,44 @@ describe('placeAfter', () => {
     expect(place.startPages).toEqual({ essen: '/rezepte?suche=curry' });
   });
 
-  it('keeps the start pages of the other sections and leaves them on a detail page', () => {
+  it('spec 0035 AC-007: keeps the start pages; a recipe opened from the overview highlights "Essen"', () => {
     const list = placeAfter(EMPTY_PLACE, '/rezepte', { suche: 'curry' });
     const detail = placeAfter(list, `/rezept/${LASAGNE}`, { id: LASAGNE, von: 'uebersicht' });
     expect(detail.current).toEqual({
       href: `/rezept/${LASAGNE}?von=uebersicht`,
-      section: 'uebersicht',
+      section: 'essen',
     });
     expect(detail.startPages).toEqual({ essen: '/rezepte?suche=curry' });
+  });
+
+  it('spec 0035 AC-005: an activity opened from the calendar highlights "Verwalten", not "Kalender"', () => {
+    const calendar = placeAfter(EMPTY_PLACE, '/kalender', { ansicht: 'woche' });
+    const activity = placeAfter(calendar, `/aktivitaet/${LASAGNE}`, {
+      id: LASAGNE,
+      von: 'kalender',
+    });
+    expect(activity.current?.section).toBe('verwalten');
+    // "Zurück" still names the calendar and goes back to it (spec 0019, AC-016).
+    const opener = openerOf(activity, `/aktivitaet/${LASAGNE}`);
+    expect(
+      originBackPlan({ von: 'kalender', own: 'verwalten', opener, place: activity }),
+    ).toMatchObject({ section: 'kalender', label: 'Kalender', historyBack: true });
+  });
+
+  it('spec 0035 AC-006: a restaurant opened from the calendar highlights "Essen"', () => {
+    const calendar = placeAfter(EMPTY_PLACE, '/kalender', {});
+    const restaurant = placeAfter(calendar, `/restaurant/${LASAGNE}`, {
+      id: LASAGNE,
+      von: 'kalender',
+    });
+    expect(restaurant.current?.section).toBe('essen');
+  });
+
+  it('spec 0035 AC-007: the same rule everywhere, a market opened from the list highlights "Verwalten"', () => {
+    const list = placeAfter(EMPTY_PLACE, '/einkaufen', {});
+    expect(
+      placeAfter(list, `/markt/${LASAGNE}`, { id: LASAGNE, von: 'liste' }).current?.section,
+    ).toBe('verwalten');
   });
 
   it('does not change the state it was given', () => {

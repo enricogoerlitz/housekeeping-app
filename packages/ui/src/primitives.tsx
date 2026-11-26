@@ -1,8 +1,9 @@
-import { useContext, type ReactNode } from 'react';
+import { useContext, type ReactNode, type Ref } from 'react';
 import {
   Platform,
   Text as RNText,
   View,
+  type HostInstance,
   type StyleProp,
   type TextStyle,
   type ViewStyle,
@@ -58,6 +59,8 @@ export const HYPHENATE: TextStyle | null =
 const HYPHENATED_VARIANTS = new Set<TextVariant>(['caption', 'rowTitle', 'cardTitle']);
 
 export interface TextProps {
+  /** The text's element, e.g. to tell whether it is cut off (spec 0035, Tooltip). */
+  ref?: Ref<HostInstance>;
   children?: ReactNode;
   variant?: TextVariant;
   color?: ColorToken;
@@ -71,12 +74,13 @@ export interface TextProps {
   selectable?: boolean;
 }
 
-export function Text(props: TextProps) {
+export function Text({ ref, ...props }: TextProps) {
   const theme = useTheme();
   const color = useColor(props.color);
   const variant = theme.type[props.variant ?? 'body'];
   return (
     <RNText
+      ref={ref}
       testID={props.testID}
       numberOfLines={props.numberOfLines}
       selectable={props.selectable}
