@@ -1,5 +1,7 @@
 import {
+  checkImageFile,
   draftRecipeAsync,
+  loadPhotoFromAddress,
   OfflineError,
   preparePhoto,
   starterCatalogEntries,
@@ -12,6 +14,7 @@ import {
   RECIPE_DRAFT_LIMITS,
   draftLinks,
   draftToPageInput,
+  imageAddress,
   linkChipLabel,
   tagValues,
   type PageDraftInput,
@@ -29,16 +32,20 @@ import {
   Stack,
   SwitchRow,
   Text,
+  TextField,
   ViewTabs,
   pickImageFile,
   toast,
   useBreakpoint,
+  useFinePointer,
+  useImageDropAndPaste,
 } from '@housekeeping/ui';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 
 import { DictationField } from '@/features/shell/dictation-field';
 import { OFFLINE_EDIT_HINT, useOnlineOnly } from '@/features/shell/offline';
+import { pasteKeys } from '@/features/shell/photo-window';
 import { useWebSearch } from '@/features/web-search/use-web-search';
 import {
   webSearchPrimary,
@@ -63,6 +70,10 @@ export interface AiFill {
   links: string[];
   photos: DraftPhoto[];
   addPhoto: (camera: boolean) => void;
+  /** A file dropped or pasted on the desktop (spec 0049, REQ-009). */
+  addFile: (file: File) => void;
+  /** An image address, loaded by the server (fetch-image, spec 0039). */
+  addAddress: (url: string) => void;
   removePhoto: (index: number) => void;
   generatePhoto: boolean;
   setGeneratePhoto: (on: boolean) => void;
@@ -100,28 +111,32 @@ export function useAiFill(): AiFill {
   }, []);
 
   const links = draftLinks(text);
+  // Every source ends the same way: shrunk to 1280 px and attached, at most 4 (REQ-001).
+  const attach = (source: () => Promise<Blob>) => {
+    if (photos.length >= RECIPE_DRAFT_LIMITS.photos) return;
+    setPreparing(true);
+    setError(undefined);
+    source()
+      .then((image) => preparePhoto(image, DRAFT_PHOTO_MAX_SIDE))
+      .then(
+        (photo) => {
+          setPreparing(false);
+          setPhotos((current) =>
+            current.length >= RECIPE_DRAFT_LIMITS.photos
+              ? current
+              : [...current, { photo, uri: URL.createObjectURL(photo) }],
+          );
+        },
+        (cause: unknown) => {
+          setPreparing(false);
+          setError(cause instanceof Error ? cause.message : AI_DRAFT_UNREACHABLE_MESSAGE);
+        },
+      );
+  };
   const addPhoto = (camera: boolean) =>
-    pickImageFile(
-      (file) => {
-        setPreparing(true);
-        setError(undefined);
-        preparePhoto(file, DRAFT_PHOTO_MAX_SIDE).then(
-          (photo) => {
-            setPreparing(false);
-            setPhotos((current) =>
-              current.length >= RECIPE_DRAFT_LIMITS.photos
-                ? current
-                : [...current, { photo, uri: URL.createObjectURL(photo) }],
-            );
-          },
-          (cause: unknown) => {
-            setPreparing(false);
-            setError(cause instanceof Error ? cause.message : AI_DRAFT_UNREACHABLE_MESSAGE);
-          },
-        );
-      },
-      camera ? { camera: true } : undefined,
-    );
+    pickImageFile((file) => attach(async () => file), camera ? { camera: true } : undefined);
+  const addFile = (file: File) => attach(async () => checkImageFile(file));
+  const addAddress = (url: string) => attach(() => loadPhotoFromAddress(url));
   const removePhoto = (index: number) =>
     setPhotos((current) => {
       const gone = current[index];
@@ -172,6 +187,8 @@ export function useAiFill(): AiFill {
     links,
     photos,
     addPhoto,
+    addFile,
+    addAddress,
     removePhoto,
     generatePhoto,
     setGeneratePhoto,
@@ -211,12 +228,55 @@ export function toastUnreadLinks(sources: readonly RecipeDraftSource[]): void {
   });
 }
 
+const ADDRESS_DELAY_MS = 400;
+
+/** "Bildadresse" (spec 0049, REQ-009): a pasted image address attaches by itself, like spec 0039. */
+function ImageAddressField(props: {
+  disabled: boolean;
+  onAddress: (url: string) => void;
+  testID: string;
+}) {
+  const [address, setAddress] = useState('');
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const load = (text: string) => {
+    const url = imageAddress(text);
+    if (!url) return;
+    clearTimeout(timer.current);
+    setAddress('');
+    props.onAddress(url);
+  };
+  return (
+    <TextField
+      label="Bildadresse"
+      placeholder="https://…"
+      value={address}
+      onChangeText={(text) => {
+        setAddress(text);
+        clearTimeout(timer.current);
+        if (imageAddress(text)) timer.current = setTimeout(() => load(text), ADDRESS_DELAY_MS);
+      }}
+      onSubmitEditing={() => load(address)}
+      keyboardType="url"
+      autoComplete="off"
+      returnKeyType="go"
+      editable={!props.disabled}
+      testID={props.testID}
+    />
+  );
+}
+
 /** The field, the link chips, the photos and "Foto generieren" (REQ-001 – REQ-003). */
 export function AiFillFields(props: { fill: AiFill; testID: string }) {
   const { fill, testID } = props;
   const online = useOnlineOnly();
   const { isPhone } = useBreakpoint();
+  const finePointer = useFinePointer();
   const disabled = online.disabled || fill.busy;
+  // Spec 0049, REQ-009: on the desktop like the photo window — drop, ⌘V and an image address.
+  const desktop = !isPhone && finePointer;
+  const room = fill.photos.length < RECIPE_DRAFT_LIMITS.photos;
+  const dragging = useImageDropAndPaste(desktop && room && !disabled, fill.addFile);
   const chipState = (url: string): 'reading' | 'read' | 'failed' | undefined => {
     if (fill.busy) return 'reading';
     const source = fill.sources.find((candidate) => candidate.url === url);
@@ -299,6 +359,24 @@ export function AiFillFields(props: { fill: AiFill; testID: string }) {
             testID={`${testID}-photo`}
           />
         </Row>
+      ) : null}
+      {desktop && room ? (
+        <>
+          <Text
+            variant="small"
+            color={dragging ? 'accent' : 'muted'}
+            testID={`${testID}-drop-hint`}
+          >
+            {dragging
+              ? 'Zum Anhängen hier loslassen'
+              : `Fotos hierher ziehen, mit ${pasteKeys()} einfügen oder eine Bildadresse angeben`}
+          </Text>
+          <ImageAddressField
+            disabled={disabled || fill.preparing}
+            onAddress={fill.addAddress}
+            testID={`${testID}-address`}
+          />
+        </>
       ) : null}
       <SwitchRow
         label="Foto generieren"

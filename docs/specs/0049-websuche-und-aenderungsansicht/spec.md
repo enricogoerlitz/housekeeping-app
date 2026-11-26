@@ -161,6 +161,22 @@ Enrico, 26.11. abends. Offline: nur online.
 - AC-030: Angenommen ein Treffer ohne Foto · Wenn ich ihn bei einem Eintrag ohne Foto übernehme ·
   Dann erscheinen drei aus Name und Art erzeugte Fotovorschläge
 
+### Fotos in „Eigene Angaben“
+
+**REQ-009 — Ziehen, Einfügen, Bildadresse am Desktop.** Im Reiter „Eigene Angaben“ nehmen die
+Fotos (bis 4) am Desktop auch ein hineingezogenes Bild, ein mit ⌘V/Strg+V eingefügtes Bild und eine
+„Bildadresse“ an, wie das Foto-Fenster (Spec 0039, gleicher Code und `fetch-image`). Touch-Geräte
+behalten ihre Knöpfe. Quelle: Enrico, 26.11. abends. Offline: nur online.
+
+- AC-031: Angenommen Desktop, „Neu → Rezept → Mit KI ausfüllen → Eigene Angaben“ · Wenn ich ein
+  Foto in das Fenster ziehe oder mit ⌘V einfüge · Dann hängt es als Foto an, höchstens 4
+- AC-032: Angenommen Desktop, „Eigene Angaben“ · Wenn ich unter „Bildadresse“
+  „https://img.chefkoch-cdn.de/…/spaghetti-bolognese.jpg“ einfüge · Dann lädt der Server das Bild,
+  es hängt an, und das Feld ist wieder leer · Und eine Adresse ohne Bild zeigt die Meldung des
+  Foto-Fensters
+- AC-033: Angenommen iPhone · Dann zeigt „Eigene Angaben“ „Foto aufnehmen“ und „Fotomediathek“ wie
+  bisher, ohne „Bildadresse“
+
 ## Entscheidungen
 
 1. Enrico, 26.11.: Anbieter Serper.dev, Ausweichweg Brave Search API; kein Google-, DuckDuckGo- oder
@@ -240,6 +256,8 @@ gespeichert, bevor die Person „Speichern“ tippt.
 - [x] 7. App: Suchfeld, Karten, Vorschau, Reiter im KI-Fenster, „Im Web suchen“, Fotovorschläge
       aus Bildwunsch (AC-001 – AC-015, AC-026, AC-030)
 - [x] 8. App: Änderungsansicht für Rezept, Restaurant, Aktivität (AC-016 – AC-021)
+- [x] 10. App: „Eigene Angaben“ am Desktop mit Ziehen, Einfügen und Bildadresse (AC-031 – AC-033);
+      Playwright Desktop: Bildadresse und gezogene Datei hängen an
 - [ ] 9. Secrets: **Enrico-Todo** `supabase secrets set SERPER_API_KEY=… BRAVE_SEARCH_API_KEY=…` in
       Vorschau und Produktion
 - [x] Nachweis (26.11.): `pnpm format:check && pnpm check && pnpm build:web` grün (Build mit
