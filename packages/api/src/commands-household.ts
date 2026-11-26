@@ -159,6 +159,8 @@ const MESSAGES: Record<string, string> = {
   already_member: 'Diese Person ist schon Mitglied.',
   member_not_found: 'Diese Person ist kein Mitglied mehr.',
   not_last_member: NOT_LAST_MEMBER_MESSAGE,
+  // Spec 0042, REQ-005: the app offers neither to others; a stale screen can still send it.
+  not_owner: 'Das darf nur der Eigentümer des Haushalts.',
 };
 
 /** Same rule as `private.is_valid_email` on the server. */

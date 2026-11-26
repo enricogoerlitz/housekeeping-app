@@ -64,7 +64,7 @@ export const WRITABLE_COLUMNS = {
     'default_shopping_rule',
     'needs_review',
   ],
-  stores: ['name', 'area_order', 'hidden_area_ids'],
+  stores: ['name', 'area_order', 'hidden_area_ids', 'maps_url'],
   // kind ("Rezept" or "Sammlung", spec 0009, E2) only on insert: see PATCH_COLUMNS. photo (the
   // bundled sample photo) is set only by the seed (spec 0031, REQ-026).
   recipes: [

@@ -19,6 +19,7 @@
 import {
   addDays,
   compareTimestamps,
+  householdOwnerId,
   isHalfStar,
   isReminderPast,
   isWebUrl,
@@ -941,6 +942,13 @@ export function createFakeServer(): FakeServer {
 
   const isMember = (userId: string, householdId: string) =>
     members.some((member) => member.household_id === householdId && member.profile_id === userId);
+  /** private.household_owner (spec 0042, REQ-005): earliest join, ties by the smaller id. */
+  const ownerOf = (householdId: string) =>
+    householdOwnerId(
+      members
+        .filter((member) => member.household_id === householdId)
+        .map((m) => ({ profileId: String(m.profile_id), joinedAt: String(m.created_at) })),
+    );
   const memberIdsOf = (householdId: string) =>
     members
       .filter((member) => member.household_id === householdId)
@@ -3191,6 +3199,8 @@ export function createFakeServer(): FakeServer {
         run(userId, 'invite_member', () => {
           if (!isMember(userId, householdId))
             throw new TransportError('permanent', 'not_member', 403);
+          if (ownerOf(householdId) !== userId)
+            throw new TransportError('permanent', 'not_owner', 403);
           const address = email.trim().toLowerCase();
           if (!/^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/.test(address)) throw reject('invalid_email');
           const already = members.some(
@@ -3251,6 +3261,8 @@ export function createFakeServer(): FakeServer {
         run(userId, 'remove_member', () => {
           if (!isMember(userId, householdId))
             throw new TransportError('permanent', 'not_member', 403);
+          if (profileId !== userId && ownerOf(householdId) !== userId)
+            throw new TransportError('permanent', 'not_owner', 403);
           if (!isMember(profileId, householdId)) {
             throw new TransportError('permanent', 'member_not_found', 404);
           }
@@ -3542,11 +3554,12 @@ export function createFakeServer(): FakeServer {
         created_at: time,
         updated_at: time,
       });
+      // In the given order, so the first one is the owner (spec 0042, REQ-005).
       for (const profileId of memberIds) {
         members.push({
           household_id: household.id,
           profile_id: profileId,
-          created_at: time,
+          created_at: now(),
           updated_at: time,
         });
         createNotificationSettings(household.id, profileId);

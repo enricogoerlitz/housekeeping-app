@@ -52,5 +52,5 @@ export {
   useAuth,
 } from './auth';
 export { TEST_ACCOUNTS, type TestAccountKey } from './dev-accounts';
-export { useHouseholdInvitations, useMyInvitations } from './households';
+export { useHouseholdInvitations, useHouseholdOwnerId, useMyInvitations } from './households';
 export { starterCatalogEntries } from './starter/entries';

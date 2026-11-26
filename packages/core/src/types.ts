@@ -73,6 +73,8 @@ export interface Store {
   /** Area ids in walking order. Areas missing here come after the ordered ones. */
   areaOrder: Id[];
   hiddenAreaIds: Id[];
+  /** "Karten-Link" (spec 0042, REQ-002): Google Maps / Apple Karten; "Route" shows only with it. */
+  mapsUrl?: string;
 }
 
 // ---------- Recipes ----------
