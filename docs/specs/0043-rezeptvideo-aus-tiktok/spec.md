@@ -86,11 +86,17 @@ mit. Offline: nur online.
    Rezepts mit dem Wiedergabe-Knopf. `begin_household_deletion` liefert Fotos und Videos; die App
    unterscheidet sie an der Endung `.mp4`. Ein gelöschtes Rezept nimmt sein Video mit, wenn
    „Rückgängig“ abgelaufen ist (wie das Foto), sonst der nächtliche Aufräum-Lauf.
-8. OFFEN: Die Sicherung (`.github/workflows/backup.yml`) sichert nur `household-media`, keine
-   Videos; `scripts/reset-app-data.mjs` leert nur `household-media` (übrig gebliebene Videos räumt
-   der Aufräum-Lauf nach einem Tag ab). Empfehlung: Videos bewusst nicht sichern (bis 50 MB je
-   Video, die Quelle bleibt der Link); beim nächsten Reset den Bucket mit leeren. Entscheidung
-   Enrico.
+8. Enrico, 26.11.2026 (war OFFEN; die Empfehlung „nicht sichern“ ist verworfen): Die Videos aus
+   `household-videos` **gehören in jede Sicherung** (nachts und vor jeder Veröffentlichung), und
+   `scripts/reset-app-data.mjs` leert den Bucket wie die Fotos (auch mit `--data-only`). Umsetzung:
+   `backup.yml` synchronisiert den Bucket nach `videos/` im Archiv; `manifest.json` zählt die
+   Videos (Format 2), der Wiederherstellungstest vergleicht sie; Sicherungen im Format 1 (ohne
+   Videos) bleiben lesbar. Fehlt der Bucket (die Veröffentlichung mit dieser Spec sichert, bevor sie
+   migriert), sichert der Lauf mit Warnung null Videos; `verify.mjs` prüft nach jeder Auslieferung
+   „Video-Bucket“ (privat, 50 MiB, nur `video/mp4`), damit ein später verlorener Bucket auffällt.
+   Zeitgrenzen bleiben bei 45 Minuten: Der Speicher des Free-Tarifs fasst 1 GB, ein Archiv bleibt
+   darunter. Runbook: `docs/architecture/betrieb.md`, „Sicherung und Wiederherstellungstest“ und
+   „Notfall: Wiederherstellen“.
 
 ## Daten
 
@@ -100,22 +106,33 @@ Löschfunktionen und Aufräum-Lauf um den Bucket erweitert. Keine personenbezoge
 
 ## Risiken
 
-| Risiko                                  | Gegenmaßnahme                                  | Test                                 |
-| --------------------------------------- | ---------------------------------------------- | ------------------------------------ |
-| Funktion lädt beliebige Adressen (SSRF) | nur TikTok-Hosts, sicherer Abruf (ADR-0016)    | Unit-Tests Allowlist + Adressklassen |
-| Fremder Haushalt / abgemeldet           | JWT, Mitgliedschaft, Upload mit Aufrufer-RLS   | Test 401/403, pgTAP Storage-Policy   |
-| Speicher läuft voll                     | 50 MB je Video, ein Video je Rezept, Aufräumen | AC-003, AC-011                       |
-| Datei bleibt beim Löschen liegen        | Löschpfade + Aufräum-Lauf                      | AC-009–AC-011                        |
-| TikTok ändert die Seite                 | Fehler sauber gemeldet, Link bleibt            | AC-002                               |
-| Cookies/Referer gehen an fremde Hosts   | nur mit `allowHost` (TikTok + CDNs), je Hop    | Unit-Test fetch-public, tiktok       |
-| Datei ohne Zeile (Abbruch, Wettlauf)    | Datei sofort wieder gelöscht; sonst Aufräumen  | Unit-Test fetch-video, pgTAP         |
+| Risiko                                  | Gegenmaßnahme                                   | Test                                 |
+| --------------------------------------- | ----------------------------------------------- | ------------------------------------ |
+| Funktion lädt beliebige Adressen (SSRF) | nur TikTok-Hosts, sicherer Abruf (ADR-0016)     | Unit-Tests Allowlist + Adressklassen |
+| Fremder Haushalt / abgemeldet           | JWT, Mitgliedschaft, Upload mit Aufrufer-RLS    | Test 401/403, pgTAP Storage-Policy   |
+| Speicher läuft voll                     | 50 MB je Video, ein Video je Rezept, Aufräumen  | AC-003, AC-011                       |
+| Datei bleibt beim Löschen liegen        | Löschpfade + Aufräum-Lauf                       | AC-009–AC-011                        |
+| TikTok ändert die Seite                 | Fehler sauber gemeldet, Link bleibt             | AC-002                               |
+| Cookies/Referer gehen an fremde Hosts   | nur mit `allowHost` (TikTok + CDNs), je Hop     | Unit-Test fetch-public, tiktok       |
+| Datei ohne Zeile (Abbruch, Wettlauf)    | Datei sofort wieder gelöscht; sonst Aufräumen   | Unit-Test fetch-video, pgTAP         |
+| Videos nach Datenverlust weg            | Videos in jeder Sicherung, im Test verglichen   | `scripts/backup/*.test.mjs`          |
+| Video-Bucket fehlt still in Sicherungen | `verify.mjs` „Video-Bucket“ nach Auslieferung   | `scripts/release/verify.test.mjs`    |
+| Reset lässt Videos liegen               | `reset-app-data.mjs` leert beide Buckets        | `scripts/reset-app-data.test.mjs`    |
+| Egress: Nachtsicherung lädt alle Videos | beobachten (siehe unten), ggf. seltener sichern | —                                    |
 
 `/security-check` (26.11.): 0 kritisch, 0 hoch, 0 mittel. Niedrig: zwei gleichzeitige Aufrufe
 für dasselbe Rezept können eine zweite Datei hinterlassen (der zweite Pfad gewinnt, die erste
 Datei räumt der Aufräum-Lauf nach einem Tag ab) — angenommen; eine Rezept-ID ohne UUID-Form gab
 500 statt 403 — behoben. Hinweise: kein Kontingent (Entscheidung 3, ein Mitglied kann viele
 Rezepte mit Video füllen); bis etwa 100 MB Speicher in der Edge Function beim Zusammensetzen
-eines 50-MB-Videos; Sicherung und Reset ohne Videos (Entscheidung 8, OFFEN).
+eines 50-MB-Videos.
+
+**Kosten der Videosicherung (Entscheidung 8):** Der Läufer ist jede Nacht leer, also lädt jede
+Sicherung alle Videos ganz aus Supabase. Das zählt zum Egress des Projekts (Free-Tarif: einige GB
+im Monat, Stand der Preisseite prüfen): ein Video von 21,6 MB sind etwa 0,65 GB im Monat, ein voller
+Speicher von 1 GB wären etwa 30 GB. In Azure (Hot LRS) liegen bis etwa 45 Sicherungen; bei 1 GB je
+Archiv etwa 1 € im Monat, unter dem Budget von 10 €. Wächst die Videomenge, die Nutzung im
+Supabase-Dashboard ansehen und notfalls Videos nur wöchentlich sichern (eigene Entscheidung).
 
 ## Umsetzung
 
@@ -127,6 +144,8 @@ eines 50-MB-Videos; Sicherung und Reset ohne Videos (Entscheidung 8, OFFEN).
 - [x] 4. CSP `media-src` + Test in `check-web-export`
 - [x] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün;
       `pnpm exec supabase test db`; `/security-check`; ein echter Download am Beispiel-Link
+- [x] 5. Videos in Sicherung, Wiederherstellungstest und Reset; „Video-Bucket“ in `verify.mjs`
+      (Entscheidung 8)
 
 **Nachweis (26.11.2026):** `pnpm exec supabase test db` grün (60 Dateien, neu
 `recipe_video.test.sql` mit 33 Tests: Bucket, Spalte, Allowlist, fremder Haushalt, abgemeldet,
@@ -142,3 +161,14 @@ läuft, nicht stumm, 96 s; offline „Video braucht Netz“ (AC-008); „Video e
 Bildschirmfotos: Haupt-Checkout `tmp/review-0003/0043/`. Nur am iPhone prüfbar: Ton und Vollbild
 in Safari nach dem Laden (die Wiedergabe startet nach dem Download; verweigert Safari das, reicht
 ein zweiter Tipp auf die Steuerung).
+
+**Nachweis Task 5 (26.11.2026):** Tests rot zuerst (11 in `scripts/backup/`, 4 in
+`workflows.test.mjs`, Import-Fehler in `reset-app-data.test.mjs` und `verify.test.mjs`), dann grün;
+`pnpm format:check && pnpm check` grün (429 Skript-Tests), actionlint ohne Befund. Lokal geprüft:
+`supabase storage ls` eines fehlenden Buckets liefert `{"paths":[]}` mit Status 0, der Reset löscht
+dort also nichts und bricht nicht ab. Kein Lauf gegen die Cloud; der erste echte Lauf ist die
+Sicherung der Veröffentlichung mit dieser Spec (Warnung „Bucket household-videos fehlt“ erwartet),
+dann die nächste Nachtsicherung und der Wiederherstellungstest. `/security-check`: 0 kritisch,
+0 hoch, 0 mittel, 0 niedrig. Hinweis: `verify.mjs` läuft nur bei Auslieferungen; ein zwischen zwei
+Veröffentlichungen verlorener Bucket fiele erst dort auf, die älteren Sicherungen (31 Tage)
+enthalten die Videos dann noch.

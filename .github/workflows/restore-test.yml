@@ -2,8 +2,9 @@
 # daily/ (older than 36 hours → red, e.g. when GitHub switched the schedule off), checks its
 # checksum, decrypts it, restores it into a throwaway Supabase database in the runner following
 # Supabase's restore guide (roles, schema, session_replication_role = replica, data) and compares
-# rows per table and the photo count with manifest.json. Nothing from the backup reaches the log or
-# an artifact: psql output goes to files, messages name tables and numbers only.
+# rows per table and the photo and video count (spec 0043, decision 8) with manifest.json. Nothing
+# from the backup reaches the log or an artifact: psql output goes to files, messages name tables
+# and numbers only.
 #
 # Started on the first of the month by schedule.yml (on main, via workflow_dispatch), or by hand.
 # The identity of the environment may only read blobs. No package install.
@@ -23,6 +24,8 @@ jobs:
   wiederherstellungstest:
     name: Wiederherstellungstest
     runs-on: ubuntu-24.04
+    # With the videos (spec 0043) the archive grows to at most about 1 GB (the storage of the
+    # hosted free plan): download and unpack take minutes, 45 stay ample.
     timeout-minutes: 45
     environment: restore-test
     permissions:
@@ -116,7 +119,7 @@ jobs:
             exit 1
           fi
           node scripts/backup/compare.mjs counts --manifest "$W/download/manifest.json" \
-            --counts "$W/counts.txt" --media "$W/backup/media"
+            --counts "$W/counts.txt" --media "$W/backup/media" --videos "$W/backup/videos"
 
       - name: Aufräumen
         if: always()
