@@ -99,15 +99,21 @@ test('AC-068 (0031): a shorter end, not yet saved, shows its days and "je Tag" q
   await expect(shirts).toContainText('T-Shirts 4×');
 });
 
-test('AC-017 (0022): a trip without a packing list is deleted with 5 s "Rückgängig"', async ({
+test('AC-017 (0022): a trip without a packing list is deleted after asking first (spec 0036: asks first)', async ({
   page,
 }) => {
   await openFromTrips(page, HAMBURG);
   await tid(page, 'trip-more').click();
   await tid(page, 'trip-more-delete').click();
+  await expect(tid(page, 'confirm-delete-trip')).toBeVisible();
+  await tid(page, 'confirm-delete-trip-cancel').click();
+  await expect(tid(page, 'confirm-delete-trip')).toBeHidden();
+  await tid(page, 'trip-more').click();
+  await tid(page, 'trip-more-delete').click();
+  await tid(page, 'confirm-delete-trip-confirm').click();
   await expect(toastMessage(page)).toHaveText('Reise gelöscht');
-  await tid(page, 'toast-action').click();
-  await expect(tid(page, `trip-${HAMBURG}`)).toBeVisible();
+  await expect(tid(page, 'toast-action')).toHaveCount(0);
+  await expect(tid(page, `trip-${HAMBURG}`)).toHaveCount(0);
 });
 
 test('AC-028 / AC-034 (0022): a Packstück window from its name; "+ Neue Reisetasche" "Camping"', async ({

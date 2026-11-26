@@ -2,7 +2,6 @@ import {
   changeChoreEventDay,
   reassignChoreEvent,
   removeChoreEvent,
-  snapshot,
   useChores,
   useMembers,
   useToday,
@@ -22,7 +21,8 @@ import {
 } from '@housekeeping/ui';
 import { useState, type ReactNode } from 'react';
 
-import { undoAction, useOnlineOnly } from '@/features/shell/offline';
+import { confirmFirst } from '@/features/shell/confirm-dialog';
+import { useOnlineOnly } from '@/features/shell/offline';
 import { PlanDateCalendar } from '@/lib/plan-date-calendar';
 
 import { dayWithDate } from './chore-labels';
@@ -47,18 +47,24 @@ function useHistoryEvent(props: HistoryEventProps): { title: string; body: React
   const [picking, setPicking] = useState(false);
   const choreExists = chores.some((chore) => chore.id === event.choreId);
 
-  const remove = () => {
-    const restore = snapshot();
-    const removal = removeChoreEvent(event.id);
-    props.onClose();
-    if (!removal) return;
-    toast.show({
-      message: removal.restoresChore
-        ? `Entfernt – „${event.title}“ ist wieder dran`
-        : 'Eintrag entfernt',
-      ...(removal.undoable ? { actionLabel: 'Rückgängig', onAction: undoAction(restore) } : {}),
+  // Asks first (spec 0036, Entscheidung 1); "Rückgängig" afterwards is gone.
+  const remove = () =>
+    confirmFirst({
+      title: 'Eintrag entfernen?',
+      message: `„${event.title}“, ${dayWithDate(event.doneOn, today)}`,
+      confirmLabel: 'Entfernen',
+      onConfirm: () => {
+        const removal = removeChoreEvent(event.id);
+        props.onClose();
+        if (!removal) return;
+        toast.show({
+          message: removal.restoresChore
+            ? `Entfernt – „${event.title}“ ist wieder dran`
+            : 'Eintrag entfernt',
+        });
+      },
+      testID: 'confirm-remove-event',
     });
-  };
 
   return {
     title: event.title,

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   AMOUNT_NOT_RECOGNIZED,
+  KNOWN_UNITS,
   buyableQty,
   formatAmount,
   formatQty,
@@ -349,5 +350,27 @@ describe('parseItemAmount (spec 0025, REQ-003, REQ-007)', () => {
     expect(parseItemAmount('1,5')).toBeUndefined();
     expect(parseItemAmount('0 g')).toBeUndefined();
     expect(AMOUNT_NOT_RECOGNIZED).toBe('Menge nicht erkannt – z. B. 500 g oder 2');
+  });
+});
+
+describe('KNOWN_UNITS (spec 0036, REQ-006)', () => {
+  it('AC-013: lists the units the app understands, the common ones first, each once', () => {
+    expect(KNOWN_UNITS.slice(0, 10)).toEqual([
+      'g',
+      'kg',
+      'ml',
+      'l',
+      'EL',
+      'TL',
+      'Prise',
+      'Stück',
+      'Bund',
+      'Dose',
+    ]);
+    expect(new Set(KNOWN_UNITS).size).toBe(KNOWN_UNITS.length);
+  });
+
+  it('AC-013: every listed unit is understood after a number ("400 ml")', () => {
+    for (const unit of KNOWN_UNITS) expect(parseAmount(`2 ${unit}`)?.unit).toBe(unit);
   });
 });

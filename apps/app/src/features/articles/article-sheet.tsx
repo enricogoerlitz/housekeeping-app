@@ -1,7 +1,6 @@
 import {
   confirmArticle,
   deleteArticle,
-  snapshot,
   updateArticle,
   useAreas,
   useArticles,
@@ -39,7 +38,8 @@ import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 
 import { useOpenRecipe } from '@/features/recipes/navigation';
-import { undoAction, useOnlineOnly } from '@/features/shell/offline';
+import { confirmFirst } from '@/features/shell/confirm-dialog';
+import { useOnlineOnly } from '@/features/shell/offline';
 import { AreaPicker } from '@/features/stores/area-picker';
 
 import { DIET_OPTIONS, RULE_OPTIONS, type RuleChoice } from './labels';
@@ -183,16 +183,18 @@ export function useArticleEditor(props: ArticleEditorProps): {
     );
 
   const usage = articleUsage(article.id, recipes, items);
-  const remove = () => {
-    const restore = snapshot();
-    if (!write(() => deleteArticle(article.id))) return;
-    props.onClose();
-    toast.show({
-      message: `„${article.name}“ gelöscht`,
-      actionLabel: 'Rückgängig',
-      onAction: undoAction(restore),
+  // Asks first (spec 0036, Entscheidung 1).
+  const remove = () =>
+    confirmFirst({
+      title: `„${article.name}“ löschen?`,
+      confirmLabel: 'Löschen',
+      onConfirm: () => {
+        if (!write(() => deleteArticle(article.id))) return;
+        props.onClose();
+        toast.show({ message: `„${article.name}“ gelöscht` });
+      },
+      testID: 'confirm-delete-article',
     });
-  };
 
   const area = areas.find((candidate) => candidate.id === article.areaId);
   // Text fields and choice chips have no greyed-out look of their own; offline they get one.

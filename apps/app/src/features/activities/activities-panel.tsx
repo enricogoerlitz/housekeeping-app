@@ -27,13 +27,15 @@ import {
   TextField,
   useBreakpoint,
   useTheme,
+  FieldClearButton,
 } from '@housekeeping/ui';
 import { useIsFocused, useRouter } from 'expo-router';
-import { useEffect } from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
+import { type ComponentRef, useEffect, useRef } from 'react';
+import { Pressable, ScrollView, View, type TextInput } from 'react-native';
 
 import { useOnlineOnly } from '@/features/shell/offline';
 import { ScrollColumn } from '@/features/shell/scroll-column';
+import { useSettings } from '@/lib/settings';
 import { useOriginBack, usePageParams } from '@/lib/url-state';
 
 import { ActivityDetail } from './activity-detail';
@@ -60,6 +62,7 @@ const LIST_COLUMN_WIDTH = 380;
  * highlighted) and the activity on the right with ✕ back to the grid.
  */
 export function ActivitiesScreen() {
+  const searchInput = useRef<ComponentRef<typeof TextInput>>(null);
   const { isPhone, isWide, bp } = useBreakpoint();
   const router = useRouter();
   const online = useOnlineOnly();
@@ -76,12 +79,19 @@ export function ActivitiesScreen() {
 
   const query = params.suche ?? '';
   const favoritesOnly = params.favoriten === '1';
-  const sort: ActivitySort = SORT_OF_SLUG[params.sortierung ?? 'name'];
+  // Without a sort in the address the one chosen last on this device applies (spec 0036, REQ-002).
+  const settings = useSettings();
+  const sort: ActivitySort = params.sortierung
+    ? SORT_OF_SLUG[params.sortierung]
+    : (settings.listSorts.activities ?? 'name');
   const creating = params.fenster === 'neu-aktivitaet' && focused;
   const setQuery = (next: string) => address.replace({ suche: next });
   const setFavoritesOnly = (next: boolean) =>
     address.replace({ favoriten: next ? '1' : undefined });
-  const setSort = (next: ActivitySort) => address.replace({ sortierung: SLUG_OF_SORT[next] });
+  const setSort = (next: ActivitySort) => {
+    settings.update({ listSorts: { ...settings.listSorts, activities: next } });
+    address.replace({ sortierung: SLUG_OF_SORT[next] });
+  };
   const setCreating = (open: boolean) =>
     open ? address.open({ fenster: 'neu-aktivitaet' }) : address.close({ fenster: undefined });
 
@@ -189,6 +199,7 @@ export function ActivitiesScreen() {
     <Stack gap={8}>
       <TextField
         round
+        inputRef={searchInput}
         value={query}
         onChangeText={setQuery}
         placeholder="Aktivitäten suchen …"
@@ -197,10 +208,10 @@ export function ActivitiesScreen() {
         left={<Icon name="search" size={19} color="muted" />}
         right={
           query ? (
-            <IconButton
-              icon="x"
+            <FieldClearButton
               label="Suche leeren"
-              onPress={() => setQuery('')}
+              onClear={() => setQuery('')}
+              inputRef={searchInput}
               testID="activity-search-clear"
             />
           ) : undefined

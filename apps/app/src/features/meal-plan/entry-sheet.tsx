@@ -3,7 +3,6 @@ import {
   NOTE_MAX_LENGTH,
   removePlanEntry,
   saveEntry,
-  snapshot,
   updatePlanEntry,
   useActivitiesById,
   useHousehold,
@@ -17,6 +16,7 @@ import {
   type EntryFields,
 } from '@housekeeping/api';
 import {
+  showsRoute,
   canMarkNotDone,
   checkEntryNote,
   checkEntryText,
@@ -55,14 +55,14 @@ import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 
-import { hasPlace } from '@/features/activities/labels';
 import { useMoveEntry } from '@/features/calendar/move-entry';
 import { PlanDateCalendar } from '@/lib/plan-date-calendar';
 import { useOpenActivity } from '@/features/activities/navigation';
 import { useOpenRecipe } from '@/features/recipes/navigation';
 import { useOpenRestaurant } from '@/features/restaurants/navigation';
 import { RouteSheet, type RouteTarget } from '@/features/restaurants/route-sheet';
-import { undoAction, useOnlineOnly } from '@/features/shell/offline';
+import { confirmFirst } from '@/features/shell/confirm-dialog';
+import { useOnlineOnly } from '@/features/shell/offline';
 
 import { entryTitle } from './labels';
 import { EaterPicker, PortionFields, usePortions } from './plan-fields';
@@ -169,9 +169,9 @@ export function EntrySheet(props: {
       : undefined;
   const timed = entry.kind === 'restaurant' || entry.kind === 'activity';
   const eats = entry.kind === 'recipe' || entry.kind === 'restaurant';
-  // "Route" only where there is a place (plan, Decision 11): a map link or an address.
+  // "Route" only with a map link (spec 0036, AC-018; before plan Decision 11: or an address).
   const routeTarget: RouteTarget | undefined = activity
-    ? hasPlace(activity)
+    ? showsRoute(activity)
       ? {
           name: activity.name,
           address: activity.address,
@@ -179,7 +179,7 @@ export function EntrySheet(props: {
           placeName: activity.placeName,
         }
       : undefined
-    : restaurant && (restaurant.location || restaurant.address)
+    : restaurant && showsRoute(restaurant)
       ? restaurant
       : undefined;
 
@@ -311,7 +311,6 @@ export function EntrySheet(props: {
 
   const share = entryListShare(items, entry.id);
   const remove = (withList: boolean) => {
-    const restore = snapshot();
     const taken = removePlanEntry(entry.id, { withList });
     setConfirmRemove(false);
     props.onClose();
@@ -320,10 +319,19 @@ export function EntrySheet(props: {
         taken > 0
           ? `${title} entfernt · ${zutaten(taken)} von der Liste genommen`
           : `„${title}“ entfernt`,
-      actionLabel: 'Rückgängig',
-      onAction: undoAction(restore),
     });
   };
+  // Without list ingredients the plain question; with them the window below (spec 0036,
+  // Entscheidung 1; spec 0021, REQ-015).
+  const askRemove = () =>
+    share
+      ? setConfirmRemove(true)
+      : confirmFirst({
+          title: `„${title}“ entfernen?`,
+          confirmLabel: 'Entfernen',
+          onConfirm: () => remove(false),
+          testID: 'confirm-remove-entry',
+        });
 
   const setField = (field: TypedField, value: string) => {
     if (field === 'text') setText(value);
@@ -610,7 +618,7 @@ export function EntrySheet(props: {
           disabled={online.disabled}
           hint={online.hint}
           testID="entry-remove"
-          onPress={() => (share ? setConfirmRemove(true) : remove(false))}
+          onPress={askRemove}
         />
       </Stack>
       {confirmRemove && share ? (

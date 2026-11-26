@@ -802,8 +802,8 @@ export function addTag(tags: readonly string[], tag: string): string[] {
 }
 
 /** The household's cuisines for "Suchen oder anlegen", most used first (AC-024). */
-export function cuisineValues(recipes: readonly Recipe[]): string[] {
-  return cuisineFacets(recipes).map((facet) => facet.label);
+export function cuisineValues(rows: readonly { cuisine?: string }[]): string[] {
+  return cuisineFacets(rows).map((facet) => facet.label);
 }
 
 /**
@@ -829,6 +829,18 @@ export function valueSuggestions(
     query,
     values.map((value) => ({ id: value, name: value })),
   );
+}
+
+/**
+ * Enter in "Suchen oder anlegen" over values (spec 0036, REQ-004): an exactly equal value is taken
+ * as it is written ("ofen" → "Ofen"), anything else is created as typed, spaces tidied. Nothing
+ * for an empty field.
+ */
+export function valueOnEnter(query: string, values: readonly string[]): string | undefined {
+  const name = query.replace(/\s+/g, ' ').trim();
+  if (name === '') return undefined;
+  const key = normalizeText(name);
+  return values.find((value) => normalizeText(value) === key) ?? name;
 }
 
 // ---------- Steps ----------

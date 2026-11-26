@@ -463,12 +463,11 @@ describe('validateArticleDraft', () => {
     ]);
   });
 
-  it('AC-030: a name equal to a synonym of another article is taken by that article', () => {
-    const [problem] = validateArticleDraft(
-      { id: 'a-milchkokos', name: 'Karotten', synonyms: [] },
-      list,
-    );
-    expect(problem?.message).toBe('Gibt es schon: Möhren');
+  it('spec 0036, AC-011: a name equal to a synonym of another article is fine', () => {
+    expect(validateArticleDraft({ name: 'Karotten', synonyms: [] }, list)).toEqual([]);
+    expect(
+      validateArticleDraft({ id: 'a-milchkokos', name: 'Karotten', synonyms: [] }, list),
+    ).toEqual([]);
   });
 
   it('AC-030: an empty name is missing', () => {

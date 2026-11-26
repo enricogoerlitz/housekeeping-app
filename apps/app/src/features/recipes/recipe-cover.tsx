@@ -3,6 +3,9 @@ import { coverPhotos, type Recipe } from '@housekeeping/core';
 import { Photo, PhotoCollage, Stack, type PhotoProps } from '@housekeeping/ui';
 import { useMemo } from 'react';
 
+import { useOnlineOnly } from '@/features/shell/offline';
+import { PhotoActionRow, ZoomablePhoto } from '@/features/shell/own-photo';
+
 import { RecipePhotoStatus, type RecipePhotoState } from './recipe-actions';
 
 type ImageSource = number | { uri: string };
@@ -51,19 +54,37 @@ function CollectionCover(props: { recipe: Recipe } & Omit<PhotoProps, 'source'>)
   return <PhotoCollage {...frame} sources={sources} />;
 }
 
-/** The photo of the page with its save state; a collection's cover is its collage (E14). */
+/**
+ * The photo of the page with its save state; a collection's cover is its collage (E14). A tap
+ * shows it on the whole screen, "Foto ändern" and "Foto entfernen" stand right under it (spec
+ * 0036, REQ-008, REQ-009).
+ */
 export function RecipePhoto(props: {
   recipe: Recipe;
   photo: RecipePhotoState;
   style?: { flex: number };
 }) {
+  const online = useOnlineOnly();
+  const image = useRecipeImage(props.recipe);
+  const covers = useCoverSources(props.recipe);
+  const sources = props.recipe.kind === 'collection' ? covers : image ? [image] : [];
   return (
     <Stack gap={4} style={props.style}>
-      <RecipeCover
-        recipe={props.recipe}
-        aspectRatio={4 / 3}
-        alt={props.recipe.title}
-        testID="recipe-photo"
+      <ZoomablePhoto sources={sources} name={props.recipe.title} testID="recipe-photo">
+        <RecipeCover
+          recipe={props.recipe}
+          aspectRatio={4 / 3}
+          alt={props.recipe.title}
+          testID="recipe-photo"
+        />
+      </ZoomablePhoto>
+      <PhotoActionRow
+        hasPhoto={!!props.recipe.photoPath}
+        disabled={online.disabled || props.photo.busy !== undefined}
+        hint={online.hint}
+        onChange={props.photo.change}
+        onRemove={props.photo.remove}
+        testPrefix="recipe"
       />
       <RecipePhotoStatus photo={props.photo} />
     </Stack>

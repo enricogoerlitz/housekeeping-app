@@ -30,9 +30,10 @@ import {
   Text,
   TextField,
   useBreakpoint,
+  FieldClearButton,
 } from '@housekeeping/ui';
-import { useMemo, useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { type ComponentRef, useMemo, useRef, useState } from 'react';
+import { ScrollView, View, type TextInput } from 'react-native';
 
 import { useOnlineOnly } from '@/features/shell/offline';
 import { useAddressedId, useMissingObject } from '@/lib/addressed';
@@ -64,6 +65,7 @@ interface ArticleRow {
  * Detail", AC-025). Reading and searching work offline; editing needs the network.
  */
 export function ArticlesScreen() {
+  const searchInput = useRef<ComponentRef<typeof TextInput>>(null);
   const allArticles = useArticles();
   const areas = useAreas();
   const recipes = useRecipes();
@@ -177,6 +179,7 @@ export function ArticlesScreen() {
     <Stack gap={8}>
       <TextField
         round
+        inputRef={searchInput}
         value={query}
         onChangeText={setQuery}
         placeholder="Artikel suchen …"
@@ -185,10 +188,10 @@ export function ArticlesScreen() {
         left={<Icon name="search" size={19} color="muted" />}
         right={
           query ? (
-            <IconButton
-              icon="x"
+            <FieldClearButton
               label="Suche leeren"
-              onPress={() => setQuery('')}
+              onClear={() => setQuery('')}
+              inputRef={searchInput}
               testID="articles-search-clear"
             />
           ) : undefined

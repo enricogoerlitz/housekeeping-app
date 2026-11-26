@@ -30,6 +30,8 @@ import {
   updateIngredientRow,
   updateStepText,
   validateSectionDraft,
+  cuisineValues,
+  valueOnEnter,
   valueSuggestions,
   type IngredientsDraft,
   type RecipeSectionDraft,
@@ -178,6 +180,29 @@ describe('classification section (REQ-007)', () => {
     makeRecipe({ id: 'b', title: 'B', cuisine: 'Italienisch', tags: ['Ofen'] }),
     makeRecipe({ id: 'shak', title: 'Shakshuka' }),
   ];
+
+  it('spec 0036, AC-007: Enter takes the exact value ("ofen" → Ofen)', () => {
+    expect(valueOnEnter('ofen', ['Ofen', 'Familie'])).toBe('Ofen');
+    expect(valueOnEnter('  OFEN ', ['Ofen'])).toBe('Ofen');
+  });
+
+  it('spec 0036, AC-008: Enter creates a value that does not exist, also next to a look-alike', () => {
+    expect(valueOnEnter('Grillen', ['Ofen'])).toBe('Grillen');
+    expect(valueOnEnter('  Grillen   im  Garten ', ['Ofen'])).toBe('Grillen im Garten');
+    expect(valueOnEnter('Ofn', ['Ofen'])).toBe('Ofn');
+  });
+
+  it('spec 0036, AC-009: "Viet" suggests the cuisine of a restaurant', () => {
+    const restaurants = [{ cuisine: 'Vietnamesisch' }, { cuisine: 'Vietnamesisch' }, {}];
+    expect(cuisineValues(restaurants)).toEqual(['Vietnamesisch']);
+    expect(
+      valueSuggestions('Viet', cuisineValues(restaurants)).matches.map((m) => m.item.name),
+    ).toEqual(['Vietnamesisch']);
+  });
+
+  it('spec 0036: Enter in an empty field takes nothing', () => {
+    expect(valueOnEnter('   ', ['Ofen'])).toBeUndefined();
+  });
 
   it('AC-024: "italienisch" finds "Italienisch" without "neu anlegen"', () => {
     const result = valueSuggestions('italienisch', ['Italienisch']);

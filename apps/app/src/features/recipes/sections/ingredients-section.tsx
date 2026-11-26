@@ -1,5 +1,6 @@
 import {
   addIngredientToList,
+  saveRecipeSection,
   OfflineError,
   removeRecipeIngredient,
   saveIngredient,
@@ -55,6 +56,7 @@ import { View } from 'react-native';
 
 import { ArticleSheet } from '@/features/articles/article-sheet';
 import { MergeArticleDialog } from '@/features/articles/merge-article-dialog';
+import { confirmFirst } from '@/features/shell/confirm-dialog';
 import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 
 import { IngredientSheet } from '../ingredient-sheet';
@@ -139,6 +141,9 @@ function IngredientsRead(props: {
   const [editing, setEditing] = useState<
     { ingredientId: Id; draft: IngredientsDraft } | undefined
   >();
+  // "+ Zutat" on the read view opens "Neue Zutat" at once, also without ingredients (spec 0036,
+  // AC-014); the new row is saved with the section like "Zutat bearbeiten".
+  const [adding, setAdding] = useState<IngredientsDraft | undefined>();
   const ingredients = ingredientsForVariant(recipe, variantId);
   const factor = props.servings / recipe.servings;
   const nameOf = (ingredient: RecipeIngredient) => articlesById[ingredient.articleId]?.name ?? '';
@@ -160,19 +165,35 @@ function IngredientsRead(props: {
       if (!(error instanceof OfflineError)) throw error;
     }
   };
-  const remove = (ingredient: RecipeIngredient) => {
+  const add = () => {
     editor.flush();
+    setAdding(sectionDraft(recipe, 'ingredients'));
+  };
+  const saveNew = (next: IngredientsDraft) => {
+    setAdding(undefined);
     try {
-      const removed = removeRecipeIngredient(recipe.id, ingredient.id);
-      if (!removed) return;
-      toast.show({
-        message: `${nameOf(ingredient)} entfernt`,
-        actionLabel: 'Rückgängig',
-        onAction: removed.undo,
-      });
+      if (saveRecipeSection(recipe.id, next)) toast.show({ message: 'Zutat gespeichert' });
     } catch (error) {
       if (!(error instanceof OfflineError)) throw error;
     }
+  };
+  // ⋯ → "Entfernen" asks first; "Rückgängig" afterwards is gone (spec 0036, Entscheidung 1).
+  const remove = (ingredient: RecipeIngredient) => {
+    editor.flush();
+    confirmFirst({
+      title: `„${nameOf(ingredient)}“ entfernen?`,
+      confirmLabel: 'Entfernen',
+      onConfirm: () => {
+        try {
+          if (removeRecipeIngredient(recipe.id, ingredient.id)) {
+            toast.show({ message: `${nameOf(ingredient)} entfernt` });
+          }
+        } catch (error) {
+          if (!(error instanceof OfflineError)) throw error;
+        }
+      },
+      testID: 'confirm-remove-ingredient',
+    });
   };
   const onAction = (action: ReadAction, ingredient: RecipeIngredient) => {
     if (action === 'article') setArticleFor(ingredient.articleId);
@@ -205,21 +226,7 @@ function IngredientsRead(props: {
         </View>
       ) : null}
       {ingredients.length === 0 ? (
-        <Stack gap={8}>
-          <Text color="muted">Noch keine Zutaten.</Text>
-          {/* An empty collection invites its own ingredients (spec 0009, AC-001): opens the section. */}
-          {recipe.kind === 'collection' ? (
-            <Button
-              label="Zutat"
-              icon="plus"
-              variant="link"
-              onPress={frame.onEdit}
-              disabled={frame.disabled}
-              hint={frame.hint}
-              testID="collection-add-ingredient"
-            />
-          ) : null}
-        </Stack>
+        <Text color="muted">Noch keine Zutaten.</Text>
       ) : (
         groupIngredients(ingredients).map((part) => (
           <View
@@ -297,6 +304,29 @@ function IngredientsRead(props: {
           </View>
         ))
       )}
+      <View style={{ flexDirection: 'row', marginTop: 8 }}>
+        <Button
+          label="Zutat"
+          icon="plus"
+          variant="link"
+          onPress={add}
+          disabled={frame.disabled}
+          hint={frame.hint}
+          testID={
+            recipe.kind === 'collection'
+              ? 'collection-add-ingredient'
+              : 'recipe-read-add-ingredient'
+          }
+        />
+      </View>
+      {adding ? (
+        <IngredientSheet
+          draft={adding}
+          servingsNote={`für ${servingsLabel(recipe.servings)}`}
+          onApply={saveNew}
+          onClose={() => setAdding(undefined)}
+        />
+      ) : null}
       {editing ? (
         <IngredientSheet
           draft={editing.draft}

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  canReshuffle,
   activeFilterChips,
   activeFilterCount,
   applyRecipeListFilter,
@@ -467,5 +468,17 @@ describe('Sammlungen in "Essen → Rezepte" (spec 0009, REQ-006)', () => {
     expect(recipeListCountLabel([grillabend])).toBe('1 Sammlung');
     expect(recipeListCountLabel(recipes)).toBe('24 Rezepte');
     expect(recipeListCountLabel([])).toBe('0 Rezepte');
+  });
+});
+
+describe('canReshuffle (spec 0036, REQ-001)', () => {
+  it('AC-001: "Neu mischen" is offered with "Zufall" and no search', () => {
+    expect(canReshuffle('random', '')).toBe(true);
+    expect(canReshuffle('random', '  ')).toBe(true);
+    expect(canReshuffle('title', '')).toBe(false);
+  });
+
+  it('AC-002: a search hides "Neu mischen" (the search sorts by hit)', () => {
+    expect(canReshuffle('random', 'Nudeln')).toBe(false);
   });
 });

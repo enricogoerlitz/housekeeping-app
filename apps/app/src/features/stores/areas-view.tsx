@@ -4,7 +4,6 @@ import {
   mergeAreas,
   moveArea,
   renameArea,
-  snapshot,
   useAreas,
   useArticles,
 } from '@housekeeping/api';
@@ -32,7 +31,7 @@ import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { View } from 'react-native';
 
-import { undoAction, useOnlineOnly } from '@/features/shell/offline';
+import { useOnlineOnly } from '@/features/shell/offline';
 
 import { useNewAreaHint } from './area-hint';
 import { articleCount, messageOf, ORDER_LABELS } from './labels';
@@ -83,35 +82,21 @@ export function AreasView() {
 
   const remove = (areaId: Id) => {
     const name = nameOf(areaId);
-    // Only an empty area comes back whole; the articles of a full one lost it on the server.
-    const empty = countOf(areaId) === 0;
-    const restore = snapshot();
     try {
       deleteArea(areaId);
     } catch (caught) {
       return messageOf(caught);
     }
     close();
-    toast.show(
-      empty
-        ? {
-            message: `„${name}“ gelöscht`,
-            actionLabel: 'Rückgängig',
-            onAction: undoAction(restore),
-          }
-        : { message: `„${name}“ gelöscht` },
-    );
+    toast.show({ message: `„${name}“ gelöscht` });
     return undefined;
   };
 
   const onAction = (areaId: Id, action: AreaAction) => {
     if (action === 'rename') setDialog({ kind: 'rename', areaId });
     else if (action === 'merge') setDialog({ kind: 'mergePick', areaId });
-    // Without articles nothing is lost: delete at once, with "Rückgängig" (AC-056).
-    else if (countOf(areaId) === 0) {
-      const problem = remove(areaId);
-      if (problem) setError(problem);
-    } else setDialog({ kind: 'delete', areaId });
+    // Also an empty area asks first; "Rückgängig" is gone (spec 0036, Entscheidung 1).
+    else setDialog({ kind: 'delete', areaId });
   };
 
   const menu = (areaId: Id, name: string) => (

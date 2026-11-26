@@ -21,8 +21,3 @@ export function daysAgoLabel(days: number): string {
 export function activityPlaceLine(activity: Activity): string | undefined {
   return activity.placeName || activity.address || undefined;
 }
-
-/** "Route" needs somewhere to go: coordinates, an address or a place name (AC-015). */
-export function hasPlace(activity: Activity): boolean {
-  return !!(activity.location || activity.address || activity.placeName);
-}

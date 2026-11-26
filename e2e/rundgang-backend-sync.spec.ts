@@ -234,6 +234,7 @@ test('AC-015: Enrico removes "Halloumi-Pfanne" from the plan; it disappears at N
   await enrico.bringToFront();
   await entry(enrico).click();
   await tid(enrico, 'entry-remove').click();
+  await tid(enrico, 'confirm-remove-entry-confirm').click();
   await expect(entry(enrico)).toHaveCount(0);
 
   await nadja.bringToFront();
@@ -272,6 +273,7 @@ test('AC-011 / AC-027 (0006): a check in "Einkaufen" shows live on the list; an 
   await tid(enrico, 'shopping-close').click();
   await openItem(enrico, 'Brot').click();
   await tid(enrico, 'item-sheet-remove').click();
+  await tid(enrico, 'confirm-remove-item-confirm').click();
   await expect(openItem(enrico, 'Brot')).toHaveCount(0);
   await nadja.bringToFront();
   await expect(tid(nadja, 'item-sheet')).toBeHidden(SYNC);
@@ -552,6 +554,7 @@ test('AC-025: Enrico checks "Eier" offline, Nadja deletes it; online again it is
   await nav(nadja, 'liste');
   await openItem(nadja, 'Eier').click();
   await tid(nadja, 'item-sheet-remove').click();
+  await tid(nadja, 'confirm-remove-item-confirm').click();
   await expect(itemRows(nadja, 'Eier')).toHaveCount(0);
   await expect.poll(() => serverItems(householdId, 'Eier'), SYNC).toEqual([]);
 

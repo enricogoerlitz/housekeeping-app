@@ -11,7 +11,7 @@
     "build:web": "expo export --platform web && node scripts/finish-web-export.mjs && node scripts/check-web-export.mjs",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit",
-    "test": "node --test scripts/check-web-export.test.mjs scripts/sw-push.test.mjs scripts/theme-boot.test.mjs scripts/url-params-usage.test.mjs"
+    "test": "node --test scripts/check-web-export.test.mjs scripts/sw-push.test.mjs scripts/theme-boot.test.mjs scripts/url-params-usage.test.mjs scripts/list-state.test.mjs"
   },
   "dependencies": {
     "@housekeeping/api": "workspace:*",
@@ -39,7 +39,12 @@
     "react-native-worklets": "0.13.0"
   },
   "devDependencies": {
+    "@babel/plugin-transform-modules-commonjs": "7.29.14",
+    "@babel/preset-typescript": "7.29.7",
+    "@testing-library/react": "^16.3.3",
     "@types/react": "~19.3.0",
+    "babel-plugin-react-compiler": "1.0.0",
+    "jsdom": "^31.0.1",
     "typescript": "~6.0.3",
     "workbox-build": "7.4.1"
   }

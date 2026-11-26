@@ -7,25 +7,13 @@ import {
   type CuisineFacet,
   type RestaurantListFilter,
 } from '@housekeeping/core';
-import { Chip, Row, Text, useBreakpoint } from '@housekeeping/ui';
-import type { ReactNode } from 'react';
+import { Chip, FilterSection, useBreakpoint } from '@housekeeping/ui';
 import { View } from 'react-native';
 
 function toggleIn<T>(values: readonly T[], value: T): T[] {
   return values.includes(value)
     ? values.filter((candidate) => candidate !== value)
     : [...values, value];
-}
-
-function Part(props: { title: string; children: ReactNode; testID: string }) {
-  return (
-    <View style={{ gap: 8 }} testID={props.testID}>
-      <Text variant="smallStrong">{props.title}</Text>
-      <Row wrap gap={8}>
-        {props.children}
-      </Row>
-    </View>
-  );
 }
 
 /**
@@ -49,16 +37,16 @@ export function RestaurantFilterPanel(props: {
           : { flexDirection: 'row', flexWrap: 'wrap', columnGap: 32, rowGap: 16 }
       }
     >
-      <Part title="Schnell" testID="restaurant-filter-quick">
+      <FilterSection title="Schnell" testID="restaurant-filter-quick">
         <Chip
           label="Favoriten"
           selected={filter.favorites}
           onPress={() => onChange(toggleRestaurantFavorites(filter))}
           testID="restaurant-filter-quick-favorites"
         />
-      </Part>
+      </FilterSection>
       {props.cuisines.length > 0 ? (
-        <Part title="Küche" testID="restaurant-filter-cuisine">
+        <FilterSection title="Küche" testID="restaurant-filter-cuisine">
           {props.cuisines.map((facet) => (
             <Chip
               key={facet.key}
@@ -70,9 +58,9 @@ export function RestaurantFilterPanel(props: {
               testID={`restaurant-filter-cuisine-${facet.key}`}
             />
           ))}
-        </Part>
+        </FilterSection>
       ) : null}
-      <Part title="Preisniveau" testID="restaurant-filter-price">
+      <FilterSection title="Preisniveau" testID="restaurant-filter-price">
         {PRICE_LEVELS.map((level) => (
           <Chip
             key={level}
@@ -84,8 +72,8 @@ export function RestaurantFilterPanel(props: {
             testID={`restaurant-filter-price-${level}`}
           />
         ))}
-      </Part>
-      <Part title="Bewertung" testID="restaurant-filter-rating">
+      </FilterSection>
+      <FilterSection title="Bewertung" testID="restaurant-filter-rating">
         {MIN_RATINGS.map((stars) => (
           <Chip
             key={stars}
@@ -97,7 +85,7 @@ export function RestaurantFilterPanel(props: {
             testID={`restaurant-filter-rating-${String(stars).replace('.', '-')}`}
           />
         ))}
-      </Part>
+      </FilterSection>
     </View>
   );
 }

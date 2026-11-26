@@ -171,7 +171,9 @@ Entfällt: nur Oberfläche.
 - [ ] 4. Seiten-Scroll-Sperre unter Fenstern, `scrollIntoView` nur bei Bedarf (AC-011–AC-013)
 - [ ] 5. Eingabe-Attribute in `TextField` und den eigenen Eingabefeldern (AC-014–AC-016)
 - [ ] 6. Fokus beim Öffnen (Fenster setzt Fokus nach der Einblend-Animation) (AC-017–AC-020)
-- [ ] 7. Suche: X mit Fokus-Erhalt (AC-021, AC-022)
+- [x] 7. Suche: X mit Fokus-Erhalt (AC-021, AC-022) — gebaut mit Spec 0036: `FieldClearButton`
+      (`packages/ui/src/field-clear.tsx`) in `SearchOrCreate` und den Suchen von Rezepten,
+      Restaurants, Aktivitäten und Artikeln; ui-Tests AC-021/AC-022, Dev-Server geprüft
 - [ ] 8. `pick-photo.ts`: Input im Dokument halten (AC-023, AC-024)
 - [ ] 9. Toast-Abstand auf Rezept- und Sammlungsseite (AC-025)
 - [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün; Bildschirmfotos

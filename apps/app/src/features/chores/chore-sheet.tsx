@@ -46,6 +46,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 
 import { useEnsureDevicePush } from '@/features/notifications/use-device-push';
+import { confirmFirst } from '@/features/shell/confirm-dialog';
 import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 import { PlanDateCalendar } from '@/lib/plan-date-calendar';
 
@@ -347,7 +348,19 @@ function useChoreDetail(props: ChoreDetailProps): {
             variant="link"
             disabled={online.disabled}
             hint={online.hint ?? 'Der Verlauf bleibt'}
-            onPress={() => withUndo(() => deleteChore(chore.id), `„${chore.title}“ gelöscht`)}
+            onPress={() =>
+              confirmFirst({
+                title: `„${chore.title}“ löschen?`,
+                message: 'Der Verlauf bleibt.',
+                confirmLabel: 'Löschen',
+                onConfirm: () => {
+                  deleteChore(chore.id);
+                  props.onClose();
+                  toast.show({ message: `„${chore.title}“ gelöscht` });
+                },
+                testID: 'confirm-delete-chore',
+              })
+            }
             testID="chore-delete"
           />
         </Row>

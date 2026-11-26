@@ -186,6 +186,7 @@ test.describe('phone', () => {
     await lunch.locator(PLAN_ENTRY).filter({ hasText: 'Linsen-Dal' }).click();
     await expect(tid(page, 'entry-sheet')).toBeVisible();
     await tid(page, 'entry-remove').click();
+    await tid(page, 'confirm-remove-entry-confirm').click();
     await expect(tid(page, 'entry-sheet')).toBeHidden();
     await expect(tid(page, 'day-panel')).toBeVisible();
     await expect(lunch).not.toContainText('Linsen-Dal');
@@ -323,6 +324,7 @@ test.describe('desktop', () => {
     for (const name of added) {
       await tid(page, 'day-panel').locator(PLAN_ENTRY).filter({ hasText: name }).click();
       await tid(page, 'entry-remove').click();
+      await tid(page, 'confirm-remove-entry-confirm').click();
     }
     await expect(tid(page, 'day-panel').locator(PLAN_ENTRY)).toHaveCount(3);
   });

@@ -1,5 +1,5 @@
 ---
-status: freigegeben # entwurf | freigegeben | umgesetzt | verworfen
+status: umgesetzt # entwurf | freigegeben | umgesetzt | verworfen
 datum: 2026-11-26
 ---
 
@@ -148,29 +148,83 @@ jeweilige Aktion.
    Gerät merkt sich seine Sortierung.
 4. REQ-013: zuerst `workbox-build` aktualisieren; reicht das nicht, gezielte `pnpm.overrides` nur
    für die betroffenen Versionsbereiche, mit Prüfung von eslint und Expo CLI.
+5. REQ-001 (Ursache, beim Bau gefunden): Die App wird mit dem React Compiler gebaut. Er merkt sich,
+   was ein Hook zurückgibt, anhand reaktiver Werte; Reihenfolge und Runde lagen in Modulvariablen
+   und zählten nicht dazu, also blieb nach „Neu mischen“ die alte Reihenfolge. Jetzt liegen sie in
+   einem kleinen Speicher mit `useSyncExternalStore` (`apps/app/src/lib/list-session.ts`); der
+   rote Test lässt die echten Hooks durch denselben Compiler laufen
+   (`apps/app/scripts/list-state.test.mjs`).
+6. REQ-005 braucht doch eine Migration (Bau): Der Datenbank-Trigger `articles_keys_unique` lehnte
+   einen Namen ab, der Synonym eines anderen Artikels ist. Er erlaubt das jetzt; ein Synonym, das
+   Name oder Synonym eines anderen Artikels ist, bleibt verboten (Migration
+   `20261126094914_article_name_may_be_foreign_synonym.sql`, nur die Trigger-Funktion, additiv).
+7. REQ-012 (Bau): eine Nachfrage für die ganze App, `confirmFirst(…)` mit `ConfirmHost` an der
+   Wurzel (`features/shell/confirm-dialog.tsx`), auch aus Wischgesten und Menüs. Wo schon ein
+   eigenes Fenster fragt (Liste leeren, Markt, Mitglied, Haushalt, Feedback, Rezept/Planeintrag
+   mit Zutaten auf der Liste, Reise mit Packliste), bleibt es. „Fertig“ im Einkaufsmodus ist
+   kein Löschen und behält „Rückgängig“. Entfernen innerhalb eines Bearbeitungsentwurfs (Schritt,
+   Link, Variante, Inhalt einer Sammlung, Synonym im Fenster) fragt nicht: es wirkt erst mit
+   „Fertig“ und „Abbrechen“ verwirft es.
+8. REQ-006 (Bau): (i) unter „Menge“ in „Neue Zutat“/„Zutat bearbeiten“ und unter „Von Hand“ im
+   Einkaufsposten. OFFEN: Vorratscheck (Mengenfeld 140 px breit) und „Mehrere einfügen“ haben
+   noch kein (i).
+9. REQ-008 (Bau): „Foto ändern“/„Foto entfernen“ unter dem Bild sind dieselbe Zeile wie bei
+   Restaurants und Aktivitäten (`PhotoActionRow` aus `DetailPhotoBlock`); die Einträge im ⋯ der
+   Rezeptseite bleiben zusätzlich.
 
 ## Daten
 
-Keine Schemaänderung. REQ-005 schreibt einen neuen Artikel über den bestehenden Befehl.
+Keine neue Spalte oder Tabelle. REQ-005 schreibt einen neuen Artikel über den bestehenden Befehl;
+die Trigger-Funktion `private.articles_keys_unique` erlaubt nun einen Namen, der Synonym eines
+anderen Artikels ist (Entscheidung 6). REQ-002: `LocalSettings.listSorts` auf dem Gerät.
 
 ## Risiken
 
-| Risiko                                    | Gegenmaßnahme                                 | Test                         |
-| ----------------------------------------- | --------------------------------------------- | ---------------------------- |
-| Löschen ohne Nachfrage bleibt irgendwo    | Liste aller Löschaktionen in der Spec abhaken | Komponenten-/e2e-Test je Art |
-| Nachfrage verschluckt das Löschen offline | Nachfrage vor dem bestehenden Offline-Hinweis | Test offline: Knopf inaktiv  |
-| override bricht eslint/Expo               | `pnpm check`, `pnpm build:web`, Dev-Smoke     | CI                           |
+| Risiko                                          | Gegenmaßnahme                                                | Test                         |
+| ----------------------------------------------- | ------------------------------------------------------------ | ---------------------------- |
+| Löschen ohne Nachfrage bleibt irgendwo          | Liste aller Löschaktionen in der Spec abhaken                | Komponenten-/e2e-Test je Art |
+| Nachfrage verschluckt das Löschen offline       | Nachfrage vor dem bestehenden Offline-Hinweis                | Test offline: Knopf inaktiv  |
+| override bricht eslint/Expo                     | `pnpm check`, `pnpm build:web`, Dev-Smoke                    | CI                           |
+| Name = fremdes Synonym macht Treffer mehrdeutig | exakter Name vor Synonym; Synonym bleibt eindeutig (Trigger) | Vitest, pgTAP                |
 
 ## Umsetzung
 
-- [ ] 1. „Neu mischen“ reproduzieren (Test rot), beheben (AC-001, AC-002)
-- [ ] 2. Sortierung in `LocalSettings` (AC-003, AC-004)
-- [ ] 3. Filterabschnitt umbrechen (AC-005)
-- [ ] 4. `SearchOrCreate`: Fokus halten, Enter exakt/neu; Küche mit Vorschlägen (AC-006–AC-009)
-- [ ] 5. Suche/Anlegen bei Synonym (core, Tests) (AC-010–AC-012)
-- [ ] 6. `KNOWN_UNITS` + (i) (AC-013)
-- [ ] 7. „+ Zutat“ im Lesemodus (AC-014), Foto unter dem Bild (AC-015), Vollbild (AC-016)
-- [ ] 8. Restaurant aus „Rezepte“ (AC-017), Route nur mit Link (AC-018)
-- [ ] 9. Nachfrage vor Löschen nach Entscheidung 1 (AC-019–AC-021)
-- [ ] 10. Dependabot (AC-022)
-- [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün; `/security-check` (Löschen)
+- [x] 1. „Neu mischen“ reproduzieren (Test rot), beheben (AC-001, AC-002)
+- [x] 2. Sortierung in `LocalSettings` (AC-003, AC-004)
+- [x] 3. Filterabschnitt umbrechen (AC-005)
+- [x] 4. `SearchOrCreate`: Fokus halten, Enter exakt/neu; Küche mit Vorschlägen (AC-006–AC-009)
+- [x] 5. Suche/Anlegen bei Synonym (core, Tests) (AC-010–AC-012)
+- [x] 6. `KNOWN_UNITS` + (i) (AC-013)
+- [x] 7. „+ Zutat“ im Lesemodus (AC-014), Foto unter dem Bild (AC-015), Vollbild (AC-016)
+- [x] 8. Restaurant aus „Rezepte“ (AC-017), Route nur mit Link (AC-018)
+- [x] 9. Nachfrage vor Löschen nach Entscheidung 1 (AC-019–AC-021)
+- [x] 10. Dependabot (AC-022)
+- [x] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün; `/security-check` (Löschen)
+
+## Nachweis
+
+- Rot vor grün: `node --test apps/app/scripts/list-state.test.mjs` (AC-001 rot: alte Runde,
+  gleiches Objekt), Vitest core (AC-003/004, AC-002, AC-007–AC-012, AC-013, AC-018, leerer
+  Bereich), ui (AC-005 `FilterSection`, AC-006/007 `keepFocus`/`onSubmit`, 0033 AC-021, AC-013
+  `InfoHint`, AC-016 `PhotoViewer` und Wischlogik), pgTAP `article_rpcs` (AC-011 rot: `name_taken`).
+- 26.11.: `pnpm format:check && pnpm check` grün, `pnpm build:web` (mit `.env`) grün,
+  `pnpm exec supabase test db` grün (Migration lokal mit `supabase migration up` eingespielt).
+- Dev-Server (Port 8094), Playwright als Enrico, Handy 390×844 und Desktop 1440×900: AC-001,
+  AC-002, AC-003, AC-005, AC-006–AC-009, AC-013–AC-018, AC-020 (Abbrechen behält), AC-021
+  (Abbrechen behält), Vollbild per Escape und Wisch nach unten (Touch) geprüft; keine
+  Seitenfehler. Bilder in `tmp/review-0003/0036/`.
+- AC-022: `pnpm-lock.yaml` enthält kein `glob` < 14.0.2 und kein `minimatch` ≥ 7 < 11.0.1 mehr
+  (`glob@14.0.6`, `minimatch@11.0.9`; 3.1.5 und 5.1.9 liegen außerhalb der Advisories).
+  `workbox-build` 7.4.1 ist die neueste Version, daher gezielte `overrides` in
+  `pnpm-workspace.yaml`. Abruf der Warnungen erst nach dem Merge möglich.
+- e2e: betroffene Rundgänge angepasst (Nachfrage statt „Rückgängig“), nicht ausgeführt (die
+  Suite setzt die geteilte lokale DB zurück).
+- Abgedeckte Löschaktionen (REQ-012): Einkaufsposten entfernen (Fenster, Wischen, „−“ bei 1×),
+  Herkunft eines Postens entfernen, „Erledigt leeren“, Aufgabe löschen, Erledigung im Verlauf
+  entfernen, Artikel löschen, Bereich löschen (auch leer), Rezept/Sammlung löschen,
+  Restaurant/Aktivität löschen, Planeintrag entfernen, Zutat entfernen (Lesemodus), Foto
+  entfernen (Restaurant, Aktivität, Rezept, Sammlung, auch aus ⋯), Packstück entfernen (Liste
+  und Fenster), Tasche aus Packliste nehmen, Stück einer Reisetasche entfernen, Reisetasche
+  löschen, Reise löschen (Liste und Fenster), Einladung zurückziehen, Gerät entfernen. Schon
+  vorher mit Nachfrage: Liste leeren, Markt löschen, Mitglied entfernen/verlassen, Haushalt
+  löschen, Feedback löschen.

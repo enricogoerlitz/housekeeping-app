@@ -35,6 +35,8 @@ import {
 import { useRef, useState, type ComponentRef } from 'react';
 import { View, type TextInput } from 'react-native';
 
+import { UnitsHint } from '@/features/shell/units-hint';
+
 import { STARTER_DETAIL, useArticleSearch } from './article-search';
 import { newRowKey } from './sections/ingredient-handover';
 
@@ -281,6 +283,7 @@ export function IngredientSheet(props: {
           onSubmitEditing={apply}
           testID="ingredient-amount"
         />
+        <UnitsHint testID="ingredient-units" />
 
         <View testID="ingredient-rule-field">
           <Text variant="smallStrong" style={{ marginBottom: 6 }}>

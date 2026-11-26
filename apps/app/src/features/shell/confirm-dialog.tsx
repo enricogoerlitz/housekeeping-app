@@ -1,5 +1,5 @@
-import { Button, Row, Sheet, Stack, Text } from '@housekeeping/ui';
-import { useState } from 'react';
+import { Button, createRequestSlot, Row, Sheet, Stack, Text } from '@housekeeping/ui';
+import { useState, useSyncExternalStore } from 'react';
 
 import { useOnlineOnly } from './offline';
 
@@ -61,5 +61,58 @@ export function ConfirmDialog(props: {
         </Stack>
       ) : null}
     </Sheet>
+  );
+}
+
+/** What "Löschen" asks before it deletes (spec 0036, REQ-012). */
+export interface ConfirmRequest {
+  /** "„Bless“ löschen?", "Foto entfernen?" */
+  title: string;
+  message?: string;
+  /** "Löschen", "Entfernen" */
+  confirmLabel: string;
+  /** Default true: offline the confirm button is greyed out with the hint. */
+  needsNetwork?: boolean;
+  /** Runs on the confirm button; a returned hint keeps the window open. */
+  onConfirm: () => string | undefined | void;
+  /** Default "confirm-delete"; the buttons are `<testID>-confirm` and `<testID>-cancel`. */
+  testID?: string;
+}
+
+const confirmSlot = createRequestSlot<ConfirmRequest>();
+
+/**
+ * Every delete and remove asks first (spec 0036, REQ-012, Entscheidung 1): call this instead of
+ * deleting, from a button, a menu or a swipe. Nothing happens until the confirm button; "Abbrechen",
+ * Escape and a tap outside leave everything as it is. There is no "Rückgängig" afterwards.
+ */
+export function confirmFirst(request: ConfirmRequest): void {
+  confirmSlot.open(request);
+}
+
+/** Shows the open `confirmFirst` request; mounted once at the root, over every window. */
+export function ConfirmHost() {
+  const request = useSyncExternalStore(
+    confirmSlot.subscribe,
+    confirmSlot.current,
+    confirmSlot.current,
+  );
+  if (!request) return null;
+  return (
+    <ConfirmDialog
+      // A new request starts without the hint of the one before.
+      key={request.title}
+      title={request.title}
+      message={request.message}
+      confirmLabel={request.confirmLabel}
+      needsNetwork={request.needsNetwork}
+      onConfirm={() => {
+        const hint = request.onConfirm();
+        if (!hint) confirmSlot.close(request);
+        return hint;
+      }}
+      onCancel={() => confirmSlot.close(request)}
+      testID={request.testID ?? 'confirm-delete'}
+    />
   );
 }

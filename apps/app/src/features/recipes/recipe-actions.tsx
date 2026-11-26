@@ -20,6 +20,7 @@ import {
 import { useState } from 'react';
 import { View } from 'react-native';
 
+import { confirmPhotoRemoval } from '@/features/shell/own-photo';
 import { useOnlineOnly } from '@/features/shell/offline';
 import { useAssistant } from '@/lib/assistant';
 import { features } from '@/lib/features';
@@ -179,9 +180,12 @@ export function useRecipePhoto(recipe: Recipe): RecipePhotoState {
         );
       });
     },
+    // Asks first, from the menu as from under the photo (spec 0036, AC-019).
     remove: () => {
       if (online.disabled || busy) return;
-      void run('remove', () => removeRecipePhoto(recipe.id), 'Foto entfernt');
+      confirmPhotoRemoval(
+        () => void run('remove', () => removeRecipePhoto(recipe.id), 'Foto entfernt'),
+      );
     },
   };
 }

@@ -9,6 +9,7 @@ import {
 } from '@housekeeping/api';
 import {
   addTag,
+  cuisineValues,
   normalizeText,
   normalizeWebsite,
   priceLabel,
@@ -311,13 +312,30 @@ export function RestaurantFormFields(props: {
         error={form.nameError}
         testID="restaurant-name"
       />
-      <TextField
-        label="Küche"
-        value={form.cuisine}
-        onChangeText={form.setCuisine}
-        placeholder="z. B. Italienisch"
-        testID="restaurant-cuisine"
-      />
+      {/* The household's cuisines as suggestions, like at a recipe (spec 0036, AC-009). */}
+      <View style={{ gap: 6 }}>
+        <Text variant="smallStrong">Küche</Text>
+        {form.cuisine.trim() ? (
+          <View style={{ flexDirection: 'row' }}>
+            <Chip
+              label={form.cuisine.trim()}
+              removable
+              selected
+              accessibilityLabel={`Küche ${form.cuisine.trim()} entfernen`}
+              onPress={() => form.setCuisine('')}
+              testID="restaurant-cuisine-chosen"
+            />
+          </View>
+        ) : (
+          <ValuePicker
+            label="Küche"
+            placeholder="z. B. Italienisch"
+            values={cuisineValues(form.restaurants)}
+            onPick={form.setCuisine}
+            testID="restaurant-cuisine"
+          />
+        )}
+      </View>
       <TextField
         label="Adresse"
         value={form.address}

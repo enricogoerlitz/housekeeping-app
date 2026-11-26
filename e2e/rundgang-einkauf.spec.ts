@@ -68,8 +68,11 @@ test('AC-010 / AC-012: "Von Hand" for Möhren, "viel" is refused, ✕ removes "L
   await tid(page, 'item-sheet-done').click();
   await openItem(page, 'Möhren').click();
   await tid(page, 'item-sheet-origin-0-remove').click();
+  // Spec 0036: asks first; the toast after it has no undo.
+  await expect(tid(page, 'confirm-remove-origin')).toBeVisible();
+  await tid(page, 'confirm-remove-origin-confirm').click();
   await expect(toastMessage(page)).toContainText('entfernt');
-  await expect(tid(page, 'toast-action')).toHaveText('Rückgängig');
+  await expect(tid(page, 'toast-action')).toHaveCount(0);
 });
 
 test('AC-022 / AC-024: swiping right marks as done, offline with "wird synchronisiert"', async ({

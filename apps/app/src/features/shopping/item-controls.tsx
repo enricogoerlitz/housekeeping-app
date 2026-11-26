@@ -1,35 +1,26 @@
-import { adjustItemCount, removeShoppingItem, snapshot } from '@housekeeping/api';
+import { adjustItemCount, removeShoppingItem } from '@housekeeping/api';
 import { MAX_ITEM_COUNT, type Id } from '@housekeeping/core';
 import { IconButton, Text, toast } from '@housekeeping/ui';
 import { View } from 'react-native';
 
-import { undoAction, useOnlineOnly } from '@/features/shell/offline';
-
-/** Removes an item and offers 5 s "Rückgängig" with all its contributions (AC-015, AC-025). */
-export function removeWithUndo(itemId: Id, name: string): void {
-  const restore = snapshot();
-  removeShoppingItem(itemId);
-  toast.show({
-    message: `${name} entfernt`,
-    actionLabel: 'Rückgängig',
-    onAction: undoAction(restore),
-  });
-}
+import { confirmFirst } from '@/features/shell/confirm-dialog';
+import { useOnlineOnly } from '@/features/shell/offline';
 
 /**
- * One tap on + or − (REQ-003). − on 1× removes the item, with "Rückgängig" like removing it.
- * Returns true when the item is gone.
+ * "Entfernen" of an item asks first: „„Milch“ entfernen?“ (spec 0036, AC-021); only „Entfernen“
+ * removes it with all its contributions. `onRemoved` runs after that.
  */
-function stepItemCount(itemId: Id, name: string, delta: 1 | -1): boolean {
-  const restore = snapshot();
-  const change = adjustItemCount(itemId, delta);
-  if (!change?.removed) return false;
-  toast.show({
-    message: `${name} entfernt`,
-    actionLabel: 'Rückgängig',
-    onAction: undoAction(restore),
+export function removeAfterAsking(itemId: Id, name: string, onRemoved?: () => void): void {
+  confirmFirst({
+    title: `„${name}“ entfernen?`,
+    confirmLabel: 'Entfernen',
+    onConfirm: () => {
+      removeShoppingItem(itemId);
+      toast.show({ message: `${name} entfernt` });
+      onRemoved?.();
+    },
+    testID: 'confirm-remove-item',
   });
-  return true;
 }
 
 /**
@@ -46,7 +37,9 @@ export function CountStepper(props: {
 }) {
   const online = useOnlineOnly();
   const step = (delta: 1 | -1) => {
-    if (stepItemCount(props.itemId, props.name, delta)) props.onRemoved?.();
+    if (delta === -1 && props.count === 1)
+      removeAfterAsking(props.itemId, props.name, props.onRemoved);
+    else if (adjustItemCount(props.itemId, delta)?.removed) props.onRemoved?.();
   };
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center' }}>

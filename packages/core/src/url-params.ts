@@ -382,13 +382,19 @@ const DIET_OF = invert(DIET_SLUGS);
 const KIND_OF = invert(KIND_SLUGS);
 const COURSE_OF = invert(COURSE_SLUGS);
 
-/** Search, filter and sort of "Essen → Rezepte" from the address (AC-032, AC-034). */
-export function recipeListFromParams(values: PageParams<'rezepte'>): RecipeListAddressState {
+/**
+ * Search, filter and sort of "Essen → Rezepte" from the address (AC-032, AC-034). Without a sort
+ * in the address the one stored on the device applies (spec 0036, REQ-002).
+ */
+export function recipeListFromParams(
+  values: PageParams<'rezepte'>,
+  storedSort: RecipeListSort = DEFAULT_RECIPE_SORT,
+): RecipeListAddressState {
   const sortSlug = values.sortierung;
   const sort: RecipeListSort =
     sortSlug !== undefined && sortSlug in RECIPE_SORT_OF
       ? RECIPE_SORT_OF[sortSlug as keyof typeof RECIPE_SORT_OF]
-      : DEFAULT_RECIPE_SORT;
+      : storedSort;
   const filter: RecipeListFilter = {
     ...EMPTY_RECIPE_LIST_FILTER,
     favorites: values.favoriten === '1',
@@ -446,6 +452,7 @@ const RESTAURANT_SORT_SLUG: Record<RestaurantListSort, (typeof RESTAURANT_SORT_S
 /** Search, filter and sort of "Essen → Restaurants" from the address (AC-043). */
 export function restaurantListFromParams(
   values: PageParams<'rezepte'>,
+  storedSort: RestaurantListSort = DEFAULT_RESTAURANT_SORT,
 ): RestaurantListAddressState {
   const filter: RestaurantListFilter = {
     ...EMPTY_RESTAURANT_LIST_FILTER,
@@ -457,7 +464,10 @@ export function restaurantListFromParams(
   return {
     query: values.suche ?? '',
     filter,
-    sort: RESTAURANT_SORT_OF[values.sortierung ?? ''] ?? DEFAULT_RESTAURANT_SORT,
+    sort:
+      values.sortierung === undefined
+        ? storedSort
+        : (RESTAURANT_SORT_OF[values.sortierung] ?? DEFAULT_RESTAURANT_SORT),
   };
 }
 

@@ -95,7 +95,7 @@ test('AC-001 / AC-003 / AC-005 / AC-007: the bags list, a new bag with items, su
   await expect(tid(page, 'bag-detail')).toContainText('Badehose · 2 je Tag');
 });
 
-test('AC-008 / AC-009: duplicating "Camping" and deleting the copy with "Rückgängig"', async ({
+test('AC-008 / AC-009: duplicating "Camping" and deleting the copy asks first (spec 0036: asks first)', async ({
   page,
 }) => {
   await open(page, '/');
@@ -107,11 +107,17 @@ test('AC-008 / AC-009: duplicating "Camping" and deleting the copy with "Rückg�
   await expect(tid(page, 'bag-detail')).toContainText('Sonnencreme');
   await tid(page, 'bag-menu').click();
   await tid(page, 'bag-menu-delete').click();
+  await expect(tid(page, 'confirm-delete-bag')).toBeVisible();
+  await tid(page, 'confirm-delete-bag-cancel').click();
+  await expect(tid(page, 'confirm-delete-bag')).toBeHidden();
+  await expect(tid(page, 'bag-screen-title')).toHaveText('Camping (Kopie)');
+  await tid(page, 'bag-menu').click();
+  await tid(page, 'bag-menu-delete').click();
+  await tid(page, 'confirm-delete-bag-confirm').click();
   await expect(tid(page, 'bags-screen')).toBeVisible();
   await expect(toastMessage(page)).toHaveText('„Camping (Kopie)“ gelöscht');
+  await expect(tid(page, 'toast-action')).toHaveCount(0);
   await expect(tid(page, 'bags-list')).not.toContainText('Camping (Kopie)');
-  await tid(page, 'toast-action').click();
-  await expect(tid(page, 'bags-list')).toContainText('Camping (Kopie)');
 });
 
 test('AC-002: the household "Test" has no bags yet', async ({ page }) => {
@@ -214,7 +220,7 @@ test('AC-026 / AC-028 / AC-029: "Alles einpacken" with "Rückgängig"; resetting
   await expect(tid(page, 'trip-progress')).toHaveText('Packliste · 0 von 21 gepackt');
 });
 
-test('AC-031 / AC-033 / AC-034: an item, a bag added and a bag removed with "Rückgängig"', async ({
+test('AC-031 / AC-033 / AC-034: an item, a bag added and a bag removed after asking (spec 0036: asks first)', async ({
   page,
 }) => {
   await openMallorca(page);
@@ -233,9 +239,14 @@ test('AC-031 / AC-033 / AC-034: an item, a bag added and a bag removed with "Rü
   const technik = tripBag(page, 'Technik');
   await technik.locator('[data-testid$="-more"]').first().click();
   await tidPrefix(page, 'trip-bag-').and(page.locator('[data-testid$="-more-remove"]')).click();
-  await expect(tidPrefix(page, 'trip-bag-').filter({ hasText: 'Technik' })).toHaveCount(0);
-  await tid(page, 'toast-action').click();
+  await expect(tid(page, 'confirm-remove-bag')).toBeVisible();
+  await tid(page, 'confirm-remove-bag-cancel').click();
   await expect(tripBag(page, 'Technik')).toBeVisible();
+  await technik.locator('[data-testid$="-more"]').first().click();
+  await tidPrefix(page, 'trip-bag-').and(page.locator('[data-testid$="-more-remove"]')).click();
+  await tid(page, 'confirm-remove-bag-confirm').click();
+  await expect(tidPrefix(page, 'trip-bag-').filter({ hasText: 'Technik' })).toHaveCount(0);
+  await expect(tid(page, 'toast-action')).toHaveCount(0);
 });
 
 test('AC-019: "Dienstreise Hamburg" has no packing list yet', async ({ page }) => {

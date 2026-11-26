@@ -36,7 +36,7 @@ import {
 import { useState } from 'react';
 import { View } from 'react-native';
 
-import { ConfirmDialog } from '@/features/shell/confirm-dialog';
+import { confirmFirst, ConfirmDialog } from '@/features/shell/confirm-dialog';
 import { useOnlineOnly } from '@/features/shell/offline';
 import { errorMessage } from '@/features/shell/error-message';
 
@@ -257,7 +257,15 @@ export function MemberList() {
                 size="sm"
                 disabled={online.disabled || busy}
                 hint={online.hint}
-                onPress={() => void withdraw(invitation.id, invitation.email)}
+                onPress={() =>
+                  confirmFirst({
+                    title: 'Einladung zurückziehen?',
+                    message: invitation.email,
+                    confirmLabel: 'Zurückziehen',
+                    onConfirm: () => void withdraw(invitation.id, invitation.email),
+                    testID: 'confirm-withdraw-invitation',
+                  })
+                }
                 testID={`household-invitation-withdraw-${invitation.id}`}
               />
             }

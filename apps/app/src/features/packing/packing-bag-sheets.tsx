@@ -2,7 +2,6 @@ import {
   createPackingBag,
   removePackingBagItem,
   renamePackingBag,
-  snapshot,
   updatePackingBagItem,
   usePackingBagItems,
   usePackingBags,
@@ -18,7 +17,8 @@ import { Button, Row, Sheet, Stack, SwitchRow, Text, TextField, toast } from '@h
 import { useState } from 'react';
 
 import { Stepper } from '@/features/chores/stepper';
-import { undoAction, useOnlineOnly } from '@/features/shell/offline';
+import { confirmFirst } from '@/features/shell/confirm-dialog';
+import { useOnlineOnly } from '@/features/shell/offline';
 
 import { messageOf } from './packing-labels';
 
@@ -146,22 +146,21 @@ export function BagItemSheet(props: { itemId: Id; onClose: () => void }) {
     }
     props.onClose();
   };
-  const remove = () => {
-    const restore = snapshot();
-    try {
-      removePackingBagItem(item.id);
-    } catch (caught) {
-      setError(messageOf(caught));
-      return;
-    }
-    props.onClose();
-    toast.show({
-      message: `${item.name} entfernt`,
-      actionLabel: 'Rückgängig',
-      onAction: undoAction(restore),
-      duration: 5000,
+  const remove = () =>
+    confirmFirst({
+      title: `„${item.name}“ entfernen?`,
+      confirmLabel: 'Entfernen',
+      onConfirm: () => {
+        try {
+          removePackingBagItem(item.id);
+        } catch (caught) {
+          return messageOf(caught);
+        }
+        props.onClose();
+        toast.show({ message: `${item.name} entfernt` });
+      },
+      testID: 'confirm-remove-bag-item',
     });
-  };
 
   return (
     <Sheet
