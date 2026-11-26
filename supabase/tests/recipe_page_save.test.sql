@@ -5,7 +5,7 @@
 -- recipes_kind_fields allows a time on a collection and nothing else (AC-016, AC-017).
 begin;
 \ir _helpers.psql
-select plan(26);
+select plan(27);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 grant select on fx to anon, authenticated;
@@ -109,6 +109,10 @@ select throws_ok(
   tests.save_sql('home_a', 'apfelkuchen', null, jsonb_build_array(jsonb_build_object(
     'kind', 'insert', 'table', 'recipes', 'row', jsonb_build_object('title', 'Neu')))),
   '22023', 'invalid_change', 'REQ-001 save_recipe_page: a new recipe is not part of the page');
+select throws_ok(
+  tests.save_sql('home_a', 'apfelkuchen', null, jsonb_build_array(jsonb_build_object(
+    'kind', 'remove_contributions', 'table', 'articles', 'ids', '[]'::jsonb))),
+  '22023', 'invalid_change', 'Risiken save_recipe_page: a domain op is no part of the page');
 select throws_ok(
   tests.save_sql('home_a', 'apfelkuchen', null, '{}'::jsonb),
   '22023', 'invalid_change', 'REQ-001 save_recipe_page: the ops are an array');

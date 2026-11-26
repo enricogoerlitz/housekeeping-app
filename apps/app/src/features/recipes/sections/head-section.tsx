@@ -78,7 +78,6 @@ function HeadFields(props: { draft: HeadDraft; editor: PageEditor }) {
         value={draft.title}
         onChangeText={(title) => set({ title })}
         error={editor.problem('title')}
-        autoFocus
         testID="recipe-head-title"
       />
       <TextField

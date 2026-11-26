@@ -32,7 +32,7 @@ export function TagFilter(props: {
         : [...props.value, key],
     );
   return (
-    <View style={{ gap: 8, flexBasis: '100%', maxWidth: 520 }} testID={props.testID}>
+    <View style={{ gap: 8, width: '100%', maxWidth: 520 }} testID={props.testID}>
       <Text variant="smallStrong">Schlagworte</Text>
       <TextField
         accessibilityLabel="Schlagworte suchen"

@@ -47,11 +47,15 @@ begin
   end if;
   -- Only what the page writes: its recipe, new articles and their rule, its collection rows and
   -- the plan entries a removed variant moves.
+  -- Only row ops: domain ops (contributions, chores, packing) are no part of the page.
   if exists (
     select 1 from jsonb_array_elements(p_ops) o
     where jsonb_typeof(o) is distinct from 'object'
-       or (o ->> 'table') is null
+       or jsonb_typeof(o -> 'table') is distinct from 'string'
+       or (o ->> 'kind') is null
+       or (o ->> 'kind') not in ('insert', 'patch', 'delete')
        or (o ->> 'table') not in ('recipes', 'articles', 'collection_recipes', 'meal_plan_entries')
+       or ((o ->> 'table') = 'articles' and (o ->> 'kind') = 'delete')
        or ((o ->> 'table') = 'recipes'
            and ((o ->> 'kind') is distinct from 'patch' or (o ->> 'id') is distinct from p_recipe_id::text))
   ) then

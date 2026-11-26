@@ -21,6 +21,7 @@ import {
   renameVariant,
   rowArticleName,
   scaleAmount,
+  servingsLabel,
   setDefaultVariant,
   validateSectionDraft,
   type Article,
@@ -525,6 +526,7 @@ function IngredientsFields(props: {
         <IngredientSheet
           draft={draft}
           rowKey={sheet.key}
+          servingsNote={`für ${servingsLabel(props.servings)}`}
           onApply={(next) => {
             set(next);
             setSheet(undefined);

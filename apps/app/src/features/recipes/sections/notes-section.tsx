@@ -19,7 +19,6 @@ export function NotesSection(props: { recipe: Recipe; editor: PageEditor }) {
             onChangeText={(notes) => editor.change({ ...draft, notes })}
             error={editor.problem('notes')}
             multiline
-            autoFocus
             testID="recipe-notes-input"
           />
         </Stack>

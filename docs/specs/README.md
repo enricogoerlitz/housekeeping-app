@@ -43,7 +43,7 @@ Ablauf und Regeln: siehe `AGENTS.md`, Abschnitt „Workflow per feature“.
 | [0034](0034-handy-seitenwechsel-und-wischen/spec.md)     | Handy: Seitenwechsel, Laden und Wischen                                | freigegeben |
 | [0035](0035-kalender-und-uebersicht-feinschliff/spec.md) | Kalender und Übersicht: Fehler und Feinschliff                         | freigegeben |
 | [0036](0036-essen-und-formulare-fehler/spec.md)          | Essen und Formulare: Fehler und Bedienung                              | freigegeben |
-| [0037](0037-rezeptseite-bearbeiten-und-filter/spec.md)   | Rezeptseite: Bearbeitungsmodus, Sammlungen im Filter, Personen         | freigegeben |
+| [0037](0037-rezeptseite-bearbeiten-und-filter/spec.md)   | Rezeptseite: Bearbeitungsmodus, Sammlungen im Filter, Personen         | umgesetzt   |
 | [0038](0038-ansicht-kacheln-und-liste/spec.md)           | Ansicht wählen: Kacheln oder Liste                                     | freigegeben |
 | [0039](0039-foto-fenster/spec.md)                        | Foto-Fenster: wählen, ziehen, einfügen, Bildadresse, Kamera            | freigegeben |
 | [0040](0040-ki-rezepte-und-bilder/spec.md)               | KI: Rezepte ausfüllen, Bilder erzeugen und bearbeiten                  | freigegeben |
