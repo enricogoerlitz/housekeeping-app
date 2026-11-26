@@ -125,6 +125,8 @@ export function SearchOrCreate(props: SearchOrCreateProps) {
         autoFocus={props.autoFocus}
         inputRef={setInput}
         returnKeyType="search"
+        // Enter searches here; it never saves the window around it (spec 0036, AC-026).
+        submitsWindow={false}
         onSubmitEditing={props.onSubmit || props.enterSelects ? submit : undefined}
         // Enter would otherwise blur the field after taking the value (spec 0036, AC-007).
         blurOnSubmit={props.keepFocus ? false : undefined}

@@ -9,6 +9,12 @@ export const SheetFocusContext = createContext<((input: unknown) => () => void) 
   undefined,
 );
 
+/**
+ * Set by a window with a primary action that can be pressed (spec 0036, REQ-014): Enter in one
+ * of its one-line text fields presses it, on the desktop.
+ */
+export const SheetSubmitContext = createContext<(() => void) | undefined>(undefined);
+
 /** How long after the window took the focus a focus moved out of it is taken back. */
 export const FOCUS_SETTLE_MS = 600;
 

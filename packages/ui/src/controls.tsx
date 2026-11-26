@@ -25,7 +25,7 @@ import {
 import { disguiseContactWords, fieldAutofill, isAppleTouchBrowser } from './field-autofill';
 import { mergeRefs, useHint } from './hint';
 import { icons, type IconName } from './icons';
-import { useHover } from './pointer';
+import { useFinePointer, useHover } from './pointer';
 import { Icon, Text, useColor, type ColorToken } from './primitives';
 import {
   IDLE_STAR_POINTER,
@@ -39,7 +39,7 @@ import {
   type StarStep,
 } from './star-value';
 import { revealsError } from './reveal-error';
-import { SheetFocusContext } from './sheet-focus';
+import { SheetFocusContext, SheetSubmitContext } from './sheet-focus';
 import { switchRowParts } from './time-field-state';
 import { ToneContext, useAreaColors, useTheme } from './theme-context';
 import type { Theme, Tone } from './themes';
@@ -721,6 +721,8 @@ export interface TextFieldProps extends Pick<
   left?: ReactNode;
   /** Pill-shaped field for search and composer bars. */
   round?: boolean;
+  /** false: Enter in this field never saves the window it is in (a search field). */
+  submitsWindow?: boolean;
   /** The input itself, e.g. to move the focus into it after a choice. */
   inputRef?: Ref<ComponentRef<typeof TextInput>>;
   style?: StyleProp<ViewStyle>;
@@ -770,10 +772,21 @@ export function TextField(props: TextFieldProps) {
     onBlur,
     inputRef,
     autoFocus,
+    submitsWindow,
     ...input
   } = props;
   // Spec 0033, REQ-006: in a window the window focuses the field once it has slid in.
   const claimFocus = useContext(SheetFocusContext);
+  // Spec 0036, REQ-014: on the desktop Enter in a one-line field of a window saves it, unless the
+  // field does something of its own with Enter (a suggestion list) or opts out.
+  const submitWindow = useContext(SheetSubmitContext);
+  const finePointer = useFinePointer();
+  const enterSaves =
+    finePointer &&
+    submitWindow !== undefined &&
+    !props.multiline &&
+    props.onSubmitEditing === undefined &&
+    submitsWindow !== false;
   const own = useRef<ComponentRef<typeof TextInput> | null>(null);
   useEffect(() => {
     if (!autoFocus || !claimFocus || !own.current) return;
@@ -827,6 +840,9 @@ export function TextField(props: TextFieldProps) {
           // No autofill from contacts on titles, amounts and notes (spec 0032, AC-010; 0033).
           autoComplete={autofill.autoComplete as TextInputProps['autoComplete']}
           autoFocus={autoFocus === true && !claimFocus}
+          onSubmitEditing={enterSaves ? () => submitWindow() : input.onSubmitEditing}
+          // A window that stays open (a field is missing) keeps the cursor in the field.
+          blurOnSubmit={enterSaves ? false : input.blurOnSubmit}
           ref={mergeRefs(own, inputRef)}
           nativeID={autofill.id}
           testID={testID}
