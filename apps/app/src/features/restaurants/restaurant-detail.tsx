@@ -28,6 +28,7 @@ import {
   Section,
   Stack,
   Text,
+  openKeyboardNow,
 } from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
@@ -127,7 +128,9 @@ function RestaurantDetailBody(props: RestaurantDetailProps & { restaurant: Resta
   const meta = [restaurant.cuisine, priceLabel(restaurant.priceLevel)].filter(Boolean).join(' · ');
   const website =
     restaurant.websiteUrl && isWebUrl(restaurant.websiteUrl) ? restaurant.websiteUrl : undefined;
-  const edit = (at?: RestaurantFormFocus) => {
+  // "Bearbeiten" puts the cursor into "Name", with the keyboard on the iPhone (spec 0033, REQ-006).
+  const edit = (at: RestaurantFormFocus = 'name') => {
+    openKeyboardNow();
     setFocus(at);
     props.onWindow('bearbeiten');
   };

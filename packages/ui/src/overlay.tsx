@@ -46,6 +46,7 @@ import {
 import { ToneContext, useBreakpoint, useTheme } from './theme-context';
 import { useKeyboard } from './keyboard';
 import { keyboardSheetFrame } from './keyboard-state';
+import { handOverKeyboard } from './keyboard-proxy';
 import { lockPageScroll } from './page-scroll-lock';
 import type { Band } from './scroll-reveal';
 import { sheetDragOffset, sheetDragRelease, upwardShadow } from './sheet-drag';
@@ -224,6 +225,9 @@ export function Sheet(props: SheetProps) {
   const focusTarget = useRef<unknown>(null);
   const claimFocus = useCallback((input: unknown) => {
     focusTarget.current ??= input;
+    // Opened by a tap that opened the keyboard (iPhone, decision 10): the field takes it now,
+    // before react-native-web's modal moves the focus into the window and the keyboard closes.
+    if (focusTarget.current === input) handOverKeyboard(input);
     return () => {
       if (focusTarget.current === input) focusTarget.current = null;
     };

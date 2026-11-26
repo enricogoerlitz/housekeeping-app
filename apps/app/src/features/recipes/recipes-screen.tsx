@@ -51,6 +51,7 @@ import {
   TypingIndicator,
   ViewTabs,
   tabSwipe,
+  openKeyboardNow,
 } from '@housekeeping/ui';
 import { type ComponentRef, useMemo, useRef, useState } from 'react';
 import { Pressable, View, type TextInput } from 'react-native';
@@ -126,6 +127,7 @@ export function RecipesScreen() {
   const [newKind, setNewKind] = useState<RecipeKind>('recipe');
   const newSheet = { open: params.fenster === 'neu', kind: newKind };
   const openNew = (kind: RecipeKind) => {
+    openKeyboardNow();
     setNewKind(kind);
     address.open({ fenster: 'neu' });
   };

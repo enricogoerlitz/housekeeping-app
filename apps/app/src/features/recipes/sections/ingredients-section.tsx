@@ -50,6 +50,7 @@ import {
   Text,
   toast,
   type ReorderListLabels,
+  openKeyboardNow,
 } from '@housekeeping/ui';
 import { useState } from 'react';
 import { View } from 'react-native';
@@ -166,6 +167,7 @@ function IngredientsRead(props: {
     }
   };
   const add = () => {
+    openKeyboardNow();
     editor.flush();
     setAdding(sectionDraft(recipe, 'ingredients'));
   };
@@ -515,7 +517,10 @@ function IngredientsFields(props: { draft: IngredientsDraft; editor: SectionEdit
           label="Zutat"
           icon="plus"
           variant="link"
-          onPress={() => setSheet({ kind: 'row' })}
+          onPress={() => {
+            openKeyboardNow();
+            setSheet({ kind: 'row' });
+          }}
           testID="recipe-add-ingredient"
         />
         <Button

@@ -19,6 +19,7 @@ import {
   Stack,
   Text,
   TextField,
+  openKeyboardNow,
 } from '@housekeeping/ui';
 import { useState, type ReactNode } from 'react';
 
@@ -105,8 +106,11 @@ function LinksFields(props: { draft: LinksDraft; editor: SectionEditor }) {
                   label="Mehr"
                   accessibilityLabel={`Mehr zu ${linkDisplay(link).title}`}
                   onChange={(action) => {
-                    if (action === 'edit') setEditing({ index });
-                    else if (action === 'remove') set(draft.links.filter((_, at) => at !== index));
+                    if (action === 'edit') {
+                      openKeyboardNow();
+                      setEditing({ index });
+                    } else if (action === 'remove')
+                      set(draft.links.filter((_, at) => at !== index));
                     else move(index, index + (action === 'up' ? -1 : 1));
                   }}
                   options={[
@@ -137,7 +141,10 @@ function LinksFields(props: { draft: LinksDraft; editor: SectionEditor }) {
         variant="link"
         disabled={full}
         hint={full ? LINK_LIMIT_HINT : undefined}
-        onPress={() => setEditing({})}
+        onPress={() => {
+          openKeyboardNow();
+          setEditing({});
+        }}
         testID="recipe-links-add"
       />
       {full ? (

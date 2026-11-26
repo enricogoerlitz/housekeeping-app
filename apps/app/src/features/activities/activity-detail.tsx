@@ -11,7 +11,17 @@ import {
   useToday,
 } from '@housekeeping/api';
 import { showsRoute, isWebUrl, visitsOf, type Activity, type Id } from '@housekeeping/core';
-import { Button, EmptyState, Icon, IconButton, Menu, Row, Stack, Text } from '@housekeeping/ui';
+import {
+  Button,
+  EmptyState,
+  Icon,
+  IconButton,
+  Menu,
+  Row,
+  Stack,
+  Text,
+  openKeyboardNow,
+} from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
 import { View } from 'react-native';
@@ -250,7 +260,10 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
               variant="secondary"
               disabled={online.disabled}
               hint={online.hint}
-              onPress={() => props.onWindow('bearbeiten')}
+              onPress={() => {
+                openKeyboardNow();
+                props.onWindow('bearbeiten');
+              }}
               testID="activity-edit"
             />
           </Row>

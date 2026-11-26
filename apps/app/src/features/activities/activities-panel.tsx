@@ -28,6 +28,7 @@ import {
   useBreakpoint,
   useTheme,
   FieldClearButton,
+  openKeyboardNow,
 } from '@housekeeping/ui';
 import { useIsFocused, useRouter } from 'expo-router';
 import { type ComponentRef, useEffect, useRef } from 'react';
@@ -127,6 +128,11 @@ export function ActivitiesScreen() {
     { me: me.id, entries, today },
   );
 
+  // The window's name field gets the keyboard with the tap (spec 0033, REQ-006).
+  const startCreating = () => {
+    openKeyboardNow();
+    setCreating(true);
+  };
   const empty = activities.length === 0;
   const addButton = empty ? null : isPhone ? (
     <IconButton
@@ -135,7 +141,7 @@ export function ActivitiesScreen() {
       variant="soft"
       disabled={online.disabled}
       hint={online.hint}
-      onPress={() => setCreating(true)}
+      onPress={startCreating}
       testID="activity-add"
     />
   ) : (
@@ -145,7 +151,7 @@ export function ActivitiesScreen() {
       size="sm"
       disabled={online.disabled}
       hint={online.hint}
-      onPress={() => setCreating(true)}
+      onPress={startCreating}
       testID="activity-add"
     />
   );
@@ -183,7 +189,7 @@ export function ActivitiesScreen() {
             icon="plus"
             disabled={online.disabled}
             hint={online.hint}
-            onPress={() => setCreating(true)}
+            onPress={startCreating}
             testID="activity-add"
           />
         </EmptyState>

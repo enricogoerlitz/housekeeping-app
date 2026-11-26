@@ -29,6 +29,7 @@ import {
   tabSwipe,
   toast,
   useBreakpoint,
+  openKeyboardNow,
 } from '@housekeeping/ui';
 import { useMemo, type ReactElement } from 'react';
 import { View } from 'react-native';
@@ -156,6 +157,11 @@ export function ChoresScreen() {
     id ? select({ verlauf: id }) : deselect({ verlauf: undefined });
   const setCreating = (open: boolean) =>
     open ? address.open({ fenster: 'neu-aufgabe' }) : address.close({ fenster: undefined });
+  // "Neue Aufgabe": the title gets the keyboard with the tap (spec 0033, REQ-006).
+  const startCreating = () => {
+    openKeyboardNow();
+    setCreating(true);
+  };
   const setLogging = (open: boolean) =>
     open ? address.open({ fenster: 'erledigt' }) : address.close({ fenster: undefined });
 
@@ -197,7 +203,7 @@ export function ChoresScreen() {
     </View>
   );
   const empty = (
-    <ChoresEmpty disabled={online.disabled} hint={online.hint} onCreate={() => setCreating(true)} />
+    <ChoresEmpty disabled={online.disabled} hint={online.hint} onCreate={startCreating} />
   );
 
   let body: ReactElement;
@@ -294,7 +300,7 @@ export function ChoresScreen() {
                 icon="plus"
                 variant="soft"
                 label="Neue Aufgabe"
-                onPress={() => setCreating(true)}
+                onPress={startCreating}
                 disabled={online.disabled}
                 hint={online.hint}
                 testID="chore-new"

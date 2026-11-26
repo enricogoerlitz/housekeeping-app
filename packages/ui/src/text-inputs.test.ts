@@ -26,9 +26,11 @@ describe('text inputs (spec 0033, REQ-005)', () => {
         readFileSync(path.join(repo, file), 'utf8'),
       ),
     );
-    // The photo picker's input is a file input: no text, no keyboard.
+    // The photo picker's input is a file input: no text, no keyboard. The keyboard's stand-in
+    // (keyboard-proxy.web.ts) is never seen and carries the same attributes.
     expect(raw.sort()).toEqual([
       'packages/ui/src/controls.tsx',
+      'packages/ui/src/keyboard-proxy.web.ts',
       'packages/ui/src/pick-image.web.ts',
     ]);
   });
