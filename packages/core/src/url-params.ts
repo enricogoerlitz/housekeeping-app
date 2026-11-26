@@ -158,9 +158,16 @@ export const PAGE_PARAMS = {
     bewertung: one(oneOf(['4', '4.5'])),
     preis: many(oneOf(['1', '2', '3', '4'])),
     sortierung: one(oneOf([...values(RECIPE_SORT_SLUGS), ...RESTAURANT_SORT_SLUGS])),
-    // "bearbeiten" and "einplanen" for the restaurant chosen next to the list (spec 0024).
-    fenster: one(oneOf(['neu', 'neu-restaurant', 'bearbeiten', 'einplanen'])),
+    // "bearbeiten" and "einplanen" for the restaurant chosen next to the list (spec 0024);
+    // "einplanen", "sammlung" and "vorratscheck" for the recipe there (spec 0038).
+    fenster: one(
+      oneOf(['neu', 'neu-restaurant', 'bearbeiten', 'einplanen', 'sammlung', 'vorratscheck']),
+    ),
     restaurant: one(Uuid),
+    /** The recipe in the quick view beside the list, with its page's portions and variant. */
+    rezept: one(Uuid),
+    portionen: one(PositiveInt),
+    variante: one(Uuid),
     link: one(z.string().max(2000)),
     name: one(Text),
     von: Von,
@@ -602,6 +609,7 @@ export const OBJECT_PARAMS = [
   'posten',
   'artikel',
   'restaurant',
+  'rezept',
   'aktivitaet',
   'markt',
   'tasche',
@@ -612,6 +620,9 @@ const OPENING_PARAMS = new Set<string>([
   ...OBJECT_PARAMS,
   'fenster',
   'zeit',
+  // What the recipe in the quick view shows (spec 0038).
+  'portionen',
+  'variante',
   'link',
   'name',
   'haushalt',

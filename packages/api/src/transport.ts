@@ -9,6 +9,7 @@ import {
   type AssistantRequest,
   type PullRequest,
   type PullResult,
+  type FetchImageRequest,
   type ResolveMapsLinkReply,
   type RowOp,
   type SpeechTokenReply,
@@ -565,6 +566,11 @@ export interface Transport {
   // Edge functions
   /** Follows a short map link on the server (`resolve-maps-link`); `not_a_maps_link` when none. */
   resolveMapsLink(url: string): Promise<ResolveMapsLinkReply>;
+  /**
+   * The image at a public address, loaded by the server (`fetch-image`, spec 0039) as raw bytes;
+   * `not_an_image` (422) when there is none, `forbidden` (403) for a foreign household.
+   */
+  fetchImage(request: FetchImageRequest): Promise<Blob>;
   /** The assistant (`ai-assistant`): an answer, maybe with a proposal; it never changes data. */
   askAssistant(request: AssistantRequest): Promise<AssistantReply>;
   /** The AI recipe search (`ai-search`). */
@@ -650,6 +656,7 @@ export function switchable(inner: Transport): SwitchableTransport {
     listPushSubscriptions: guard(inner.listPushSubscriptions.bind(inner)),
     sendTestPush: guard(inner.sendTestPush.bind(inner)),
     resolveMapsLink: guard(inner.resolveMapsLink.bind(inner)),
+    fetchImage: guard(inner.fetchImage.bind(inner)),
     askAssistant: guard(inner.askAssistant.bind(inner)),
     aiSearch: guard(inner.aiSearch.bind(inner)),
     speechToken: guard(inner.speechToken.bind(inner)),

@@ -457,7 +457,9 @@ export async function fulfilError(route: Route, code: ErrorCode): Promise<void> 
   const status: Record<ErrorCode, number> = {
     unauthorized: 401,
     invalid_request: 400,
+    forbidden: 403,
     not_a_maps_link: 422,
+    not_an_image: 422,
     quota_exceeded: 429,
     ai_unavailable: 503,
     internal: 500,

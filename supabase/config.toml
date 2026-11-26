@@ -442,6 +442,9 @@ VAPID_PRIVATE_KEY = "env(VAPID_PRIVATE_KEY)"
 PUSH_SEND_SECRET = "env(PUSH_SEND_SECRET)"
 # Not a secret: the VAPID `sub` claim for the local stack (production: the https web origin).
 VAPID_SUBJECT = "https://localhost"
+# media-sweep (spec 0039): the shared secret the database signs the nightly sweep with (Vault
+# media_sweep_secret). Never print it.
+MEDIA_SWEEP_SECRET = "env(MEDIA_SWEEP_SECRET)"
 
 # Every function verifies the JWT itself (getClaims + role = authenticated, so the anon key gets
 # 401). The gateway check adds nothing (the anon key passes it) and would answer CORS preflights
@@ -459,6 +462,15 @@ verify_jwt = false
 import_map = "./functions/deno.json"
 
 [functions.resolve-maps-link]
+verify_jwt = false
+import_map = "./functions/deno.json"
+
+[functions.fetch-image]
+verify_jwt = false
+import_map = "./functions/deno.json"
+
+# media-sweep is called by pg_net like push-send: no JWT, it checks the shared secret itself.
+[functions.media-sweep]
 verify_jwt = false
 import_map = "./functions/deno.json"
 

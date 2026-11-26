@@ -38,6 +38,7 @@ export {
 } from './display';
 export { ViewTabs, ChoiceChips, Menu, type ChoiceOption, type MenuOption } from './choice';
 export { IconChoice } from './icon-choice';
+export { ViewSwitch } from './view-switch';
 export { ariaRef, useSoftDisabled } from './hint';
 export { ListPlaceholder } from './placeholder';
 export { useWakeLock } from './use-wake-lock';
@@ -52,7 +53,9 @@ export {
   type SheetAction,
 } from './overlay';
 export { pickImageFile } from './pick-image';
+export { useImageDropAndPaste } from './image-drop';
 export { useKeyboard } from './keyboard';
+export { openKeyboardNow } from './keyboard-proxy';
 export { tabSwipe, type TabSwipe } from './tab-swipe';
 export { useTabPreview } from './tab-preview';
 export { useFinePointer, useHover } from './pointer';

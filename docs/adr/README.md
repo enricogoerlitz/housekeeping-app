@@ -21,3 +21,4 @@ neue abgelöst.
 | [0013](0013-packen-ohne-netz.md)                                      | Packen ohne Netz über die Laden-Warteschlange, „Abhaken gewinnt“                                    | angenommen          |
 | [0014](0014-zustellung-von-benachrichtigungen.md)                     | Web Push mit VAPID; die Datenbank plant, `push-send` stellt nur zu                                  | angenommen          |
 | [0015](0015-auslieferung-und-betrieb.md)                              | Azure Static Web Apps, Vorschau aus `develop`, Kalender-Version, Mindestversion, Sicherung in Azure | angenommen          |
+| [0016](0016-bildmodell-und-abruf-fremder-seiten.md)                   | Fremde Adressen nur über `fetch-public`, Bilder mit FLUX.2-pro, nächtliches Aufräumen der Fotos     | angenommen          |

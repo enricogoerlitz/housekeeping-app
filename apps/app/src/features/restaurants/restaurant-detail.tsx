@@ -13,6 +13,7 @@ import {
   showsRoute,
   isWebUrl,
   priceLabel,
+  restaurantShareText,
   visitsOf,
   type Id,
   type Restaurant,
@@ -28,6 +29,7 @@ import {
   Section,
   Stack,
   Text,
+  openKeyboardNow,
 } from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
@@ -42,6 +44,7 @@ import { DetailPhotoBlock } from '@/features/shell/own-photo';
 import { useDeletePlace } from '@/features/shell/use-delete-place';
 import { VisitList, VisitsLine, useVisitsJump, type SectionRef } from '@/features/shell/visits';
 import { openLink } from '@/lib/open-link';
+import { appLink, shareText, useShareFile } from '@/lib/share';
 
 import { EditRestaurantSheet } from './add-restaurant-sheet';
 import { visitsLabel } from './labels';
@@ -127,7 +130,9 @@ function RestaurantDetailBody(props: RestaurantDetailProps & { restaurant: Resta
   const meta = [restaurant.cuisine, priceLabel(restaurant.priceLevel)].filter(Boolean).join(' · ');
   const website =
     restaurant.websiteUrl && isWebUrl(restaurant.websiteUrl) ? restaurant.websiteUrl : undefined;
-  const edit = (at?: RestaurantFormFocus) => {
+  // "Bearbeiten" puts the cursor into "Name", with the keyboard on the iPhone (spec 0033, REQ-006).
+  const edit = (at: RestaurantFormFocus = 'name') => {
+    openKeyboardNow();
     setFocus(at);
     props.onWindow('bearbeiten');
   };
@@ -141,16 +146,28 @@ function RestaurantDetailBody(props: RestaurantDetailProps & { restaurant: Resta
       onPress={() => toggleRestaurantFavorite(restaurant.id)}
     />
   );
+  // "Teilen" (spec 0042, AC-009): works offline; the photo goes along where files can be shared.
+  const shareFile = useShareFile(restaurant.photoPath, restaurant.name);
+  const share = () =>
+    void shareText({
+      title: restaurant.name,
+      text: restaurantShareText(restaurant, appLink(`/restaurant/${restaurant.id}`)),
+      file: shareFile,
+    });
   const more = (
-    <Menu<'delete'>
+    <Menu<'share' | 'delete'>
       trigger="icon"
       icon="ellipsis"
       label="Mehr"
       accessibilityLabel={`Mehr zu ${restaurant.name}`}
       options={[
+        { value: 'share', label: 'Teilen' },
         { value: 'delete', label: 'Löschen', disabled: online.disabled, hint: online.hint },
       ]}
-      onChange={remove}
+      onChange={(action) => {
+        if (action === 'delete') remove();
+        else share();
+      }}
       testID="restaurant-more"
     />
   );
@@ -196,6 +213,7 @@ function RestaurantDetailBody(props: RestaurantDetailProps & { restaurant: Resta
           placeholderIcon={RESTAURANT_ICON}
           onChange={(photo) => setRestaurantPhoto(restaurant.id, photo)}
           onRemove={() => removeRestaurantPhoto(restaurant.id)}
+          onShare={share}
           testPrefix="restaurant"
         />
 

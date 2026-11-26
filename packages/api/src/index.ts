@@ -24,6 +24,7 @@ export * from './assistant';
 export * from './ai';
 export { photoSource, useRecipeImage } from './photos';
 export {
+  loadPhoto,
   PHOTO_UPLOAD_FAILED_MESSAGE,
   preparePhoto,
   removeActivityPhoto,
@@ -34,6 +35,7 @@ export {
   setRestaurantPhoto,
   usePhoto,
 } from './photos-remote';
+export { checkImageFile, loadPhotoFromAddress } from './photo-sources';
 export { snapshot, OfflineError } from './store';
 export { useAddressedObject, type AddressedKind } from './addressed';
 export { useAppVersionState } from './app-version';
@@ -54,5 +56,5 @@ export {
   useAuth,
 } from './auth';
 export { TEST_ACCOUNTS, type TestAccountKey } from './dev-accounts';
-export { useHouseholdInvitations, useMyInvitations } from './households';
+export { useHouseholdInvitations, useHouseholdOwnerId, useMyInvitations } from './households';
 export { starterCatalogEntries } from './starter/entries';

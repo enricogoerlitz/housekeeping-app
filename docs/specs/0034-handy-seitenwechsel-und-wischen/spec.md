@@ -226,6 +226,24 @@ Netz).
     darunter. Abhilfe nur durch Umbau (Verwalten-Seiten als Stack über den Tabs, alle Adressen und
     `backBehavior` betroffen); Empfehlung: so lassen, nach der iPhone-Abnahme entscheiden.
 
+14. REQ-002 (H-07, nach Enricos Test am 26.11.: nach der Randgeste blitzt die Liste noch einmal,
+    beim Zurück-Knopf nicht): Ursache im Browser gemessen. Unter einer offenen Seite lag die Liste
+    mit `display: none` (JS-Stack, `detachInactiveScreens`); beim Zurück stand sie zwei Bilder lang
+    oben (Karte bei 265 statt 485 px), bis der Browser die Scroll-Lage wiederherstellte. Beim
+    Zurück-Knopf verdeckt das Hinausgleiten das, nach der iOS-Geste (sofort, Entscheidung 7) nicht.
+    Jetzt bleibt die Seite darunter ausgelegt (`detachPreviousScreen: false` in
+    `phoneStackOptions`): sie wird nicht neu gezeichnet, Bilder nicht neu dekodiert, die Lage
+    stimmt im ersten Bild (gemessen: 485 px in jedem Bild). Ob das iOS-Standbild jetzt nahtlos in
+    die Seite übergeht, zeigt nur das iPhone. Falls nicht, die nächsten Schritte: beim `popstate`
+    nach der Geste das Neuzeichnen um ein Bild verzögern (iOS hält das Standbild, bis die Seite
+    gezeichnet hat) oder `content-visibility` für die verdeckte Seite.
+15. Fehler aus Enricos Test am 26.11.: „Einkaufen“ ließ sich auf dem iPhone nicht scrollen. Ursache:
+    der JS-Stack des Handys (Entscheidung 7) macht eine Karte, die das ganze Fenster füllt (ohne
+    Tab-Leiste: „Einkaufen“, „Kochen“), zur mitwachsenden Seite (`minHeight: 100%`, gedacht für
+    ein scrollendes Dokument); der `body` der App scrollt aber nie, also hatte der ScrollView der
+    Seite keine Höhe. Behoben mit `headerMode: 'float'` (es gibt keinen Kopf; die Karte bleibt ein
+    begrenzter Kasten). Wake Lock und Seiten-Sperre waren es nicht; der Wake Lock bleibt.
+
 ## Daten
 
 Entfällt: nur Oberfläche und lokale Reihenfolge der Liste (REQ-008, nur im Speicher der Sitzung).
@@ -246,6 +264,13 @@ Entfällt: nur Oberfläche und lokale Reihenfolge der Liste (REQ-008, nur im Spe
       iPhone-Abnahme durch Enrico in der Vorschau (offen)
 
 ## Nachweis
+
+- Nachtrag nach Enricos Test (26.11.): `apps/app/scripts/stack-options.test.mjs` (Einkaufen: Karte
+  begrenzt, rot gezeigt; AC-004: Seite darunter ausgelegt, rot gezeigt; Regel im Router gepinnt),
+  e2e `rundgang-handy.spec.ts` „Einkaufen“ füllt das Fenster (nur typgeprüft). Dev-Server (Port
+  8095), Chromium 390 × 844 mit Touch: vorher ScrollView 1414 px hoch in 844 px Fenster, Wischen
+  ohne Wirkung; nachher 773 px, Wischen scrollt 641 px. Randgeste + Verlauf zurück: Karte in jedem
+  Bild an derselben Stelle (vorher zwei Bilder 220 px zu hoch).
 
 - Tests (rot gezeigt, dann grün): `app-config.test.mjs` (AC-001, AC-020), `placeholder.test.tsx`
   (AC-002, AC-003), `photos-remote.backend.test.ts` (AC-009, Speicher-Grenze, Abmelden),

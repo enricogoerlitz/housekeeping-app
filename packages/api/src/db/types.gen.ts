@@ -1858,6 +1858,7 @@ export type Database = {
           hidden_area_ids: string[];
           household_id: string;
           id: string;
+          maps_url: string | null;
           name: string;
           updated_at: string;
         };
@@ -1868,6 +1869,7 @@ export type Database = {
           hidden_area_ids?: string[];
           household_id: string;
           id?: string;
+          maps_url?: string | null;
           name: string;
           updated_at?: string;
         };
@@ -1877,6 +1879,7 @@ export type Database = {
           hidden_area_ids?: string[];
           household_id?: string;
           id?: string;
+          maps_url?: string | null;
           name?: string;
           updated_at?: string;
         };

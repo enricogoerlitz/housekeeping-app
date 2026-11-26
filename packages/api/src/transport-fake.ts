@@ -19,6 +19,7 @@
 import {
   addDays,
   compareTimestamps,
+  householdOwnerId,
   isHalfStar,
   isReminderPast,
   isWebUrl,
@@ -122,6 +123,7 @@ type RpcName =
   | 'list_push_subscriptions'
   | 'send_test_push'
   | 'resolve-maps-link'
+  | 'fetch-image'
   | 'ai-assistant'
   | 'ai-search'
   | 'speech-token'
@@ -167,6 +169,8 @@ export interface FakeServer {
   purgeDeletionsBefore(before: string): void;
   /** The place the edge function `resolve-maps-link` answers for a short link. */
   setMapsLink(url: string, reply: ResolveMapsLinkReply): void;
+  /** The bytes the edge function `fetch-image` answers for an address (spec 0039). */
+  setImageAddress(url: string, image: Blob): void;
   /** The answers of the AI edge functions. */
   setAi(ai: FakeAi): void;
   /** A stored photo (bucket household-media). */
@@ -934,6 +938,7 @@ export function createFakeServer(): FakeServer {
   const failures: FailureRule[] = [];
   const calls: { userId: string; fn: string }[] = [];
   const mapsLinks = new Map<string, ResolveMapsLinkReply>();
+  const imageAddresses = new Map<string, Blob>();
   const media = new Map<string, Blob>();
   let ai: FakeAi = {};
   /** private.deletions: one snapshot per household, kind and target, kept for RESTORABLE_MS. */
@@ -985,6 +990,13 @@ export function createFakeServer(): FakeServer {
 
   const isMember = (userId: string, householdId: string) =>
     members.some((member) => member.household_id === householdId && member.profile_id === userId);
+  /** private.household_owner (spec 0042, REQ-005): earliest join, ties by the smaller id. */
+  const ownerOf = (householdId: string) =>
+    householdOwnerId(
+      members
+        .filter((member) => member.household_id === householdId)
+        .map((m) => ({ profileId: String(m.profile_id), joinedAt: String(m.created_at) })),
+    );
   const memberIdsOf = (householdId: string) =>
     members
       .filter((member) => member.household_id === householdId)
@@ -3308,6 +3320,8 @@ export function createFakeServer(): FakeServer {
         run(userId, 'invite_member', () => {
           if (!isMember(userId, householdId))
             throw new TransportError('permanent', 'not_member', 403);
+          if (ownerOf(householdId) !== userId)
+            throw new TransportError('permanent', 'not_owner', 403);
           const address = email.trim().toLowerCase();
           if (!/^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/.test(address)) throw reject('invalid_email');
           const already = members.some(
@@ -3368,6 +3382,8 @@ export function createFakeServer(): FakeServer {
         run(userId, 'remove_member', () => {
           if (!isMember(userId, householdId))
             throw new TransportError('permanent', 'not_member', 403);
+          if (profileId !== userId && ownerOf(householdId) !== userId)
+            throw new TransportError('permanent', 'not_owner', 403);
           if (!isMember(profileId, householdId)) {
             throw new TransportError('permanent', 'member_not_found', 404);
           }
@@ -3575,6 +3591,15 @@ export function createFakeServer(): FakeServer {
           if (!reply) throw new TransportError('permanent', 'not_a_maps_link', 422);
           return reply;
         }),
+      fetchImage: (request) =>
+        run(userId, 'fetch-image', () => {
+          requireUser(userId);
+          if (!isMember(userId, request.householdId))
+            throw new TransportError('permanent', 'forbidden', 403);
+          const image = imageAddresses.get(request.url);
+          if (!image) throw new TransportError('permanent', 'not_an_image', 422);
+          return image;
+        }),
       askAssistant: (request) =>
         run(userId, 'ai-assistant', () => {
           if (!ai.assistant) throw aiUnavailable();
@@ -3659,11 +3684,12 @@ export function createFakeServer(): FakeServer {
         created_at: time,
         updated_at: time,
       });
+      // In the given order, so the first one is the owner (spec 0042, REQ-005).
       for (const profileId of memberIds) {
         members.push({
           household_id: household.id,
           profile_id: profileId,
-          created_at: time,
+          created_at: now(),
           updated_at: time,
         });
         createNotificationSettings(household.id, profileId);
@@ -3701,6 +3727,9 @@ export function createFakeServer(): FakeServer {
     row: (householdId, table, id) => data.get(householdId)?.[table]?.[id],
     failNext(fn, error, options = {}) {
       failures.push({ fn, error, afterApply: options.afterApply ?? false });
+    },
+    setImageAddress(url, image) {
+      imageAddresses.set(url, image);
     },
     setMapsLink(url, reply) {
       mapsLinks.set(url, reply);

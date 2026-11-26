@@ -1,0 +1,288 @@
+import { checkImageFile, loadPhotoFromAddress, preparePhoto } from '@housekeeping/api';
+import { imageAddress } from '@housekeeping/core';
+import {
+  Button,
+  Notice,
+  Photo,
+  Row,
+  Sheet,
+  Stack,
+  Text,
+  TextField,
+  ViewTabs,
+  pickImageFile,
+  useBreakpoint,
+  useImageDropAndPaste,
+  useTheme,
+  type IconName,
+} from '@housekeeping/ui';
+import { useEffect, useRef, useState } from 'react';
+import { Platform, View } from 'react-native';
+
+import { errorMessage, FAILED_MESSAGE } from '@/features/shell/error-message';
+import { useOnlineOnly } from '@/features/shell/offline';
+import { confirmFirst } from '@/features/shell/confirm-dialog';
+
+// The window "Foto" (spec 0039, REQ-001 – REQ-004): one window wherever a photo is changed — at a
+// recipe, a collection, a restaurant and an activity. A new image comes from a file (chosen,
+// dragged in, pasted with ⌘V), the camera or an image address the server loads; it is prepared
+// like every photo (1600 px, JPEG) and shown before "Übernehmen" saves it. "Abbrechen" keeps the
+// old photo. Everything here needs the network.
+
+/**
+ * The window's views. Spec 0040 adds "KI" (create or edit the photo with the image model) as a
+ * second view; with one view no tab row shows.
+ */
+const VIEWS: { value: 'choose'; label: string }[] = [{ value: 'choose', label: 'Bild wählen' }];
+
+type Busy = 'prepare' | 'address' | undefined;
+
+/** The preview stays this high at most, so the sources below fit on a laptop screen. */
+const PREVIEW_MAX_HEIGHT = 220;
+
+/** A short pause after typing, so a pasted address is loaded once and a typed one when done. */
+const ADDRESS_DELAY_MS = 400;
+
+const pasteKeys = () =>
+  Platform.OS === 'web' &&
+  typeof navigator !== 'undefined' &&
+  /Mac|iP(hone|ad)/.test(navigator.userAgent)
+    ? '⌘V'
+    : 'Strg+V';
+
+/** „Foto entfernen?“ · „Entfernen“ / „Abbrechen“ before a photo goes (spec 0036, AC-019). */
+export function confirmPhotoRemoval(remove: () => void): void {
+  confirmFirst({
+    title: 'Foto entfernen?',
+    confirmLabel: 'Entfernen',
+    onConfirm: remove,
+    testID: 'confirm-remove-photo',
+  });
+}
+
+export function PhotoWindow(props: {
+  /** The photo shown now (an own photo's blob: URL or a recipe's sample photo), if any. */
+  current: number | { uri: string } | undefined;
+  /** An own photo is stored: "Foto entfernen" is offered. */
+  hasPhoto: boolean;
+  name: string;
+  placeholderIcon: IconName;
+  aspectRatio: number;
+  /** "Übernehmen" with the prepared JPEG; the window is closed already. */
+  onApply: (photo: Blob) => void;
+  /** "Foto entfernen" after the question; the window is closed already. */
+  onRemove: () => void;
+  onClose: () => void;
+  testPrefix: string;
+}) {
+  const online = useOnlineOnly();
+  const theme = useTheme();
+  const { isPhone } = useBreakpoint();
+  const [view, setView] = useState<'choose'>('choose');
+  const [candidate, setCandidate] = useState<{ photo: Blob; uri: string }>();
+  const [busy, setBusy] = useState<Busy>();
+  const [error, setError] = useState<string>();
+  const [address, setAddress] = useState('');
+  const loadedAddress = useRef<string | undefined>(undefined);
+  const attempt = useRef(0);
+  const id = `${props.testPrefix}-photo-window`;
+
+  // The preview is a blob: URL until the window closes or the next image replaces it.
+  const candidateUri = candidate?.uri;
+  useEffect(
+    () => () => {
+      if (candidateUri) URL.revokeObjectURL(candidateUri);
+    },
+    [candidateUri],
+  );
+
+  /** Prepares an image from any source; only the newest attempt may show its result. */
+  const take = (kind: Exclude<Busy, undefined>, source: () => Promise<Blob>) => {
+    attempt.current += 1;
+    const mine = attempt.current;
+    setError(undefined);
+    setBusy(kind);
+    source()
+      .then((image) => preparePhoto(image))
+      .then((photo) => {
+        if (mine === attempt.current) setCandidate({ photo, uri: URL.createObjectURL(photo) });
+      })
+      .catch((caught: unknown) => {
+        if (mine === attempt.current) setError(errorMessage(caught, FAILED_MESSAGE));
+      })
+      .finally(() => {
+        if (mine === attempt.current) setBusy(undefined);
+      });
+  };
+
+  const takeFile = (file: File) => {
+    if (online.disabled) return;
+    take('prepare', async () => checkImageFile(file));
+  };
+  const dragging = useImageDropAndPaste(!online.disabled, takeFile);
+
+  const loadAddress = (text: string) => {
+    const url = imageAddress(text);
+    if (!url || url === loadedAddress.current || online.disabled) return;
+    loadedAddress.current = url;
+    take('address', () => loadPhotoFromAddress(url));
+  };
+  // A pasted address loads by itself, after a short pause (AC-006).
+  const addressTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(addressTimer.current), []);
+  const changeAddress = (text: string) => {
+    setAddress(text);
+    clearTimeout(addressTimer.current);
+    if (imageAddress(text))
+      addressTimer.current = setTimeout(() => loadAddress(text), ADDRESS_DELAY_MS);
+  };
+
+  const pick = (camera: boolean) => pickImageFile(takeFile, camera ? { camera: true } : undefined);
+
+  const apply = () => {
+    if (!candidate) return;
+    props.onClose();
+    props.onApply(candidate.photo);
+  };
+
+  const remove = () =>
+    confirmPhotoRemoval(() => {
+      props.onClose();
+      props.onRemove();
+    });
+
+  const shown = candidate ? { uri: candidate.uri } : props.current;
+  const disabled = online.disabled || busy !== undefined;
+
+  return (
+    <Sheet
+      visible
+      size="m"
+      title="Foto"
+      onClose={props.onClose}
+      header={
+        VIEWS.length > 1 ? (
+          <ViewTabs options={VIEWS} value={view} onChange={setView} label="Quelle" testID={id} />
+        ) : undefined
+      }
+      actions={{
+        primary: {
+          label: 'Übernehmen',
+          onPress: apply,
+          disabled: !candidate || disabled,
+          hint: online.hint,
+          testID: `${id}-apply`,
+        },
+        cancel: { label: 'Abbrechen', onPress: props.onClose, testID: `${id}-cancel` },
+      }}
+      testID={id}
+    >
+      <Stack gap={16}>
+        {online.hint ? (
+          <Notice icon="wifi-off" text={online.hint} testID={`${id}-offline`} />
+        ) : null}
+        <View
+          testID={candidate ? `${id}-preview-new` : `${id}-preview`}
+          style={{
+            borderRadius: theme.shape.radius.tile,
+            borderWidth: 2,
+            borderStyle: 'dashed',
+            borderColor: dragging ? theme.colors.accent : 'transparent',
+            overflow: 'hidden',
+            width: '100%',
+            maxWidth: Math.round(PREVIEW_MAX_HEIGHT * props.aspectRatio),
+            alignSelf: 'center',
+          }}
+        >
+          <Photo
+            source={shown}
+            placeholderIcon={props.placeholderIcon}
+            loading={busy !== undefined}
+            aspectRatio={props.aspectRatio}
+            alt={shown ? props.name : undefined}
+          />
+        </View>
+        {isPhone ? null : (
+          <Text variant="small" color="muted" testID={`${id}-drop-hint`}>
+            {dragging
+              ? 'Zum Übernehmen hier loslassen'
+              : `Bild hierher ziehen, mit ${pasteKeys()} einfügen oder eine Datei wählen`}
+          </Text>
+        )}
+        <Row gap={8} wrap>
+          {isPhone ? (
+            <>
+              <Button
+                label="Fotomediathek"
+                icon="image"
+                variant="secondary"
+                size="sm"
+                disabled={disabled}
+                hint={online.hint}
+                onPress={() => pick(false)}
+                testID={`${id}-library`}
+              />
+              <Button
+                label="Foto aufnehmen"
+                icon="camera"
+                variant="secondary"
+                size="sm"
+                disabled={disabled}
+                hint={online.hint}
+                onPress={() => pick(true)}
+                testID={`${id}-camera`}
+              />
+            </>
+          ) : null}
+          <Button
+            label="Datei wählen"
+            icon="folder-open"
+            variant="secondary"
+            size="sm"
+            disabled={disabled}
+            hint={online.hint}
+            onPress={() => pick(false)}
+            testID={`${id}-file`}
+          />
+        </Row>
+        <TextField
+          label="Bildadresse"
+          placeholder="https://…"
+          value={address}
+          onChangeText={changeAddress}
+          onSubmitEditing={() => loadAddress(address)}
+          keyboardType="url"
+          autoComplete="off"
+          returnKeyType="go"
+          editable={!online.disabled}
+          hint="Adresse eines Bildes einfügen, z. B. über „Bildadresse kopieren“"
+          testID={`${id}-address`}
+        />
+        {busy ? (
+          <Text variant="small" color="muted" testID={`${id}-busy`}>
+            {busy === 'address' ? 'Bild wird geladen …' : 'Bild wird vorbereitet …'}
+          </Text>
+        ) : null}
+        {error ? (
+          <Text variant="small" color="warn" testID={`${id}-error`}>
+            {error}
+          </Text>
+        ) : null}
+        {props.hasPhoto ? (
+          <View style={{ alignItems: 'flex-start' }}>
+            <Button
+              label="Foto entfernen"
+              icon="trash"
+              variant="link"
+              size="sm"
+              disabled={online.disabled}
+              hint={online.hint}
+              onPress={remove}
+              testID={`${props.testPrefix}-photo-remove`}
+            />
+          </View>
+        ) : null}
+      </Stack>
+    </Sheet>
+  );
+}

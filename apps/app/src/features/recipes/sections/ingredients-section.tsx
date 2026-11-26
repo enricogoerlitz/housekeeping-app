@@ -46,6 +46,7 @@ import {
   Text,
   toast,
   type ReorderListLabels,
+  openKeyboardNow,
 } from '@housekeeping/ui';
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
@@ -139,10 +140,16 @@ function IngredientsRead(props: {
   const factor = props.servings / recipe.servings;
   const nameOf = (ingredient: RecipeIngredient) => articlesById[ingredient.articleId]?.name ?? '';
 
-  // ⋯ → "Zutat bearbeiten" and "+ Zutat" open the edit mode with the window (spec 0037, AC-002).
-  const edit = (ingredient: RecipeIngredient) =>
+  // ⋯ → "Zutat bearbeiten" and "+ Zutat" open the edit mode with the window (spec 0037, AC-002);
+  // the window's field gets the keyboard with the tap (spec 0033, REQ-006).
+  const edit = (ingredient: RecipeIngredient) => {
+    openKeyboardNow();
     editor.start({ kind: 'ingredient', key: ingredient.id });
-  const add = () => editor.start({ kind: 'ingredient' });
+  };
+  const add = () => {
+    openKeyboardNow();
+    editor.start({ kind: 'ingredient' });
+  };
   // ⋯ → "Entfernen" asks first; "Rückgängig" afterwards is gone (spec 0036, Entscheidung 1).
   const remove = (ingredient: RecipeIngredient) => {
     confirmFirst({
@@ -404,8 +411,10 @@ function IngredientsFields(props: {
                     label="Mehr"
                     accessibilityLabel={`Mehr zu Variante ${variant.name}`}
                     onChange={(action) => {
-                      if (action === 'rename') setSheet({ kind: 'variant', id: variant.id });
-                      else if (action === 'default') set(setDefaultVariant(draft, variant.id));
+                      if (action === 'rename') {
+                        openKeyboardNow();
+                        setSheet({ kind: 'variant', id: variant.id });
+                      } else if (action === 'default') set(setDefaultVariant(draft, variant.id));
                       else set(removeVariant(draft, variant.id));
                     }}
                     options={[
@@ -445,8 +454,10 @@ function IngredientsFields(props: {
               label="Mehr"
               accessibilityLabel={`Mehr zu ${item.name}`}
               onChange={(action) => {
-                if (action === 'edit') setSheet({ kind: 'row', key: item.key });
-                else if (action === 'article') setArticleFor(householdArticleId(draft, item.key));
+                if (action === 'edit') {
+                  openKeyboardNow();
+                  setSheet({ kind: 'row', key: item.key });
+                } else if (action === 'article') setArticleFor(householdArticleId(draft, item.key));
                 else if (action === 'remove') set(removeIngredient(draft, item.key));
                 else move(item.key, index + (action === 'up' ? -1 : 1));
               }}
@@ -482,7 +493,10 @@ function IngredientsFields(props: {
           label="Zutat"
           icon="plus"
           variant="link"
-          onPress={() => setSheet({ kind: 'row' })}
+          onPress={() => {
+            openKeyboardNow();
+            setSheet({ kind: 'row' });
+          }}
           testID="recipe-add-ingredient"
         />
         <Button
@@ -505,7 +519,10 @@ function IngredientsFields(props: {
             label="Variante"
             icon="plus"
             variant="link"
-            onPress={() => setSheet({ kind: 'variant' })}
+            onPress={() => {
+              openKeyboardNow();
+              setSheet({ kind: 'variant' });
+            }}
             testID="recipe-add-variant"
           />
         )}

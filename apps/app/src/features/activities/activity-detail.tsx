@@ -11,8 +11,25 @@ import {
   usePlanEntries,
   useToday,
 } from '@housekeeping/api';
-import { showsRoute, isWebUrl, visitsOf, type Activity, type Id } from '@housekeeping/core';
-import { Button, EmptyState, Icon, IconButton, Menu, Row, Stack, Text } from '@housekeeping/ui';
+import {
+  activityShareText,
+  showsRoute,
+  isWebUrl,
+  visitsOf,
+  type Activity,
+  type Id,
+} from '@housekeeping/core';
+import {
+  Button,
+  EmptyState,
+  Icon,
+  IconButton,
+  Menu,
+  Row,
+  Stack,
+  Text,
+  openKeyboardNow,
+} from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
 import { View } from 'react-native';
@@ -27,6 +44,7 @@ import { DetailPhotoBlock } from '@/features/shell/own-photo';
 import { useDeletePlace } from '@/features/shell/use-delete-place';
 import { VisitList, VisitsLine, useVisitsJump, type SectionRef } from '@/features/shell/visits';
 import { openLink } from '@/lib/open-link';
+import { appLink, shareText, useShareFile } from '@/lib/share';
 
 import { ActivityFormSheet } from './activity-form';
 import { useActivityIcon } from './activity-photo';
@@ -122,16 +140,28 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
       onPress={() => toggleActivityFavorite(activity.id)}
     />
   );
+  // "Teilen" (spec 0042, REQ-004): works offline; the photo goes along where files can be shared.
+  const shareFile = useShareFile(activity.photoPath, activity.name);
+  const share = () =>
+    void shareText({
+      title: activity.name,
+      text: activityShareText(activity, appLink(`/aktivitaet/${activity.id}`)),
+      file: shareFile,
+    });
   const more = (
-    <Menu<'delete'>
+    <Menu<'share' | 'delete'>
       trigger="icon"
       icon="ellipsis"
       label="Mehr"
       accessibilityLabel={`Mehr zu ${activity.name}`}
       options={[
+        { value: 'share', label: 'Teilen' },
         { value: 'delete', label: 'Löschen', disabled: online.disabled, hint: online.hint },
       ]}
-      onChange={remove}
+      onChange={(action) => {
+        if (action === 'delete') remove();
+        else share();
+      }}
       testID="activity-more"
     />
   );
@@ -177,6 +207,7 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
           placeholderIcon={icon}
           onChange={(photo) => setActivityPhoto(activity.id, photo)}
           onRemove={() => removeActivityPhoto(activity.id)}
+          onShare={share}
           testPrefix="activity"
         />
 
@@ -266,7 +297,10 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
               variant="secondary"
               disabled={online.disabled}
               hint={online.hint}
-              onPress={() => props.onWindow('bearbeiten')}
+              onPress={() => {
+                openKeyboardNow();
+                props.onWindow('bearbeiten');
+              }}
               testID="activity-edit"
             />
           </Row>
