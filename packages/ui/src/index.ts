@@ -38,6 +38,7 @@ export {
 } from './display';
 export { ViewTabs, ChoiceChips, Menu, type ChoiceOption, type MenuOption } from './choice';
 export { ariaRef, useSoftDisabled } from './hint';
+export { ListPlaceholder } from './placeholder';
 export { Sheet, toast, ToastHost, useToastClearance, type SheetAction } from './overlay';
 export { useKeyboard } from './keyboard';
 export { tabSwipe, type TabSwipe } from './tab-swipe';
