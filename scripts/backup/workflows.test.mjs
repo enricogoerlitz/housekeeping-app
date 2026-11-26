@@ -130,32 +130,46 @@ describe('backup.yml', () => {
     assert.match(text, /::error::Datenbank nicht erreichbar/);
   });
 
-  test('AC-052: photos only from s3://household-media to the runner, never back', () => {
+  test('AC-052, spec 0043: photos and videos only from their buckets to the runner, never back', () => {
     const s3 = cmds.filter((c) => /\baws s3\b/.test(c));
-    assert.equal(s3.length, 1);
-    const [, sub, source, target] = /\baws s3 (\S+) (\S+) (\S+)/.exec(s3[0]);
-    assert.equal(sub, 'sync');
-    assert.equal(source, 's3://household-media');
-    assert.doesNotMatch(target, /^s3:/);
-    assert.match(s3[0], /--endpoint-url "\$BACKUP_S3_ENDPOINT"/);
+    const syncs = s3.map((c) => {
+      const [, sub, source, target] = /\baws s3 (\S+) (\S+) (\S+)/.exec(c);
+      assert.equal(sub, 'sync');
+      assert.doesNotMatch(target, /^s3:/);
+      assert.match(c, /--endpoint-url "\$BACKUP_S3_ENDPOINT"/);
+      return [source, target];
+    });
+    assert.deepEqual(syncs, [
+      ['s3://household-media', './media'],
+      ['s3://household-videos', './videos'],
+    ]);
     assert.doesNotMatch(text, /aws s3 (cp|mv|rm|rb|mb)\b/);
   });
 
-  test('a missing photo bucket (before the first release) gives zero photos; other errors fail', () => {
-    const step = steps(job).find((s) => s.name === 'Fotos sichern');
-    assert.match(step.run, /NoSuchBucket/);
-    assert.match(step.run, /::warning::Bucket household-media fehlt/);
-    assert.match(step.run, /mkdir -p \.\/media/);
-    // Anything else than a missing bucket is printed and ends the step red.
-    assert.match(step.run, /exit 1/);
+  test('a missing bucket (before the release that creates it) gives zero files; other errors fail', () => {
+    const cases = [
+      ['Fotos sichern', 'household-media', 'media'],
+      ['Videos sichern', 'household-videos', 'videos'],
+    ];
+    for (const [name, bucket, folder] of cases) {
+      const step = steps(job).find((s) => s.name === name);
+      assert.ok(step, name);
+      assert.match(step.run, /NoSuchBucket/, name);
+      assert.match(step.run, new RegExp(`::warning::Bucket ${bucket} fehlt`), name);
+      assert.match(step.run, new RegExp(`mkdir -p \\./${folder}`), name);
+      // Anything else than a missing bucket is printed and ends the step red.
+      assert.match(step.run, /exit 1/, name);
+    }
   });
 
-  test('AC-052: one archive, encrypted with age to the public key, then the manifest', () => {
+  test('AC-052, spec 0043: one archive with videos, encrypted with age, then the manifest', () => {
     const tar = cmds.findIndex((c) => /\btar -cz/.test(c));
     assert.ok(tar >= 0);
+    assert.match(cmds[tar], /^tar -cz roles\.sql schema\.sql data\.sql media videos \|/);
     assert.match(cmds[tar], /\| age -r "\$BACKUP_AGE_RECIPIENT" -o /, 'tar direkt in age');
     const manifest = cmds.findIndex((c) => c.includes('scripts/backup/manifest.mjs'));
     assert.ok(manifest > tar);
+    assert.match(cmds[manifest], /--media media --videos videos/);
   });
 
   test('AC-053: uploads only the encrypted archive and the manifest, never overwriting', () => {
@@ -222,6 +236,7 @@ describe('restore-test.yml', () => {
     const start = index(/\bsupabase db start\b/);
     const restore = index(/session_replication_role = replica/);
     const counts = index(/node scripts\/backup\/compare\.mjs counts/);
+    assert.match(cmds[counts], /--media "\$W\/backup\/media" --videos "\$W\/backup\/videos"/);
     const order = [latest, download, checksum, decrypt, start, restore, counts];
     assert.ok(
       order.every((i) => i >= 0),

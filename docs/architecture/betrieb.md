@@ -300,7 +300,9 @@ vorige grün ist:
    Befehl ausdrücklich an dieses Projekt (`--remote=<ref>`, kein `supabase link` nötig); ist ein
    anderes Projekt verlinkt, bricht es ab. Vor dem Löschen fragt es nach dem Projektnamen (braucht
    `supabase login`). Gelöscht werden die Objekte in `public` und `private`, die pg_cron-Aufträge, die
-   Migrationshistorie und die Fotos. Konten, Vault, Auth-Einstellungen und Function-Secrets bleiben:
+   Migrationshistorie, die Fotos (`household-media`) und die Rezeptvideos (`household-videos`, Spec
+   0043, Entscheidung 8; fehlt der Bucket noch, ist dort nichts zu löschen). Konten, Vault,
+   Auth-Einstellungen und Function-Secrets bleiben (auch `--data-only` leert beide Buckets):
 
    ```sh
    node scripts/reset-app-data.mjs --project "<prod-ref>"
@@ -336,9 +338,20 @@ Die Historie nie mit `migration repair` flicken.
 - Ablage im Container `backups`: `daily/<JJJJ-MM-TT>/<Lauf>/`, `monthly/<JJJJ-MM>/<Lauf>/`,
   `release/v<Version>/<Lauf>/`, je mit `backup.tar.gz.age` und `manifest.json`. Tägliche und
   Release-Sicherungen bleiben 31 Tage, monatliche 366 Tage; jede ist 30 Tage unveränderlich.
-- Inhalt des Archivs: `roles.sql`, `schema.sql`, `data.sql` (Datenbank) und `media/` (Fotos aus
-  `household-media`). **Nicht enthalten** sind die Function-Secrets und die Vault-Einträge
+- Inhalt des Archivs: `roles.sql`, `schema.sql`, `data.sql` (Datenbank), `media/` (Fotos aus
+  `household-media`) und `videos/` (Rezeptvideos aus `household-videos`, seit Spec 0043,
+  Entscheidung 8). **Nicht enthalten** sind die Function-Secrets und die Vault-Einträge
   `push_send_secret` und `push_send_url`.
+- `manifest.json` nennt Zeilen je Tabelle, die Zahl der Fotos und der Videos und die Prüfsumme
+  (Format 2). Sicherungen von vor Spec 0043 haben Format 1 ohne Videos; `compare.mjs` liest beide
+  und vergleicht die Videos nur ab Format 2.
+- Fehlt ein Bucket (vor der Veröffentlichung, die ihn anlegt), sichert der Lauf mit einer Warnung
+  null Dateien daraus. Dass beide Buckets nach jeder Auslieferung da sind, prüft `verify.mjs`
+  („Foto-Bucket“, „Video-Bucket“).
+- Größe: Videos haben bis 50 MiB, der Speicher des Free-Tarifs fasst 1 GB insgesamt. Ein Archiv
+  bleibt also unter etwa 1 GB; die Zeitgrenzen von 45 Minuten für Sicherung und
+  Wiederherstellungstest reichen dafür. Jede Nachtsicherung lädt alle Fotos und Videos ganz aus
+  Supabase (Egress des Projekts) und legt sie verschlüsselt in Azure ab (bis etwa 45 Sicherungen).
 - Von Hand: `gh workflow run backup.yml --ref main` bzw. `gh workflow run restore-test.yml --ref main`.
 
 ### Unveränderlichkeit sperren
@@ -399,8 +412,11 @@ LOCAL=postgresql://postgres:postgres@127.0.0.1:54322/postgres
 node scripts/backup/compare.mjs query --manifest tmp/restore/download/manifest.json > tmp/restore/count.sql
 psql "$LOCAL" -X -At -v ON_ERROR_STOP=1 -f tmp/restore/count.sql > tmp/restore/counts.txt
 node scripts/backup/compare.mjs counts --manifest tmp/restore/download/manifest.json \
-  --counts tmp/restore/counts.txt --media tmp/restore/backup/media
+  --counts tmp/restore/counts.txt --media tmp/restore/backup/media --videos tmp/restore/backup/videos
 ```
+
+(Bei einer Sicherung im Format 1, also von vor Spec 0043, gibt es kein `videos/`; `compare.mjs`
+übergeht es dann.)
 
 Stimmt alles, mit `psql "$LOCAL"` stichprobenartig nachsehen (`supabase db start` startet nur die
 Datenbank, kein Studio), dann `(cd tmp/restore/db && pnpm exec supabase stop --no-backup)`.
@@ -416,13 +432,15 @@ read -rs DB_URL   # Verbindungs-URL mit Passwort einfügen, wird nicht angezeigt
 unset DB_URL
 ```
 
-Fotos: Storage → Settings → S3 Connection → neuen Schlüssel anlegen, dann mit dem Endpunkt des
-neuen Projekts hochladen (die einzige Stelle, an der in Richtung Bucket synchronisiert wird):
+Fotos und Videos: Storage → Settings → S3 Connection → neuen Schlüssel anlegen, dann mit dem
+Endpunkt des neuen Projekts hochladen (die einzige Stelle, an der in Richtung Bucket synchronisiert
+wird). Die Buckets selbst kommen mit `data.sql` zurück; `videos/` fehlt bei Sicherungen im Format 1:
 
 ```sh
 read -rs AWS_ACCESS_KEY_ID; read -rs AWS_SECRET_ACCESS_KEY; export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
-aws s3 sync tmp/restore/backup/media s3://household-media \
-  --endpoint-url "https://<neue-ref>.storage.supabase.co/storage/v1/s3" --region "<Region aus S3 Connection>"
+S3="https://<neue-ref>.storage.supabase.co/storage/v1/s3"; REGION="<Region aus S3 Connection>"
+aws s3 sync tmp/restore/backup/media s3://household-media --endpoint-url "$S3" --region "$REGION"
+[ -d tmp/restore/backup/videos ] && aws s3 sync tmp/restore/backup/videos s3://household-videos --endpoint-url "$S3" --region "$REGION"
 unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
 ```
 
@@ -467,7 +485,7 @@ gh run watch "$id" --exit-status
 ```
 
 **7. Prüfen und aufräumen:** `verify.mjs` läuft mit der Veröffentlichung; zusätzlich mit beiden
-Konten anmelden, Daten und Fotos ansehen, „Probe senden“. Dann `rm -rf tmp/restore`. Das alte
+Konten anmelden, Daten, Fotos und ein Rezeptvideo ansehen, „Probe senden“. Dann `rm -rf tmp/restore`. Das alte
 Projekt erst löschen, wenn alles stimmt.
 
 ## Schlüsselwechsel
