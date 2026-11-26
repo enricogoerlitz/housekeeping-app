@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  COUNTRY_CENTRE,
+  distanceKm,
   hoursToday,
   isRecipePage,
   isoWeekdayIn,
   mapsLinkOfCid,
+  pickPlaceHits,
   priceLevelOf,
   rankRecipeResults,
   ratingLabel,
@@ -145,5 +148,50 @@ describe('places', () => {
     expect(ratingLabel(5, 1234)).toBe('★ 5,0 (1.234)');
     expect(ratingLabel(4.2, undefined)).toBe('★ 4,2');
     expect(ratingLabel(undefined, 12)).toBeUndefined();
+  });
+});
+
+describe('pickPlaceHits (Entscheidung 11)', () => {
+  const KOELN = { lat: 50.934, lng: 6.948 };
+  const BERLIN = { lat: 52.515, lng: 13.454 };
+  const at = (title: string, lat: number, lng: number) => ({ title, location: { lat, lng } });
+  const friedrichshain = [at('Vietland', 52.51, 13.45), at('TAT Restaurant', 52.52, 13.46)];
+  const koeln = [at('My-Da Garden', 50.94, 6.94), at('Viet Village', 50.93, 6.94)];
+  const usa = [
+    at('Holiday Ice Rink', 34.05, -118.25),
+    at('LA Kings Valley Ice Center', 34.2, -118.4),
+  ];
+
+  it('distances in km between two points', () => {
+    expect(Math.round(distanceKm(BERLIN, KOELN))).toBe(481);
+    expect(distanceKm(BERLIN, BERLIN)).toBe(0);
+  });
+
+  it('AC-038: a district in the text wins over the household centre (Köln → Friedrichshain)', () => {
+    expect(pickPlaceHits(friedrichshain, koeln, KOELN)).toEqual(friedrichshain);
+  });
+
+  it('AC-039: a named place far from the household is found ("Mutzenbacher" from Köln)', () => {
+    const mutzenbacher = [at('Mutzenbacher', 52.51, 13.45)];
+    const river = [at('Mutzbach', 50.98, 7.05)];
+    expect(pickPlaceHits(mutzenbacher, river, KOELN)).toEqual(mutzenbacher);
+  });
+
+  it('AC-008: a text without a place stays around the household (the free search lands in the USA)', () => {
+    expect(pickPlaceHits(usa, koeln, KOELN)).toEqual(koeln);
+    expect(pickPlaceHits(usa, [], KOELN)).toEqual([]);
+    expect(pickPlaceHits([], koeln, KOELN)).toEqual(koeln);
+  });
+
+  it('AC-040: without places of the household the centre is Germany, never the USA', () => {
+    expect(pickPlaceHits(usa, koeln, COUNTRY_CENTRE)).toEqual(koeln);
+    expect(pickPlaceHits(friedrichshain, koeln, COUNTRY_CENTRE)).toEqual(friedrichshain);
+  });
+
+  it('free hits without coordinates count as not found nearby', () => {
+    const unplaced: { title: string; location?: { lat: number; lng: number } }[] = [
+      { title: 'Irgendwo' },
+    ];
+    expect(pickPlaceHits(unplaced, koeln, KOELN)).toEqual(koeln);
   });
 });

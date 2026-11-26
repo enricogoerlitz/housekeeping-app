@@ -48,10 +48,14 @@ export interface PreviewIngredient {
   known: boolean;
 }
 
-/** AC-010: the ingredients of a recipe preview, already matched to the household's articles. */
+/**
+ * AC-010: the ingredients of a recipe preview, already matched to the household's articles; a row
+ * of a variant names it ("· Vegetarisch").
+ */
 export function previewIngredients(
   rows: readonly IngredientRow[],
   articlesById: Record<Id, Article>,
+  variants: readonly { id: Id; name: string }[] = [],
 ): PreviewIngredient[] {
   return rows.map((row) => {
     const article = row.article;
@@ -69,7 +73,8 @@ export function previewIngredients(
           ? article.name
           : row.name) ??
       '';
-    const text = `${row.amountText.trim()} ${name}`.trim();
+    const variant = variants.find((candidate) => candidate.id === row.variantId)?.name;
+    const text = `${row.amountText.trim()} ${name}`.trim() + (variant ? ` · ${variant}` : '');
     return knownName
       ? { label: `✓ ${text}`, known: true }
       : { label: `neu: ${text}`, known: false };

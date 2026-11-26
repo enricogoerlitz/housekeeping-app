@@ -508,7 +508,7 @@ export function AiFillSheet(props: {
               fill.setText(link);
               setTab('own');
             }}
-            recipeRows={(reply) => draftInput(reply).ingredients ?? []}
+            recipeRows={draftInput}
             testID="recipe-ai-fill-web"
           />
         ) : (

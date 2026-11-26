@@ -65,6 +65,12 @@ Name, Bewertung, Adresse, Art; gesucht wird um die Orte des Haushalts herum. Off
   Restaurant“
 - AC-009: Angenommen die Suche findet nichts · Dann steht „Nichts gefunden. Versuch es mit anderen
   Wörtern.“
+- AC-038: Angenommen die Orte des Haushalts liegen in Köln · Wenn ich „vietnamesisch friedrichshain
+  gut“ suche · Dann zeigen die Karten Restaurants in Berlin-Friedrichshain
+- AC-039: Angenommen die Orte des Haushalts liegen in Köln · Wenn ich „mutzenbacher“ suche · Dann ist
+  die erste Karte das „Mutzenbacher“ in Berlin
+- AC-040: Angenommen der Haushalt hat keine Orte · Wenn ich „eislaufen“ suche · Dann zeigen die
+  Karten Orte in Deutschland, nie die Voreinstellung des Anbieters (USA)
 
 **REQ-003 — Vorschau.** Ein Tipp auf eine Karte zeigt die Vorschau im Fenster: großes Foto; beim
 Rezept Zutaten, schon den Artikeln des Haushalts zugeordnet, und Schritte; bei Restaurant und
@@ -236,6 +242,18 @@ blob:`); das Foto einer Karte wird bei „Übernehmen“ zum Foto des Eintrags.
     der Name bzw. Titel. Probe 26.11.: „Frau in Boulderhalle“ → drei Boulder-Fotos, „Mutzenbacher“
     ohne Foto → drei Fotos eines österreichischen Gasthauses mit Schnitzel.
 
+11. Agent, 26.11. (KI-Testlauf, `tmp/review-0003/ki-test/`): Mit dem Ort-Mittelpunkt allein fand
+    „vietnamesisch friedrichshain gut“ aus einem Kölner Haushalt Kölner Restaurants und
+    „mutzenbacher“ den Bach „Mutzbach“. Jetzt sucht Serper **gleichzeitig ohne und mit Ort**: Nennt
+    der Text einen Stadtteil, eine Stadt oder einen Ort, findet Google ihn selbst (Treffer im
+    Umkreis von 2000 km um den Mittelpunkt) — dann gelten diese Treffer; sonst landet die Suche
+    ohne Ort bei der Voreinstellung des Anbieters in den USA, und es gelten die Treffer um den
+    Haushalt. Ohne Orte des Haushalts ist der Mittelpunkt Deutschland (Zoom 6) statt keiner. Reine
+    Funktion `pickPlaceHits` in core. Kosten: 2 Kartensuchen (6 Guthaben) statt 1 bis 2.
+12. Agent, 26.11. (KI-Testlauf): Die Vorschau einer Karte wird je Suche nur einmal gelesen; ein
+    zweiter Tipp nach „Zurück zu den Ergebnissen“ zeigt sie sofort (vorher zweiter KI-Aufruf,
+    12–14 s). Zutaten einer Variante tragen in der Vorschau ihren Namen („· Vegetarisch“).
+
 ## Daten
 
 Keine Schemaänderung. Neue Edge Function `web-search` (Suche, KI-Schritt für längere Texte,
@@ -255,7 +273,7 @@ gespeichert, bevor die Person „Speichern“ tippt.
 | Prompt-Injection über den Suchtext      | Text als Daten, Antwort nur `query`/`imageWish` (zod, Längen)                                                                                                                            | AC-026, AC-028                         |
 | Abgemeldet / fremder Haushalt           | JWT + Mitgliedschaft vor jedem Anbieter-Aufruf                                                                                                                                           | AC-024                                 |
 | Anbieter-Antwort fremder Form           | zod je Anbieter, nur https-Adressen ≤ 2048 Zeichen übernommen                                                                                                                            | Edge-Tests                             |
-| Kosten laufen weg                       | höchstens 1 Suche (Serper) + 1 Ausweichsuche, 6 Seiten je Suche; Guthaben beim Anbieter                                                                                                  | Vertragstest Grenzen                   |
+| Kosten laufen weg                       | höchstens 1 Suche (Serper; Orte: 2 Kartensuchen, Entscheidung 11) + 1 Ausweichsuche, 6 Seiten je Suche; Guthaben beim Anbieter                                                           | Vertragstest Grenzen                   |
 | Hängender Anbieter                      | 8 s je Anbieter, 6 s je Seite, eine Frist für alles                                                                                                                                      | Edge-Tests mit Zeitgrenze              |
 | Feindliche Rezeptseite legt Suche lahm  | `/security-check` 26.11. (mittel, behoben): Attribut-Regex mit begrenztem Namen, Bildsuche mit Tiefe 3, Parserfehler kostet nur die Karte                                                | Test „long attribute-less meta tags …“ |
 | Kosten pro Zeit unbegrenzt              | `/security-check` 26.11. (mittel, akzeptiert): kein Kontingent wie Spec 0040 Entscheidung 2; nur Mitglieder (Einladung); Grenze ist das Guthaben bei Serper/Brave und das Limit in Azure | Enrico-Todo: Budget-Alarm              |
@@ -295,3 +313,9 @@ gespeichert, bevor die Person „Speichern“ tippt.
       behalten) → Übernehmen, Restaurant hinzufügen und bearbeiten über „Im Web suchen“.
       `/security-check`: 0 kritisch/hoch, 3 mittel (2 behoben, 1 akzeptiert, Risiken), 3 Hinweise
       (Ort-Mittelpunkt jetzt unter Daten).
+- [x] Nachweis KI-Testlauf (26.11., Entscheidungen 11–12): Tests rot → grün: core `web-results`
+      (`pickPlaceHits`, `distanceKm`, AC-038 – AC-040), `web-preview` (Variante); edge
+      `web-search/handler`, `_shared/web-search`. Echte Aufrufe in einer zweiten Edge Runtime mit
+      diesem Stand aus Köln: „vietnamesisch friedrichshain gut“ → 5 × Friedrichshain, „mutzenbacher“
+      → Mutzenbacher Berlin, „sushi prenzlauer berg“ → 5 × Prenzlauer Berg, „botanischer garten“
+      und „eislaufen“ → Köln (`tmp/review-0003/ki-test/fix-location.log`).

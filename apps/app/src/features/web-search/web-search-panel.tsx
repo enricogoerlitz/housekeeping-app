@@ -11,6 +11,7 @@ import {
   type IngredientRow,
   type PlaceProposal,
   type RecipeDraftReply,
+  type RecipeVariant,
   type WebPhotoChoice,
   type WebResult,
 } from '@housekeeping/core';
@@ -201,12 +202,16 @@ function SkeletonCard(props: { label: string; testID: string }) {
   );
 }
 
-/** The draft's ingredients as rows of the edit mode, matched to the household (recipes' useDraftInput). */
-export type RecipeRows = (reply: RecipeDraftReply) => readonly IngredientRow[];
+/** The draft's ingredients and variants as the edit mode takes them (recipes' useDraftInput). */
+export type RecipeRows = (reply: RecipeDraftReply) => {
+  ingredients?: readonly IngredientRow[];
+  variants?: readonly RecipeVariant[];
+};
 
 function RecipePreview(props: { reply: RecipeDraftReply; rows: RecipeRows; testID: string }) {
   const articlesById = useArticlesById();
-  const ingredients = previewIngredients(props.rows(props.reply), articlesById);
+  const input = props.rows(props.reply);
+  const ingredients = previewIngredients(input.ingredients ?? [], articlesById, input.variants);
   return (
     <Stack gap={12}>
       <Text variant="smallStrong">Zutaten</Text>

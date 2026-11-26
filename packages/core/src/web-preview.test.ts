@@ -48,6 +48,35 @@ describe('previewIngredients (REQ-003)', () => {
   });
 });
 
+describe('previewIngredients with variants (KI-Testlauf 26.11.)', () => {
+  it('AC-010: a row of a variant names it, so meat and veggie rows are not read as one list', () => {
+    expect(
+      previewIngredients(
+        [
+          row({
+            name: 'Möhren',
+            amountText: '2',
+            article: { kind: 'article', articleId: 'art-moehren' },
+          }),
+          row({
+            name: 'Veggie-Hack',
+            amountText: '500 g',
+            article: { kind: 'new', name: 'Veggie-Hack' },
+            variantId: 'v-veg',
+          }),
+          row({ name: 'Tofu', amountText: '', variantId: 'v-gone' }),
+        ],
+        articlesById,
+        [{ id: 'v-veg', name: 'Vegetarisch' }],
+      ),
+    ).toEqual([
+      { label: '✓ 2 Möhren', known: true },
+      { label: 'neu: 500 g Veggie-Hack · Vegetarisch', known: false },
+      { label: 'neu: Tofu', known: false },
+    ]);
+  });
+});
+
 describe('pastedLink (AC-002)', () => {
   it('a link alone in the search field is handed over, words around it are a search', () => {
     expect(pastedLink(' https://www.chefkoch.de/rezepte/1/a.html ')).toBe(

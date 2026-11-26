@@ -34,7 +34,14 @@ import {
   type PlaceHit,
   type WebHit,
 } from '../_shared/web-search.ts';
-import { isRecipePage, rankRecipeResults, sourceHost } from '../_shared/web-results.gen.ts';
+import {
+  CITY_ZOOM,
+  COUNTRY_CENTRE,
+  COUNTRY_ZOOM,
+  isRecipePage,
+  rankRecipeResults,
+  sourceHost,
+} from '../_shared/web-results.gen.ts';
 
 /** Recipe pages loaded per search (Risiken "Kosten laufen weg"). */
 const PAGE_CANDIDATES = 6;
@@ -197,17 +204,17 @@ async function searchPlaces(
   input: SearchInput,
   intent: SearchIntent,
 ): Promise<WebSearchReply> {
-  const providers = configuredProviders(deps);
-  const around = await searchWithFallback(providers, (p) => p.places(intent.query, input.near));
-  const cards = valid(around.value.map((hit) => placeCard(hit, around.provider)));
-  if (cards.length > 0 || !input.near) return replyOf(intent, around.provider, cards);
-  // AC-027: a named place far from the household's places ("Bertablock" from Köln) is found
-  // without the centre; this costs a second search only when the first found nothing.
-  const anywhere = await searchWithFallback(providers, (p) => p.places(intent.query));
+  // AC-008, Entscheidung 11: around the household's places, else Germany-wide.
+  const around = input.near
+    ? { ...input.near, zoom: CITY_ZOOM }
+    : { ...COUNTRY_CENTRE, zoom: COUNTRY_ZOOM };
+  const found = await searchWithFallback(configuredProviders(deps), (p) =>
+    p.places(intent.query, around),
+  );
   return replyOf(
     intent,
-    anywhere.provider,
-    valid(anywhere.value.map((hit) => placeCard(hit, anywhere.provider))),
+    found.provider,
+    valid(found.value.map((hit) => placeCard(hit, found.provider))),
   );
 }
 
