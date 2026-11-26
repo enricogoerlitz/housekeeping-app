@@ -44,7 +44,6 @@ import { StepsSection } from './sections/steps-section';
 import { usePageEditor } from './sections/use-page-editor';
 import { RecipePhoto } from './recipe-cover';
 import { RecipeFrame, STACKED_PHOTO_MAX_WIDTH } from './recipe-frame';
-import { RecipeVideo } from './recipe-video';
 import { useDeleteRecipe } from './use-delete-recipe';
 
 export interface RecipeDetailProps {
@@ -295,16 +294,14 @@ function RecipeDetailBody(props: {
         {desktop ? (
           <>
             <Row gap={32} align="flex-start">
-              {/* The video stands under the photo (spec 0043, REQ-002). */}
-              <Stack gap={24} style={{ flex: 1, minWidth: 0 }}>
-                <RecipePhoto
-                  recipe={recipe}
-                  photo={photo}
-                  onShare={share}
-                  pending={editor.chosenPhoto}
-                />
-                <RecipeVideo recipe={recipe} />
-              </Stack>
+              {/* The videos stand in the photo's gallery (spec 0046, REQ-003). */}
+              <RecipePhoto
+                recipe={recipe}
+                photo={photo}
+                onShare={share}
+                pending={editor.chosenPhoto}
+                style={{ flex: 1 }}
+              />
               {head}
             </Row>
             <Row gap={32} align="flex-start">
@@ -325,7 +322,6 @@ function RecipeDetailBody(props: {
                 pending={editor.chosenPhoto}
               />
             </View>
-            <RecipeVideo recipe={recipe} />
             {head}
             {ingredients}
             {steps}

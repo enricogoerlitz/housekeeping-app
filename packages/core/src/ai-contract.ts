@@ -143,8 +143,9 @@ export const FetchImageRequestSchema = z.strictObject({ householdId: Id, url: Ht
 export type FetchImageRequest = z.infer<typeof FetchImageRequestSchema>;
 
 /**
- * "Video speichern" (spec 0043): the server loads the video behind `url`, a TikTok link of the
- * recipe, into household-videos as the caller and sets the recipe's video_path; the reply names it.
+ * "Video speichern" (spec 0043, spec 0046): the server loads the video behind `url`, a TikTok link
+ * of the recipe, into household-videos as the caller and adds it to the recipe's videos; the reply
+ * names it and, when TikTok has one, the https address of its cover for the poster.
  */
 export const FetchVideoRequestSchema = z.strictObject({
   householdId: Id,
@@ -152,7 +153,10 @@ export const FetchVideoRequestSchema = z.strictObject({
   url: HttpsUrl,
 });
 export type FetchVideoRequest = z.infer<typeof FetchVideoRequestSchema>;
-export const FetchVideoReplySchema = z.strictObject({ videoPath: z.string().min(1).max(200) });
+export const FetchVideoReplySchema = z.strictObject({
+  videoPath: z.string().min(1).max(200),
+  coverUrl: HttpsUrl.optional(),
+});
 export type FetchVideoReply = z.infer<typeof FetchVideoReplySchema>;
 
 // ---------- "Mit KI ausfüllen" and images (spec 0040, ADR-0016) ----------
@@ -318,7 +322,7 @@ export const ErrorCodeSchema = z.enum([
   'video_unavailable',
   /** fetch-video (AC-003): the video is larger than 50 MB. */
   'video_too_large',
-  /** fetch-video: the recipe has a video already (one per recipe). */
+  /** fetch-video: the recipe has the video of this link already (one per link, spec 0046). */
   'video_exists',
 ]);
 export type ErrorCode = z.infer<typeof ErrorCodeSchema>;

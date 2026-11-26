@@ -490,10 +490,16 @@ export async function removeQuietly(path: string): Promise<void> {
   if (session) await forgetMedia(path, session);
 }
 
-async function setPhoto(table: PhotoTable, id: Id, photo: Blob): Promise<void> {
-  if (isOffline()) throw new OfflineError();
-  photoPathOf(table, id); // an unknown row is refused before anything is uploaded
-  const householdId = getState().activeHouseholdId;
+/**
+ * Uploads a prepared JPEG under a new name in the row's folder and keeps it on the device; returns
+ * its path. German messages from toPhotoError. Also the poster of a recipe video (spec 0046).
+ */
+export async function uploadPhoto(
+  householdId: Id,
+  table: PhotoTable,
+  id: Id,
+  photo: Blob,
+): Promise<string> {
   const path = `${householdId}/${table}/${id}/${crypto.randomUUID()}.jpg`;
   try {
     await onlineCall((transport) => transport.uploadMedia(path, photo));
@@ -502,6 +508,14 @@ async function setPhoto(table: PhotoTable, id: Id, photo: Blob): Promise<void> {
   }
   const session = deviceSession();
   if (session) await rememberMedia(path, photo, session);
+  return path;
+}
+
+async function setPhoto(table: PhotoTable, id: Id, photo: Blob): Promise<void> {
+  if (isOffline()) throw new OfflineError();
+  photoPathOf(table, id); // an unknown row is refused before anything is uploaded
+  const householdId = getState().activeHouseholdId;
+  const path = await uploadPhoto(householdId, table, id, photo);
   // The upload took a while: the photo goes to the row it was chosen for, in that household, or
   // nowhere. Checked in the same turn as the commit below, so nothing can change in between; the
   // file it replaces is the one the row names now (another device may have changed it).

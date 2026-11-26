@@ -31,6 +31,7 @@ import {
   PackResultSchema,
   PushSubscriptionRowSchema,
   RawPullResultSchema,
+  RemovedRecipeVideoSchema,
   RestoredRecipeSchema,
   TransportError,
   classifyError,
@@ -383,6 +384,19 @@ export function createSupabaseTransport(
       }),
     restoreRecipe: (recipeId) =>
       parsed(RestoredRecipeSchema, 'restore_recipe', { recipe_id: recipeId }),
+    setRecipeVideoPoster: (householdId, recipeId, path, poster) =>
+      parsed(z.boolean(), 'set_recipe_video_poster', {
+        p_household_id: householdId,
+        p_recipe_id: recipeId,
+        p_path: path,
+        p_poster: poster,
+      }),
+    removeRecipeVideo: (householdId, recipeId, path) =>
+      parsed(RemovedRecipeVideoSchema, 'remove_recipe_video', {
+        p_household_id: householdId,
+        p_recipe_id: recipeId,
+        p_path: path,
+      }),
     deleteRestaurant: (restaurantId, today) =>
       parsed(DeletedPlaceSchema, 'delete_restaurant', { restaurant_id: restaurantId, today }),
     restoreRestaurant: (restaurantId) =>

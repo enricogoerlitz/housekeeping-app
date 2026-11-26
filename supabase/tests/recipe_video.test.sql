@@ -1,12 +1,11 @@
--- Spec 0043 "Rezeptvideo aus TikTok": recipes.video_path names the recipe's video in the private
--- bucket household-videos (<household>/recipes/<recipe>/<uuid>.mp4, only for a recipe, not a
--- collection). Members set and clear it through apply_changes; the storage policies let only the
--- household's members read, upload and delete its videos (AC-005); deleting the household lists
--- and waits for its videos (AC-010); the nightly sweep hands over videos without a reference
--- (AC-011); restore_recipe brings the video back with the recipe.
+-- Spec 0043 "Rezeptvideo aus TikTok": the private bucket household-videos
+-- (<household>/recipes/<recipe>/<uuid>.mp4). The storage policies let only the household's
+-- members read, upload and delete its videos (AC-005); deleting the household lists and waits for
+-- its videos (AC-010); the nightly sweep hands over videos without a reference (AC-011). Since
+-- spec 0046 the recipe names its videos in recipes.videos (recipe_videos.test.sql).
 begin;
 \ir _helpers.psql
-select plan(33);
+select plan(20);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 grant select on fx to anon, authenticated;
@@ -18,11 +17,6 @@ grant execute on function tests.fx(text) to anon, authenticated;
 create function tests.video(p_household text, p_recipe text, p_file text) returns text language sql stable
 as $$ select tests.fx(p_household) || '/recipes/' || tests.fx(p_recipe) || '/' || md5(p_file)::uuid || '.mp4' $$;
 grant execute on function tests.video(text, text, text) to anon, authenticated;
-
-create function tests.patch_sql(p_household text, p_recipe text, p_changes jsonb) returns text language sql stable
-as $$ select format('select public.apply_changes(%L, %L)', tests.fx(p_household), jsonb_build_array(jsonb_build_object(
-  'kind', 'patch', 'table', 'recipes', 'id', tests.fx(p_recipe), 'changes', p_changes))) $$;
-grant execute on function tests.patch_sql(text, text, jsonb) to anon, authenticated;
 
 create function tests.upload_sql(p_name text) returns text language sql stable
 as $$ select format('insert into storage.objects (bucket_id, name, metadata) values (%L, %L, %L)',
@@ -62,35 +56,6 @@ select results_eq(
   $$ values (false, 52428800::bigint, array['video/mp4']) $$,
   'Entscheidung 2: household-videos is a private bucket for MP4 files up to 50 MiB');
 
--- ===================== recipes.video_path =====================
-select tests.authenticate_as(tests.fx('enrico'));
-select lives_ok(tests.patch_sql('home', 'pasta', jsonb_build_object('video_path', tests.video('home', 'pasta', 'v1'))),
-  'AC-001 apply_changes: a member sets the video of her recipe');
-select is((select video_path from public.recipes where id = tests.fx('pasta')), tests.video('home', 'pasta', 'v1'),
-  'AC-001: the recipe names its video');
-select throws_ok(tests.patch_sql('home', 'pasta', jsonb_build_object('video_path', tests.video('wg', 'pasta', 'v1'))),
-  '23514', null, 'AC-005 recipes_video_path_valid: a path in another household''s folder is refused');
-select throws_ok(tests.patch_sql('home', 'pasta',
-                   jsonb_build_object('video_path', tests.fx('home') || '/recipes/' || tests.fx('pasta') || '/x.jpg')),
-  '23514', null, 'recipes_video_path_valid: only <uuid>.mp4 names');
-select throws_ok(tests.patch_sql('home', 'sammlung',
-                   jsonb_build_object('video_path', tests.video('home', 'sammlung', 'v1'))),
-  '23514', null, 'recipes_video_path_valid: a collection has no video');
-select lives_ok(tests.patch_sql('home', 'pasta', '{"video_path": null}'),
-  'AC-009 apply_changes: "Video entfernen" clears the video');
-select is((select video_path from public.recipes where id = tests.fx('pasta')), null::text,
-  'AC-009: the recipe has no video any more, the link stays');
-select is((select links -> 0 ->> 'url' from public.recipes where id = tests.fx('pasta')), 'https://vm.tiktok.com/ZGdXoJ8Ay/',
-  'AC-009: … and the link is still there');
-
-select tests.authenticate_as(tests.fx('ben'));
-select throws_ok(tests.patch_sql('home', 'pasta', jsonb_build_object('video_path', tests.video('home', 'pasta', 'v2'))),
-  '42501', 'not_member', 'AC-005 apply_changes: a member of another household cannot set the video');
-select tests.authenticate_as_anon();
-select throws_ok(tests.patch_sql('home', 'pasta', jsonb_build_object('video_path', tests.video('home', 'pasta', 'v2'))),
-  '42501', null, 'AC-005 apply_changes: a signed-out caller cannot set the video');
-select tests.clear_authentication();
-
 -- ===================== Storage policies (AC-005) =====================
 select tests.authenticate_as(tests.fx('enrico'));
 select lives_ok(tests.upload_sql(tests.video('home', 'pasta', 'v3')),
@@ -126,21 +91,15 @@ select is(tests.affected(format($$ delete from storage.objects where bucket_id =
   'AC-009 household-videos: a member deletes her household''s video');
 select tests.clear_authentication();
 
--- ===================== restore_recipe keeps the video =====================
-update public.recipes set video_path = tests.video('home', 'pasta', 'v7') where id = tests.fx('pasta');
-select tests.authenticate_as(tests.fx('enrico'));
-select lives_ok(format($$ select public.delete_recipe(%L, '2026-11-26') $$, tests.fx('pasta')),
-  'REQ-003: the recipe with its video is deleted');
-select is((select public.restore_recipe(tests.fx('pasta'))), true, 'REQ-003: "Rückgängig" restores it');
-select is((select video_path from public.recipes where id = tests.fx('pasta')), tests.video('home', 'pasta', 'v7'),
-  'REQ-003 restore_recipe: … with its video');
-select tests.clear_authentication();
+-- recipes.videos, its functions and restore_recipe: recipe_videos.test.sql (spec 0046).
+update public.recipes set videos = jsonb_build_array(jsonb_build_object('path', tests.video('home', 'pasta', 'v7')))
+where id = tests.fx('pasta');
 
 -- ===================== The nightly sweep (AC-011) =====================
 insert into private.deletions (household_id, kind, target_id, deleted_by, deleted_at, snapshot)
 values (tests.fx('home'), 'recipe', tests.fx('gone'), tests.fx('enrico'), tests.now() - interval '1 minute',
-        jsonb_build_object('recipe', jsonb_build_object('id', tests.fx('gone'),
-                                                        'video_path', tests.video('home', 'gone', 'torte'))));
+        jsonb_build_object('recipe', jsonb_build_object('id', tests.fx('gone'), 'videos',
+          jsonb_build_array(jsonb_build_object('path', tests.video('home', 'gone', 'torte'))))));
 select tests.store(tests.video('home', 'pasta', 'v7'), tests.now() - interval '2 days');
 select tests.store(tests.video('home', 'gone', 'torte'), tests.now() - interval '2 days');
 select tests.store(tests.video('home', 'orphan_row', 'vorgestern'), tests.now() - interval '2 days');

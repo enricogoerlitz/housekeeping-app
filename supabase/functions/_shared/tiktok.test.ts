@@ -208,14 +208,27 @@ async function videoError(promise: Promise<unknown>): Promise<string> {
 }
 
 describe('loadTikTokVideo (spec 0043, REQ-001)', () => {
+  it('AC-012 (0046): a cover outside TikTok is no poster; the video still loads', async () => {
+    const item = {
+      ...VIDEO_ITEM,
+      video: { ...VIDEO_ITEM.video, cover: 'https://evil.example.org/c.jpg', originCover: '' },
+    };
+    const d = deps({ [LONG]: () => pageWithCookies(item), [PLAY]: () => mp4() });
+    const result = await loadTikTokVideo(LONG, d);
+    expect(result.bytes).toEqual(MP4);
+    expect(result.coverUrl).toBeUndefined();
+  });
+
   it("AC-001: resolves the short link and loads playAddr with the page's cookies and TikTok as referer", async () => {
     const d = deps({
       [SHORT]: () => moved(LONG),
       [LONG]: () => pageWithCookies(VIDEO_ITEM),
       [PLAY]: () => mp4(),
     });
-    const bytes = await loadTikTokVideo(SHORT, d);
+    const { bytes, coverUrl } = await loadTikTokVideo(SHORT, d);
     expect(bytes).toEqual(MP4);
+    // Spec 0046, AC-012: the same page names the cover for the poster.
+    expect(coverUrl).toBe(COVER);
     expect(d.fetchMock.mock.calls.map(([url]) => String(url))).toEqual([SHORT, LONG, PLAY]);
     const [, init] = d.fetchMock.mock.calls[2] ?? [];
     const headers = new Headers(init?.headers);

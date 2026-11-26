@@ -1,25 +1,36 @@
-// fetch-video (spec 0043, REQ-001, Entscheidung 3): "Video speichern" at a TikTok link of a recipe.
-// The server loads the video (only TikTok and its CDNs, through fetchPublic: ADR-0016), uploads it
-// into household-videos with the caller's own key (the bucket's policies decide, no server key)
-// and sets the recipe's video_path through apply_changes, also as the caller. Signed-in members
-// only, no quota (Enrico, 26.11.). Answer { videoPath }; errors { error }: not_a_tiktok_link
-// (the address is no TikTok link of this recipe), video_unavailable, video_too_large,
-// video_exists, forbidden. Nothing about the link or the video is logged.
+// fetch-video (spec 0043, REQ-001, Entscheidung 3; spec 0046): "Video speichern" at a TikTok link
+// of a recipe. The server loads the video (only TikTok and its CDNs, through fetchPublic:
+// ADR-0016), uploads it into household-videos with the caller's own key (the bucket's policies
+// decide, no server key) and appends it to the recipe's videos through add_recipe_video, also as
+// the caller. Signed-in members only, no quota (Enrico, 26.11.). Answer { videoPath, coverUrl? }
+// (the cover's https address on TikTok's hosts, for the poster the app stores); errors { error }:
+// not_a_tiktok_link (the address is no TikTok link of this recipe), video_unavailable,
+// video_too_large, video_exists (that link's video is there, or the recipe has 10), forbidden.
+// Nothing about the link or the video is logged.
 import { FetchVideoRequestSchema, type FetchVideoReply } from '../_shared/contract.gen.ts';
 import type { Deps, UserClient } from '../_shared/deps.ts';
 import { HttpError } from '../_shared/errors.ts';
 import { handleRequest } from '../_shared/http.ts';
 import { requireMember } from '../_shared/membership.ts';
-import { isTikTokHost, loadTikTokVideo, TikTokVideoError } from '../_shared/tiktok.ts';
+import {
+  isTikTokHost,
+  loadTikTokVideo,
+  TikTokVideoError,
+  type TikTokVideo,
+} from '../_shared/tiktok.ts';
 
 const BUCKET = 'household-videos';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+/** recipes_videos_valid (spec 0046): at most 10 videos per recipe. */
+const MAX_VIDEOS = 10;
 
 interface VideoRecipe {
   id: string;
   householdId: string;
   links: string[];
-  videoPath: string | null;
+  /** The source links of its videos, and how many it has. */
+  videoUrls: string[];
+  videoCount: number;
 }
 
 /** The recipe under the caller's RLS; undefined when she cannot see it or it is a collection. */
@@ -30,7 +41,7 @@ async function recipeOf(
 ): Promise<VideoRecipe | undefined> {
   const { data, error } = await client
     .from('recipes')
-    .select('id, household_id, kind, links, video_path')
+    .select('id, household_id, kind, links, videos')
     .eq('household_id', householdId)
     .eq('id', recipeId)
     .limit(1);
@@ -52,11 +63,19 @@ async function recipeOf(
           : [],
       )
     : [];
+  const videos: unknown[] = Array.isArray(row.videos) ? row.videos : [];
   return {
     id,
     householdId: household,
     links,
-    videoPath: typeof row.video_path === 'string' ? row.video_path : null,
+    videoUrls: videos.flatMap((video) =>
+      typeof video === 'object' &&
+      video !== null &&
+      typeof (video as { url?: unknown }).url === 'string'
+        ? [(video as { url: string }).url]
+        : [],
+    ),
+    videoCount: videos.length,
   };
 }
 
@@ -69,7 +88,7 @@ function isTikTokLink(url: string): boolean {
   }
 }
 
-async function loadVideo(deps: Deps, url: string): Promise<Uint8Array> {
+async function loadVideo(deps: Deps, url: string): Promise<TikTokVideo> {
   try {
     return await loadTikTokVideo(url, deps);
   } catch (error) {
@@ -91,27 +110,29 @@ export function handler(request: Request, deps: Deps): Promise<Response> {
       // AC-004: only a TikTok link the recipe has; nothing is fetched for anything else.
       if (!isTikTokLink(input.url) || !recipe.links.includes(input.url))
         throw new HttpError('not_a_tiktok_link');
-      if (recipe.videoPath) throw new HttpError('video_exists');
+      if (recipe.videoUrls.includes(input.url) || recipe.videoCount >= MAX_VIDEOS)
+        throw new HttpError('video_exists');
 
-      const bytes = await loadVideo(deps, input.url);
+      const { bytes, coverUrl } = await loadVideo(deps, input.url);
       const videoPath = `${recipe.householdId}/recipes/${recipe.id}/${crypto.randomUUID()}.mp4`;
       const uploaded = await client.storage.upload(BUCKET, videoPath, bytes, 'video/mp4');
       if (uploaded.error) {
         if (uploaded.error.status === 413) throw new HttpError('video_too_large');
         throw new Error('video_upload_failed');
       }
-      const { error } = await client.rpc('apply_changes', {
+      const { data, error } = await client.rpc('add_recipe_video', {
         p_household_id: recipe.householdId,
-        p_ops: [
-          { kind: 'patch', table: 'recipes', id: recipe.id, changes: { video_path: videoPath } },
-        ],
+        p_recipe_id: recipe.id,
+        p_video: { path: videoPath, url: input.url },
       });
-      if (error) {
+      if (error || data !== true) {
         // No row names the file: it goes again at once (else the nightly sweep takes it).
         await client.storage.remove(BUCKET, [videoPath]).catch(() => undefined);
-        throw new Error('video_path_refused');
+        // false: the same link's video was added meanwhile (a second tap, another device).
+        if (!error && data === false) throw new HttpError('video_exists');
+        throw new Error('video_refused');
       }
-      return { videoPath };
+      return coverUrl ? { videoPath, coverUrl } : { videoPath };
     },
   });
 }

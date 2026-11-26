@@ -1512,6 +1512,7 @@ export type Database = {
           updated_at: string;
           variants: NonNullable<Json>;
           video_path: string | null;
+          videos: NonNullable<Json>;
         };
         ComputedFields: never;
         Insert: {
@@ -1538,6 +1539,7 @@ export type Database = {
           updated_at?: string;
           variants?: NonNullable<Json>;
           video_path?: string | null;
+          videos?: NonNullable<Json>;
         };
         Update: {
           cooked_count?: number;
@@ -1563,6 +1565,7 @@ export type Database = {
           updated_at?: string;
           variants?: NonNullable<Json>;
           video_path?: string | null;
+          videos?: NonNullable<Json>;
         };
         Relationships: [
           {
@@ -1994,6 +1997,10 @@ export type Database = {
     };
     Functions: {
       accept_invitation: { Args: { invitation_id: string }; Returns: string };
+      add_recipe_video: {
+        Args: { p_household_id: string; p_recipe_id: string; p_video: Json };
+        Returns: boolean;
+      };
       add_shopping_contributions: {
         Args: { p_entries: Json; p_household_id: string };
         Returns: Json;
@@ -2043,6 +2050,10 @@ export type Database = {
       remove_item_contributions: { Args: { p_ids: string[]; p_item_id: string }; Returns: Json };
       remove_member: { Args: { household_id: string; profile_id: string }; Returns: undefined };
       remove_push_subscription: { Args: { p_id: string }; Returns: boolean };
+      remove_recipe_video: {
+        Args: { p_household_id: string; p_path: string; p_recipe_id: string };
+        Returns: Json;
+      };
       restore_activity: { Args: { activity_id: string }; Returns: boolean };
       restore_chore: { Args: { chore_id: string }; Returns: boolean };
       restore_cleared_items: { Args: { p_household_id: string; p_items: Json }; Returns: number };
@@ -2078,6 +2089,10 @@ export type Database = {
       };
       set_recipe_favorite: { Args: { favorite: boolean; recipe_id: string }; Returns: undefined };
       set_recipe_rating: { Args: { recipe_id: string; stars: number }; Returns: undefined };
+      set_recipe_video_poster: {
+        Args: { p_household_id: string; p_path: string; p_poster: string; p_recipe_id: string };
+        Returns: boolean;
+      };
       set_restaurant_favorite: {
         Args: { favorite: boolean; restaurant_id: string };
         Returns: undefined;

@@ -86,6 +86,17 @@ jedes Rezept, das sie enthält; die gespeicherten Werte sind die Vorgeschichte (
   `withCookingHistory`
 - **Siehe auch:** [Sammlung](#sammlung), [Küche](#küche), [Schlagwort](#schlagwort)
 
+### Rezeptvideo
+
+Ein Video aus einem TikTok-Link eines Rezepts, im Speicher des Haushalts gesichert (Spec 0043).
+Ein Rezept hat bis zu zehn, eines je Link, in der Reihenfolge des Speicherns (Spec 0046). Es
+steht in der **Galerie** am Foto des Rezepts mit seinem **Vorschaubild** (TikToks Titelbild, wie
+ein Foto gespeichert) und spielt nur im Vollbild.
+
+- **Im Code:** `RecipeVideo`, `Recipe.videos`, `recipes.videos`; Vorschaubild `poster`; Galerie
+  `MediaGallery`, `galleryItems`
+- **Nicht verwenden:** Clip, Film (für das gespeicherte Video), Thumbnail, Karussell
+
 ### Küche
 
 Die Länderküche oder Stilrichtung eines Rezepts oder Restaurants, z. B. „Italienisch“. Höchstens

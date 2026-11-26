@@ -218,6 +218,17 @@ describe('fetch video (spec 0043)', () => {
     expect(FetchVideoReplySchema.parse(reply)).toEqual(reply);
   });
 
+  it('AC-012 (0046): the reply may name the https address of the cover', () => {
+    const reply = {
+      videoPath: `${householdId}/recipes/${recipeId}/x.mp4`,
+      coverUrl: 'https://p16-common-sign.tiktokcdn-eu.com/cover~tplv-tiktokx-origin.image?x=1',
+    };
+    expect(FetchVideoReplySchema.parse(reply)).toEqual(reply);
+    expect(
+      FetchVideoReplySchema.safeParse({ ...reply, coverUrl: 'http://x.example/c' }).success,
+    ).toBe(false);
+  });
+
   it('AC-004: refuses http, a missing recipe and extra fields', () => {
     expect(
       FetchVideoRequestSchema.safeParse({ householdId, recipeId, url: 'http://vm.tiktok.com/x' })

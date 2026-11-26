@@ -14,8 +14,10 @@ import {
   startStepTimer,
   stepsForVariants,
   stepTimerLabel,
+  videoLabel,
   type Recipe,
   type RecipeIngredient,
+  type RecipeVideo,
   type StepTimers,
 } from '@housekeeping/core';
 import {
@@ -27,9 +29,9 @@ import {
   Icon,
   List,
   ListRow,
+  Menu,
   Row,
   Screen,
-  Sheet,
   Stack,
   Text,
   useBreakpoint,
@@ -43,7 +45,7 @@ import { Platform, Pressable, View } from 'react-native';
 
 import { usePageParams } from '@/lib/url-state';
 
-import { RecipeVideo } from './recipe-video';
+import { VideoPlayer } from './recipe-video';
 
 /**
  * Cooking mode (spec 0023, REQ-010): one step per screen as calm reading text, the ingredients of
@@ -130,8 +132,9 @@ function Cooking(props: {
   const last = index >= steps.length - 1;
   const others = otherStepTimers(timers, step?.id, now);
   const ingredientsTitle = `Zutaten · ${servingsLabel(props.servings)}`;
-  // Spec 0043, REQ-002: the saved video, in a window over the step.
-  const [videoOpen, setVideoOpen] = useState(false);
+  // Spec 0046, AC-016: a saved video plays on the whole screen over the step.
+  const [playing, setPlaying] = useState<RecipeVideo>();
+  const videos = recipe.videos;
 
   const stepPart = step ? (
     <Stack gap={20} style={{ maxWidth: READING_WIDTH }}>
@@ -234,13 +237,25 @@ function Cooking(props: {
           </Text>
         </View>
         <Row gap={8}>
-          {recipe.videoPath ? (
+          {videos.length === 1 ? (
             <Button
               label="Video"
               icon="film"
               variant="secondary"
               size="sm"
-              onPress={() => setVideoOpen(true)}
+              onPress={() => setPlaying(videos[0])}
+              testID="cook-video"
+            />
+          ) : videos.length > 1 ? (
+            <Menu
+              label="Video"
+              accessibilityLabel="Video wählen"
+              icon="film"
+              options={videos.map((_, at) => ({
+                value: String(at),
+                label: videoLabel(at, videos.length),
+              }))}
+              onChange={(at) => setPlaying(videos[Number(at)])}
               testID="cook-video"
             />
           ) : null}
@@ -255,16 +270,8 @@ function Cooking(props: {
           />
         </Row>
       </Row>
-      {videoOpen ? (
-        <Sheet
-          visible
-          size="m"
-          title="Video"
-          onClose={() => setVideoOpen(false)}
-          testID="cook-video-sheet"
-        >
-          <RecipeVideo recipe={recipe} testID="cook-video-frame" />
-        </Sheet>
+      {playing ? (
+        <VideoPlayer video={playing} title={recipe.title} onClose={() => setPlaying(undefined)} />
       ) : null}
 
       {others.length > 0 ? (

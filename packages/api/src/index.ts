@@ -39,6 +39,7 @@ export {
   loadRecipeVideo,
   removeRecipeVideo,
   saveRecipeVideo,
+  saveVideoPoster,
   VIDEO_LOAD_FAILED_MESSAGE,
   VIDEO_SAVE_FAILED_MESSAGE,
 } from './recipe-video';

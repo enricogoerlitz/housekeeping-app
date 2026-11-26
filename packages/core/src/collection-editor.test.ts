@@ -81,6 +81,7 @@ describe('window "Neu" (REQ-001)', () => {
       cookedCount: 0,
       createdAt: created,
       links: [],
+      videos: [],
     });
     const recipe = newRecipe({
       id: 'rec-x',

@@ -96,6 +96,26 @@ export const HOUSEHOLD_TIME_ZONE_DEFAULT = 'Europe/Berlin';
 /** Domain jsonb values are plain JSON by construction (no functions, no dates). */
 const json = (value: unknown): NonNullable<Json> => value as NonNullable<Json>;
 
+/**
+ * A recipe's videos (spec 0046): the server's check keeps them well formed; an entry a cache of an
+ * older shape could hold without a path is dropped, so the gallery never shows a broken page.
+ */
+function videosOf(value: unknown): Recipe['videos'] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry: unknown) => {
+    if (typeof entry !== 'object' || entry === null) return [];
+    const { path, url, poster } = entry as Record<string, unknown>;
+    if (typeof path !== 'string') return [];
+    return [
+      {
+        path,
+        ...(typeof url === 'string' ? { url } : {}),
+        ...(typeof poster === 'string' ? { poster } : {}),
+      },
+    ];
+  });
+}
+
 /** "19:00" → "19:00:00", the way Postgres returns a `time`. */
 const toDbTime = (time: TimeOfDay): string => `${time}:00`;
 /** "19:00:00" (or a local "19:00") → "19:00". */
@@ -188,7 +208,7 @@ function recipeRows(householdId: string, recipe: Recipe): HouseholdRows {
         last_cooked_on: recipe.lastCookedOn ?? null,
         cooked_count: recipe.cookedCount,
         links: json(recipe.links),
-        video_path: recipe.videoPath ?? null,
+        videos: json(recipe.videos),
         ...(recipe.createdAt ? { created_at: recipe.createdAt } : {}),
         ...(recipe.updatedAt ? { updated_at: recipe.updatedAt } : {}),
       } satisfies Cached<'recipes'>,
@@ -768,7 +788,7 @@ function toRecipe(row: Row, favorites: Row[], ratings: Row[]): Recipe {
     createdAt: r.created_at ?? '',
     updatedAt: opt(r.updated_at),
     links: (r.links ?? []) as unknown as Recipe['links'],
-    videoPath: opt(r.video_path),
+    videos: videosOf(r.videos),
   };
 }
 

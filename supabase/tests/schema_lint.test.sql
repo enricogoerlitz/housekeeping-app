@@ -84,6 +84,10 @@ insert into lint_private_functions_for_authenticated values
   ('private.assert_meal_slot(uuid,uuid)'), -- spec 0041: security invoker, called by slot-check triggers
   ('private.is_web_url(text)'),          -- spec 0023: used by check constraints, no data access
   ('private.recipe_links_valid(jsonb)'), -- spec 0023: used by check constraints, no data access
+  ('private.recipe_videos_valid(jsonb,text,uuid,uuid)'), -- spec 0046: used by check constraints, no data access
+  ('private.add_recipe_video(uuid,uuid,jsonb)'),           -- spec 0046: the only ways to write recipes.videos
+  ('private.set_recipe_video_poster(uuid,uuid,text,text)'),
+  ('private.remove_recipe_video(uuid,uuid,text)'),
   ('private.register_push_subscription(text,text,text,text)'), -- spec 0013: push subscriptions (ADR-0014)
   ('private.set_push_subscription_enabled(text,boolean)'),
   ('private.unregister_push_subscription(text)'),

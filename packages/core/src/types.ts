@@ -174,10 +174,20 @@ export interface Recipe {
   /** At most 10, each address once (spec 0023, REQ-009). */
   links: RecipeLink[];
   /**
-   * Storage path of the recipe's own video in household-videos (spec 0043), saved from a TikTok
-   * link by the server; never kept on the device.
+   * The recipe's videos from TikTok in the order they were saved (spec 0046), at most 10, one per
+   * link; written only by the server functions, the files are never kept on the device.
    */
-  videoPath?: string;
+  videos: RecipeVideo[];
+}
+
+/** A saved video of a recipe (spec 0043, spec 0046). */
+export interface RecipeVideo {
+  /** The MP4 in household-videos: <household>/recipes/<recipe>/<uuid>.mp4. */
+  path: string;
+  /** The link it was saved from; absent for an old video without a TikTok link. */
+  url?: string;
+  /** Its still in household-media (like a photo), from TikTok's cover; absent when there is none. */
+  poster?: string;
 }
 
 /** "Enthaltenes Rezept": a recipe in a collection (spec 0009, E4). */

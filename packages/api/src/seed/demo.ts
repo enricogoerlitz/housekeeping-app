@@ -162,6 +162,7 @@ export function buildRecipe(seed: SeedRecipe, articles: Article[], createdAt: st
     cookedCount: 0,
     createdAt,
     links: [],
+    videos: [],
   };
 }
 
@@ -276,6 +277,7 @@ function buildCollections(
     cookedCount: 0,
     createdAt: `${addDays(today, offset)}T12:00:00.000Z`,
     links: [],
+    videos: [],
   });
   const own = (
     index: number,

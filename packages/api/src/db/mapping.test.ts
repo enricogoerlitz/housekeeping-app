@@ -278,26 +278,31 @@ describe('mapping between domain and rows', () => {
     );
   });
 
-  it('spec 0043: the recipe video survives a round trip; a recipe without one writes null', () => {
+  it('spec 0046: the videos survive a round trip; a broken entry is dropped', () => {
     const { data, members } = demo();
-    const path = 'hh-demo/recipes/rec-lasagne/v.mp4';
+    const videos = [
+      {
+        path: 'hh-demo/recipes/rec-lasagne/v.mp4',
+        url: 'https://vm.tiktok.com/x/',
+        poster: 'p.jpg',
+      },
+      { path: 'hh-demo/recipes/rec-lasagne/w.mp4' },
+    ];
     const withVideo: HouseholdData = {
       ...data,
       recipes: data.recipes.map((recipe) =>
-        recipe.id === 'rec-lasagne' ? { ...recipe, videoPath: path } : recipe,
+        recipe.id === 'rec-lasagne' ? { ...recipe, videos } : recipe,
       ),
     };
     const rows = householdToRows(withVideo);
-    expect(rows.recipes?.find((row) => row.id === 'rec-lasagne')).toMatchObject({
-      video_path: path,
-    });
-    expect(rows.recipes?.find((row) => row.id !== 'rec-lasagne')).toMatchObject({
-      video_path: null,
-    });
+    expect(rows.recipes?.find((row) => row.id === 'rec-lasagne')).toMatchObject({ videos });
+    expect(rows.recipes?.find((row) => row.id !== 'rec-lasagne')).toMatchObject({ videos: [] });
+    const lasagne = rows.recipes?.find((row) => row.id === 'rec-lasagne');
+    if (lasagne) lasagne.videos = [...videos, { url: 'no path' }, 'x', null];
     const { tables, small } = asServerTables({ ...rows, ...membersToRows(members) });
     const domain = rowsToHousehold(tables, small, DEMO_HOUSEHOLD_ID);
-    expect(domain.recipes.find((recipe) => recipe.id === 'rec-lasagne')?.videoPath).toBe(path);
-    expect(domain.recipes.find((recipe) => recipe.id !== 'rec-lasagne')?.videoPath).toBeUndefined();
+    expect(domain.recipes.find((recipe) => recipe.id === 'rec-lasagne')?.videos).toEqual(videos);
+    expect(domain.recipes.find((recipe) => recipe.id !== 'rec-lasagne')?.videos).toEqual([]);
   });
 
   it('spec 0041: kinds, series and exceptions survive a round trip; unknown symbols and rules are dropped', () => {
@@ -704,6 +709,7 @@ describe('spec 0009: collections in the rows', () => {
           cookedCount: 0,
           createdAt: '2026-11-01T10:00:00.000Z',
           links: [],
+          videos: [],
         },
         ...data.recipes,
       ],
