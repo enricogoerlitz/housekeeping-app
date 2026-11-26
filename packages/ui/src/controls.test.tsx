@@ -516,10 +516,62 @@ describe('TextField', () => {
     );
     const name = screen.getByTestId('name').getAttribute('name') ?? '';
     const title = screen.getByTestId('title').getAttribute('name') ?? '';
-    expect(name).toMatch(/^hk-field-/);
-    expect(title).toMatch(/^hk-field-/);
+    expect(name).toMatch(/^hksearch\d+$/);
+    expect(title).toMatch(/^hksearch\d+$/);
     expect(name).not.toBe(title);
+    expect(screen.getByTestId('name').getAttribute('id')).toBe(name);
     expect(screen.getByTestId('name').getAttribute('autocomplete')).toBe('off');
+  });
+
+  describe('on an iPhone (review 0003, N-1)', () => {
+    const userAgent = Object.getOwnPropertyDescriptor(window.navigator, 'userAgent');
+    afterEach(() => {
+      if (userAgent) Object.defineProperty(window.navigator, 'userAgent', userAgent);
+      else Reflect.deleteProperty(window.navigator, 'userAgent');
+    });
+    const asIPhone = () =>
+      Object.defineProperty(window.navigator, 'userAgent', {
+        configurable: true,
+        value: 'Mozilla/5.0 (iPhone; CPU iPhone OS 26_1 like Mac OS X) AppleWebKit/605.1.15',
+      });
+
+    it('spec 0033, AC-014: label, placeholder and accessible name hide their contact words', () => {
+      asIPhone();
+      render(
+        <TextField
+          label="Name"
+          placeholder="z. B. Kuckhoffstraße 12"
+          value=""
+          onChangeText={() => undefined}
+          testID="name"
+        />,
+      );
+      const input = screen.getByTestId('name');
+      expect(input.getAttribute('aria-label')).toBe('N\u2060ame');
+      expect(input.getAttribute('placeholder')).toBe('z. B. Kuckhoffs\u2060traße 12');
+      expect(screen.getByText('N\u2060ame')).toBeTruthy();
+      expect(input.getAttribute('autocomplete')).toBe('off');
+      expect(input.getAttribute('name')).toMatch(/^hksearch\d+$/);
+    });
+
+    it('spec 0033, AC-016: an e-mail field keeps its words', () => {
+      asIPhone();
+      render(
+        <TextField
+          label="E-Mail"
+          value=""
+          keyboardType="email-address"
+          onChangeText={() => undefined}
+          testID="mail"
+        />,
+      );
+      expect(screen.getByTestId('mail').getAttribute('aria-label')).toBe('E-Mail');
+    });
+  });
+
+  it('spec 0033, AC-014: elsewhere the words stay as they are', () => {
+    render(<TextField label="Name" value="" onChangeText={() => undefined} testID="name" />);
+    expect(screen.getByTestId('name').getAttribute('aria-label')).toBe('Name');
   });
 
   it('spec 0033, AC-015: a web address opens the URL keyboard', () => {

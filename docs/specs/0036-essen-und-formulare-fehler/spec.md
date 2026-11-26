@@ -136,6 +136,25 @@ jeweilige Aktion.
 - AC-022: Angenommen der Stand nach dem Merge · Wenn ich die Dependabot-Warnungen abrufe · Dann ist
   keine offen · Und `pnpm check` und `pnpm build:web` sind grün
 
+### Formulare
+
+**REQ-014 — Enter speichert ein Fenster.** Am Desktop drückt Enter in einem einzeiligen Textfeld
+eines Fensters zum Anlegen oder Bearbeiten dessen Hauptknopf („Anlegen“, „Speichern“, „Fertig“).
+Nicht in mehrzeiligen Feldern, nicht wo das Feld Enter selbst nutzt (Vorschlagslisten wie
+Schlagworte und Küche, REQ-004), nicht wenn der Hauptknopf ausgegraut ist. Quelle: Enrico, Test der
+Welle 1 am 26.11. Offline: wie der Hauptknopf (offline ausgegraut, dann nichts).
+
+- AC-023: Angenommen Desktop, Fenster „Restaurant hinzufügen“ · Wenn ich in „Name“ „Bless“ tippe und
+  Enter drücke · Dann passiert dasselbe wie bei „Speichern“ (leer: „Name fehlt“, Cursor bleibt)
+- AC-024: Angenommen dasselbe Fenster · Wenn ich in „Notiz“ Enter drücke · Dann beginnt eine neue
+  Zeile, gespeichert wird nichts
+- AC-025: Angenommen der Hauptknopf ist ausgegraut (offline) · Wenn ich in einem Feld Enter drücke ·
+  Dann passiert nichts
+- AC-026: Angenommen im Schlagwort-Feld steht „ofen“ · Wenn ich Enter drücke · Dann wird „Ofen“
+  übernommen wie bisher, das Fenster bleibt offen · Und Enter in „Küche“ speichert das Fenster nicht
+- AC-027: Angenommen Handy · Wenn ich auf der Bildschirmtastatur „Return“ tippe · Dann wird nichts
+  gespeichert
+
 ## Entscheidungen
 
 1. REQ-012 (Enrico, 26.11.): **Jede** Löschaktion fragt vorher nach, auch die schnellen
@@ -174,6 +193,13 @@ jeweilige Aktion.
    Restaurants und Aktivitäten (`PhotoActionRow` aus `DetailPhotoBlock`); die Einträge im ⋯ der
    Rezeptseite bleiben zusätzlich.
 
+10. REQ-014 (Bau, 26.11.): einmal zentral. Ein `Sheet` mit Hauptknopf, der nicht ausgegraut ist,
+    gibt ihn über `SheetSubmitContext` an seine Felder; ein `TextField` ohne eigenes
+    `onSubmitEditing`, einzeilig, mit Maus oder Trackpad (`useFinePointer`), drückt ihn bei Enter
+    und behält dabei den Cursor. `SearchOrCreate` nimmt sich aus (`submitsWindow={false}`): Enter
+    sucht dort oder übernimmt einen Vorschlag. Felder mit eigenem Enter (z. B. „Titel“ im neuen
+    Rezept) behalten es. Fenster ohne `actions` (ältere mit Knopf im Fuß) sind nicht erfasst.
+
 ## Daten
 
 Keine neue Spalte oder Tabelle. REQ-005 schreibt einen neuen Artikel über den bestehenden Befehl;
@@ -201,6 +227,7 @@ anderen Artikels ist (Entscheidung 6). REQ-002: `LocalSettings.listSorts` auf de
 - [x] 8. Restaurant aus „Rezepte“ (AC-017), Route nur mit Link (AC-018)
 - [x] 9. Nachfrage vor Löschen nach Entscheidung 1 (AC-019–AC-021)
 - [x] 10. Dependabot (AC-022)
+- [x] 11. Enter speichert ein Fenster am Desktop (AC-023–AC-027), Nachtrag nach Enricos Test
 - [x] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün; `/security-check` (Löschen)
 
 ## Nachweis
@@ -233,3 +260,6 @@ anderen Artikels ist (Entscheidung 6). REQ-002: `LocalSettings.listSorts` auf de
   löschen, Reise löschen (Liste und Fenster), Einladung zurückziehen, Gerät entfernen. Schon
   vorher mit Nachfrage: Liste leeren, Markt löschen, Mitglied entfernen/verlassen, Haushalt
   löschen, Feedback löschen.
+- REQ-014 (Nachtrag 26.11.): `packages/ui/src/sheet-submit.test.tsx` (AC-023 rot, dann alle
+  grün). Dev-Server (Port 8095), Desktop 1440 × 900: „Neu → Restaurant“, Enter in leerem „Name“
+  zeigt „Name fehlt“, der Cursor bleibt im Feld.

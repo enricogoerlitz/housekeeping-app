@@ -150,10 +150,23 @@ Knöpfen am unteren Rand der Seite, nicht darauf. Quelle: Video-Befund. Offline:
 3. Seiten-Scroll unter offenen Fenstern wird gesperrt (Scroll-Container der Seite), statt die
    Ursachen einzeln zu flicken; `scrollIntoView` beim Bearbeiten nur, wenn der Abschnitt außerhalb
    des sichtbaren Bereichs liegt.
-4. Kontakt-Ausfüllen: iOS ignoriert `autocomplete="off"`; gebaut wird mit passenden
-   `autocomplete`-Werten (`off` + eindeutiger `name`, URL-Felder `type=url`/`inputmode=url`). OFFEN:
-   ob iOS die Leiste damit vollständig weglässt, zeigt erst das Gerät; Ausweg wäre
-   `autocomplete="one-time-code"`-artige Tricks, die ich nicht ohne Rückfrage einsetze.
+4. Kontakt-Ausfüllen (überarbeitet nach Enricos Test am 26.11.: „Restaurant bearbeiten“ → „Name“
+   bot weiter „Kontakt autom. ausfüllen“): Safari ignoriert `autocomplete="off"` (so steht es in
+   Apples Entwicklerdoku „Improving AutoFill experiences for your forms“) und rät aus `name`, `id`,
+   Beschriftung und Platzhalter. Jedes Textfeld der App ist ein `TextField` (Wächtertest
+   `text-inputs.test.ts`), und dort gilt jetzt (`field-autofill.ts`):
+   (a) `name` und `id` sind neutral, nur Buchstaben und Ziffern (`hksearch12`): kein Bindestrich
+   (Safari liest ihn als Telefonfeld), kein Kontaktwort, dafür „search“ (Suchfelder füllt Safari
+   nicht aus Kontakten); (b) `autocomplete="off"` bleibt; (c) nur auf iPhone und iPad steht in
+   Beschriftung, Platzhalter und zugänglichem Namen nach dem ersten Buchstaben jedes Kontaktworts
+   („Name“, „Titel“, „Adresse“, „Straße“, „Telefon“, „E-Mail“, „Ort“ …) ein unsichtbarer
+   Wortverbinder (U+2060): Text und Vorlesen bleiben gleich, Safaris Wortsuche findet nichts.
+   E-Mail-Felder (Einladung) sind ausgenommen und behalten `autocomplete="email"`.
+   Verworfen: `type="search"` für alle einzeiligen Felder (Return-Taste „Suchen“, eigenes ✕ von
+   WebKit, andere Darstellung) und `autocomplete="one-time-code"` (iOS bietet dann SMS-Codes an).
+   Ob die Leiste damit überall wegbleibt, zeigt nur das iPhone; Apple dokumentiert die Heuristik
+   nicht. Nächster Schritt, falls nicht: `type="search"` mit `enterkeyhint="done"` nur für die
+   Felder, in denen sie noch erscheint.
 5. Foto-Auswahl: Das unsichtbare `<input type=file>` hängt während der Auswahl am Dokument und wird
    erst nach `change`/`cancel` entfernt (Ursache H-11 laut Analyse).
 6. Beim Bau entschieden: Das Wegwischen hört auf die Touch-Ereignisse des Browsers
@@ -172,14 +185,24 @@ Knöpfen am unteren Rand der Seite, nicht darauf. Quelle: Video-Befund. Offline:
    genauso gehalten.
 9. Hinweise: Seiten melden Knöpfe mit `useToastAvoid`; der Hinweis misst sie beim Erscheinen und
    ein Bild später noch einmal und steht dann über ihnen, nie höher als die Bildschirmmitte.
-10. OFFEN (AC-018): iOS öffnet die Tastatur nur, wenn der Fokus während eines Fingertipps gesetzt
-    wird. „Neu → Rezept“ öffnet das Fenster über die Adresse, nachdem das Menü zu ist; der Cursor
-    steht dann im Titel, ob iOS die Tastatur dazu öffnet, zeigt erst das Gerät.
-    Option A: so lassen — Pro: kein Eingriff in Menü und Navigation / Contra: auf dem iPhone ein
-    Tipp mehr. Option B: im Menüpunkt ein verstecktes Feld fokussieren und den Fokus beim Öffnen
-    übergeben (bekannter iOS-Kniff) — Pro: Tastatur sofort offen / Contra: `Menu` muss den Fokus
-    beim Schließen nicht mehr auf seinen Knopf legen, react-native-web legt ihn trotzdem zurück;
-    fragil, nur am Gerät prüfbar. Empfehlung: A, erst nach der iPhone-Abnahme über B entscheiden.
+10. AC-018 (entschieden nach Enricos Test am 26.11.: auf dem iPhone war nie ein Feld bereit):
+    Option B gebaut. iOS öffnet die Tastatur nur für ein `focus()` im Fingertipp selbst; das
+    Fenster erscheint später (nach dem Menü, nach dem Adresswechsel). `openKeyboardNow()`
+    (`packages/ui/src/keyboard-proxy.web.ts`) fokussiert im Tipp ein verstecktes, im Dokument
+    stehendes Textfeld (16 px, unsichtbar, nicht `display: none`) – die Tastatur geht auf; sobald
+    das Fenster sein Feld mit `autoFocus` anmeldet, übernimmt dieses den Fokus sofort (vor
+    react-native-webs Fokusfalle des Fensters), und der Wechsel zwischen zwei Textfeldern lässt
+    die Tastatur offen. Bis dahin, höchstens 1,5 s, bekommt nur ein Textfeld den Fokus: sonst
+    legten das Menü (Fokus zurück auf „Neu“) und die Modals von react-native-web (Fokus in sich
+    hinein, beim Schließen zurück) ihn auf einen Knopf, und die Tastatur ginge wieder zu. Kommt
+    kein Fenster, gibt das Feld den Fokus nach 1,5 s ab. Nur auf iPhone und iPad. Benutzt von
+    „Neu“ → Rezept/Sammlung/Restaurant (Menü und leere Liste), „Aktivität anlegen“, „Neue
+    Aufgabe“, „Neuer Artikel“, „+ Zutat“ (Lese- und Bearbeiten-Modus), „+ Link“ und Link
+    „Bearbeiten“, Restaurant- und Aktivität-„Bearbeiten“. Dabei: „Bearbeiten“ eines Restaurants
+    setzt den Cursor in „Name“, eine Aktivität ebenso (vorher kein Feld). Fenster, die nur
+    anzeigen (Aufgabe, Eintrag), rufen es nicht auf. Im Browser (WebKit mit iPhone-Kennung)
+    geprüft: der Fokus geht Tipp → verstecktes Feld → „Titel“ und bleibt dort; ob die Tastatur
+    aufgeht, zeigt nur das iPhone.
 11. QA-Nachtrag (26.11.): Ohne Schleier wirkte ein Formular-Fenster (`m`) mit wenig Inhalt auf dem
     Handy kaputt (Aufgabe „Bad putzen“: 760 px hoch, die untere Hälfte leer). Auf dem Handy wächst
     `m` jetzt mit dem Inhalt bis 90 % und scrollt darüber; `l` (Suchen und Wählen mit Tabs) bleibt
@@ -224,6 +247,16 @@ Entfällt: nur Oberfläche.
       fokussiert nichts; Foto über den Dateiwähler beim ersten Mal gespeichert, „Foto gespeichert“
       über „Kochen / Einplanen / Auf die Liste“. Bilder in `tmp/review-0003/0033/`. Offen:
       iPhone-Abnahme (Wischen, Tastatur, Kontakt-Leiste, Mediathek).
+
+Nachtrag nach Enricos Test der Welle 1 (26.11.): Entscheidungen 4 und 10 neu. Tests rot, dann
+grün: `field-autofill.test.ts` (neutrale Namen, Wortverbinder, iPhone-Erkennung),
+`controls.test.tsx` (Attribute am `TextField`, iPhone und sonst), `text-inputs.test.ts` (nur
+`TextField` hat Textfelder), `keyboard-proxy.test.tsx` (AC-017, AC-018, AC-020). Dev-Server
+(Port 8095), WebKit mit iPhone-Kennung 390 × 844: „Neu → Rezept“, „Neu → Restaurant“, „Neuer
+Artikel“, „Neue Aufgabe“ – Fokus wandert ohne Umweg über einen Knopf ins erste Feld. Offen:
+iPhone-Abnahme (Tastatur geht auf, keine Kontakt-Leiste). `/security-check` (security-auditor) auf dem Diff
+aller Nachträge: 0 Befunde, 2 Hinweise ohne Angriffspfad (Fokus-Ersatz gilt seitenweit für 1,5 s;
+verstecktes Feld ist `aria-hidden`, aber fokussierbar).
 
 QA-Nachtrag 26.11.: Entscheidungen 11 und 12. `sheet-size.test.ts`, `overlay.test.tsx`,
 `overlay-handy.test.tsx` (Toast oben statt auf den Sternen) und `toast-place.test.ts` (`toastEdge`,

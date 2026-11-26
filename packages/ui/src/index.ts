@@ -54,6 +54,7 @@ export {
 export { pickImageFile } from './pick-image';
 export { useImageDropAndPaste } from './image-drop';
 export { useKeyboard } from './keyboard';
+export { openKeyboardNow } from './keyboard-proxy';
 export { tabSwipe, type TabSwipe } from './tab-swipe';
 export { useFinePointer, useHover } from './pointer';
 export { pressedWithFinger } from './press-pointer';

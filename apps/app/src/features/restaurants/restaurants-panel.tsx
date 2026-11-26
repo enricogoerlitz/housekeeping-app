@@ -42,6 +42,7 @@ import {
   useBreakpoint,
   useTheme,
   type TabSwipe,
+  openKeyboardNow,
 } from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
 import { type ComponentRef, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
@@ -127,6 +128,7 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
       ? { initialText: params.link, initialName: params.name, focus: shared ? 'name' : focus }
       : undefined;
   const setSheet = (request: { focus: SheetRequest['focus'] }) => {
+    openKeyboardNow();
     setFocus(request.focus);
     address.open({ fenster: 'neu-restaurant' });
   };

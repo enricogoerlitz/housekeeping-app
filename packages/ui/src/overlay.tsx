@@ -46,12 +46,18 @@ import {
 import { ToneContext, useBreakpoint, useTheme } from './theme-context';
 import { useKeyboard } from './keyboard';
 import { keyboardSheetFrame } from './keyboard-state';
+import { handOverKeyboard } from './keyboard-proxy';
 import { lockPageScroll } from './page-scroll-lock';
 import type { Band } from './scroll-reveal';
 import { sheetDragOffset, sheetDragRelease, upwardShadow } from './sheet-drag';
 import { useSheetDrag } from './sheet-drag-events';
 import { fadeOutCopy } from './sheet-exit';
-import { FOCUS_SETTLE_MS, SheetFocusContext, focusQuietly } from './sheet-focus';
+import {
+  FOCUS_SETTLE_MS,
+  SheetFocusContext,
+  SheetSubmitContext,
+  focusQuietly,
+} from './sheet-focus';
 import { toastBottom, toastEdge, type Box } from './toast-place';
 import { createToastStore } from './toast-state';
 import { TopLayer } from './top-layer';
@@ -220,10 +226,17 @@ export function Sheet(props: SheetProps) {
     };
   }, [mounted, isPhone]);
 
+  // Spec 0036, REQ-014: Enter in a one-line field presses the primary button, unless greyed out.
+  const primary = props.actions?.primary;
+  const submit = props.visible && primary && !primary.disabled ? primary.onPress : undefined;
+
   // Spec 0033, REQ-006: the field that asks for it gets the cursor once the window is in.
   const focusTarget = useRef<unknown>(null);
   const claimFocus = useCallback((input: unknown) => {
     focusTarget.current ??= input;
+    // Opened by a tap that opened the keyboard (iPhone, decision 10): the field takes it now,
+    // before react-native-web's modal moves the focus into the window and the keyboard closes.
+    if (focusTarget.current === input) handOverKeyboard(input);
     return () => {
       if (focusTarget.current === input) focusTarget.current = null;
     };
@@ -293,155 +306,168 @@ export function Sheet(props: SheetProps) {
       <ToneContext.Provider value={undefined}>
         <PageScrollContext.Provider value={undefined}>
           <SheetFocusContext.Provider value={claimFocus}>
-            <View
-              ref={layer}
-              testID={props.testID ? `${props.testID}-layer` : undefined}
-              style={{
-                flex: 1,
-                justifyContent: isPhone ? 'flex-end' : 'center',
-                alignItems: isPhone ? 'stretch' : 'center',
-                // Clear of the status bar, the notch and, in landscape, the rounded corners (REQ-008).
-                paddingTop: insets.top,
-                paddingLeft: insets.left,
-                paddingRight: insets.right,
-                // The layer keeps the full height on iOS; the window stands on the keyboard.
-                paddingBottom: typing ? keyboard.inset : 0,
-              }}
-            >
-              <Animated.View
-                {...SCRIM_PART}
-                style={[{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }, scrimStyle]}
+            <SheetSubmitContext.Provider value={submit}>
+              <View
+                ref={layer}
+                testID={props.testID ? `${props.testID}-layer` : undefined}
+                style={{
+                  flex: 1,
+                  justifyContent: isPhone ? 'flex-end' : 'center',
+                  alignItems: isPhone ? 'stretch' : 'center',
+                  // Clear of the status bar, the notch and, in landscape, the rounded corners (REQ-008).
+                  paddingTop: insets.top,
+                  paddingLeft: insets.left,
+                  paddingRight: insets.right,
+                  // The layer keeps the full height on iOS; the window stands on the keyboard.
+                  paddingBottom: typing ? keyboard.inset : 0,
+                }}
               >
-                <Pressable
-                  accessibilityLabel="Schließen"
-                  accessibilityRole="button"
-                  onPress={close}
-                  testID={props.testID ? `${props.testID}-scrim` : undefined}
-                  // Spec 0033, REQ-002: on phones the page behind stays as it is.
-                  style={[{ flex: 1, backgroundColor: isPhone ? 'transparent' : c.scrim }, NO_PAN]}
-                />
-              </Animated.View>
-              <Animated.View
-                {...PANEL_PART}
-                ref={panel}
-                testID={props.testID}
-                accessibilityViewIsModal
-                pointerEvents={props.visible ? 'auto' : 'none'}
-                onLayout={(event) => travel.set(event.nativeEvent.layout.height)}
-                style={[
-                  {
-                    backgroundColor: c.bg,
-                    borderTopLeftRadius: theme.shape.radius.sheet,
-                    borderTopRightRadius: theme.shape.radius.sheet,
-                    borderBottomLeftRadius: isPhone ? 0 : theme.shape.radius.sheet,
-                    borderBottomRightRadius: isPhone ? 0 : theme.shape.radius.sheet,
-                    maxHeight: frame.maxHeight,
-                    height: frame.height,
-                    width: frame.width,
-                    maxWidth: '100%',
-                    // Above the home bar with its gap (spec 0029, AC-007); on the keyboard none.
-                    paddingBottom: typing ? 0 : isPhone ? bottomInset(insets.bottom, 12) : 0,
-                  },
-                  // Without the scrim the window stands out by its edge and shadow (decision 2).
-                  isPhone
-                    ? {
-                        borderTopWidth: 1,
-                        borderTopColor: c.border,
-                        boxShadow: upwardShadow(c.shadowRaised),
-                      }
-                    : null,
-                  sheetStyle,
-                ]}
-              >
-                <View {...SHEET_HEAD} style={isPhone ? NO_PAN : null}>
-                  {isPhone ? (
-                    <View
-                      testID={props.testID ? `${props.testID}-grabber` : undefined}
-                      aria-hidden
-                      style={{ alignItems: 'center', paddingTop: 6 }}
-                    >
-                      <View
-                        style={{ width: 36, height: 5, borderRadius: 3, backgroundColor: c.border }}
-                      />
-                    </View>
-                  ) : null}
-                  {headerActions && props.actions ? (
-                    <SheetActionsHeader
-                      title={props.title}
-                      actions={props.actions}
-                      onClose={props.onClose}
-                      testID={props.testID}
-                    />
-                  ) : (
-                    <View
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        paddingLeft: 20,
-                        paddingRight: 10,
-                        paddingTop: 14,
-                        paddingBottom: 6,
-                      }}
-                    >
-                      <Text
-                        variant="heading"
-                        heading
-                        style={{ flex: 1 }}
-                        testID={props.testID ? `${props.testID}-title` : undefined}
-                      >
-                        {props.title}
-                      </Text>
-                      <IconButton
-                        icon="x"
-                        label="Schließen"
-                        onPress={props.onClose}
-                        testID={props.testID ? `${props.testID}-close` : undefined}
-                      />
-                    </View>
-                  )}
-                </View>
-                {props.header ? (
-                  <View style={{ paddingHorizontal: 20 }}>{props.header}</View>
-                ) : null}
-                <ScrollView
-                  ref={content}
-                  testID={props.testID ? `${props.testID}-content` : undefined}
-                  keyboardShouldPersistTaps="handled"
-                  // Scrolled to the end, a drag does not move the page behind (AC-027).
-                  style={[frame.height ? { flex: 1 } : null, OVERSCROLL_CONTAIN]}
-                  contentContainerStyle={{
-                    paddingHorizontal: 20,
-                    paddingBottom: 20,
-                    paddingTop: 6,
-                  }}
+                <Animated.View
+                  {...SCRIM_PART}
+                  style={[
+                    { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
+                    scrimStyle,
+                  ]}
                 >
-                  {/* A drag inside the sheet must not switch the page below. */}
-                  <PageScrollControlContext.Provider value={undefined}>
-                    {props.children}
-                  </PageScrollControlContext.Provider>
-                  {headerActions && props.footer ? (
-                    <View style={{ marginTop: 20 }}>{props.footer}</View>
+                  <Pressable
+                    accessibilityLabel="Schließen"
+                    accessibilityRole="button"
+                    onPress={close}
+                    testID={props.testID ? `${props.testID}-scrim` : undefined}
+                    // Spec 0033, REQ-002: on phones the page behind stays as it is.
+                    style={[
+                      { flex: 1, backgroundColor: isPhone ? 'transparent' : c.scrim },
+                      NO_PAN,
+                    ]}
+                  />
+                </Animated.View>
+                <Animated.View
+                  {...PANEL_PART}
+                  ref={panel}
+                  testID={props.testID}
+                  accessibilityViewIsModal
+                  pointerEvents={props.visible ? 'auto' : 'none'}
+                  onLayout={(event) => travel.set(event.nativeEvent.layout.height)}
+                  style={[
+                    {
+                      backgroundColor: c.bg,
+                      borderTopLeftRadius: theme.shape.radius.sheet,
+                      borderTopRightRadius: theme.shape.radius.sheet,
+                      borderBottomLeftRadius: isPhone ? 0 : theme.shape.radius.sheet,
+                      borderBottomRightRadius: isPhone ? 0 : theme.shape.radius.sheet,
+                      maxHeight: frame.maxHeight,
+                      height: frame.height,
+                      width: frame.width,
+                      maxWidth: '100%',
+                      // Above the home bar with its gap (spec 0029, AC-007); on the keyboard none.
+                      paddingBottom: typing ? 0 : isPhone ? bottomInset(insets.bottom, 12) : 0,
+                    },
+                    // Without the scrim the window stands out by its edge and shadow (decision 2).
+                    isPhone
+                      ? {
+                          borderTopWidth: 1,
+                          borderTopColor: c.border,
+                          boxShadow: upwardShadow(c.shadowRaised),
+                        }
+                      : null,
+                    sheetStyle,
+                  ]}
+                >
+                  <View {...SHEET_HEAD} style={isPhone ? NO_PAN : null}>
+                    {isPhone ? (
+                      <View
+                        testID={props.testID ? `${props.testID}-grabber` : undefined}
+                        aria-hidden
+                        style={{ alignItems: 'center', paddingTop: 6 }}
+                      >
+                        <View
+                          style={{
+                            width: 36,
+                            height: 5,
+                            borderRadius: 3,
+                            backgroundColor: c.border,
+                          }}
+                        />
+                      </View>
+                    ) : null}
+                    {headerActions && props.actions ? (
+                      <SheetActionsHeader
+                        title={props.title}
+                        actions={props.actions}
+                        onClose={props.onClose}
+                        testID={props.testID}
+                      />
+                    ) : (
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          paddingLeft: 20,
+                          paddingRight: 10,
+                          paddingTop: 14,
+                          paddingBottom: 6,
+                        }}
+                      >
+                        <Text
+                          variant="heading"
+                          heading
+                          style={{ flex: 1 }}
+                          testID={props.testID ? `${props.testID}-title` : undefined}
+                        >
+                          {props.title}
+                        </Text>
+                        <IconButton
+                          icon="x"
+                          label="Schließen"
+                          onPress={props.onClose}
+                          testID={props.testID ? `${props.testID}-close` : undefined}
+                        />
+                      </View>
+                    )}
+                  </View>
+                  {props.header ? (
+                    <View style={{ paddingHorizontal: 20 }}>{props.header}</View>
                   ) : null}
-                </ScrollView>
-                {!headerActions && (props.footer || props.actions) ? (
-                  <View
-                    testID={props.testID ? `${props.testID}-footer` : undefined}
-                    style={{
+                  <ScrollView
+                    ref={content}
+                    testID={props.testID ? `${props.testID}-content` : undefined}
+                    keyboardShouldPersistTaps="handled"
+                    // Scrolled to the end, a drag does not move the page behind (AC-027).
+                    style={[frame.height ? { flex: 1 } : null, OVERSCROLL_CONTAIN]}
+                    contentContainerStyle={{
                       paddingHorizontal: 20,
-                      paddingTop: 10,
-                      paddingBottom: isPhone ? 4 : 18,
-                      borderTopWidth: 1,
-                      borderTopColor: c.border,
-                      gap: 10,
+                      paddingBottom: 20,
+                      paddingTop: 6,
                     }}
                   >
-                    {props.footer}
-                    {props.actions ? <SheetActionsFooter actions={props.actions} /> : null}
-                  </View>
-                ) : null}
-              </Animated.View>
-            </View>
+                    {/* A drag inside the sheet must not switch the page below. */}
+                    <PageScrollControlContext.Provider value={undefined}>
+                      {props.children}
+                    </PageScrollControlContext.Provider>
+                    {headerActions && props.footer ? (
+                      <View style={{ marginTop: 20 }}>{props.footer}</View>
+                    ) : null}
+                  </ScrollView>
+                  {!headerActions && (props.footer || props.actions) ? (
+                    <View
+                      testID={props.testID ? `${props.testID}-footer` : undefined}
+                      style={{
+                        paddingHorizontal: 20,
+                        paddingTop: 10,
+                        paddingBottom: isPhone ? 4 : 18,
+                        borderTopWidth: 1,
+                        borderTopColor: c.border,
+                        gap: 10,
+                      }}
+                    >
+                      {props.footer}
+                      {props.actions ? <SheetActionsFooter actions={props.actions} /> : null}
+                    </View>
+                  ) : null}
+                </Animated.View>
+              </View>
+            </SheetSubmitContext.Provider>
           </SheetFocusContext.Provider>
         </PageScrollContext.Provider>
       </ToneContext.Provider>
