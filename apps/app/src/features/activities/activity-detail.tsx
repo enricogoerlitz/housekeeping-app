@@ -11,14 +11,7 @@ import {
   usePlanEntries,
   useToday,
 } from '@housekeeping/api';
-import {
-  activityShareText,
-  showsRoute,
-  isWebUrl,
-  visitsOf,
-  type Activity,
-  type Id,
-} from '@housekeeping/core';
+import { showsRoute, isWebUrl, visitsOf, type Activity, type Id } from '@housekeeping/core';
 import {
   Button,
   EmptyState,
@@ -44,7 +37,7 @@ import { DetailPhotoBlock } from '@/features/shell/own-photo';
 import { useDeletePlace } from '@/features/shell/use-delete-place';
 import { VisitList, VisitsLine, useVisitsJump, type SectionRef } from '@/features/shell/visits';
 import { openLink } from '@/lib/open-link';
-import { appLink, shareText, useShareFile } from '@/lib/share';
+import { shareTarget } from '@/lib/share';
 
 import { ActivityFormSheet } from './activity-form';
 import { useActivityIcon } from './activity-photo';
@@ -140,14 +133,8 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
       onPress={() => toggleActivityFavorite(activity.id)}
     />
   );
-  // "Teilen" (spec 0042, REQ-004): works offline; the photo goes along where files can be shared.
-  const shareFile = useShareFile(activity.photoPath, activity.name);
-  const share = () =>
-    void shareText({
-      title: activity.name,
-      text: activityShareText(activity, appLink(`/aktivitaet/${activity.id}`)),
-      file: shareFile,
-    });
+  // "Teilen" (spec 0047, REQ-001): only the link to the page; works offline.
+  const share = () => void shareTarget({ kind: 'activity', id: activity.id });
   const more = (
     <Menu<'share' | 'delete'>
       trigger="icon"

@@ -10,7 +10,6 @@ import {
   canPutRecipeOnList,
   chooseVariant,
   recipeDietChip,
-  recipeShareText,
   shownVariantId,
   type Id,
   type Recipe,
@@ -26,7 +25,7 @@ import { FavoriteButton } from '@/features/shell/favorite-button';
 import { MemberRatings } from '@/features/shell/member-ratings';
 import { useOnlineOnly } from '@/features/shell/offline';
 import { PantryCheckSheet } from '@/features/shopping/pantry-check-sheet';
-import { appLink, shareText, useShareFile } from '@/lib/share';
+import { shareTarget } from '@/lib/share';
 import { usePageParams } from '@/lib/url-state';
 import { useBrowseSwipe } from '@/lib/browse-order';
 
@@ -44,7 +43,7 @@ import { EditControls, EditError } from './sections/edit-controls';
 import { StepsSection } from './sections/steps-section';
 import { usePageEditor } from './sections/use-page-editor';
 import { RecipePhoto } from './recipe-cover';
-import { RecipeFrame } from './recipe-frame';
+import { RecipeFrame, STACKED_PHOTO_MAX_WIDTH } from './recipe-frame';
 import { RecipeVideo } from './recipe-video';
 import { useDeleteRecipe } from './use-delete-recipe';
 
@@ -197,20 +196,8 @@ function RecipeDetailBody(props: {
 
   const { remove, dialog: deleteDialog } = useDeleteRecipe(recipe, props.onBack, props.onDeleting);
 
-  // "Teilen" (spec 0042, AC-008): the portions and the variant shown here, with the own photo.
-  const shareFile = useShareFile(recipe.photoPath, recipe.title);
-  const share = () =>
-    void shareText({
-      title: recipe.title,
-      text: recipeShareText({
-        recipe,
-        articleName: (articleId) => articlesById[articleId]?.name ?? '',
-        servings: shownServings,
-        variantId: activeVariantId,
-        appUrl: appLink(`/rezept/${recipe.id}`),
-      }),
-      file: shareFile,
-    });
+  // "Teilen" (spec 0047, REQ-001): only the link to the page.
+  const share = () => void shareTarget({ kind: 'recipe', id: recipe.id });
 
   const actions = (
     <RecipeActions
@@ -330,12 +317,14 @@ function RecipeDetailBody(props: {
           </>
         ) : (
           <>
-            <RecipePhoto
-              recipe={recipe}
-              photo={photo}
-              onShare={share}
-              pending={editor.chosenPhoto}
-            />
+            <View style={isPhone ? undefined : { maxWidth: STACKED_PHOTO_MAX_WIDTH }}>
+              <RecipePhoto
+                recipe={recipe}
+                photo={photo}
+                onShare={share}
+                pending={editor.chosenPhoto}
+              />
+            </View>
             <RecipeVideo recipe={recipe} />
             {head}
             {ingredients}

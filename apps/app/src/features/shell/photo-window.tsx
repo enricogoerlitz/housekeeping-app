@@ -4,7 +4,6 @@ import {
   Button,
   Notice,
   Photo,
-  Row,
   Sheet,
   Stack,
   Text,
@@ -12,6 +11,7 @@ import {
   ViewTabs,
   pickImageFile,
   useBreakpoint,
+  useFinePointer,
   useImageDropAndPaste,
   useRevealOnShow,
   useTheme,
@@ -30,7 +30,8 @@ import { revokeLater } from './revoke-later';
 
 // The window "Foto" (spec 0039, REQ-001 – REQ-004): one window wherever a photo is changed — at a
 // recipe, a collection, a restaurant and an activity. A new image comes from a file (chosen,
-// dragged in, pasted with ⌘V), the camera or an image address the server loads; it is prepared
+// dragged in, pasted with ⌘V; on touch devices the system menu with library and camera, spec
+// 0047 REQ-002) or an image address the server loads; it is prepared
 // like every photo (1600 px, JPEG) and shown before "Übernehmen" saves it. "Abbrechen" keeps the
 // old photo. Everything here needs the network.
 
@@ -90,6 +91,10 @@ export function PhotoWindow(props: {
   const online = useOnlineOnly();
   const theme = useTheme();
   const { isPhone } = useBreakpoint();
+  // Phones and touch devices: one button, the system asks for library, camera or file (spec 0047,
+  // REQ-002); with a mouse the hint to drag and paste and "Datei wählen" (AC-008).
+  const finePointer = useFinePointer();
+  const touch = isPhone || !finePointer;
   const [view, setView] = useState<View_>('choose');
   const [candidate, setCandidate] = useState<{ photo: Blob; uri: string }>();
   const [busy, setBusy] = useState<Busy>();
@@ -155,7 +160,7 @@ export function PhotoWindow(props: {
       addressTimer.current = setTimeout(() => loadAddress(text), ADDRESS_DELAY_MS);
   };
 
-  const pick = (camera: boolean) => pickImageFile(takeFile, camera ? { camera: true } : undefined);
+  const pick = () => pickImageFile(takeFile);
 
   const apply = () => {
     if (!candidate) return;
@@ -244,7 +249,7 @@ export function PhotoWindow(props: {
             testID={`${id}-ai`}
           />
         ) : null}
-        {view === 'ai' || isPhone ? null : (
+        {view === 'ai' || touch ? null : (
           <Text variant="small" color="muted" testID={`${id}-drop-hint`}>
             {dragging
               ? 'Zum Übernehmen hier loslassen'
@@ -254,7 +259,7 @@ export function PhotoWindow(props: {
         {view === 'choose' ? (
           <ChooseSources
             id={id}
-            isPhone={isPhone}
+            touch={touch}
             disabled={disabled}
             online={online}
             pick={pick}
@@ -296,56 +301,34 @@ export function PhotoWindow(props: {
   );
 }
 
-/** The view "Bild wählen": library, camera, file and the image address (spec 0039). */
+/**
+ * The view "Bild wählen": one button and the image address (spec 0039; spec 0047, REQ-002). On
+ * touch devices „Foto auswählen“ opens the system menu (library, camera, file); with a mouse
+ * „Datei wählen“. The test id `…-file` is the same for both.
+ */
 function ChooseSources(props: {
   id: string;
-  isPhone: boolean;
+  touch: boolean;
   disabled: boolean;
   online: { disabled: boolean; hint: string | undefined };
-  pick: (camera: boolean) => void;
+  pick: () => void;
   address: string;
   changeAddress: (text: string) => void;
   loadAddress: (text: string) => void;
 }) {
-  const { id, isPhone, disabled, online, pick, address } = props;
+  const { id, touch, disabled, online, pick, address } = props;
   return (
     <>
-      <Row gap={8} wrap>
-        {isPhone ? (
-          <>
-            <Button
-              label="Fotomediathek"
-              icon="image"
-              variant="secondary"
-              size="sm"
-              disabled={disabled}
-              hint={online.hint}
-              onPress={() => pick(false)}
-              testID={`${id}-library`}
-            />
-            <Button
-              label="Foto aufnehmen"
-              icon="camera"
-              variant="secondary"
-              size="sm"
-              disabled={disabled}
-              hint={online.hint}
-              onPress={() => pick(true)}
-              testID={`${id}-camera`}
-            />
-          </>
-        ) : null}
-        <Button
-          label="Datei wählen"
-          icon="folder-open"
-          variant="secondary"
-          size="sm"
-          disabled={disabled}
-          hint={online.hint}
-          onPress={() => pick(false)}
-          testID={`${id}-file`}
-        />
-      </Row>
+      <Button
+        label={touch ? 'Foto auswählen' : 'Datei wählen'}
+        icon={touch ? 'image' : 'folder-open'}
+        variant="secondary"
+        size="sm"
+        disabled={disabled}
+        hint={online.hint}
+        onPress={pick}
+        testID={`${id}-file`}
+      />
       <TextField
         label="Bildadresse"
         placeholder="https://…"

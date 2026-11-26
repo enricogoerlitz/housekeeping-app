@@ -24,7 +24,6 @@ export * from './assistant';
 export * from './ai';
 export { photoSource, useRecipeImage } from './photos';
 export {
-  loadPhoto,
   PHOTO_UPLOAD_FAILED_MESSAGE,
   preparePhoto,
   removeActivityPhoto,

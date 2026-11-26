@@ -172,7 +172,16 @@ export interface IconButtonProps {
   testID?: string;
   /** E.g. to give the focus back to the button. */
   ref?: Ref<HostInstance>;
+  /**
+   * A button smaller than 44 pt keeps a 44 × 44 tap area on the web too, where react-native-web
+   * ignores hitSlop: the press area is a transparent frame around the visible circle, and its
+   * negative margin keeps the layout of the small button (spec 0047, AC-005).
+   */
+  touchFrame?: boolean;
 }
+
+/** The minimum touch target (DESIGN.md, 40-ui.md). */
+const TOUCH_TARGET = 44;
 
 export function IconButton({ ref, ...props }: IconButtonProps) {
   const theme = useTheme();
@@ -185,6 +194,26 @@ export function IconButton({ ref, ...props }: IconButtonProps) {
     props.color ??
     (inArea ? 'text' : variant === 'filled' ? 'onAccent' : variant === 'soft' ? 'text' : 'muted');
   const hintRef = useHint(props.hint);
+  const slop = size < TOUCH_TARGET ? (TOUCH_TARGET - size) / 2 : 0;
+  const framed = props.touchFrame === true && slop > 0;
+  const circle = (hovered: boolean | undefined): ViewStyle[] => [
+    {
+      width: size,
+      height: size,
+      borderRadius: size / 2,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    variant === 'filled' ? { backgroundColor: area?.fill ?? theme.colors.accent } : {},
+    variant === 'soft' || (variant === 'plain' && hover(hovered) && !props.disabled)
+      ? { backgroundColor: theme.colors.surfaceSunken }
+      : {},
+  ];
+  const icon = (
+    <ToneContext.Provider value={inArea ? { fg: area.onFill } : undefined}>
+      <Icon name={props.icon} size={Math.round(size * 0.52)} color={iconColor} />
+    </ToneContext.Provider>
+  );
   return (
     <Pressable
       ref={mergeRefs(ref, hintRef)}
@@ -195,29 +224,30 @@ export function IconButton({ ref, ...props }: IconButtonProps) {
       accessibilityState={{ disabled: !!props.disabled }}
       disabled={props.disabled}
       onPress={props.onPress}
-      hitSlop={size < 44 ? (44 - size) / 2 : 0}
+      hitSlop={framed ? 0 : slop}
       style={(state) => {
         const { pressed, hovered, focused } = state as PressState;
-        return [
-          {
-            width: size,
-            height: size,
-            borderRadius: size / 2,
-            alignItems: 'center',
-            justifyContent: 'center',
-            opacity: props.disabled ? 0.4 : pressed ? 0.6 : 1,
-          },
-          variant === 'filled' ? { backgroundColor: area?.fill ?? theme.colors.accent } : null,
-          variant === 'soft' || (variant === 'plain' && hover(hovered) && !props.disabled)
-            ? { backgroundColor: theme.colors.surfaceSunken }
-            : null,
-          keyboardFocusRing(theme, focused),
-        ];
+        const opacity = props.disabled ? 0.4 : pressed ? 0.6 : 1;
+        if (framed) {
+          return [
+            {
+              width: TOUCH_TARGET,
+              height: TOUCH_TARGET,
+              margin: -slop,
+              borderRadius: TOUCH_TARGET / 2,
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity,
+            },
+            keyboardFocusRing(theme, focused),
+          ];
+        }
+        return [...circle(hovered), { opacity }, keyboardFocusRing(theme, focused)];
       }}
     >
-      <ToneContext.Provider value={inArea ? { fg: area.onFill } : undefined}>
-        <Icon name={props.icon} size={Math.round(size * 0.52)} color={iconColor} />
-      </ToneContext.Provider>
+      {(state) =>
+        framed ? <View style={circle((state as PressState).hovered)}>{icon}</View> : icon
+      }
     </Pressable>
   );
 }
