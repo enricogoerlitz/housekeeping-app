@@ -58,7 +58,7 @@ import { useOnlineOnly } from '@/features/shell/offline';
 import { useAddressedId, useHandedHousehold, useMissingObject } from '@/lib/addressed';
 import { useHideAssistantButton } from '@/lib/assistant';
 import { useSettings } from '@/lib/settings';
-import { usePageParams } from '@/lib/url-state';
+import { PagePreview, usePageParams } from '@/lib/url-state';
 
 import { EntryLine } from './calendar-parts';
 import { useCalendarData } from './calendar-data';
@@ -213,12 +213,14 @@ export function CalendarScreen() {
 
   /** The day in the address: today is the default and stays out of it. */
   const dayParam = (date: ISODate) => (date === today ? undefined : date);
+  // The chosen day stays while it is in the new period; paging chooses the period's start.
+  const periodParams = (nextView: CalendarView, nextStart: ISODate, chosen: ISODate) => ({
+    ansicht: calendarViewSlug(nextView),
+    tag: dayParam(periodContains(nextView, nextStart, chosen) ? chosen : nextStart),
+  });
   const show = (nextView: CalendarView, nextStart: ISODate, chosen: ISODate = day) => {
-    // The chosen day stays while it is in the new period; paging chooses the period's start.
-    const nextDay = periodContains(nextView, nextStart, chosen) ? chosen : nextStart;
     address.replace({
-      ansicht: calendarViewSlug(nextView),
-      tag: dayParam(nextDay),
+      ...periodParams(nextView, nextStart, chosen),
       // The week has no day window; month and year keep the chosen day (AC-027).
       fenster: nextView === 'week' && params.fenster === 'tag' ? undefined : params.fenster,
     });
@@ -576,7 +578,16 @@ export function CalendarScreen() {
           tabs={tabs}
           // Phones: a swipe outside the grid changes the view Woche ↔ Monat ↔ Jahr like the tabs;
           // in the grid it pages (CalendarSwipe takes it first; spec 0034, REQ-006).
-          tabSwipe={tabSwipe(VIEWS, view, changeView)}
+          // The neighbour view stands beside the content while the finger moves it (spec 0034,
+          // REQ-007): the calendar as that view would show it, without windows.
+          tabSwipe={tabSwipe(VIEWS, view, changeView, (next) => (
+            <PagePreview
+              page="kalender"
+              params={periodParams(next, switchView(view, next, start, today, selected), day)}
+            >
+              <CalendarScreen />
+            </PagePreview>
+          ))}
           aside={
             <DayPanel
               data={data}
@@ -597,7 +608,9 @@ export function CalendarScreen() {
           }
         >
           <View ref={(node) => markFill(node)} onLayout={onFillLayout} />
-          <CalendarSwipe enabled={isPhone} onSwipe={page}>
+          {/* In the year only the months page; "Vorgemerkt" and "Reisen" below them change the
+              view like the room under month and week (spec 0034, REQ-006). */}
+          <CalendarSwipe enabled={isPhone && view !== 'year'} onSwipe={page}>
             {view === 'week' ? (
               <WeekView
                 data={data}
@@ -644,6 +657,7 @@ export function CalendarScreen() {
                   requestScroll();
                 }}
                 onOpenStripe={openStripe}
+                gridSwipe={{ enabled: isPhone, onSwipe: page }}
                 belowGrid={laterStrip}
                 height={gridHeight}
                 fillsWindow={bp === 'desktop'}

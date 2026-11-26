@@ -1,5 +1,12 @@
-import { useEffect, useEffectEvent, useLayoutEffect, useState, type ReactNode } from 'react';
-import { PanResponder, Platform } from 'react-native';
+import {
+  startTransition,
+  useEffect,
+  useEffectEvent,
+  useLayoutEffect,
+  useState,
+  type ReactNode,
+} from 'react';
+import { PanResponder, Platform, View } from 'react-native';
 import Animated, {
   Easing,
   ReduceMotion,
@@ -18,9 +25,12 @@ import {
   claimsTabSwipe,
   scrollKeepsTabSwipe,
   tabSwipeOffset,
+  tabSwipePreviewStep,
+  tabSwipeSettle,
   tabSwipeStep,
   type TabSwipe,
 } from './tab-swipe';
+import { TabPreviewContext, type TabPreviewFrame } from './tab-preview';
 import { useBreakpoint } from './theme-context';
 
 // Spec 0029, decision 7: the old content leaves in 180 ms, the new one arrives from 30 % of the
@@ -32,19 +42,52 @@ const FADE_MS = 150;
 const EASE_OUT = Easing.bezier(0.23, 1, 0.32, 1);
 const SETTLE = { duration: 300, dampingRatio: 1, reduceMotion: ReduceMotion.Never };
 const TIMING = { easing: EASE_OUT, reduceMotion: ReduceMotion.Never };
+// Spec 0034, REQ-007: with the neighbour beside it the content goes on from where the finger let
+// go, with its speed, and stops at the edge without overshoot.
+const CARRY = { ...SETTLE, overshootClamping: true };
+const NO_FRAME: TabPreviewFrame = { top: 0, inset: 0 };
+
+type Side = 'prev' | 'next';
+const sideOf = (step: -1 | 1): Side => (step === 1 ? 'next' : 'prev');
 
 // The content of the new tab may mount a fresh `Screen` (Essen swaps the whole page), so the
 // direction it arrives from survives a remount here. Taken only right after a swipe.
-let arriving: { step: -1 | 1; at: number } | undefined;
+// `previewed`: the new tab already stood beside the content, so it arrives without a slide.
+let arriving: { step: -1 | 1; at: number; previewed: boolean; chrome?: ScreenChrome } | undefined;
+
+/** The measured header, tabs and toolbar of a phone's Screen. */
+export interface ScreenChrome {
+  expanded?: number;
+  narrow?: number;
+  toolbar: number;
+}
+
+/**
+ * The chrome of the page a swipe with the neighbour beside it just left (spec 0034, REQ-007).
+ * A page that mounts anew for the new tab (Essen) starts with it instead of one empty frame
+ * before its header is measured.
+ */
+export function arrivingChrome(): ScreenChrome | undefined {
+  if (!arriving?.previewed || Date.now() - arriving.at > ARRIVE_WITHIN_MS) return undefined;
+  return arriving.chrome;
+}
 const ARRIVE_WITHIN_MS = 1000;
 
 /**
  * The page content below the view tabs on phones (spec 0029, REQ-003): it follows a sideways
  * finger, and a release past the threshold changes the tab like a tap would. Only with a finger;
  * inner gestures (swiping a row, dragging to reorder) claim the touch first, vertical scrolling
- * stays with the page.
+ * stays with the page. With `swipe.preview` the neighbour tab stands beside the content while the
+ * finger moves it (spec 0034, REQ-007), drawn once the swipe takes the finger.
  */
-export function TabSwipeArea(props: { swipe: TabSwipe; children: ReactNode }) {
+export function TabSwipeArea(props: {
+  swipe: TabSwipe;
+  /** Where the page's content starts, for the neighbour drawn beside it. */
+  frame?: TabPreviewFrame;
+  /** The page's measured chrome, handed to a page that mounts anew for the new tab. */
+  chrome?: ScreenChrome;
+  children: ReactNode;
+}) {
   const { isPhone, width: screenWidth } = useBreakpoint();
   const fine = useFinePointer();
   const reduced = useReducedMotion();
@@ -65,6 +108,34 @@ export function TabSwipeArea(props: { swipe: TabSwipe; children: ReactNode }) {
   // idle: nothing yet · pending: holds the finger after a native scroll began, not decided ·
   // swiping: follows the finger · scrolling: the move is a scroll, nothing to do until release.
   const mode = useSharedValue<'idle' | 'pending' | 'swiping' | 'scrolling'>('idle');
+
+  // The neighbour tabs drawn beside the content during this swipe, and the latest way to draw them.
+  const [panes, setPanes] = useState<Partial<Record<Side, ReactNode>>>({});
+  const [paneWidth, setPaneWidth] = useState(screenWidth);
+  const [panesApi] = useState(() => {
+    const drawn = new Set<Side>();
+    let draw: TabSwipe['preview'];
+    return {
+      /** The latest way to draw a neighbour, from the screen's current render. */
+      setDraw: (next: TabSwipe['preview']) => {
+        draw = next;
+      },
+      drawn: (step: -1 | 1) => drawn.has(sideOf(step)),
+      reveal: (step: -1 | 1) => {
+        const side = sideOf(step);
+        if (!draw || drawn.has(side)) return;
+        drawn.add(side);
+        const pane = draw(step);
+        // Drawing a whole page takes a moment; the content follows the finger meanwhile.
+        startTransition(() => setPanes((current) => ({ ...current, [side]: pane })));
+      },
+      clear: () => {
+        drawn.clear();
+        setPanes((current) => (Object.keys(current).length ? {} : current));
+      },
+    };
+  });
+  useLayoutEffect(() => panesApi.setDraw(props.swipe.preview));
   useLayoutEffect(() => {
     enabled.set(isPhone && !fine);
     still.set(reduced);
@@ -77,10 +148,13 @@ export function TabSwipeArea(props: { swipe: TabSwipe; children: ReactNode }) {
   const arrive = useEffectEvent(() => {
     const pending = arriving;
     arriving = undefined;
-    if (!pending || Date.now() - pending.at > ARRIVE_WITHIN_MS) {
+    if (!pending || Date.now() - pending.at > ARRIVE_WITHIN_MS || pending.previewed) {
       offset.set(0);
       opacity.set(1);
-      return;
+      // One frame later: until the content stands at 0 again the picture beside it still covers
+      // the room, so the change never shows an empty frame.
+      const frame = requestAnimationFrame(panesApi.clear);
+      return () => cancelAnimationFrame(frame);
     }
     if (reduced) {
       offset.set(0);
@@ -93,15 +167,18 @@ export function TabSwipeArea(props: { swipe: TabSwipe; children: ReactNode }) {
     offset.set(withTiming(0, { ...TIMING, duration: ARRIVE_MS }));
     opacity.set(withTiming(1, { ...TIMING, duration: ARRIVE_MS }));
   });
-  useLayoutEffect(() => {
-    arrive();
-  }, [shown]);
+  useLayoutEffect(() => arrive(), [shown]);
 
   // A finished swipe reaches the screen through this state, like a tap on the tab.
   const [swiped, setSwiped] = useState<{ step: -1 | 1; count: number }>();
   const step = useEffectEvent((direction: -1 | 1) => {
     // The content left towards the finger, so the new tab arrives from the other side.
-    arriving = { step: direction, at: Date.now() };
+    arriving = {
+      step: direction,
+      at: Date.now(),
+      previewed: panesApi.drawn(direction),
+      chrome: props.chrome,
+    };
     props.swipe.onStep(direction);
   });
   useEffect(() => {
@@ -112,16 +189,26 @@ export function TabSwipeArea(props: { swipe: TabSwipe; children: ReactNode }) {
     const timer = setTimeout(() => {
       if (index.get() !== before) return;
       arriving = undefined;
-      offset.set(withSpring(0, SETTLE));
+      offset.set(
+        withSpring(0, SETTLE, (finished) => {
+          if (finished) scheduleOnRN(panesApi.clear);
+        }),
+      );
       opacity.set(withTiming(1, { ...TIMING, duration: FADE_MS }));
     }, ARRIVE_WITHIN_MS);
     return () => clearTimeout(timer);
-  }, [swiped, index, offset, opacity]);
+  }, [swiped, index, offset, opacity, panesApi]);
 
   const [responder] = useState(() => {
     const report = (direction: -1 | 1) =>
       setSwiped((previous) => ({ step: direction, count: (previous?.count ?? 0) + 1 }));
-    const settle = () => offset.set(withSpring(0, SETTLE));
+    // Back to the tab; the neighbour beside it goes once the content stands still.
+    const settle = (velocity = 0) =>
+      offset.set(
+        withSpring(0, { ...SETTLE, velocity }, (finished) => {
+          if (finished) scheduleOnRN(panesApi.clear);
+        }),
+      );
     const take = (dx: number) => {
       mode.set('swiping');
       base.set(dx);
@@ -171,9 +258,11 @@ export function TabSwipeArea(props: { swipe: TabSwipe; children: ReactNode }) {
           else if (!scrollKeepsTabSwipe(move, width.get())) mode.set('scrolling');
         }
         if (mode.get() !== 'swiping' || still.get()) return;
-        offset.set(
-          tabSwipeOffset(gesture.dx - base.get(), { index: index.get(), count: count.get() }),
-        );
+        const position = { index: index.get(), count: count.get() };
+        const next = tabSwipeOffset(gesture.dx - base.get(), position);
+        offset.set(next);
+        const side = tabSwipePreviewStep(next, position);
+        if (side !== undefined) panesApi.reveal(side);
       },
       onPanResponderRelease: (_event, gesture) => {
         if (mode.get() !== 'swiping') {
@@ -187,12 +276,22 @@ export function TabSwipeArea(props: { swipe: TabSwipe; children: ReactNode }) {
           count: count.get(),
           width: areaWidth,
         });
+        // PanResponder measures in pt/ms, Reanimated in pt/s.
+        const velocity = gesture.vx * 1000;
         if (direction === 0) {
-          settle();
+          settle(velocity);
           return;
         }
         if (still.get()) {
           report(direction);
+          return;
+        }
+        if (panesApi.drawn(direction)) {
+          offset.set(
+            withSpring(tabSwipeSettle(direction, areaWidth), { ...CARRY, velocity }, (finished) => {
+              if (finished) scheduleOnRN(report, direction);
+            }),
+          );
           return;
         }
         offset.set(
@@ -223,13 +322,45 @@ export function TabSwipeArea(props: { swipe: TabSwipe; children: ReactNode }) {
     opacity: opacity.get(),
     transform: [{ translateX: offset.get() }],
   }));
+  const frame = props.frame ?? NO_FRAME;
+  const pane = (side: Side) => {
+    const node = panes[side];
+    if (node === undefined) return null;
+    return (
+      <View
+        testID={`tab-swipe-preview-${side}`}
+        pointerEvents="none"
+        aria-hidden
+        importantForAccessibility="no-hide-descendants"
+        style={{
+          position: 'absolute',
+          top: 0,
+          bottom: 0,
+          left: (side === 'next' ? 1 : -1) * paneWidth,
+          width: paneWidth,
+        }}
+      >
+        <TabPreviewContext.Provider value={frame}>{node}</TabPreviewContext.Provider>
+      </View>
+    );
+  };
+  const showing = panes.prev !== undefined || panes.next !== undefined;
   return (
-    <Animated.View
-      {...responder}
-      onLayout={(event) => width.set(Math.round(event.nativeEvent.layout.width) || screenWidth)}
-      style={[{ flex: 1 }, style]}
-    >
-      {props.children}
-    </Animated.View>
+    // While a neighbour stands beside the content, nothing past the area's edges shows.
+    <View style={{ flex: 1, overflow: showing ? 'hidden' : undefined }}>
+      <Animated.View
+        {...responder}
+        onLayout={(event) => {
+          const measured = Math.round(event.nativeEvent.layout.width) || screenWidth;
+          width.set(measured);
+          setPaneWidth(measured);
+        }}
+        style={[{ flex: 1 }, style]}
+      >
+        {props.children}
+        {pane('prev')}
+        {pane('next')}
+      </Animated.View>
+    </View>
   );
 }

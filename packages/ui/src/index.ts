@@ -54,6 +54,7 @@ export {
 export { pickImageFile } from './pick-image';
 export { useKeyboard } from './keyboard';
 export { tabSwipe, type TabSwipe } from './tab-swipe';
+export { useTabPreview } from './tab-preview';
 export { useFinePointer, useHover } from './pointer';
 export { pressedWithFinger } from './press-pointer';
 export { type SheetSize } from './sheet-size';

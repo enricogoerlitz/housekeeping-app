@@ -22,7 +22,8 @@ import { IconButton, keyboardFocusRing } from './controls';
 import { useKeyboard } from './keyboard';
 import { useHover } from './pointer';
 import { tabSwipeTouchAction, type TabSwipe } from './tab-swipe';
-import { TabSwipeArea } from './tab-swipe-area';
+import { TabPreviewContext } from './tab-preview';
+import { TabSwipeArea, arrivingChrome } from './tab-swipe-area';
 import { icons, type IconName } from './icons';
 import { Divider, Icon, Text } from './primitives';
 import { AreaToneContext, ToneContext, useBreakpoint, useTheme } from './theme-context';
@@ -82,6 +83,11 @@ export const PageScrollControlContext = createContext<PageScrollControl | undefi
  */
 export const AsideInsetContext = createContext<((height: number) => void) | undefined>(undefined);
 
+/** The scroll of a neighbour tab drawn during a swipe moves nothing on the page. */
+function ignoreScroll(_y: number) {
+  'worklet';
+}
+
 export interface ScreenProps {
   children?: ReactNode;
   /**
@@ -132,6 +138,8 @@ export interface ScreenProps {
  * a fine line under them appears once content scrolls underneath (spec 0005, REQ-002).
  */
 export function Screen(props: ScreenProps) {
+  // Drawn beside another tab during a swipe: only the content, in that page's frame.
+  const preview = useContext(TabPreviewContext);
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { isPhone } = useBreakpoint();
@@ -149,10 +157,14 @@ export function Screen(props: ScreenProps) {
   const overlay = isPhone && hasChrome;
 
   const [collapsed, setCollapsed] = useState(false);
-  const [chrome, setChrome] = useState<{ expanded?: number; narrow?: number; now: number }>({
-    now: 0,
-  });
-  const [toolbarHeight, setToolbarHeight] = useState(0);
+  // A page that mounts anew after a tab swipe starts in the frame of the one it replaces.
+  const [arrived] = useState(arrivingChrome);
+  const [chrome, setChrome] = useState<{ expanded?: number; narrow?: number; now: number }>(() =>
+    arrived
+      ? { expanded: arrived.expanded, narrow: arrived.narrow, now: arrived.expanded ?? 0 }
+      : { now: 0 },
+  );
+  const [toolbarHeight, setToolbarHeight] = useState(arrived?.toolbar ?? 0);
   const [asideInset, setAsideInset] = useState(0);
 
   const scrollY = useSharedValue(0);
@@ -262,8 +274,43 @@ export function Screen(props: ScreenProps) {
         </PageScrollControlContext.Provider>
       </Animated.ScrollView>
     );
+  if (preview) {
+    return (
+      <AreaToneContext.Provider value={props.tone}>
+        <View style={{ flex: 1, overflow: 'hidden', backgroundColor: c.bg }}>
+          {props.scroll === false ? (
+            <View style={{ flex: 1, marginTop: preview.top }}>
+              <PageScrollContext.Provider value={{ inset: preview.inset, onScroll: ignoreScroll }}>
+                {content}
+              </PageScrollContext.Provider>
+            </View>
+          ) : (
+            // A scroller of its own, so a page that opens at a place (the calendar at today)
+            // stands there; nobody touches it.
+            <ScrollView
+              style={{ flex: 1, marginTop: preview.top }}
+              contentContainerStyle={{ paddingTop: preview.inset }}
+              showsVerticalScrollIndicator={false}
+            >
+              {content}
+            </ScrollView>
+          )}
+        </View>
+      </AreaToneContext.Provider>
+    );
+  }
   const body = props.tabSwipe ? (
-    <TabSwipeArea swipe={props.tabSwipe}>{scrolling}</TabSwipeArea>
+    <TabSwipeArea
+      swipe={props.tabSwipe}
+      frame={{ top, inset }}
+      chrome={
+        chrome.expanded === undefined
+          ? undefined
+          : { expanded: chrome.expanded, narrow: chrome.narrow, toolbar: toolbarHeight }
+      }
+    >
+      {scrolling}
+    </TabSwipeArea>
   ) : (
     scrolling
   );

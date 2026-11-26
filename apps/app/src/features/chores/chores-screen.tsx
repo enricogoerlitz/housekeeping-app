@@ -36,7 +36,7 @@ import { View } from 'react-native';
 import { StartPageActions } from '@/features/shell/profile-button';
 import { useOnlineOnly } from '@/features/shell/offline';
 import { useAddressedId, useHandedHousehold, useMissingObject } from '@/lib/addressed';
-import { usePageParams } from '@/lib/url-state';
+import { PagePreview, usePageParams } from '@/lib/url-state';
 
 import { useChoreCheckWindow } from './chore-check-list';
 import { ChoreHistory } from './chore-history';
@@ -313,8 +313,23 @@ export function ChoresScreen() {
           testID="chores-tab"
         />
       }
-      // On phones a sideways swipe changes the tab (spec 0029, REQ-003).
-      tabSwipe={tabSwipe(TAB_OPTIONS, tab, changeTab)}
+      // On phones a sideways swipe changes the tab (spec 0029, REQ-003), with the neighbour tab
+      // beside the content (spec 0034, REQ-007): the page as the tab would show it, no window.
+      tabSwipe={tabSwipe(TAB_OPTIONS, tab, changeTab, (next) => (
+        <PagePreview
+          page="haushalt"
+          params={{
+            ...params,
+            ansicht: VIEW_OF_TAB[next],
+            aufgabe: undefined,
+            verlauf: undefined,
+            fenster: undefined,
+            haushalt: undefined,
+          }}
+        >
+          <ChoresScreen />
+        </PagePreview>
+      ))}
     >
       {body}
       {openChore && !split ? (

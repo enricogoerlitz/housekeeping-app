@@ -88,12 +88,17 @@ vorigen Tag. Quelle: H-01. Offline: offline vollständig.
 
 **REQ-006 — Kalender: Ansicht wischen.** In der freien Fläche unter dem Raster (Monat, Jahr) und unter
 „Vorgemerkt“ (Woche) wechselt Wischen die Ansicht Woche ↔ Monat ↔ Jahr; im Raster wechselt Wischen
-weiter den Zeitraum. Quelle: H-03. Offline: offline vollständig.
+weiter den Zeitraum. Im Jahr zählt nur die Fläche der zwölf Monate als Raster; „Vorgemerkt“ und
+„Reisen“ darunter wechseln die Ansicht (Welle 2). Quelle: H-03. Offline: offline vollständig.
 
 - AC-013: Angenommen Handy, Kalender „Monat“ · Wenn ich unter dem Raster nach links wische · Dann ist
   „Jahr“ gewählt
 - AC-014: Angenommen Handy, Kalender „Monat November“ · Wenn ich im Raster nach links wische · Dann
   steht „Dezember“ da und die Ansicht bleibt „Monat“
+- AC-025: Angenommen Handy, Kalender „Jahr 2026“ · Wenn ich auf „Reisen 2026“ (oder „Vorgemerkt“)
+  nach rechts wische · Dann ist „Monat“ gewählt
+- AC-026: Angenommen Handy, Kalender „Jahr 2026“ · Wenn ich über den Monaten nach links wische ·
+  Dann steht „2027“ da und die Ansicht bleibt „Jahr“
 
 **REQ-007 — Tab-Wischen mit Vorschau.** Beim Wischen zwischen Tabs folgt der Inhalt dem Finger, und
 der Nachbar-Tab ist daneben schon zu sehen. Quelle: H-04. Offline: offline vollständig.
@@ -172,7 +177,9 @@ Netz).
 9. REQ-006 (Umsetzung): Der Kalender bekommt den `tabSwipe` des Bildschirms; das Raster behält sein
    Zeitraum-Wischen, weil es den Finger zuerst nimmt und nicht mehr abgibt. In der Jahresansicht
    liegen „Vorgemerkt“ und „Reisen“ im Raster-Bereich (Datei der Jahresansicht nicht angefasst, die
-   ändert Spec 0035); dort wechselt Wischen das Jahr, darunter die Ansicht.
+   ändert Spec 0035); dort wechselt Wischen das Jahr, darunter die Ansicht. Welle 2: Die
+   Jahresansicht legt das Zeitraum-Wischen (`CalendarSwipe`) nur noch um die zwölf Monate
+   (`gridSwipe`); „Vorgemerkt“ und „Reisen“ gehören zur freien Fläche (AC-025, AC-026).
 10. REQ-008 (Umsetzung): Die Reihenfolge merkt sich die Liste beim Öffnen (Rezepte, Inhalt einer
     Sammlung, Restaurants); jedes andere Öffnen vergisst sie. Wischen ersetzt die Seite (kein neuer
     Verlaufseintrag) und nutzt die Tab-Wisch-Fläche: Inhalt folgt dem Finger, am Ende federt er
@@ -180,17 +187,33 @@ Netz).
 11. REQ-011 (Umsetzung): In der installierten iOS-App öffnet ein unsichtbarer Link mit
     `target=_blank` die Seite statt `window.open`; gilt auch für „Webseite“ bei Restaurant und
     Aktivität (gleicher Fehler). Sonst wie bisher neuer Tab.
-12. OFFEN (REQ-007, Aufgabe 9 nicht gebaut): Tab-Wischen mit Vorschau ist deutlich größer als ein
-    Tag. Entwurf: `TabSwipeArea` bekommt `neighbour(step)`, das beim Übernehmen des Fingers den
-    Nachbar-Inhalt absolut daneben (±Breite) in dieselbe verschobene Zeile setzt; beim Loslassen
-    gleitet die Zeile weiter statt der heutigen Ankunfts-Animation, danach rendert die Seite den
-    neuen Tab und die Vorschau verschwindet. Dafür muss jeder Bildschirm mit Tabs (Essen:
-    Rezepte/Restaurants, Haushalt, Märkte, Kalender) seinen Tab-Inhalt als eigenen Baustein
-    `…TabBody({ tab, preview })` herauslösen, der nur liest (keine Adress-Schreibvorgänge, keine
-    Effekte, `pointerEvents: none`) und die zuletzt gewählten Listen-Parameter des Nachbarn nutzt.
-    Aufwand etwa 2–3 Tage; Risiken: zwei Listen gleichzeitig auf dem iPhone (Leistung), Blitzen
-    beim Übergang von Vorschau zu echter Seite, Seiteneffekte der Listen-Hooks. Entscheidung durch
-    Enrico.
+12. REQ-007 (Umsetzung, Welle 2; vorher OFFEN mit Entwurf und 2–3 Tagen Aufwand): Statt jeden
+    Tab-Inhalt als eigenen `…TabBody` herauszulösen, zeichnet ein Bildschirm den Nachbarn als
+    sich selbst: `tabSwipe(optionen, wert, onChange, vorschau)` bekommt eine vierte Funktion, die
+    dieselbe Seite unter `PagePreview` (`url-state.ts`) mit den Adress-Parametern des Nachbar-Tabs
+    zeichnet (ohne Fenster und ausgewähltes Objekt; bei Essen die zuletzt verlassenen
+    Listen-Parameter, im Kalender Zeitraum und Tag wie beim Tippen). `usePageParams` liest darin
+    diese Parameter und schreibt nichts, auch keine Bereinigung. `TabSwipeArea` zeichnet den
+    Nachbarn erst, wenn das Wischen den Finger übernimmt, und nur auf der Seite, zu der der
+    Inhalt geschoben wird (als Transition: der Inhalt folgt dem Finger sofort, der Nachbar
+    erscheint, sobald er gezeichnet ist); er steht absolut um eine Breite versetzt in derselben
+    verschobenen Zeile, nimmt keine Berührung an und ist für Screenreader verborgen. Ein `Screen`
+    darin (`TabPreviewContext`) zeichnet nur seinen Inhalt im Rahmen der Seite daneben (ohne Kopf,
+    Tabs, Werkzeugleiste, Seitenfenster). Listen zeigen dort ihre gemerkte Scroll-Lage, ändern sie
+    aber nicht; der Kalender rollt nur die Vorschau zu heute (nicht die Seite daneben); die
+    KI-Suche sendet aus der Vorschau nichts. Loslassen: Die Schwelle bleibt (ein Fünftel der
+    Breite, mindestens 48 pt, oder ein Wurf). Darüber läuft der Inhalt als Feder mit der
+    Geschwindigkeit des Fingers ohne Überschwingen eine ganze Breite weiter, dann wechselt der Tab
+    ohne zweite Ankunfts-Animation; die Vorschau verschwindet ein Bild später. Darunter federt er
+    zurück, die Vorschau verschwindet, wenn er steht. Eine Seite, die für den neuen Tab neu
+    entsteht (Essen tauscht den ganzen `Screen`), übernimmt die gemessene Kopfhöhe der alten, und
+    ein Kachel-Raster seine zuletzt gemessene Breite (je `restoreKey`), damit kein leeres Bild
+    dazwischen liegt (gemessen: keins). „Bewegung reduzieren“: nichts verschiebt sich, kein
+    Nachbar, der Tab wechselt beim Loslassen mit Überblenden (wie bisher). Reine, getestete
+    Entscheidungen: `tabSwipePreviewStep`, `tabSwipeSettle`, `tabSwipeStep`. Ohne Vorschau
+    (Durch Einträge wischen, REQ-008) bleibt das bisherige Gleiten. Bekannte Grenze: Kopf,
+    Tabs und Suchzeile bleiben während des Wischens die des aktuellen Tabs; nur der Inhalt
+    darunter zeigt den Nachbarn.
 13. REQ-003 (QA-Nachtrag 26.11.): „Verwalten“, seine Seiten und die Einstellungen sind eigene Tabs
     der Tab-Navigation, kein Stack; darum glitten sie auf dem Handy nicht. Ohne Umbau der Routen
     bekommen sie auf dem Handy im Browser eine Gleit-Animation des Tab-Navigators
@@ -217,7 +240,8 @@ Entfällt: nur Oberfläche und lokale Reihenfolge der Liste (REQ-008, nur im Spe
 - [x] 6. Reihenfolge-Speicher der Listen + Wischen auf Detailseiten (AC-017–AC-019)
 - [x] 7. Manifest/Hinweis Querformat (AC-020, AC-021), Wake Lock im Einkaufsmodus (AC-022, AC-023)
 - [x] 8. Rezeptlinks wie Route öffnen (AC-024)
-- [ ] 9. Tab-Wischen mit Vorschau (AC-015, AC-016) — nicht gebaut, OFFEN (Entscheidung 12)
+- [x] 9. Tab-Wischen mit Vorschau (AC-015, AC-016), Entscheidung 12 (Welle 2)
+- [x] 10. Jahresansicht: „Vorgemerkt“ und „Reisen“ wechseln die Ansicht (AC-025, AC-026)
 - [x] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün (26.11.); `/ui-verify`;
       iPhone-Abnahme durch Enrico in der Vorschau (offen)
 
@@ -247,3 +271,23 @@ Entfällt: nur Oberfläche und lokale Reihenfolge der Liste (REQ-008, nur im Spe
 - QA-Nachtrag 26.11. (Entscheidung 13): Dev-Server 390 × 844 – „⊞ → Verwalten“ und „Verwalten →
   Aktivitäten“ gleiten in ~300 ms von rechts herein, „‹ Verwalten“ nach rechts hinaus; Tabs der
   Tab-Leiste wechseln sofort. `pnpm check` grün.
+- Welle 2 (REQ-007, Jahresansicht): Tests rot gezeigt, dann grün – `tab-swipe.test.ts`
+  (AC-015, AC-016: `tabSwipePreviewStep`, `tabSwipeSettle`, `tabSwipe(…, vorschau)`),
+  `tab-swipe-area.test.tsx` (AC-015: Nachbar erst nach Übernahme, ±Breite daneben, verborgen;
+  Seite darin nur Inhalt; neu entstehende Seite sofort sichtbar; AC-016: Zurückfedern; reduzierte
+  Bewegung ohne Nachbar), `infinite-list.test.tsx` (Scroll-Lage aus der Vorschau unverändert,
+  Raster ohne leeres erstes Bild); e2e `rundgang-wischen-0034.spec.ts` (AC-015, AC-016, AC-025,
+  AC-026; AC-025 vorher rot: Wischen auf „Reisen“ blätterte zu 2025) gegen den Dev-Server
+  (Port 8096, Chromium 390 × 844 mit Touch), dazu die bestehenden Wisch-Tests aus
+  `rundgang-handy` und `rundgang-review-0002` grün (15/15). Gemessen je Bild beim Wechsel
+  Rezepte → Restaurants: die erste Restaurant-Karte läuft von x 245 nach x 20 in ~340 ms, die
+  echte Seite steht danach genau dort, kein Bild mit verdecktem Inhalt. Vorschau geprüft für
+  Essen (beide Richtungen), Haushalt, Märkte, Kalender Woche → Monat (unter „Vorgemerkt“) und
+  Jahr → Monat (auf „Reisen“); keine waagerechte Seitenverschiebung, keine Konsolenfehler; mit
+  „Bewegung reduzieren“ kein Nachbar, Tab wechselt. Desktop 1440 × 900 unverändert. Screenshots
+  in `tmp/review-0003/0034-wischen/`. Nur am iPhone prüfbar: Gefühl des Mitziehens und des
+  Weiterlaufens, Ruckeln beim ersten Zeichnen des Nachbarn (zwei Listen gleichzeitig).
+  `pnpm format:check && pnpm check && pnpm build:web` grün (26.11.). `/security-check` auf den
+  Diff: keine Befunde (geprüft: Adress-Parameter der Vorschau stammen aus den schon geprüften
+  Werten, `PagePreview` schreibt keine Adresse, aus der Vorschau geht keine Anfrage hinaus –
+  KI-Suche aus –, keine neue Abhängigkeit, kein Speicher, kein HTML).

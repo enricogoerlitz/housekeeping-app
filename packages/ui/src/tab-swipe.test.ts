@@ -6,6 +6,8 @@ import {
   neighbourTab,
   tabSwipe,
   tabSwipeOffset,
+  tabSwipePreviewStep,
+  tabSwipeSettle,
   tabSwipeStep,
   tabSwipeTouchAction,
   TAB_SWIPE_EDGE,
@@ -119,5 +121,33 @@ describe('the tab swipe reaches iOS (spec 0030, REQ-007)', () => {
   it('AC-025: without a tab swipe, or natively, nothing changes', () => {
     expect(tabSwipeTouchAction(false, 'web')).toBeNull();
     expect(tabSwipeTouchAction(true, 'ios')).toBeNull();
+  });
+});
+
+describe('the neighbour tab beside the content (spec 0034, REQ-007)', () => {
+  it('AC-015: the content moved to the left shows the next tab, to the right the previous one', () => {
+    expect(tabSwipePreviewStep(-195, middle)).toBe(1);
+    expect(tabSwipePreviewStep(195, middle)).toBe(-1);
+  });
+
+  it('AC-015: nothing beside the content at rest or past the first and last tab', () => {
+    expect(tabSwipePreviewStep(0, middle)).toBeUndefined();
+    expect(tabSwipePreviewStep(40, first)).toBeUndefined();
+    expect(tabSwipePreviewStep(-40, last)).toBeUndefined();
+  });
+
+  it('AC-016: a release short of the threshold goes back to 0, past it a whole width on', () => {
+    expect(tabSwipeSettle(0, 390)).toBe(0);
+    expect(tabSwipeSettle(1, 390)).toBe(-390);
+    expect(tabSwipeSettle(-1, 390)).toBe(390);
+  });
+
+  it('AC-015: the swipe of a row of tabs renders the neighbour a step away, none past the ends', () => {
+    const options = [{ value: 'a' }, { value: 'b' }];
+    const preview = (value: string) => `Vorschau ${value}`;
+    const swipe = tabSwipe(options, 'a', () => undefined, preview);
+    expect(swipe.preview?.(1)).toBe('Vorschau b');
+    expect(swipe.preview?.(-1)).toBeUndefined();
+    expect(tabSwipe(options, 'a', () => undefined).preview).toBeUndefined();
   });
 });
