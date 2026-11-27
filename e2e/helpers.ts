@@ -884,9 +884,12 @@ export async function signInAs(page: Page, email: string): Promise<void> {
 /**
  * Resets the local database to the seed (`pnpm db:reset`) before the tests of this file, for
  * walk-throughs that change the demo data and assert on its pristine state. About 12 s.
+ * E2E_SKIP_RESET=1 skips it like the global setup does: an agent's worktree must never reset the
+ * shared local stack (27.11.2026, it dropped the owner's local invitation).
  */
 export function freshSeed(): void {
   test.beforeAll(async () => {
+    if (process.env.E2E_SKIP_RESET) return;
     test.setTimeout(120_000);
     const result = spawnSync('pnpm', ['db:reset'], { cwd: repo, stdio: 'ignore' });
     if (result.status !== 0) throw new Error('pnpm db:reset failed');
