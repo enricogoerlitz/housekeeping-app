@@ -595,6 +595,20 @@ describe('KindLine (spec 0010, D19)', () => {
     expect(screen.getByText('Bad putzen').style.textDecorationLine).toBe('line-through');
   });
 
+  it('N-18 (review 0004): a row never breaks a word right before its hyphen ("Kichererbsen|-Eintopf")', () => {
+    render(
+      <>
+        <KindLine kind="recipe" title="Kichererbsen-Eintopf" />
+        <KindLine kind="recipe" title="Mango-Curry" size="compact" />
+      </>,
+    );
+    const row = screen.getByText('Kichererbsen-Eintopf');
+    expect(row.style.getPropertyValue('overflow-wrap')).toBe('normal');
+    expect(parseFloat(row.style.getPropertyValue('padding-right'))).toBeGreaterThan(0);
+    // The month's one line stays as it is.
+    expect(screen.getByText('Mango-Curry').style.getPropertyValue('padding-right')).toBe('');
+  });
+
   it('spec 0057 AC-024: the title breaks between words, without automatic hyphenation', () => {
     render(<KindLine kind="restaurant" title="Gasthausbesuch" />);
     expect(screen.getByText('Gasthausbesuch').style.getPropertyValue('hyphens')).toBe('manual');

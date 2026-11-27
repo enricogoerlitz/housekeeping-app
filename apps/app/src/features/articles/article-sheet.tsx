@@ -125,7 +125,8 @@ export function useArticleEditor(props: ArticleEditorProps): {
   footer: ReactNode;
   /**
    * A window's head instead (spec 0054, REQ-007): "Fertig" of the main step; "Zurück ·
-   * Regelmäßig kaufen · Speichern" of the Dauerposten (I-05, review 0004), with `windowFooter`.
+   * Regelmäßig kaufen · Anlegen" (or "Speichern" of an existing one) of the Dauerposten (I-05,
+   * review 0004), with `windowFooter`.
    */
   actions?: SheetActions;
   windowFooter?: ReactNode;

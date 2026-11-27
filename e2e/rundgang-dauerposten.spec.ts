@@ -54,6 +54,13 @@ test('AC-001 / AC-002: empty page, then "Reis 2×" weekly, next time tomorrow', 
   await expect(tid(page, 'recurring-empty')).toContainText('Noch keine Dauerposten');
   // Durchklick 27.11., D-04: the pattern of every page.
   await expect(tid(page, 'recurring-new')).toHaveAttribute('aria-label', 'Dauerposten anlegen');
+  // Nachklick 27.11., N-11: once, in the head; the empty state has no second button.
+  await expect(tid(page, 'recurring-empty-new')).toHaveCount(0);
+  await expect(tid(page, 'recurring-empty').getByRole('button')).toHaveCount(0);
+  // N-10: a new one is created with "Anlegen".
+  await tid(page, 'recurring-new').click();
+  await expect(tid(page, 'recurring-save')).toHaveText(/Anlegen/);
+  await tid(page, 'recurring-cancel').click();
   await createRecurring(page, 'Reis', '2');
   await expect(toastMessage(page)).toHaveText('Dauerposten „Reis“ angelegt');
   const row = recurringRow(page, 'Reis');
@@ -87,6 +94,8 @@ test('AC-007: "viel" is no amount', async ({ page }) => {
     'Menge nicht erkannt – z. B. 500 g oder 2',
   );
   await expect(tid(page, 'recurring-save')).toBeDisabled();
+  // N-10: an existing one is changed with "Speichern".
+  await expect(tid(page, 'recurring-save')).toHaveText(/Speichern/);
 });
 
 test('AC-005 / AC-006: paused reads "pausiert"; "Löschen" with "Rückgängig"', async ({ page }) => {
@@ -112,10 +121,12 @@ test('AC-010 / AC-011: "Regelmäßig kaufen ›" at the article; Reis is used, n
   await tid(page, 'articles-search').fill('Geschenkpapier');
   await tid(page, `article-${seedIds['art-geschenkpapier']}`).click();
   await tid(page, 'article-recurring').click();
-  // Durchklick 27.11., I-05: the head of every form, "Zurück · Regelmäßig kaufen · Speichern".
+  // Durchklick 27.11., I-05: the head of every form, "Zurück · Regelmäßig kaufen · Anlegen"
+  // (Nachklick 27.11., N-10: a new Dauerposten is created).
   await expect(tid(page, 'article-sheet-header')).toContainText('Regelmäßig kaufen');
   await expect(tid(page, 'article-sheet-header')).toContainText('Zurück');
-  await expect(tid(page, 'article-sheet-header')).toContainText('Speichern');
+  await expect(tid(page, 'article-sheet-header')).toContainText('Anlegen');
+  await expect(tid(page, 'article-sheet-header')).not.toContainText('Speichern');
   await tid(page, 'recurring-amount').fill('1');
   await tid(page, `repeat-weekday-${TOMORROW_WEEKDAY}`).click();
   await tid(page, `repeat-weekday-${TODAY_WEEKDAY}`).click();

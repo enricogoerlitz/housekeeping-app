@@ -28,7 +28,7 @@ export interface AddRestaurantSheetProps {
 }
 
 /**
- * "Restaurant hinzufügen": a map link at the top fills the form; only the name is required.
+ * "Restaurant anlegen": a map link at the top fills the form; only the name is required.
  * Mount it fresh for every opening so the initial text is read again.
  */
 export function AddRestaurantSheet(props: AddRestaurantSheetProps) {
@@ -44,7 +44,8 @@ export function AddRestaurantSheet(props: AddRestaurantSheetProps) {
       props.onClose();
       props.onCreated(id);
       saveRestaurantPhoto(id, form.photo);
-      toast.show({ message: 'Restaurant gespeichert' });
+      // Review 0004, N-09: a new one is "angelegt", like the window and its button say.
+      toast.show({ message: 'Restaurant angelegt' });
     } catch (caught) {
       form.fail(caught);
     }
@@ -52,7 +53,7 @@ export function AddRestaurantSheet(props: AddRestaurantSheetProps) {
 
   return (
     <RestaurantFormSheet
-      title="Restaurant hinzufügen"
+      title="Restaurant anlegen"
       form={form}
       focus={props.focus}
       onSave={() => void save()}
@@ -63,7 +64,7 @@ export function AddRestaurantSheet(props: AddRestaurantSheetProps) {
 }
 
 /**
- * "Restaurant bearbeiten" (spec 0024, REQ-001): the form of "Restaurant hinzufügen", prefilled.
+ * "Restaurant bearbeiten" (spec 0024, REQ-001): the form of "Restaurant anlegen", prefilled.
  * "Speichern" sends every field (a cleared one is cleared, an emptied map link takes the
  * coordinates with it) → "Restaurant gespeichert"; ✕ discards. "Notiz hinzufügen" opens it with
  * the keyboard in "Notiz" (REQ-002).
@@ -167,7 +168,7 @@ function RestaurantFormSheet(props: {
         {form.restaurant ? web.link : null}
         <RestaurantFormFields
           form={form}
-          {...(form.restaurant ? {} : { nameAction: web.nameButton })}
+          {...(form.restaurant ? {} : { nameAction: web.nameButton, onNameSearch: web.searchName })}
           focus={props.focus}
           onOpenExisting={(existing) => {
             props.onClose();

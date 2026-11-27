@@ -203,7 +203,7 @@ test('0002 AC-007: saving without a name creates nothing and shows "Name fehlt"'
   await expect(count).toHaveText(before);
 });
 
-test('0002 AC-008: /teilen opens "Restaurant hinzufügen" prefilled in the active household', async ({
+test('0002 AC-008: /teilen opens "Restaurant anlegen" prefilled in the active household', async ({
   page,
 }) => {
   await open(

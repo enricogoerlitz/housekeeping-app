@@ -13,7 +13,7 @@ import {
 import { icons, type IconName } from './icons';
 import { ToneContext, useTheme } from './theme-context';
 import type { TextVariant, Theme } from './themes';
-import { wordOverflows } from './title-fit';
+import { hyphenHang, wordOverflows } from './title-fit';
 
 export type ColorToken =
   | 'text'
@@ -98,13 +98,22 @@ export interface TextProps {
    * line, the title goes to one line ending in "…". Web only; native apps break words themselves.
    */
   wholeWords?: boolean;
+  /**
+   * With `wholeWords`, for narrow columns (review 0004, N-18): a hyphen at a line's end may stand
+   * a little past the line, so "Kichererbsen-|Eintopf" breaks after its hyphen and never right
+   * before it; only a word wider than that cuts the title.
+   */
+  hangingHyphens?: boolean;
 }
 
 export function Text({ ref, ...props }: TextProps) {
   const theme = useTheme();
   const color = useColor(props.color);
   const variant = theme.type[props.variant ?? 'body'];
-  const fit = useWholeWords(props.wholeWords === true, props.children);
+  const hang = props.hangingHyphens ? hyphenHang(variant.fontSize ?? 16) : 0;
+  const fit = useWholeWords(props.wholeWords === true, props.children, hang + 1);
+  // The line keeps its width; the padding is the hyphen's room, the overflow clip leaves it seen.
+  const hanging = fit && !fit.cut && hang > 0 ? { paddingRight: hang, marginRight: -hang } : null;
   return (
     <RNText
       ref={ref}
@@ -117,6 +126,7 @@ export function Text({ ref, ...props }: TextProps) {
         variant,
         TITLE_VARIANTS.has(props.variant ?? 'body') ? TITLE_BREAK : null,
         fit && !fit.cut ? KEEP_WORDS : null,
+        hanging,
         { color },
         props.align ? { textAlign: props.align } : null,
         props.strike ? { textDecorationLine: 'line-through' } : null,
@@ -135,6 +145,7 @@ export function Text({ ref, ...props }: TextProps) {
 function useWholeWords(
   enabled: boolean,
   children: ReactNode,
+  slack: number,
 ): { cut: boolean; onLayout: (event: LayoutChangeEvent) => void } | undefined {
   const [cutAt, setCutAt] = useState<{ text: string; width: number }>();
   if (!enabled || Platform.OS !== 'web') return undefined;
@@ -150,7 +161,7 @@ function useWholeWords(
       }
       // On the web the layout event carries the text's element.
       const node = (event.nativeEvent as { target?: unknown }).target;
-      if (wordOverflows(node as { scrollWidth?: number; clientWidth?: number } | null))
+      if (wordOverflows(node as { scrollWidth?: number; clientWidth?: number } | null, slack))
         setCutAt({ text, width });
     },
   };

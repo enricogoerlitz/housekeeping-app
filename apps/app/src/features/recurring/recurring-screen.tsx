@@ -15,6 +15,7 @@ import {
   ScreenHeader,
   Sheet,
   Text,
+  openKeyboardNow,
 } from '@housekeeping/ui';
 import { useState } from 'react';
 import { View } from 'react-native';
@@ -26,7 +27,7 @@ import { useRecurringForm } from './recurring-form';
 
 type Editing = { kind: 'new' } | { kind: 'existing'; id: Id };
 
-/** The window of one Dauerposten (REQ-001): its fields, "Speichern", "Löschen". */
+/** The window of one Dauerposten (REQ-001): its fields, "Anlegen" / "Speichern", "Löschen". */
 function RecurringSheet(props: {
   recurringId?: Id;
   articleId?: Id;
@@ -97,7 +98,13 @@ export function RecurringScreen() {
   // "‹ Liste" from the list's ⋯ (`von=liste`), otherwise "‹ Verwalten".
   const { label: backLabel, back } = useOriginBack(params.von, 'verwalten');
   const [editing, setEditing] = useState<Editing | undefined>();
-  const startNew = () => setEditing({ kind: 'new' });
+  // iN-02 (review 0004): the window's "Artikel" takes the cursor. Without the tap's keyboard
+  // (iPhone) its focus came later, outside the tap: the window rose for a keyboard that never
+  // came and fell again after 1.5 s. Like every "… anlegen", the tap opens the keyboard now.
+  const startNew = () => {
+    openKeyboardNow();
+    setEditing({ kind: 'new' });
+  };
 
   const rows = recurringItems
     .flatMap((item) => {
@@ -136,21 +143,13 @@ export function RecurringScreen() {
           </Text>
         ) : null}
         {rows.length === 0 ? (
+          // N-11 (review 0004): "Dauerposten anlegen" stands once, in the head.
           <EmptyState
             icon="repeat"
             title="Noch keine Dauerposten"
             text="Was ihr regelmäßig braucht, kommt am fälligen Tag von selbst auf die Liste."
             testID="recurring-empty"
-          >
-            <Button
-              label="Dauerposten anlegen"
-              icon="plus"
-              disabled={online.disabled}
-              hint={online.hint}
-              onPress={startNew}
-              testID="recurring-empty-new"
-            />
-          </EmptyState>
+          />
         ) : (
           <>
             <Text variant="small" color="muted">

@@ -218,14 +218,21 @@ export function usePlaceWebFill(props: {
   /** A map link pasted into the search field goes to the form's link. */
   onLink: (link: string) => void;
   testID: string;
-}): { link: ReactNode; nameButton: ReactNode; windows: ReactNode } {
+}): {
+  link: ReactNode;
+  nameButton: ReactNode;
+  /** Return in "Name" does what the magnifier does (review 0004, N-04); none without the AI. */
+  searchName: (() => void) | undefined;
+  windows: ReactNode;
+} {
   const online = useOnlineOnly();
   const [open, setOpen] = useState(false);
   const [typing, setTyping] = useState(false);
   const [review, setReview] = useState<Review>();
   const search = useWebSearch(props.kind);
   const { suggestions, suggest, chosen, choose } = usePhotoSuggestions();
-  if (!features.aiRecipes) return { link: null, nameButton: null, windows: null };
+  if (!features.aiRecipes)
+    return { link: null, nameButton: null, searchName: undefined, windows: null };
   const { testID } = props;
   // Without a name there is nothing to search for yet: the field takes the cursor and the
   // keyboard comes with the tap (I-20; spec 0033, REQ-006). With one, the link fills the field.
@@ -383,5 +390,13 @@ export function usePlaceWebFill(props: {
       ) : null}
     </>
   );
-  return { link, nameButton, windows };
+  return {
+    link,
+    nameButton,
+    // Offline Return does nothing, as the greyed out magnifier.
+    searchName: () => {
+      if (!online.disabled) searchName();
+    },
+    windows,
+  };
 }

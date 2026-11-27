@@ -217,6 +217,42 @@ test.describe('REQ-006: restaurants and activities', () => {
     await expect(tid(page, 'activity-web-name-search')).toBeVisible();
     await expect(tid(page, 'activity-save')).toHaveText(/Anlegen/);
   });
+
+  // Nachklick 27.11. (review 0004), N-04 / N-09.
+  test('AC-016: Return in "Name" of "Restaurant anlegen" searches like the magnifier, nothing is created', async ({
+    page,
+  }) => {
+    const name = `Coccodrillo ${unique()}`;
+    const queries = await stubSearch(page, { ...searchReply, query: name, results: [] });
+    await open(page, '/rezepte?ansicht=restaurants');
+    await tid(page, 'restaurant-new').click();
+    await expect(tid(page, 'restaurant-sheet-title')).toHaveText('Restaurant anlegen');
+    await tid(page, 'restaurant-name').fill(name);
+    await tid(page, 'restaurant-name').press('Enter');
+    await expect(tid(page, 'restaurant-web-sheet')).toBeVisible();
+    await expect(tid(page, 'restaurant-web-query')).toHaveValue(name);
+    await expect.poll(() => queries).toEqual([name]);
+    await tid(page, 'restaurant-web-cancel').click();
+    await expect(tid(page, 'restaurant-sheet')).toBeVisible();
+    await tid(page, 'restaurant-save').click();
+    await expect(toastMessage(page)).toHaveText('Restaurant angelegt');
+  });
+
+  test('AC-017: Return in "Name" of "Aktivität anlegen" searches too; a new one is "angelegt"', async ({
+    page,
+  }) => {
+    const name = `Minigolf ${unique()}`;
+    const queries = await stubSearch(page, { ...searchReply, query: name, results: [] });
+    await open(page, '/aktivitaeten');
+    await tid(page, 'activity-add').click();
+    await tid(page, 'activity-name').fill(name);
+    await tid(page, 'activity-name').press('Enter');
+    await expect(tid(page, 'activity-web-sheet')).toBeVisible();
+    await expect.poll(() => queries).toEqual([name]);
+    await tid(page, 'activity-web-cancel').click();
+    await tid(page, 'activity-save').click();
+    await expect(toastMessage(page)).toHaveText('Aktivität angelegt');
+  });
 });
 
 test.describe('REQ-007 – REQ-010: ✨ "Mit KI ändern"', () => {

@@ -274,6 +274,8 @@ export function RestaurantFormFields(props: {
   focus?: RestaurantFormFocus;
   /** Right in the field "Name": "Im Web suchen" of a new one (spec 0055, REQ-010). */
   nameAction?: ReactNode;
+  /** Return in "Name" searches like the magnifier instead of saving (review 0004, N-04). */
+  onNameSearch?: () => void;
 }) {
   const { form } = props;
   const confirmation = form.place
@@ -295,6 +297,9 @@ export function RestaurantFormFields(props: {
         autoFocus={props.focus === 'name'}
         error={form.nameError}
         right={props.nameAction}
+        onSubmitEditing={props.onNameSearch}
+        returnKeyType={props.onNameSearch ? 'search' : undefined}
+        submitsWindow={props.onNameSearch ? false : undefined}
         testID="restaurant-name"
       />
       {/* The place field of restaurants, activities and stores (spec 0042, REQ-001). */}
