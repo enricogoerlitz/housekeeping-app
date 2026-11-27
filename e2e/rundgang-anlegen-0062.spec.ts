@@ -156,7 +156,7 @@ test.describe('REQ-001 – REQ-005: the window "Neu"', () => {
     await expect(tid(page, 'new-recipe-ai-text')).toHaveValue(CARD);
   });
 
-  test('AC-011, AC-012, AC-014: "Rezept erzeugen" sends the wish with the title and a photo', async ({
+  test('AC-011, AC-012, AC-014: "Erzeugen" in the head sends the wish with the title and a photo', async ({
     page,
   }) => {
     await noImages(page);
@@ -164,6 +164,10 @@ test.describe('REQ-001 – REQ-005: the window "Neu"', () => {
     await newRecipeWindow(page);
     await tid(page, 'new-recipe-title').fill('Meatball Pasta');
     await tid(page, 'new-recipe-ai-tab-prompt').click();
+    // The head names what happens on this tab; no second button below (owner, 27.11.2026).
+    await expect(tid(page, 'new-recipe-ai-submit')).toHaveText(/Erzeugen/);
+    await expect(tid(page, 'new-recipe-save')).toHaveCount(0);
+    await expect(page.getByText('Rezept erzeugen')).toHaveCount(0);
     await expect(tid(page, 'new-recipe-ai-submit')).toHaveAttribute('aria-disabled', 'true');
     await tid(page, 'new-recipe-ai-text').fill('scharf, ohne Sahne, für 4');
     await tid(page, 'new-recipe-ai-submit').click();

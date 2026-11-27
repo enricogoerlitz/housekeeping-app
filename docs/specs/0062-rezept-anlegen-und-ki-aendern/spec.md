@@ -42,7 +42,7 @@ anlegen“, Spec 0054) öffnet „Neu“: am Handy oben „Abbrechen · Neu · A
 unten (Bedienmuster „Fensterkopf“, Spec 0054). Darunter die Reiter „Websuche“ (Standard) und
 „KI-Rezept“, ganz unten leise „Foto“, „Zutaten einfügen“ und „Sammlung“. Keine Reihe großer
 Aktionsknöpfe. Ohne KI-Schalter (`features.aiRecipes`) nur der Titel. Offline: nur online
-(„Anlegen“, Lupe und „Rezept erzeugen“ ausgegraut mit „Offline – zum Bearbeiten brauchst du Netz“).
+(„Anlegen“, Lupe und „Erzeugen“ ausgegraut mit „Offline – zum Bearbeiten brauchst du Netz“).
 
 - AC-001: Angenommen Essen → Rezepte · Wenn ich „Rezept anlegen“ drücke · Dann ist „Neu“ offen mit
   „Websuche“ gewählt, „Titel“ hat den Cursor, „Anlegen“ steht im Fensterkopf, und es gibt keinen
@@ -80,20 +80,21 @@ in „KI-Rezept“, das die Seite liest (Spec 0049, AC-002). Offline: nur online
   Dann ist „KI-Rezept“ gewählt und der Link steht in „Was soll ins Rezept?“
 
 **REQ-004 — Reiter „KI-Rezept“.** Das Feld von Spec 0040 (Diktat, bis zu 3 Links, 4 Fotos, Schalter
-„Websuche“ und „Foto generieren“, an) und darunter ein normal großer Knopf „Rezept erzeugen“. Ein
+„Websuche“ und „Foto generieren“, an). Der Fensterkopf sagt hier „Erzeugen“ statt „Anlegen“ (am Desktop
+unten rechts), einen zweiten Knopf darunter gibt es nicht (Rückmeldung Enrico, 27.11.2026). Ein
 getippter Titel geht als „Titel: …“ mit und bleibt der Titel. Bis zur Antwort pulsieren Platzhalter
 (Spec 0055, REQ-003); danach öffnet die Rezeptseite im Bearbeitungsmodus mit dem Entwurf (Spec
 0040, AC-001). Scheitert es, bleibt der Wunsch mit dem Hinweis stehen. Offline: nur online.
 
-- AC-011: Angenommen „scharf, ohne Sahne, für 4“ in „KI-Rezept“ · Wenn ich „Rezept erzeugen“
-  drücke · Dann bekommt `ai-recipe-draft` den Wunsch mit `imagePrompt: true`, und danach ist die
+- AC-011: Angenommen „scharf, ohne Sahne, für 4“ in „KI-Rezept“ · Wenn ich „Erzeugen“
+  im Fensterkopf drücke · Dann bekommt `ai-recipe-draft` den Wunsch mit `imagePrompt: true`, und danach ist die
   Rezeptseite im Bearbeitungsmodus
 - AC-012: Angenommen der Titel „Meatball Pasta“ aus AC-011 · Dann geht „Titel: Meatball Pasta“ vor
   dem Wunsch mit, und der Entwurf heißt „Meatball Pasta“
-- AC-013: Angenommen die KI ist nicht erreichbar · Wenn ich „Rezept erzeugen“ drücke · Dann bleibt
+- AC-013: Angenommen die KI ist nicht erreichbar · Wenn ich „Erzeugen“ drücke · Dann bleibt
   das Fenster mit dem Wunsch offen und darunter steht der Hinweis der KI-Störung
-- AC-014: Angenommen „KI-Rezept“ ohne Wunsch, Link oder Foto · Dann ist „Rezept erzeugen“
-  deaktiviert
+- AC-014: Angenommen „KI-Rezept“ ohne Wunsch, Link oder Foto · Dann ist „Erzeugen“
+  deaktiviert, und weder „Anlegen“ noch ein zweiter Knopf stehen da
 
 **REQ-005 — Sammlung bleibt erreichbar.** „Sammlung“ wechselt das Fenster zur Wahl „Rezept ·
 Sammlung“ mit Titel und „Rezepte wählen“ wie bisher (Spec 0009, Spec 0037). Offline: nur online.

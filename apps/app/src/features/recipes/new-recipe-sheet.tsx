@@ -81,7 +81,7 @@ const NEW_TABS: { value: AiFillTab; label: string }[] = [
  * wide screens at the bottom). Tab "Websuche": the title with a magnifier in the field — Return
  * or the magnifier searches the web (cards and "Übernehmen" as in spec 0049), "Anlegen" saves a
  * recipe with that title. Tab "KI-Rezept": the field of spec 0040 with links, photos and "Foto
- * generieren", and "Rezept erzeugen". Cursor, keyboard and swiping as spec 0055. "Sammlung" turns
+ * generieren"; the head says "Erzeugen" there. Cursor, keyboard and swiping as spec 0055. "Sammlung" turns
  * it into a new collection (spec 0009); "Foto" and "Zutaten" go along with "Anlegen" (spec 0018,
  * E-01). A draft opens the recipe page in the edit mode; nothing of it is saved before
  * "Speichern".
@@ -250,18 +250,29 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
   };
 
   const collection = kind === 'collection';
-  // REQ-001: "Anlegen" in the head; a previewed hit makes it "Übernehmen" (spec 0049).
+  // REQ-001: the head names what happens on the shown tab: "Anlegen" with the title on "Websuche"
+  // (a previewed hit makes it "Übernehmen", spec 0049), "Erzeugen" on "KI-Rezept" — there is no
+  // title to save, the AI writes the recipe (owner, 27.11.2026: no second button below).
   const primary: SheetAction =
     !collection && tab === 'web' && search.preview
       ? webSearchPrimary(search, online, takeFromWeb, 'new-recipe-web')
-      : {
-          label: 'Anlegen',
-          icon: 'check',
-          onPress: save,
-          disabled: online.disabled || fill.busy,
-          hint: online.hint,
-          testID: 'new-recipe-save',
-        };
+      : !collection && tab === 'prompt'
+        ? {
+            label: 'Erzeugen',
+            icon: 'sparkles',
+            onPress: writeWithAi,
+            disabled: online.disabled || fill.busy || !fill.ready,
+            hint: online.hint,
+            testID: 'new-recipe-ai-submit',
+          }
+        : {
+            label: 'Anlegen',
+            icon: 'check',
+            onPress: save,
+            disabled: online.disabled || fill.busy,
+            hint: online.hint,
+            testID: 'new-recipe-save',
+          };
   const grown =
     !collection && (tab === 'prompt' || search.state.status !== 'idle' || !!search.preview);
 
@@ -409,20 +420,7 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
                 ) : null}
               </Stack>
             ) : (
-              <Stack gap={12}>
-                <AiFillFields fill={fill} inputRef={tabs.promptField} testID="new-recipe-ai" />
-                {/* REQ-004: a normal button, the head keeps "Anlegen". */}
-                <View style={{ alignItems: 'flex-start' }}>
-                  <Button
-                    label={fill.busy ? 'Wird erzeugt …' : 'Rezept erzeugen'}
-                    icon="sparkles"
-                    disabled={online.disabled || fill.busy || !fill.ready}
-                    hint={online.hint}
-                    onPress={writeWithAi}
-                    testID="new-recipe-ai-submit"
-                  />
-                </View>
-              </Stack>
+              <AiFillFields fill={fill} inputRef={tabs.promptField} testID="new-recipe-ai" />
             )}
           </TabSwipeContent>
         )}
