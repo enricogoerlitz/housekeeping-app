@@ -70,6 +70,7 @@ Ablauf und Regeln: siehe `AGENTS.md`, Abschnitt „Workflow per feature“.
 | [0061](0061-unfertige-rezepte-ausarbeiten/spec.md)          | Unfertige Rezepte nacheinander ausarbeiten                             | umgesetzt   |
 | [0062](0062-rezept-anlegen-und-ki-aendern/spec.md)          | Rezept anlegen und mit KI ändern                                       | umgesetzt   |
 | [0063](0063-vorschlaege-beim-planen/spec.md)                | Vorschläge beim Planen                                                 | umgesetzt   |
+| [0064](0064-youtube-rezepte/spec.md)                        | Rezepte aus YouTube-Videos                                             | freigegeben |
 
 ## Welle 2 (0019–0028): Bau-Reihenfolge und Regeln
 
