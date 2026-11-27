@@ -145,6 +145,21 @@ function chosenArticle(choice: DraftArticle): Article {
   if (choice.kind === 'hit') return catalogChoice(choice.hit);
   const existing = findArticleByName(choice.name, getData().articles);
   if (existing) return existing;
+  // Spec 0055, REQ-009: area and diet the AI proposed; "Neu aus Rezepten" so somebody checks them.
+  if (choice.proposed) {
+    const [proposed] = insertArticles([
+      {
+        name: choice.name,
+        synonyms: [],
+        diet: choice.proposed.diet ?? 'unknown',
+        isPantry: false,
+        needsReview: true,
+        ...(choice.proposed.areaId === undefined ? {} : { areaId: choice.proposed.areaId }),
+      },
+    ]);
+    if (!proposed?.name) throw new Error('Name fehlt');
+    return proposed;
+  }
   const id = createArticle({ name: choice.name });
   const created = getData().articles.find((article) => article.id === id);
   if (!created) throw new Error('Name fehlt');

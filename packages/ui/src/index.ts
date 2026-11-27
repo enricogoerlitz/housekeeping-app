@@ -34,6 +34,7 @@ export {
   TypingIndicator,
   KindLine,
   KindDot,
+  LoadingLines,
   KIND_ICONS,
   type BadgeProps,
   type PhotoProps,
@@ -57,7 +58,8 @@ export {
 export { pickImageFile } from './pick-image';
 export { useImageDropAndPaste } from './image-drop';
 export { useKeyboard } from './keyboard';
-export { openKeyboardNow } from './keyboard-proxy';
+export { focusAfterChange, openKeyboardNow } from './keyboard-proxy';
+export { TabSwipeContent } from './tab-swipe-area';
 export { useRevealOnShow } from './reveal-on-show';
 export { tabSwipe, type TabSwipe } from './tab-swipe';
 export { useTabPreview } from './tab-preview';

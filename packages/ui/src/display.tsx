@@ -243,16 +243,9 @@ function useReduceMotion(): boolean {
 
 const PULSE_MS = 900;
 
-function GeneratingPhoto(props: {
-  label: string;
-  box: ViewStyle;
-  style?: StyleProp<ViewStyle>;
-  testID?: string;
-}) {
-  const theme = useTheme();
+/** 0 → 1 → 0 in a loop while motion is allowed; 0 for good with reduced motion. */
+function usePulse(): Animated.Value {
   const reduceMotion = useReduceMotion();
-  // A lighter layer over the sunken surface fades in and out: the tile seems to breathe, while
-  // the sparkle stays steady on top.
   const [glow] = useState(() => new Animated.Value(0));
   useEffect(() => {
     if (reduceMotion) return;
@@ -270,6 +263,19 @@ function GeneratingPhoto(props: {
       glow.setValue(0);
     };
   }, [glow, reduceMotion]);
+  return glow;
+}
+
+function GeneratingPhoto(props: {
+  label: string;
+  box: ViewStyle;
+  style?: StyleProp<ViewStyle>;
+  testID?: string;
+}) {
+  const theme = useTheme();
+  // A lighter layer over the sunken surface fades in and out: the tile seems to breathe, while
+  // the sparkle stays steady on top.
+  const glow = usePulse();
   return (
     <View
       testID={props.testID}
@@ -291,6 +297,56 @@ function GeneratingPhoto(props: {
       <ToneContext.Provider value={undefined}>
         <Icon name="sparkles" size={26} color="muted" />
       </ToneContext.Provider>
+    </View>
+  );
+}
+
+const LINE_WIDTHS = ['92%', '64%', '80%', '48%', '72%', '56%'] as const;
+
+/**
+ * Something is being read or made (spec 0055, REQ-003): the status line above a few placeholder
+ * lines that breathe like a generating photo; one progress indicator with the status as its
+ * name. Still when the system reduces motion.
+ */
+export function LoadingLines(props: { label: string; lines?: number; testID?: string }) {
+  const theme = useTheme();
+  const glow = usePulse();
+  const count = props.lines ?? 3;
+  return (
+    <View
+      testID={props.testID}
+      accessibilityRole="progressbar"
+      accessibilityLabel={props.label}
+      style={{ gap: 10 }}
+    >
+      <Text variant="small" color="muted">
+        {props.label}
+      </Text>
+      {Array.from({ length: count }, (_, index) => (
+        <View
+          key={index}
+          testID={props.testID ? `${props.testID}-line-${index}` : undefined}
+          style={{
+            width: LINE_WIDTHS[index % LINE_WIDTHS.length],
+            height: 12,
+            borderRadius: 6,
+            overflow: 'hidden',
+            backgroundColor: theme.colors.surfaceSunken,
+          }}
+        >
+          <Animated.View
+            style={{
+              position: 'absolute',
+              top: 0,
+              right: 0,
+              bottom: 0,
+              left: 0,
+              backgroundColor: theme.colors.surface,
+              opacity: glow,
+            }}
+          />
+        </View>
+      ))}
     </View>
   );
 }

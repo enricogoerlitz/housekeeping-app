@@ -13,6 +13,7 @@ import {
 } from '@housekeeping/core';
 import {
   Button,
+  IconButton,
   Photo,
   Row,
   Sheet,
@@ -22,7 +23,7 @@ import {
   toast,
   useTheme,
 } from '@housekeeping/ui';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { useOnlineOnly } from '@/features/shell/offline';
@@ -203,10 +204,12 @@ function ReviewSheet(props: {
 }
 
 /**
- * The link "Im Web suchen" and its windows. `current` are the form's values when it edits an
- * existing place (then the Änderungsansicht comes first); without it the form is filled at once.
+ * "Im Web suchen" of a form: the link, the magnifier beside "Name" (spec 0055, REQ-010) and the
+ * windows. `current` are the form's values when it edits an existing place (then the
+ * Änderungsansicht comes first); without it the form is filled at once. Nothing without the
+ * AI switch.
  */
-export function PlaceWebFill(props: {
+export function usePlaceWebFill(props: {
   kind: ProposalPlaceKind;
   name: string;
   current?: PlaceValues;
@@ -215,15 +218,36 @@ export function PlaceWebFill(props: {
   /** A map link pasted into the search field goes to the form's link. */
   onLink: (link: string) => void;
   testID: string;
-}) {
+}): { link: ReactNode; nameButton: ReactNode; windows: ReactNode } {
   const online = useOnlineOnly();
   const [open, setOpen] = useState(false);
   const [typing, setTyping] = useState(false);
   const [review, setReview] = useState<Review>();
   const search = useWebSearch(props.kind);
   const { suggestions, suggest, chosen, choose } = usePhotoSuggestions();
-  if (!features.aiRecipes) return null;
+  if (!features.aiRecipes) return { link: null, nameButton: null, windows: null };
   const { testID } = props;
+  // Without a name there is nothing to search for yet: the field takes the cursor and the
+  // keyboard comes with the tap (I-20; spec 0033, REQ-006). With one, the link fills the field.
+  const openWindow = () => {
+    search.reset();
+    search.setQuery(props.name.trim());
+    if (!props.name.trim()) openKeyboardNow();
+    setTyping(!props.name.trim());
+    setOpen(true);
+  };
+  // AC-034, AC-035 (spec 0055): the magnifier searches the name at once.
+  const searchName = () => {
+    const name = props.name.trim();
+    if (!name) {
+      openWindow();
+      return;
+    }
+    search.reset();
+    search.search(name);
+    setTyping(false);
+    setOpen(true);
+  };
 
   const take = (taken: WebTake) => {
     const after = placeValuesFromResult(props.kind, taken.card, taken.place ?? {});
@@ -280,28 +304,33 @@ export function PlaceWebFill(props: {
     });
   };
 
-  return (
+  const link = (
+    <View style={{ alignItems: 'flex-start' }}>
+      <Button
+        label="Im Web suchen"
+        icon="search"
+        variant="link"
+        size="sm"
+        disabled={online.disabled}
+        hint={online.hint}
+        onPress={openWindow}
+        testID={`${testID}-open`}
+      />
+    </View>
+  );
+  const nameButton = (
+    <IconButton
+      icon="search"
+      label="Im Web suchen"
+      size={40}
+      disabled={online.disabled}
+      hint={online.hint}
+      onPress={searchName}
+      testID={`${testID}-name-search`}
+    />
+  );
+  const windows = (
     <>
-      <View style={{ alignItems: 'flex-start' }}>
-        <Button
-          label="Im Web suchen"
-          icon="search"
-          variant="link"
-          size="sm"
-          disabled={online.disabled}
-          hint={online.hint}
-          onPress={() => {
-            search.reset();
-            search.setQuery(props.name.trim());
-            // Without a name there is nothing to search for yet: the field takes the cursor and
-            // the keyboard comes with the tap (I-20; spec 0033, REQ-006).
-            if (!props.name.trim()) openKeyboardNow();
-            setTyping(!props.name.trim());
-            setOpen(true);
-          }}
-          testID={`${testID}-open`}
-        />
-      </View>
       {open ? (
         <Sheet
           visible
@@ -354,4 +383,5 @@ export function PlaceWebFill(props: {
       ) : null}
     </>
   );
+  return { link, nameButton, windows };
 }

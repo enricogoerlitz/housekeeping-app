@@ -230,6 +230,28 @@ function mergeVariants(
 }
 
 /**
+ * The draft's variants in its order, the first the standard; one with the name of a variant there
+ * was keeps that variant's id and name (spec 0055, AC-019).
+ */
+function keepVariantIds(
+  current: readonly RecipeVariant[],
+  drafted: readonly RecipeVariant[],
+): { variants: RecipeVariant[]; ids: Map<Id, Id> } {
+  const ids = new Map<Id, Id>();
+  const used = new Set<Id>();
+  const variants = drafted.map((variant, index): RecipeVariant => {
+    const same = current.find(
+      (known) => !used.has(known.id) && normalizeText(known.name) === normalizeText(variant.name),
+    );
+    const id = same?.id ?? variant.id;
+    used.add(id);
+    ids.set(variant.id, id);
+    return { id, name: same?.name ?? variant.name, isDefault: index === 0 };
+  });
+  return { variants, ids };
+}
+
+/**
  * Fills the open page with a draft from outside without saving anything: the person checks it in
  * the edit mode and saves it with "Speichern" or throws it away with "Abbrechen". Spec 0040 hooks
  * in here (and the app's page editor `load`, which also takes a photo).
@@ -238,8 +260,12 @@ export function fillPageDraft(
   page: PageDraft,
   input: PageDraftInput,
   newId: () => Id,
-  /** "Ersetzen" (spec 0040, AC-006): the draft's ingredients and steps take the place of the old. */
-  options: { replace?: boolean } = {},
+  /**
+   * "Ersetzen" (spec 0040, AC-006): the draft's ingredients and steps take the place of the old.
+   * `change` (spec 0055, REQ-006): the draft is the whole recipe changed by a wish; variants of
+   * the same name keep their ids, so the Änderungsansicht shows only what changed (AC-019).
+   */
+  options: { replace?: boolean; change?: boolean } = {},
 ): PageDraft {
   let next = page;
   const replace = options.replace === true;
@@ -285,7 +311,9 @@ export function fillPageDraft(
   const merged =
     next.ingredients.kind === 'collection'
       ? { variants: next.ingredients.variants, ids: new Map<Id, Id>() }
-      : mergeVariants(next.ingredients.variants, input.variants ?? []);
+      : options.change && replace && newRows.length > 0
+        ? keepVariantIds(page.ingredients.variants, input.variants ?? [])
+        : mergeVariants(next.ingredients.variants, input.variants ?? []);
   const variantOf = (id: Id | undefined) => (id === undefined ? undefined : merged.ids.get(id));
   next = withSection(next, { ...next.ingredients, variants: merged.variants });
   if (newRows.length > 0) {

@@ -3,7 +3,7 @@ import type { Id, Restaurant } from '@housekeeping/core';
 import { Sheet, Stack, Text, toast } from '@housekeeping/ui';
 
 import { useOnlineOnly } from '@/features/shell/offline';
-import { PlaceWebFill } from '@/features/web-search/place-web-fill';
+import { usePlaceWebFill } from '@/features/web-search/place-web-fill';
 
 import {
   RestaurantFormFields,
@@ -127,6 +127,16 @@ function RestaurantFormSheet(props: {
 }) {
   const online = useOnlineOnly();
   const { form } = props;
+  // Spec 0049: a new one is filled at once, an existing one shows its changes first.
+  const web = usePlaceWebFill({
+    kind: 'restaurant',
+    name: form.name,
+    ...(form.restaurant ? { current: form.webValues() } : {}),
+    hasPhoto: form.restaurant?.photoPath !== undefined,
+    onApply: form.applyWeb,
+    onLink: form.changeLink,
+    testID: 'restaurant-web',
+  });
   return (
     <Sheet
       visible
@@ -152,24 +162,18 @@ function RestaurantFormSheet(props: {
             {online.hint}
           </Text>
         ) : null}
-        {/* Spec 0049: a new one is filled at once, an existing one shows its changes first. */}
-        <PlaceWebFill
-          kind="restaurant"
-          name={form.name}
-          {...(form.restaurant ? { current: form.webValues() } : {})}
-          hasPhoto={form.restaurant?.photoPath !== undefined}
-          onApply={form.applyWeb}
-          onLink={form.changeLink}
-          testID="restaurant-web"
-        />
+        {/* Spec 0055, REQ-010: a new one searches from the name; an existing one keeps the link. */}
+        {form.restaurant ? web.link : null}
         <RestaurantFormFields
           form={form}
+          {...(form.restaurant ? {} : { nameAction: web.nameButton })}
           focus={props.focus}
           onOpenExisting={(existing) => {
             props.onClose();
             props.onOpenExisting(existing.id);
           }}
         />
+        {web.windows}
       </Stack>
     </Sheet>
   );
