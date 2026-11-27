@@ -58,6 +58,8 @@ Aktivitäten „Liste“. Gespeichert lokal je Gerät. Offline: offline vollstä
 7. Browser-Durchklick 27.11. (Review 0003, B-07): Die Liste der Aktivitäten rechnet die Breite
    ihrer Spalten wie die Kacheln aus der gemessenen Breite; vorher (31,8 %) endete die dritte
    Spalte 28 px vor dem rechten Rand.
+8. Browser-Durchklick 27.11., Folge (B-15): Karten einer Zeile in der Liste der Aktivitäten
+   sind gleich hoch; eine Karte ohne „Zuletzt“-Zeile wächst auf die Höhe der höchsten.
 
 ## Daten
 

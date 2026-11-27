@@ -142,6 +142,21 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
   );
   // "Teilen" (spec 0047, REQ-001): only the link to the page; works offline.
   const share = () => void shareTarget({ kind: 'activity', id: activity.id });
+  // Spec 0037 and review 0003 (B-06): editing is the pencil at the top right, as on a recipe.
+  const editButton = (
+    <IconButton
+      icon="pencil"
+      size={44}
+      label="Bearbeiten"
+      disabled={online.disabled}
+      hint={online.hint}
+      onPress={() => {
+        openKeyboardNow();
+        props.onWindow('bearbeiten');
+      }}
+      testID="activity-edit"
+    />
+  );
   const more = (
     <Menu<'share' | 'delete'>
       trigger="icon"
@@ -169,6 +184,7 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
       right={
         <Row gap={4}>
           {favorite}
+          {editButton}
           {more}
         </Row>
       }
@@ -190,6 +206,7 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
             )}
             <Row gap={4}>
               {favorite}
+              {editButton}
               {more}
             </Row>
           </Row>
@@ -285,18 +302,6 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
               hint={online.hint}
               onPress={() => props.onWindow('einplanen')}
               testID="activity-plan"
-            />
-            <Button
-              label="Bearbeiten"
-              icon="pencil"
-              variant="secondary"
-              disabled={online.disabled}
-              hint={online.hint}
-              onPress={() => {
-                openKeyboardNow();
-                props.onWindow('bearbeiten');
-              }}
-              testID="activity-edit"
             />
           </Row>
         </Stack>

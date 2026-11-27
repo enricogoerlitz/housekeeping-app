@@ -143,6 +143,8 @@ export function ActivityKindField(props: {
 
   return (
     <Stack gap={8}>
+      {/* Named like "Name" above it, also while searching (review 0003, B-14). */}
+      <Text variant="smallStrong">Art</Text>
       <SearchOrCreate
         query={query}
         onQueryChange={(value) => {

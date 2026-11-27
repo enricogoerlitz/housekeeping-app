@@ -124,6 +124,11 @@ gemerkt“. Quelle: A-03. Offline: offline lesend.
 15. Browser-Durchklick 27.11. (B-08): Auf Tablet und Desktop heißen die Kopf-Knöpfe mit Wort:
     „Arten“ neben „Aktivität anlegen“ und unter „Haushalt“ „Aufgabe anlegen“ statt nur „+“
     (Spec 0026); am Handy bleiben die Symbol-Knöpfe.
+16. Browser-Durchklick 27.11., Folge (B-11): Mit Rhythmus nennt der Knopf die Serie:
+    „Wöchentlich ab Di 1.12. einplanen“, „Alle 2 Wochen ab …“, „Monatlich ab …“, „Jährlich ab …“
+    (`seriesPlanButtonLabel`), im Fenster „Einplanen“ der Aktivität und im „+“ des Kalenders.
+17. Browser-Durchklick 27.11., Folge (B-14): Das Feld „Art“ trägt auch beim Suchen die
+    Beschriftung „Art“, wie „Name“ darüber.
 
 ## Daten
 

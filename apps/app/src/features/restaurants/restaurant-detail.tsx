@@ -148,6 +148,18 @@ function RestaurantDetailBody(props: RestaurantDetailProps & { restaurant: Resta
   );
   // "Teilen" (spec 0047, REQ-001): only the link to the page; works offline.
   const share = () => void shareTarget({ kind: 'restaurant', id: restaurant.id });
+  // Spec 0037 and review 0003 (B-06): editing is the pencil at the top right, as on a recipe.
+  const editButton = (
+    <IconButton
+      icon="pencil"
+      size={44}
+      label="Bearbeiten"
+      disabled={online.disabled}
+      hint={online.hint}
+      onPress={() => edit()}
+      testID="restaurant-edit"
+    />
+  );
   const more = (
     <Menu<'share' | 'delete'>
       trigger="icon"
@@ -175,6 +187,7 @@ function RestaurantDetailBody(props: RestaurantDetailProps & { restaurant: Resta
       right={
         <Row gap={4}>
           {favorite}
+          {editButton}
           {more}
         </Row>
       }
@@ -196,6 +209,7 @@ function RestaurantDetailBody(props: RestaurantDetailProps & { restaurant: Resta
             )}
             <Row gap={4}>
               {favorite}
+              {editButton}
               {more}
             </Row>
           </Row>
@@ -293,15 +307,6 @@ function RestaurantDetailBody(props: RestaurantDetailProps & { restaurant: Resta
               hint={online.hint}
               onPress={() => props.onWindow('einplanen')}
               testID="restaurant-plan"
-            />
-            <Button
-              label="Bearbeiten"
-              icon="pencil"
-              variant="secondary"
-              disabled={online.disabled}
-              hint={online.hint}
-              onPress={() => edit()}
-              testID="restaurant-edit"
             />
           </Row>
         </Stack>

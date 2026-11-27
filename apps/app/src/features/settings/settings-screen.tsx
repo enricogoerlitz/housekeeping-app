@@ -250,17 +250,26 @@ function SyncLine() {
       setSyncing(false);
     }
   };
+  // The status reads in grey; only "Jetzt abgleichen" is the link (review 0003, B-13).
   return (
-    <Button
-      label={row.label}
-      accessibilityLabel={row.accessibilityLabel}
-      variant="link"
-      size="sm"
-      disabled={online.disabled}
-      hint={online.hint}
-      onPress={() => void run()}
-      testID="sync-last"
-    />
+    <View
+      style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 6 }}
+      testID="sync-row"
+    >
+      <Text variant="small" color="muted" testID="sync-status">
+        {`${row.status} ·`}
+      </Text>
+      <Button
+        label={row.action}
+        accessibilityLabel={row.accessibilityLabel}
+        variant="link"
+        size="sm"
+        disabled={online.disabled}
+        hint={online.hint}
+        onPress={() => void run()}
+        testID="sync-last"
+      />
+    </View>
   );
 }
 

@@ -10,6 +10,7 @@ import {
   checkEntryNote,
   defaultRepeat,
   repeatRule,
+  seriesPlanButtonLabel,
   seriesRuleLabel,
   suggestedReminder,
   TIME_FIELD_WORDS,
@@ -103,6 +104,10 @@ export function PlanPlaceSheet(props: {
       slot={restaurant ? 'last' : 'first'}
       onPlan={plan}
       onClose={props.onClose}
+      actionLabel={(choice) => {
+        const rule = ruleFor(choice);
+        return rule && choice.date ? seriesPlanButtonLabel(rule, choice.date) : undefined;
+      }}
       notice={(choice) => {
         const rule = ruleFor(choice);
         return rule && choice.date

@@ -121,6 +121,9 @@ steht beim Eigentümer „Eigentümer“. Quelle: V-01. Offline: offline lesend.
     Karten-Link blieb alt.
 12. Browser-Durchklick 27.11. (B-12): Scheitert das Abrufen eines Kurzlinks, steht unter dem Feld
     nur der Fehler; „Kurzlink erkannt – Ort wird beim Speichern abgerufen“ fällt dann weg.
+13. Browser-Durchklick 27.11., Folge (B-06): Bearbeiten ist auf der Seite und in der
+    Schnellansicht eines Restaurants und einer Aktivität der Stift oben rechts zwischen ♥ und ⋯, wie
+    beim Rezept (Spec 0037, REQ-001). Der Knopf „Bearbeiten“ neben „Route“ und „Einplanen“ entfällt.
 
 ## Daten
 

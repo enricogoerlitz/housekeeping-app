@@ -147,10 +147,11 @@ test('AC-039, AC-041: "Jetzt abgleichen" is a button; offline it is greyed out',
   await login(page, 'enrico');
   await openSettings(page);
   const row = tid(page, 'sync-last');
-  await expect(row).toContainText('Zuletzt abgeglichen: heute');
+  const status = tid(page, 'sync-status');
+  await expect(status).toContainText('Zuletzt abgeglichen: heute');
   await expect(row).toContainText('Jetzt abgleichen');
   await row.click();
-  await expect(row).toContainText('Zuletzt abgeglichen: heute');
+  await expect(status).toContainText('Zuletzt abgeglichen: heute');
   await goOffline(page);
   await expect(row).toHaveAttribute('aria-disabled', 'true');
 });

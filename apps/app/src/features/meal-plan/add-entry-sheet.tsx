@@ -17,6 +17,7 @@ import {
   initialAddEntryState,
   offersReminder,
   repeatRule,
+  seriesPlanButtonLabel,
   seriesRuleLabel,
   type RepeatDraft,
   type AddEntryChoice,
@@ -162,7 +163,12 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
     const noEaters = needsEaters && state.portions.eaterIds.length + state.portions.guests === 0;
     actions = {
       primary: {
-        label: state.later ? 'Vormerken' : 'Einplanen',
+        // A series says so (review 0003, B-11): "Wöchentlich ab Di 1.12. einplanen".
+        label: state.later
+          ? 'Vormerken'
+          : rule && date
+            ? seriesPlanButtonLabel(rule, date)
+            : 'Einplanen',
         icon: 'plus',
         disabled: online.disabled || noEaters,
         hint: online.hint ?? (noEaters ? 'Wähl aus, wer mitisst.' : undefined),
