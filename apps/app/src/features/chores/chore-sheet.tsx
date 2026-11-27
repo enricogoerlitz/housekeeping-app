@@ -12,10 +12,13 @@ import {
   useToday,
 } from '@housekeeping/api';
 import {
+  choreCalendarEvent,
   choreDraftErrors,
   choreDraftFrom,
+  choreDueOn,
   choreFieldsOf,
   choreNextDate,
+  choreNoticeLabel,
   postponedNotice,
   postponeOptions,
   seasonLabel,
@@ -44,6 +47,7 @@ import {
 import { useMemo, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 
+import { AddToCalendar, appLink } from '@/features/calendar/add-to-calendar';
 import { confirmFirst } from '@/features/shell/confirm-dialog';
 import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 import { PlanDateCalendar } from '@/lib/plan-date-calendar';
@@ -122,7 +126,11 @@ function useChoreDetail(props: ChoreDetailProps): {
   const [editing, setEditing] = useState(false);
   const [draft, update, reset] = useChoreDraft(() => choreDraftFrom(chore, today, me.id));
   const [errors, setErrors] = useState<ChoreDraftErrors>({});
-  const time = useChoreTime(chore.dueTime, chore.remindAtDueTime !== false);
+  const time = useChoreTime(
+    chore.dueTime,
+    chore.remindAtDueTime !== false,
+    chore.noticeDaysBefore ?? 0,
+  );
   const recent = useMemo(() => recentEntries(events, chore), [events, chore]);
   const asNeeded = chore.recurrence.type === 'asNeeded';
 
@@ -150,6 +158,7 @@ function useChoreDetail(props: ChoreDetailProps): {
         ...choreFieldsOf(draft, members, chore),
         dueTime: time.value ?? null,
         remindAtDueTime: time.remind,
+        noticeDaysBefore: time.notice,
       });
     } catch (error) {
       setErrors({ title: errorMessage(error, FAILED_MESSAGE) });
@@ -217,6 +226,9 @@ function useChoreDetail(props: ChoreDetailProps): {
     withUndo(() => postponeChore(chore.id, day), postponedNotice(chore, day, today, away));
   };
   const postponeChoices = postponeOptions(chore, today, away);
+  // Spec 0059: the Termin after trips, for "In meinen Kalender"; none for "Flexibel" (only "etwa").
+  const due = chore.recurrence.type === 'flexible' ? undefined : choreDueOn(chore, away);
+  const notice = choreNoticeLabel(chore.noticeDaysBefore);
 
   return {
     title: chore.title,
@@ -234,6 +246,11 @@ function useChoreDetail(props: ChoreDetailProps): {
           <Text variant="smallStrong" testID="chore-next">
             {nextText}
           </Text>
+          {notice ? (
+            <Text variant="small" color="muted" testID="chore-notice-line">
+              {notice}
+            </Text>
+          ) : null}
           {lastEntry ? (
             <EntryLine event={lastEntry} today={today} prefix="Zuletzt" testID="chore-last" />
           ) : (
@@ -351,6 +368,16 @@ function useChoreDetail(props: ChoreDetailProps): {
             testID="chore-delete"
           />
         </Row>
+        {due ? (
+          <AddToCalendar
+            event={choreCalendarEvent({
+              chore,
+              due,
+              link: appLink({ screen: 'chore', choreId: chore.id }),
+            })}
+            testID="chore-calendar"
+          />
+        ) : null}
       </Stack>
     ),
   };

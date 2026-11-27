@@ -778,7 +778,14 @@ function checkNotificationColumns(table: string, row: Row): void {
     if (row.starts_at != null && row.kind !== 'restaurant' && row.kind !== 'activity') {
       throw violated();
     }
-    checkReminderColumns(row);
+    checkReminderColumns(row, 366);
+    if (row.reminder_at != null && row.date == null) throw violated();
+  }
+  // Spec 0059: activity_series_reminder_* (0–30 days) and chores_notice_days_before_valid.
+  if (table === 'activity_series') checkReminderColumns(row, 30);
+  if (table === 'chores' && row.notice_days_before != null) {
+    const days = Number(row.notice_days_before);
+    if (!Number.isInteger(days) || days < 1 || days > 60) throw violated();
   }
 }
 
@@ -789,13 +796,16 @@ const CONTROL_CHARACTER =
 
 /**
  * Spec 0017: meal_plan_entries_reminder_day_offset_valid, _reminder_text_valid,
- * _reminder_complete, _reminder_text_needs_time and _reminder_needs_date.
+ * _reminder_complete and _reminder_text_needs_time; the same at activity_series (spec 0059).
  */
-function checkReminderColumns(row: Row): void {
+function checkReminderColumns(row: Row, maxOffset: number): void {
   const violated = () => new TransportError('permanent', '23514', 400);
   const offset = row.reminder_day_offset;
   const text = row.reminder_text;
-  if (offset != null && !(Number.isInteger(offset) && Number(offset) >= 0 && Number(offset) <= 366))
+  if (
+    offset != null &&
+    !(Number.isInteger(offset) && Number(offset) >= 0 && Number(offset) <= maxOffset)
+  )
     throw violated();
   if (
     text != null &&
@@ -808,7 +818,6 @@ function checkReminderColumns(row: Row): void {
     throw violated();
   if ((offset == null) !== (row.reminder_at == null)) throw violated();
   if (text != null && row.reminder_at == null) throw violated();
-  if (row.reminder_at != null && row.date == null) throw violated();
 }
 
 /**

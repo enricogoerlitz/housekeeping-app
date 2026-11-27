@@ -14,13 +14,21 @@ import {
 } from '@housekeeping/api';
 import {
   formatPickerDate,
+  MAX_REMINDER_TEXT,
   monthPickerStart,
   peopleLabel,
+  planEntryCalendarEvent,
+  reminderTextCounter,
   repeatRule,
+  SERIES_REMINDER_DAY_OPTIONS,
+  seriesPlanEntries,
+  seriesReminderDraft,
+  seriesReminderSave,
   seriesRuleLabel,
   TIME_FIELD_WORDS,
   withNote,
   type ActivitySeries,
+  type SeriesReminderDraft,
   type ISODate,
   type Id,
   type RepeatDraft,
@@ -33,6 +41,7 @@ import {
   Row,
   Sheet,
   Stack,
+  SwitchRow,
   Text,
   TextField,
   TimeField,
@@ -41,6 +50,7 @@ import {
 import { useState } from 'react';
 import { View } from 'react-native';
 
+import { AddToCalendar, appLink } from '@/features/calendar/add-to-calendar';
 import { EaterPicker } from '@/features/meal-plan/plan-fields';
 import { confirmFirst } from '@/features/shell/confirm-dialog';
 import { errorMessage, FAILED_MESSAGE } from '@/features/shell/error-message';
@@ -100,6 +110,10 @@ export function SeriesOccurrenceSheet(props: { seriesId: Id; on: ISODate; onClos
   const rhythm = `${seriesRuleLabel(series.rule, series.startsOn)}, ${
     series.endsOn ? `bis ${formatPickerDate(series.endsOn)}` : 'dauerhaft'
   }`;
+  // Spec 0059, REQ-001: this Termin as the calendar shows it, with the reminder of its series.
+  const termin = seriesPlanEntries([series], exceptions, date, date).find(
+    (entry) => entry.series?.on === props.on,
+  );
 
   const run = (action: () => void, message: string) => {
     try {
@@ -193,6 +207,14 @@ export function SeriesOccurrenceSheet(props: { seriesId: Id; on: ISODate; onClos
                 {`Verschoben vom ${formatPickerDate(props.on)}`}
               </Text>
             ) : null}
+            {series.reminder ? (
+              <Row gap={8}>
+                <Icon name="alarm-clock" size={18} color="muted" />
+                <Text variant="small" color="muted" testID="occurrence-reminder">
+                  {reminderLine(series.reminder)}
+                </Text>
+              </Row>
+            ) : null}
           </Stack>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
             <Button
@@ -258,9 +280,86 @@ export function SeriesOccurrenceSheet(props: { seriesId: Id; on: ISODate; onClos
               testID="series-delete"
             />
           </View>
+          {termin ? (
+            <AddToCalendar
+              event={planEntryCalendarEvent({
+                entry: termin,
+                title: name,
+                slotName,
+                location: activity?.address ?? activity?.placeName,
+                link: appLink({ screen: 'calendar', day: date }),
+              })}
+              testID="occurrence-calendar"
+            />
+          ) : null}
         </Stack>
       )}
     </Sheet>
+  );
+}
+
+/** "Erinnern 1 Woche vorher, 18:00 · Geschenk besorgen" (spec 0059, REQ-003). */
+function reminderLine(reminder: NonNullable<ActivitySeries['reminder']>): string {
+  const day =
+    SERIES_REMINDER_DAY_OPTIONS.find((option) => option.value === reminder.offsetDays)?.label ??
+    `${reminder.offsetDays} Tage vorher`;
+  return `Erinnern ${day}, ${reminder.at}${reminder.text ? ` · ${reminder.text}` : ''}`;
+}
+
+/** "Erinnern" of "Serie bearbeiten" (spec 0059, REQ-003): Vorlauf, Uhrzeit and text. */
+function SeriesReminderFields(props: {
+  value: SeriesReminderDraft;
+  onChange: (value: SeriesReminderDraft) => void;
+  error: string | undefined;
+  disabled: boolean;
+}) {
+  const { value, onChange } = props;
+  return (
+    <View style={{ gap: 12 }} testID="series-edit-reminder">
+      <SwitchRow
+        label="Erinnern"
+        description="Meldet sich in der Glocke, vor jedem Termin."
+        value={value.on}
+        onValueChange={(on) => onChange({ ...value, on })}
+        disabled={props.disabled}
+        testID="series-edit-reminder-switch"
+      />
+      {value.on ? (
+        <>
+          <ChoiceChips
+            label="Wann"
+            options={SERIES_REMINDER_DAY_OPTIONS.map((option) => ({
+              value: String(option.value),
+              label: option.label,
+            }))}
+            value={String(value.offsetDays)}
+            onChange={(offset) => onChange({ ...value, offsetDays: Number(offset) })}
+            disabled={props.disabled}
+            testID="series-edit-reminder-day"
+          />
+          <TimeField
+            label="Uhrzeit"
+            {...TIME_FIELD_WORDS}
+            value={value.at}
+            onChange={(time) => {
+              if (time !== undefined) onChange({ ...value, at: time as TimeOfDay });
+            }}
+            disabled={props.disabled}
+            testID="series-edit-reminder-time"
+          />
+          <TextField
+            label="Woran erinnern? (optional)"
+            value={value.text}
+            onChangeText={(text) => onChange({ ...value, text })}
+            placeholder="z. B. Geschenk besorgen"
+            maxLength={MAX_REMINDER_TEXT}
+            error={props.error}
+            hint={reminderTextCounter(value.text)}
+            testID="series-edit-reminder-text"
+          />
+        </>
+      ) : null}
+    </View>
   );
 }
 
@@ -363,16 +462,32 @@ function EditForm(props: {
   const [note, setNote] = useState(series.note ?? '');
   const [eaterIds, setEaterIds] = useState(series.eaterIds);
   const [guests, setGuests] = useState(series.guests);
+  const [reminder, setReminder] = useState(() => seriesReminderDraft(series.reminder));
+  const [reminderError, setReminderError] = useState<string | undefined>();
   const [error, setError] = useState<string | undefined>();
 
   const save = () => {
     const rule = repeatRule(repeat);
     if (!rule) return;
+    const checked = seriesReminderSave(reminder);
+    if (!checked.ok) {
+      setReminderError(checked.error);
+      return;
+    }
     let kind: string;
     try {
       kind = editActivitySeries(
         series.id,
-        { rule, endsOn: repeat.until, slotId, startsAt, note, eaterIds, guests },
+        {
+          rule,
+          endsOn: repeat.until,
+          slotId,
+          startsAt,
+          note,
+          eaterIds,
+          guests,
+          reminder: checked.reminder,
+        },
         today,
       ).kind;
     } catch (caught) {
@@ -428,6 +543,15 @@ function EditForm(props: {
         onChangeText={setNote}
         maxLength={120}
         testID="series-edit-note"
+      />
+      <SeriesReminderFields
+        value={reminder}
+        onChange={(next) => {
+          setReminder(next);
+          setReminderError(undefined);
+        }}
+        error={reminderError}
+        disabled={props.disabled}
       />
       {error ? (
         <Text variant="small" color="warn" testID="series-edit-error">

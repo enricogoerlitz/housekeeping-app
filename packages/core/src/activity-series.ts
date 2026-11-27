@@ -168,6 +168,8 @@ export function seriesPlanEntries(
       variants: [],
       sort: 0,
       startsAt: occurrence.startsAt,
+      // Spec 0059, REQ-003: counted from the day it stands on, so a moved Termin reminds from there.
+      reminder: series.reminder,
       series: { seriesId: series.id, on: occurrence.on },
     })),
   );
