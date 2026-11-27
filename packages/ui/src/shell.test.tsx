@@ -571,17 +571,15 @@ describe('TabBar', () => {
     expect(screen.getByRole('tab', { name: 'Rezepte' }).getAttribute('aria-selected')).toBe('true');
   });
 
-  it('spec 0058, AC-009: in "Wolke" the active tab sits on a bubble in accentSoft', () => {
+  it('spec 0058, AC-009 (owner 27.11.): in "Wolke" the active tab is only tinted, without a shape', () => {
     render(
       <ThemeProvider themeId="wolke" mode="light">
         <TabBar items={items} activeKey="recipes" onSelect={() => undefined} />
       </ThemeProvider>,
     );
     const active = screen.getByTestId('tab-recipes').firstElementChild as HTMLElement;
-    expect(active.style.borderTopLeftRadius).toBe('48% 55%');
-    expect(active.style.backgroundColor).toBe('rgb(248, 220, 227)');
-    const idle = screen.getByTestId('tab-today').firstElementChild as HTMLElement;
-    expect(idle.style.backgroundColor).toBe('rgba(0, 0, 0, 0)');
+    expect(active.style.backgroundColor).toBe('rgba(0, 0, 0, 0)');
+    expect(active.style.borderTopLeftRadius).not.toBe('48% 55%');
   });
 
   it('spec 0058, AC-010: in "Markthalle" the active tab is only tinted', () => {

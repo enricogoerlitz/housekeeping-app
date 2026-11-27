@@ -73,8 +73,9 @@ vollständig.
 
 - AC-008: Angenommen das Theme „Wolke“ · Wenn ein Icon-Knopf erscheint · Dann hat er die
   Blasenrundung und die Fläche `surfaceSunken`
-- AC-009: Angenommen das Theme „Wolke“ · Wenn der Tab „Liste“ aktiv ist · Dann sitzt sein Symbol
-  auf einer Blase in `accentSoft`
+- AC-009: Angenommen das Theme „Wolke“ · Wenn der Tab „Liste“ aktiv ist · Dann sind Symbol und Text
+  in `accent` eingefärbt, ohne Form drumherum (geändert nach Rückmeldung Enrico, 27.11.2026; vorher
+  eine Blase in `accentSoft`)
 - AC-010: Angenommen das Theme „Markthalle“ · Wenn ein Icon-Knopf und der aktive Tab erscheinen ·
   Dann sind sie rund bzw. getönt wie bisher, ohne Blase
 

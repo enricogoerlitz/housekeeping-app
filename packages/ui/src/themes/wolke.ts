@@ -54,7 +54,7 @@ const shape: ThemeShape = {
   media: 'photoTop',
   cardBorder: true,
   checkBorderWidth: 1.8,
-  tabActive: 'bubble',
+  tabActive: 'tint',
   areaTone: false,
   // Not quite round, like the icons on the home screen it comes from.
   bubble: {
