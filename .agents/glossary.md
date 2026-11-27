@@ -98,6 +98,18 @@ ein Foto gespeichert) und spielt nur im Vollbild.
   `MediaGallery`, `galleryItems`
 - **Nicht verwenden:** Clip, Film (für das gespeicherte Video), Thumbnail, Karussell
 
+### Unfertiges Rezept
+
+Ein Rezept (Art „Rezept“) ohne Zutaten und ohne Schritte, meist schnell nur mit dem Namen
+angelegt; Foto, Links oder Beschreibung machen es nicht fertig, eine Sammlung ist nie unfertig.
+**Ausarbeiten** heißt: die Seite im Bearbeitungsmodus öffnen, „Mit KI ausfüllen“ sucht den Titel
+im Web, man übernimmt, prüft und speichert; „Weiter zum nächsten“ führt zum nächsten unfertigen
+Rezept (Spec 0061). Berechnet, nicht gespeichert.
+
+- **Im Code:** `isUnfinishedRecipe`, `nextUnfinished`, Filterwert `RecipeListFilter.unfinished`,
+  Adresse `unfertig=1`; Ausarbeiten `useWorkOut`, `EditIntent` `{ kind: 'ai' }`
+- **Nicht verwenden:** Entwurf (das ist der Vorschlag der KI), unbearbeitet, leeres Rezept
+
 ### Küche
 
 Die Länderküche oder Stilrichtung eines Rezepts oder Restaurants, z. B. „Italienisch“. Höchstens

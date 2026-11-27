@@ -65,10 +65,15 @@ import { takeHandedOverRows } from './ingredient-handover';
 
 /**
  * What the edit mode opens with: a window of a section, e.g. "+ Zutat" in the read view (AC-002)
- * or "+ Link" (spec 0047, REQ-003).
+ * or "+ Link" (spec 0047, REQ-003); `ai` is "Mit KI ausfüllen" searching the title at once
+ * ("Ausarbeiten", spec 0061, REQ-004).
  */
 export type EditIntent =
-  { kind: 'ingredient'; key?: string } | { kind: 'recipes' } | { kind: 'copy' } | { kind: 'link' };
+  | { kind: 'ingredient'; key?: string }
+  | { kind: 'recipes' }
+  | { kind: 'copy' }
+  | { kind: 'link' }
+  | { kind: 'ai' };
 
 const CHANGED_MEANWHILE_NOTICE =
   'Das Rezept wurde zwischendurch geändert. Deine Änderungen gelten, die übrigen bleiben.';

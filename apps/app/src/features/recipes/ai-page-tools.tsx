@@ -117,6 +117,13 @@ export function AiPageTools(props: {
   const [refineError, setRefineError] = useState<string>();
   const draftInput = useDraftInput();
   const articlesById = useArticlesById();
+  // Spec 0061, REQ-004: "Ausarbeiten" opens the edit mode with the window searching the title;
+  // the intent stays until the window closes.
+  const workOut = editor.intent?.kind === 'ai';
+  const closeFill = () => {
+    setFilling(false);
+    if (workOut) editor.clearIntent();
+  };
   if (!offersAi(recipe)) return null;
   const editing = editor.draft !== undefined;
   const page = editor.page();
@@ -239,6 +246,7 @@ export function AiPageTools(props: {
       hasPhoto={hadPhoto || editor.chosenPhoto !== undefined}
       current={() => recipeDraftOf(editor.page(), articleName)}
       onClose={onClose}
+      searchNow={entry === 'edit' && workOut}
       onDraft={(result) => propose(result, entry === 'page')}
     />
   );
@@ -263,7 +271,7 @@ export function AiPageTools(props: {
         </View>
       ) : null}
       <PhotoSuggestionsPanel recipe={recipe} editor={editor} />
-      {filling && editing ? window('edit', () => setFilling(false)) : null}
+      {(filling || workOut) && editing ? window('edit', closeFill) : null}
       {props.changing && !editing ? window('page', props.onChangeClose) : null}
       {review ? (
         <RecipeReview

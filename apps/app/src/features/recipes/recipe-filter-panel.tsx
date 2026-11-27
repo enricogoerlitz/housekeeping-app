@@ -5,6 +5,7 @@ import {
   minRatingLabel,
   QUICK_FILTERS,
   RECIPE_KINDS,
+  shownQuickFilters,
   TIME_LIMITS,
   timeLimitLabel,
   toggleQuickFilter,
@@ -29,11 +30,9 @@ export const COURSES: readonly Course[] = [
   'drink',
 ];
 
-/** "Schnell" without the diets, which have their own section "Ernährung" (Konzept v2, 3.2). */
-const PANEL_QUICK = QUICK_FILTERS.filter(
-  (chip) => chip.value !== 'vegetarian' && chip.value !== 'vegan',
-);
-const DIETS = QUICK_FILTERS.filter((chip) => chip.value === 'vegan' || chip.value === 'vegetarian');
+const isDiet = (chip: { value: QuickFilter }) =>
+  chip.value === 'vegetarian' || chip.value === 'vegan';
+const DIETS = QUICK_FILTERS.filter(isDiet);
 
 function toggleIn<T>(values: readonly T[], value: T): T[] {
   return values.includes(value)
@@ -53,6 +52,8 @@ export function RecipeFilterPanel(props: {
   cuisines: readonly CuisineFacet[];
   /** The household's tags (core tagFacets). */
   tags: readonly CuisineFacet[];
+  /** For "Unfertig (n)" (spec 0061, REQ-002). */
+  unfinished: number;
 }) {
   const { filter, onChange } = props;
   const { isPhone } = useBreakpoint();
@@ -75,7 +76,10 @@ export function RecipeFilterPanel(props: {
       }
     >
       <FilterSection title="Schnell" testID="recipe-filter-quick">
-        {PANEL_QUICK.map((chip) => quick(chip, 'quick'))}
+        {/* "Schnell" without the diets, which have their own section "Ernährung" (Konzept v2, 3.2). */}
+        {shownQuickFilters(filter, props.unfinished)
+          .filter((chip) => !isDiet(chip))
+          .map((chip) => quick(chip, 'quick'))}
       </FilterSection>
       <FilterSection title="Art" testID="recipe-filter-kind">
         {RECIPE_KINDS.map((kind) => (

@@ -48,7 +48,15 @@ import {
   useImageDropAndPaste,
   type TabSwipe,
 } from '@housekeeping/ui';
-import { useEffect, useLayoutEffect, useRef, useState, type ComponentRef, type Ref } from 'react';
+import {
+  useEffect,
+  useEffectEvent,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ComponentRef,
+  type Ref,
+} from 'react';
 import { View, type TextInput } from 'react-native';
 
 import { DictationField } from '@/features/shell/dictation-field';
@@ -598,6 +606,7 @@ export function AiFillSheet(props: {
   current: () => RecipeDraft;
   onDraft: (result: AiFillResult) => void;
   onClose: () => void;
+  searchNow?: boolean;
 }) {
   const changing = props.entry === 'page';
   const [defaults] = useState(() =>
@@ -609,6 +618,11 @@ export function AiFillSheet(props: {
   const draftInput = useDraftInput();
   const tabs = useAiFillTabs(defaults.tab, search, changing ? CHANGE_TABS : AI_FILL_TABS);
   const { tab } = tabs;
+  // Spec 0061, REQ-004: "Ausarbeiten" searches the title as the window opens, without the keyboard.
+  const searchTitle = useEffectEvent(() => {
+    if (props.searchNow && defaults.tab === 'web') search.search(props.title);
+  });
+  useEffect(() => searchTitle(), []);
   const id = changing ? 'recipe-ai-change' : 'recipe-ai-fill';
   const name = changing ? 'Mit KI ändern' : 'Mit KI ausfüllen';
   const submit = () => {
@@ -690,7 +704,7 @@ export function AiFillSheet(props: {
               tabs.choose('prompt');
             }}
             recipeRows={draftInput}
-            autoFocus={defaults.tab === 'web'}
+            autoFocus={defaults.tab === 'web' && !props.searchNow}
             inputRef={tabs.webField}
             testID={`${id}-web`}
           />

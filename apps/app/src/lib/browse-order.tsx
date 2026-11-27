@@ -17,6 +17,11 @@ export function rememberBrowseOrder(list: BrowseList, ids: readonly Id[] | undef
   remembered = ids ? { list, ids: [...ids] } : undefined;
 }
 
+/** The remembered order of `list`, e.g. for "Weiter zum nächsten" (spec 0061, REQ-005). */
+export function browseOrder(list: BrowseList): readonly Id[] | undefined {
+  return remembered?.list === list ? remembered.ids : undefined;
+}
+
 /**
  * The swipe of an entry's page through the remembered list: a step opens the neighbour, past
  * the ends it springs back (AC-018); undefined when the entry came from no list.
