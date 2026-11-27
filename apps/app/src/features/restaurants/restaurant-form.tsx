@@ -20,7 +20,7 @@ import {
   type Restaurant,
 } from '@housekeeping/core';
 import { Button, Chip, Icon, Notice, Row, Stack, Text, TextField } from '@housekeeping/ui';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 
 import { ValuePicker } from '@/features/recipes/sections/classification-section';
@@ -46,7 +46,7 @@ type PlaceReading = Extract<LinkReading, { status: 'place' }>;
 
 const message = (error: unknown) => errorMessage(error, FAILED_MESSAGE);
 
-/** Which field gets the keyboard first; "notes" from "Notiz bearbeiten" (spec 0024, REQ-002). */
+/** Which field gets the keyboard first; "notes" from "Notiz hinzufügen" (spec 0024, REQ-002). */
 export type RestaurantFormFocus = 'link' | 'name' | 'notes';
 
 /**
@@ -272,6 +272,8 @@ export function RestaurantFormFields(props: {
   openLabel?: string;
   /** Which field gets the keyboard first. */
   focus?: RestaurantFormFocus;
+  /** Right in the field "Name": "Im Web suchen" of a new one (spec 0055, REQ-010). */
+  nameAction?: ReactNode;
 }) {
   const { form } = props;
   const confirmation = form.place
@@ -292,6 +294,7 @@ export function RestaurantFormFields(props: {
         placeholder="z. B. Trattoria Da Enzo"
         autoFocus={props.focus === 'name'}
         error={form.nameError}
+        right={props.nameAction}
         testID="restaurant-name"
       />
       {/* The place field of restaurants, activities and stores (spec 0042, REQ-001). */}

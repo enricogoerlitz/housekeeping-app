@@ -192,6 +192,45 @@ describe('draftToPageInput: variants (spec 0045, REQ-003)', () => {
   });
 });
 
+describe('draftToPageInput: area and diet of a new article (spec 0055, REQ-009)', () => {
+  const areas = [
+    { id: 'area-kuehl', name: 'Kühlregal', sort: 0 },
+    { id: 'area-backen', name: 'Backen', sort: 1 },
+  ];
+  const hinted: RecipeDraft = {
+    ...draft,
+    ingredients: [
+      { name: 'Gochujang', amount: '2 EL', area: 'kühlregal', diet: 'vegan' },
+      { name: 'Seitan', amount: '200 g', area: 'Tofu-Ecke', diet: 'vegan' },
+      { name: 'Mehl', amount: '250 g', area: 'Backen', diet: 'vegan' },
+      { name: 'Zimt', amount: '1 TL', area: 'Backen', diet: 'vegan' },
+      { name: 'Drachenfrucht', amount: '1' },
+    ],
+  };
+  const rows = draftToPageInput(hinted, [], { ...context, areas }).ingredients ?? [];
+
+  it('AC-030: a new article brings the area of that name and the diet', () => {
+    expect(rows[0]?.article).toEqual({
+      kind: 'new',
+      name: 'Gochujang',
+      proposed: { areaId: 'area-kuehl', diet: 'vegan' },
+    });
+  });
+
+  it('AC-031: an area the household does not have stays empty; the diet stays', () => {
+    expect(rows[1]?.article).toEqual({ kind: 'new', name: 'Seitan', proposed: { diet: 'vegan' } });
+  });
+
+  it('AC-032: a household article or a starter entry ignores the hints', () => {
+    expect(rows[2]?.article).toEqual({ kind: 'article', articleId: 'art-mehl' });
+    expect(rows[3]?.article).toMatchObject({ kind: 'hit', hit: { kind: 'starter' } });
+  });
+
+  it('without hints a new article is as before', () => {
+    expect(rows[4]?.article).toEqual({ kind: 'new', name: 'Drachenfrucht' });
+  });
+});
+
 describe('draftToPageInput: links (AC-016, AC-017)', () => {
   const sources: RecipeDraftSource[] = [
     { url: 'https://www.chefkoch.de/rezepte/1', kind: 'page', read: true },

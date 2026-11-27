@@ -343,6 +343,11 @@ export interface ActivitySeries {
   /** "Wer ist dabei?" (REQ-005). */
   eaterIds: Id[];
   guests: number;
+  /**
+   * Spec 0059, REQ-003: "Erinnern" for every Termin, counted from its day (0–30 days before);
+   * each computed Termin carries it as its own reminder.
+   */
+  reminder?: EntryReminder;
 }
 
 /** One "Termin" of a series "abgesagt" (no movedTo) or "verschoben" (spec 0041, REQ-003). */
@@ -452,6 +457,11 @@ export interface Chore {
    * a time. Undefined = on, the default.
    */
   remindAtDueTime?: boolean;
+  /**
+   * „Vorwarnung“ (spec 0059, REQ-004): from this many days (1–60) before the Termin it stands in
+   * the bell; undefined = none.
+   */
+  noticeDaysBefore?: number;
 }
 
 export interface ChoreEvent {

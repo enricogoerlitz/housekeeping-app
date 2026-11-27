@@ -278,6 +278,8 @@ declare
   -- bundled sample photo of a recipe (photo) is set only by the seed (spec 0031, REQ-014, REQ-026).
   -- A recipe's videos are written only by add_recipe_video, set_recipe_video_poster and
   -- remove_recipe_video (spec 0046).
+  -- "Erinnern" of a series (reminder_*) and "Vorwarnung" of a chore (notice_days_before) are
+  -- written like the other columns (spec 0059).
   -- A Dauerposten keeps its article; last_added_on is the server's (spec 0060, Decision 7).
   c_allowlist constant jsonb := $json${
     "areas":            {"insert": ["id", "household_id", "name", "sort"],
@@ -309,9 +311,10 @@ declare
     "activity_kinds":   {"insert": ["id", "household_id", "name", "name_key", "icon"],
                          "patch":  ["name", "name_key", "icon"], "delete": true},
     "activity_series":  {"insert": ["id", "household_id", "activity_id", "rule", "starts_on", "ends_on", "slot_id",
-                                    "starts_at", "note", "eater_ids", "guests"],
+                                    "starts_at", "note", "eater_ids", "guests", "reminder_day_offset", "reminder_at",
+                                    "reminder_text"],
                          "patch":  ["rule", "starts_on", "ends_on", "slot_id", "starts_at", "note", "eater_ids",
-                                    "guests"], "delete": true},
+                                    "guests", "reminder_day_offset", "reminder_at", "reminder_text"], "delete": true},
     "activity_series_exceptions": {"insert": ["id", "household_id", "series_id", "on_date", "moved_to", "slot_id",
                                               "starts_at"],
                                    "patch":  ["series_id", "moved_to", "slot_id", "starts_at"], "delete": true},
@@ -333,10 +336,10 @@ declare
                          "patch":  ["kind", "text"], "delete": true},
     "chores":           {"insert": ["id", "household_id", "title", "room", "recurrence", "assignment", "effort",
                                     "next_due_on", "next_assignee_id", "last_done_on", "active_months", "due_time",
-                                    "remind_at_due_time"],
+                                    "remind_at_due_time", "notice_days_before"],
                          "patch":  ["title", "room", "recurrence", "assignment", "effort", "next_due_on",
                                     "next_assignee_id", "last_done_on", "active_months", "due_time",
-                                    "remind_at_due_time"], "delete": true},
+                                    "remind_at_due_time", "notice_days_before"], "delete": true},
     "chore_events":     {"insert": [],
                          "patch":  ["done_by"], "delete": false},
     "meal_plan_entries": {"insert": ["id", "household_id", "date", "slot_id", "kind", "recipe_id", "restaurant_id",

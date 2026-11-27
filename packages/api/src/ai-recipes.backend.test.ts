@@ -87,6 +87,30 @@ describe('draftRecipeAsync (spec 0040, REQ-001)', () => {
     ).rejects.toBeInstanceOf(OfflineError);
     expect(calls).toBe(0);
   });
+
+  it('spec 0055 AC-018, AC-021: the recipe to change and the web query travel along', async () => {
+    await fx.startEnrico();
+    const sent: unknown[] = [];
+    fx.server.setAi({
+      recipeDraft: (request) => {
+        sent.push(request);
+        return { ...reply, webContext: 'used' };
+      },
+    });
+    await expect(
+      draftRecipeAsync({
+        text: 'füge eine vegane Variante hinzu',
+        links: [],
+        photos: [],
+        imagePrompt: false,
+        current: reply.draft,
+        webQuery: 'Apfelkuchen vegan',
+      }),
+    ).resolves.toMatchObject({ webContext: 'used' });
+    expect(sent).toEqual([
+      expect.objectContaining({ current: reply.draft, webQuery: 'Apfelkuchen vegan' }),
+    ]);
+  });
 });
 
 describe('generateImagesAsync (spec 0040, REQ-004, REQ-005)', () => {

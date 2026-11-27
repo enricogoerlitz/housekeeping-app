@@ -428,6 +428,9 @@ const activitySeriesRow = (householdId: string, series: ActivitySeries) =>
     note: series.note ?? null,
     eater_ids: series.eaterIds,
     guests: series.guests,
+    reminder_day_offset: series.reminder?.offsetDays ?? null,
+    reminder_at: series.reminder ? toDbTime(series.reminder.at) : null,
+    reminder_text: series.reminder?.text ?? null,
   }));
 
 const seriesExceptionRow = (householdId: string, exception: ActivitySeriesException) =>
@@ -484,6 +487,7 @@ const choreRow = (householdId: string, chore: Chore) =>
     active_months: chore.activeMonths ?? null,
     due_time: chore.dueTime === undefined ? null : toDbTime(chore.dueTime),
     remind_at_due_time: chore.remindAtDueTime !== false,
+    notice_days_before: chore.noticeDaysBefore ?? null,
   }));
 
 /** The row of one chore as an insert of `apply_changes` takes it (spec 0011: new chores, undo). */
@@ -887,6 +891,7 @@ function toActivitySeries(row: Row): ActivitySeries | undefined {
     note: opt(r.note),
     eaterIds: r.eater_ids ?? [],
     guests: r.guests ?? 0,
+    reminder: toReminder(r),
   };
 }
 
@@ -1028,7 +1033,12 @@ function toPlanEntry(row: Row): MealPlanEntry {
 }
 
 /** The three reminder columns; incomplete ones (the database refuses them) are no reminder. */
-function toReminder(r: Cached<'meal_plan_entries'>): MealPlanEntry['reminder'] {
+function toReminder(
+  r: Pick<
+    Cached<'meal_plan_entries'> | Cached<'activity_series'>,
+    'reminder_at' | 'reminder_day_offset' | 'reminder_text'
+  >,
+): MealPlanEntry['reminder'] {
   const at = fromDbTime(r.reminder_at);
   if (at === undefined || r.reminder_day_offset == null) return undefined;
   return {
@@ -1054,6 +1064,7 @@ function toChore(row: Row): Chore {
     dueTime: fromDbTime(r.due_time),
     // Undefined is on, the default (spec 0027, REQ-009).
     remindAtDueTime: r.remind_at_due_time === false ? false : undefined,
+    noticeDaysBefore: opt(r.notice_days_before),
   };
 }
 

@@ -5,6 +5,7 @@
 import {
   planSeriesEdit,
   seriesDraftProblem,
+  SeriesReminderSchema,
   type ActivitySeries,
   type ActivitySeriesException,
   type Id,
@@ -20,9 +21,16 @@ export type SeriesDraft = Omit<ActivitySeries, 'id'>;
 
 const NO_FUTURE = 'Die Serie hat keine Termine mehr.';
 
-function checkDraft(draft: Pick<ActivitySeries, 'rule' | 'startsOn' | 'endsOn'>): void {
+function checkDraft(
+  draft: Pick<ActivitySeries, 'rule' | 'startsOn' | 'endsOn'> &
+    Partial<Pick<ActivitySeries, 'reminder'>>,
+): void {
   const problem = seriesDraftProblem(draft);
   if (problem) throw new Error(problem);
+  // Spec 0059, REQ-003: the form checks the text first; this keeps a refused row from going out.
+  if (draft.reminder && !SeriesReminderSchema.safeParse(draft.reminder).success) {
+    throw new Error('Die Erinnerung passt so nicht.');
+  }
 }
 
 const trimmedNote = (note: string | undefined) => note?.trim() || undefined;

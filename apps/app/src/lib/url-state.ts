@@ -9,7 +9,7 @@ import {
   pageQuery,
   placeAfter,
   readPageParams,
-  sectionHref,
+  tabPressAction,
   windowClosedByBack,
   type Origin,
   type PageKey,
@@ -35,7 +35,9 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from 'react';
+import { scrollShownToTop } from '@housekeeping/ui';
 import { Platform } from 'react-native';
+import { useReducedMotion } from 'react-native-reanimated';
 
 // Spec 0019 "Zustand in der Adresse": the only place of the app that reads route parameters
 // (AC-054). Pages read and write their parameters through `usePageParams`, with the names and
@@ -245,12 +247,20 @@ export function useActiveSection(): Origin | undefined {
   return useSyncExternalStore(subscribePlace, placeSnapshot, placeSnapshot)?.section;
 }
 
-/** Choosing a section in the tab bar or the sidebar: its start page, also from inside it. */
-export function useOpenSection(): (section: Origin) => void {
+/**
+ * Choosing a section in the tab bar or the sidebar: its start page, also from inside it; on that
+ * start page a second tap scrolls it to the top (spec 0057, REQ-002).
+ */
+export function usePressSection(): (section: Origin) => void {
   const router = useRouter();
+  const reducedMotion = useReducedMotion();
   return useCallback(
-    (section: Origin) => router.navigate(sectionHref(place, section) as never),
-    [router],
+    (section: Origin) => {
+      const action = tabPressAction(place, section);
+      if (action.kind === 'top') scrollShownToTop(!reducedMotion);
+      else router.navigate(action.href as never);
+    },
+    [router, reducedMotion],
   );
 }
 

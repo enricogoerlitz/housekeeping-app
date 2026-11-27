@@ -3,7 +3,7 @@
 // (preparePhoto with 1280 px for a draft, 1024 px for "Aus diesem Foto"); here they become JPEG
 // data URLs. Nothing is saved: a draft fills the edit mode, a variant is stored only by
 // "Übernehmen" through the usual photo path.
-import type { AiImageContext, ImageStyle, RecipeDraftReply } from '@housekeeping/core';
+import type { AiImageContext, ImageStyle, RecipeDraft, RecipeDraftReply } from '@housekeeping/core';
 
 import { aiCall } from './ai';
 import { getState } from './store';
@@ -39,6 +39,10 @@ export async function draftRecipeAsync(input: {
   photos: readonly Blob[];
   /** "Foto generieren" (REQ-003). */
   imagePrompt: boolean;
+  /** Spec 0055, REQ-006, REQ-008: the recipe the text changes. */
+  current?: RecipeDraft;
+  /** Spec 0055, REQ-007: searches the web once for context. */
+  webQuery?: string;
 }): Promise<RecipeDraftReply> {
   const householdId = getState().activeHouseholdId;
   return aiCall(async (transport) =>
@@ -48,6 +52,8 @@ export async function draftRecipeAsync(input: {
       links: [...input.links],
       photos: await Promise.all(input.photos.map(jpegDataUrl)),
       imagePrompt: input.imagePrompt,
+      ...(input.current ? { current: input.current } : {}),
+      ...(input.webQuery ? { webQuery: input.webQuery } : {}),
     }),
   );
 }

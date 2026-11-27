@@ -27,6 +27,7 @@ import {
   monthPickerStart,
   moveBounds,
   offersReminder,
+  planEntryCalendarEvent,
   planEntryPhoto,
   reminderAfterStart,
   startOfWeek,
@@ -56,6 +57,7 @@ import {
 import { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 
+import { AddToCalendar, appLink } from '@/features/calendar/add-to-calendar';
 import { useMoveEntry } from '@/features/calendar/move-entry';
 import { PlanDateCalendar } from '@/lib/plan-date-calendar';
 import { useOpenActivity } from '@/features/activities/navigation';
@@ -623,6 +625,18 @@ export function EntrySheet(props: {
             disabled={online.disabled}
             onValueChange={(notDone) => updatePlanEntry(entry.id, { notDone })}
             testID="entry-not-done"
+          />
+        ) : null}
+        {entry.date ? (
+          <AddToCalendar
+            event={planEntryCalendarEvent({
+              entry: { ...entry, startsAt },
+              title,
+              slotName: household.mealSlots.find((slot) => slot.id === entry.slotId)?.name ?? '',
+              location: restaurant?.address ?? activity?.address ?? activity?.placeName,
+              link: appLink({ screen: 'calendar', day: entry.date, entryId: entry.id }),
+            })}
+            testID="entry-calendar"
           />
         ) : null}
         <Button

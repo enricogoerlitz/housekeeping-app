@@ -33,7 +33,7 @@ import { ContentsSection } from './sections/contents-section';
 import { HeadSection } from './sections/head-section';
 import { IngredientsSection } from './sections/ingredients-section';
 import { LinksSection } from './sections/links-section';
-import { EditControls, EditError } from './sections/edit-controls';
+import { DraftBackupNotice, EditControls, EditError } from './sections/edit-controls';
 import { NotesSection } from './sections/notes-section';
 import { usePageEditor } from './sections/use-page-editor';
 import { useDeleteRecipe } from './use-delete-recipe';
@@ -111,7 +111,7 @@ export function CollectionDetailBody(props: {
       />
       {desktop ? actions : null}
       <EditControls editor={editor} />
-      <RecipeMoreMenu recipe={collection} photo={photo} onDelete={remove} onShare={share} />
+      <RecipeMoreMenu recipe={collection} onDelete={remove} />
       {deleteDialog}
     </>
   );
@@ -187,6 +187,7 @@ export function CollectionDetailBody(props: {
     >
       <View testID="collection-detail" style={{ gap: isPhone ? 24 : 32, paddingTop: 8 }}>
         <EditError editor={editor} />
+        <DraftBackupNotice editor={editor} />
         {desktop ? (
           <>
             <Row gap={32} align="flex-start">

@@ -173,6 +173,7 @@ function KindEditor(props: {
           label="Löschen"
           icon="trash"
           variant="link"
+          quiet
           disabled={props.offline}
           hint={props.offlineHint}
           onPress={remove}

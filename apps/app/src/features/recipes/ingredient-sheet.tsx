@@ -88,6 +88,8 @@ export function IngredientSheet(props: {
   rowKey?: string;
   /** Under "Menge" when editing from the read view: "für 4 Portionen" (AC-005). */
   servingsNote?: string;
+  /** The read view saves with "Übernehmen" (spec 0056, REQ-001): a new article is created then. */
+  savesAtOnce?: boolean;
   onApply: (draft: IngredientsDraft, rowKey: string) => void;
   onClose: () => void;
 }) {
@@ -175,7 +177,9 @@ export function IngredientSheet(props: {
   const chosenDetail = !chosen
     ? undefined
     : chosen.kind === 'new'
-      ? 'Wird mit „Fertig“ neu angelegt'
+      ? props.savesAtOnce
+        ? 'Wird mit „Übernehmen“ neu angelegt'
+        : 'Wird mit „Fertig“ neu angelegt'
       : [chosen.hit.kind === 'starter' ? STARTER_DETAIL : undefined, search.areaOf(chosen.hit)]
           .filter(Boolean)
           .join(' · ') || 'Ohne Bereich';

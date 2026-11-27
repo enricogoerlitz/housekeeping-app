@@ -217,3 +217,61 @@ describe('error codes', () => {
     });
   });
 });
+
+describe('Spec 0055: the current recipe, the web search and new articles in the contract', () => {
+  const base = { householdId: HOUSEHOLD, text: 'füge eine vegane Variante hinzu' };
+
+  it('AC-018, AC-026: the current recipe travels in the draft format', () => {
+    const parsed = RecipeDraftRequestSchema.parse({ ...base, current: draft });
+    expect(parsed.current).toEqual(draft);
+  });
+
+  it('AC-018: a current recipe without a description is fine (a stored recipe may have none)', () => {
+    expect(
+      RecipeDraftRequestSchema.safeParse({ ...base, current: { ...draft, description: '' } })
+        .success,
+    ).toBe(true);
+  });
+
+  it('a broken current recipe is refused', () => {
+    expect(
+      RecipeDraftRequestSchema.safeParse({ ...base, current: { ...draft, servings: 0 } }).success,
+    ).toBe(false);
+    expect(
+      RecipeDraftRequestSchema.safeParse({ ...base, current: { ...draft, commands: [] } }).success,
+    ).toBe(false);
+  });
+
+  it('AC-021: webQuery switches the web search on; at most 200 characters, not blank', () => {
+    expect(RecipeDraftRequestSchema.parse({ ...base, webQuery: 'Chili vegan' }).webQuery).toBe(
+      'Chili vegan',
+    );
+    expect(RecipeDraftRequestSchema.safeParse({ ...base, webQuery: 'x'.repeat(201) }).success).toBe(
+      false,
+    );
+    expect(RecipeDraftRequestSchema.safeParse({ ...base, webQuery: '  ' }).success).toBe(false);
+  });
+
+  it('AC-030: a new ingredient may bring an area name and a diet; nothing else', () => {
+    const withHints: RecipeDraft = {
+      ...draft,
+      ingredients: [{ name: 'Räuchertofu', amount: '200 g', area: 'Kühlregal', diet: 'vegan' }],
+    };
+    expect(RecipeDraftSchema.parse(withHints)).toEqual(withHints);
+    expect(
+      RecipeDraftSchema.safeParse({
+        ...draft,
+        ingredients: [{ name: 'Tofu', amount: '1', diet: 'non_food' }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('AC-023: the reply says whether the web search was used or unavailable', () => {
+    expect(
+      RecipeDraftReplySchema.parse({ draft, sources: [], webContext: 'unavailable' }).webContext,
+    ).toBe('unavailable');
+    expect(
+      RecipeDraftReplySchema.safeParse({ draft, sources: [], webContext: 'maybe' }).success,
+    ).toBe(false);
+  });
+});

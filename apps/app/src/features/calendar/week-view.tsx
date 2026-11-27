@@ -46,7 +46,6 @@ export interface WeekViewProps {
   data: CalendarData;
   /** Monday of the shown week. */
   weekStart: ISODate;
-  showHousehold: boolean;
   wide: boolean;
   /** Desktop: the grid's room in px down to "Vorgemerkt" (spec 0021, REQ-001); else natural. */
   height?: number;
@@ -177,7 +176,7 @@ function WeekGrid(props: WeekViewProps) {
     const segment = stripeSegment(stripe, first, last);
     return segment ? [{ stripe, segment }] : [];
   });
-  const chores = props.showHousehold ? data.householdRow(first, last) : {};
+  const chores = data.householdRow(first, last);
   const cell = (date: ISODate) => ({
     flex: 1,
     minWidth: 0,
@@ -189,8 +188,8 @@ function WeekGrid(props: WeekViewProps) {
   // Day heads, trip and household row keep their natural height; the Tageszeiten share the rest.
   const [dayRowHeight, setDayRowHeight] = useState(0);
   const [rowsHeight, setRowsHeight] = useState(0);
-  const hasRows = stripes.length > 0 || !!props.showHousehold;
-  const headHeight = dayRowHeight + (hasRows ? ROW_GAP + rowsHeight : 0);
+  // The household row always shows (spec 0054, REQ-004), so there are always rows.
+  const headHeight = dayRowHeight + ROW_GAP + rowsHeight;
   const count = data.slots.length;
   const slotHeight =
     props.height === undefined
@@ -231,58 +230,54 @@ function WeekGrid(props: WeekViewProps) {
           </DayHeadTarget>
         ))}
       </View>
-      {hasRows ? (
-        <View
-          style={{ gap: ROW_GAP }}
-          onLayout={(event) => setRowsHeight(event.nativeEvent.layout.height)}
-        >
-          {stripes.length > 0 ? (
-            <View style={{ flexDirection: 'row', gap: 4 }} testID="week-trip-row">
-              <RowLabel>Reise</RowLabel>
-              <View style={{ flex: 1, gap: 3 }}>
-                {stripes.map(({ stripe, segment }) => (
-                  <View key={stripe.key} style={{ position: 'relative', height: 26 }}>
-                    <View
-                      style={{
-                        position: 'absolute',
-                        top: 0,
-                        bottom: 0,
-                        left: `${(segment.start / 7) * 100}%`,
-                        width: `${((segment.end - segment.start + 1) / 7) * 100}%`,
-                      }}
-                    >
-                      <TripStripeView
-                        stripe={stripe}
-                        data={data}
-                        separator=" · "
-                        continuesBefore={segment.continuesBefore}
-                        continuesAfter={segment.continuesAfter}
-                        onPress={props.onOpenStripe}
-                      />
-                    </View>
+      <View
+        style={{ gap: ROW_GAP }}
+        onLayout={(event) => setRowsHeight(event.nativeEvent.layout.height)}
+      >
+        {stripes.length > 0 ? (
+          <View style={{ flexDirection: 'row', gap: 4 }} testID="week-trip-row">
+            <RowLabel>Reise</RowLabel>
+            <View style={{ flex: 1, gap: 3 }}>
+              {stripes.map(({ stripe, segment }) => (
+                <View key={stripe.key} style={{ position: 'relative', height: 26 }}>
+                  <View
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      bottom: 0,
+                      left: `${(segment.start / 7) * 100}%`,
+                      width: `${((segment.end - segment.start + 1) / 7) * 100}%`,
+                    }}
+                  >
+                    <TripStripeView
+                      stripe={stripe}
+                      data={data}
+                      separator=" · "
+                      continuesBefore={segment.continuesBefore}
+                      continuesAfter={segment.continuesAfter}
+                      onPress={props.onOpenStripe}
+                    />
                   </View>
-                ))}
-              </View>
-            </View>
-          ) : null}
-          {props.showHousehold ? (
-            <View style={{ flexDirection: 'row', gap: 4 }} testID="household-row">
-              <RowLabel>Haushalt</RowLabel>
-              {dates.map((date) => (
-                <View key={date} style={cell(date)} testID={`household-row-${date}`}>
-                  {/* Full rows: a chore's name wraps onto two lines (spec 0021, AC-014). */}
-                  <HouseholdDay
-                    items={chores[date] ?? []}
-                    data={data}
-                    peopleBelow
-                    onOpenChore={props.onOpenChore}
-                  />
                 </View>
               ))}
             </View>
-          ) : null}
+          </View>
+        ) : null}
+        <View style={{ flexDirection: 'row', gap: 4 }} testID="household-row">
+          <RowLabel>Haushalt</RowLabel>
+          {dates.map((date) => (
+            <View key={date} style={cell(date)} testID={`household-row-${date}`}>
+              {/* Full rows: a chore's name wraps onto two lines (spec 0021, AC-014). */}
+              <HouseholdDay
+                items={chores[date] ?? []}
+                data={data}
+                peopleBelow
+                onOpenChore={props.onOpenChore}
+              />
+            </View>
+          ))}
         </View>
-      ) : null}
+      </View>
       {data.slots.map((slot) => (
         <View
           key={slot.id}
@@ -376,7 +371,7 @@ function WeekList(props: WeekViewProps) {
   const first = dates[0] ?? props.weekStart;
   const last = dates[6] ?? addDays(props.weekStart, 6);
   const weekStripes = data.stripes.filter((stripe) => stripeSegment(stripe, first, last));
-  const chores = props.showHousehold ? data.householdRow(first, last) : {};
+  const chores = data.householdRow(first, last);
   // "Abend", else the last (spec 0020, Entscheidung 14).
   const presetSlotId = addPresetSlot(data.slots);
   // While an entry is dragged every Tageszeit of every day is a target, also the empty ones
@@ -439,7 +434,7 @@ function WeekList(props: WeekViewProps) {
                   onPress={props.onOpenStripe}
                 />
               ))}
-              {props.showHousehold && dayChores.length > 0 ? (
+              {dayChores.length > 0 ? (
                 <View testID={`household-row-${date}`}>
                   <HouseholdDay items={dayChores} data={data} onOpenChore={props.onOpenChore} />
                 </View>

@@ -24,6 +24,7 @@ import { inSidewaysScroller } from './sideways-scroller';
 import {
   claimsTabSwipe,
   scrollKeepsTabSwipe,
+  tabSwipeTouchAction,
   tabSwipeOffset,
   tabSwipePreviewStep,
   tabSwipeSettle,
@@ -361,6 +362,21 @@ export function TabSwipeArea(props: {
         {pane('prev')}
         {pane('next')}
       </Animated.View>
+    </View>
+  );
+}
+
+/**
+ * The content of a window's tabs (spec 0055, REQ-002): swipes between them like a page's tabs.
+ * Inside the window's scroll area it pans only vertically, so a sideways finger reaches the swipe.
+ */
+export function TabSwipeContent(props: { swipe: TabSwipe; children: ReactNode; testID?: string }) {
+  return (
+    <View
+      testID={props.testID ?? 'tab-swipe-content'}
+      style={tabSwipeTouchAction(true, Platform.OS)}
+    >
+      <TabSwipeArea swipe={props.swipe}>{props.children}</TabSwipeArea>
     </View>
   );
 }

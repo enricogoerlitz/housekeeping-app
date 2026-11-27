@@ -11,8 +11,17 @@ import {
   VIDEO_SAVE_FAILED_MESSAGE,
 } from '@housekeeping/api';
 import { videoLabel, type Recipe, type RecipeLink, type RecipeVideo } from '@housekeeping/core';
-import { getTheme, Icon, IconButton, Photo, Text, ThemeProvider, useTheme } from '@housekeeping/ui';
-import { useEffect, useRef, useState } from 'react';
+import {
+  getTheme,
+  Icon,
+  IconButton,
+  Photo,
+  Text,
+  ThemeProvider,
+  useTheme,
+  ViewerPhoto,
+} from '@housekeeping/ui';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -261,18 +270,17 @@ type Playback =
 const IOS_FULLSCREEN_END = 'webkitendfullscreen';
 
 /**
- * The video on the whole screen (spec 0046, REQ-004): a dark layer over everything that downloads
- * the file with the session into a blob: URL (never kept on the device) and plays it with sound
- * (AC-013). Without `playsinline` the iPhone plays it in its own full-screen player, whose
- * "Fertig" closes the layer too (AC-014), like ✕ and Escape. Offline "Video braucht Netz".
+ * A video playing on a dark stage (spec 0046, REQ-004): downloads the file with the session into
+ * a blob: URL (never kept on the device) and plays it with sound (AC-013). Without `playsinline`
+ * the iPhone plays it in its own full-screen player; its "Fertig" calls `onEnd` (AC-014).
+ * Offline "Video braucht Netz".
  */
-export function VideoPlayer(props: { video: RecipeVideo; title: string; onClose: () => void }) {
+function VideoStage(props: { video: RecipeVideo; title: string; onEnd: () => void }) {
   const { id } = useTheme();
   const stage = getTheme(id, 'dark');
-  const insets = useSafeAreaInsets();
   const [playback, setPlayback] = useState<Playback>({ state: 'loading' });
   const videoRef = useRef<HTMLVideoElement>(null);
-  const { onClose } = props;
+  const { onEnd } = props;
   const path = props.video.path;
 
   useEffect(() => {
@@ -306,13 +314,57 @@ export function VideoPlayer(props: { video: RecipeVideo; title: string; onClose:
   useEffect(() => {
     const element = videoRef.current;
     if (!ready || !element) return;
-    element.addEventListener(IOS_FULLSCREEN_END, onClose);
+    element.addEventListener(IOS_FULLSCREEN_END, onEnd);
     void element.play().catch(() => undefined);
-    return () => element.removeEventListener(IOS_FULLSCREEN_END, onClose);
-  }, [ready, onClose]);
+    return () => element.removeEventListener(IOS_FULLSCREEN_END, onEnd);
+  }, [ready, onEnd]);
 
   return (
-    <Modal visible transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
+    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', alignSelf: 'stretch' }}>
+      {playback.state === 'ready' ? (
+        <video
+          ref={videoRef}
+          src={playback.uri}
+          controls
+          preload="auto"
+          aria-label={`Video zu ${props.title}`}
+          style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
+          data-testid="recipe-video-player-video"
+        />
+      ) : playback.state === 'loading' ? (
+        <View style={{ alignItems: 'center', gap: 12 }} testID="recipe-video-player-loading">
+          <ActivityIndicator color={stage.colors.text} size="large" />
+          <Text style={{ color: stage.colors.text }}>Video wird geladen …</Text>
+        </View>
+      ) : (
+        <View
+          style={{ alignItems: 'center', gap: 8, paddingHorizontal: 24 }}
+          testID="recipe-video-player-error"
+        >
+          <Icon name="wifi-off" size={28} color="muted" />
+          <Text style={{ color: stage.colors.text, textAlign: 'center' }}>{playback.message}</Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
+/**
+ * The video on the whole screen over the cooking mode (spec 0046, AC-016): a dark layer over
+ * everything with the video stage; ✕, Escape and the iPhone player's "Fertig" close it.
+ */
+export function VideoPlayer(props: { video: RecipeVideo; title: string; onClose: () => void }) {
+  const { id } = useTheme();
+  const stage = getTheme(id, 'dark');
+  const insets = useSafeAreaInsets();
+  return (
+    <Modal
+      visible
+      transparent
+      animationType="none"
+      onRequestClose={props.onClose}
+      statusBarTranslucent
+    >
       <ThemeProvider themeId={id} mode="dark">
         <View
           testID="recipe-video-player"
@@ -322,48 +374,107 @@ export function VideoPlayer(props: { video: RecipeVideo; title: string; onClose:
             backgroundColor: stage.colors.bg,
             paddingTop: insets.top,
             paddingBottom: insets.bottom,
-            alignItems: 'center',
-            justifyContent: 'center',
           }}
         >
-          {playback.state === 'ready' ? (
-            <video
-              ref={videoRef}
-              src={playback.uri}
-              controls
-              preload="auto"
-              aria-label={`Video zu ${props.title}`}
-              style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
-              data-testid="recipe-video-player-video"
-            />
-          ) : playback.state === 'loading' ? (
-            <View style={{ alignItems: 'center', gap: 12 }} testID="recipe-video-player-loading">
-              <ActivityIndicator color={stage.colors.text} size="large" />
-              <Text style={{ color: stage.colors.text }}>Video wird geladen …</Text>
-            </View>
-          ) : (
-            <View
-              style={{ alignItems: 'center', gap: 8, paddingHorizontal: 24 }}
-              testID="recipe-video-player-error"
-            >
-              <Icon name="wifi-off" size={28} color="muted" />
-              <Text style={{ color: stage.colors.text, textAlign: 'center' }}>
-                {playback.message}
-              </Text>
-            </View>
-          )}
+          <VideoStage video={props.video} title={props.title} onEnd={props.onClose} />
           <View style={{ position: 'absolute', top: insets.top + 8, right: insets.right + 8 }}>
             <IconButton
               icon="x"
               label="Schließen"
               variant="soft"
               size={44}
-              onPress={onClose}
+              onPress={props.onClose}
               testID="recipe-video-player-close"
             />
           </View>
         </View>
       </ThemeProvider>
     </Modal>
+  );
+}
+
+/**
+ * A video's page in the full-screen viewer of the recipe's gallery (spec 0056, REQ-003): its
+ * poster with the play button, nothing loads until the tap (AC-010); `autoplay` when the viewer
+ * was opened from the video's tile (AC-013). Swiped away it stops (AC-014); the iPhone player's
+ * "Fertig" leads back to this page (Entscheidung 5). Offline "Video braucht Netz".
+ */
+export function VideoPage(props: {
+  recipe: Recipe;
+  video: RecipeVideo;
+  index: number;
+  active: boolean;
+  autoplay: boolean;
+  testID: string;
+}) {
+  const { id } = useTheme();
+  const stage = getTheme(id, 'dark');
+  const offline = useSyncState().status === 'offline';
+  const poster = usePhoto(props.video.poster);
+  const photo = useRecipeImage(props.recipe);
+  const source = poster.uri ? { uri: poster.uri } : photo;
+  const [playing, setPlaying] = useState(props.autoplay && !offline);
+  const { active } = props;
+  if (!active && playing) setPlaying(false);
+  const label = videoLabel(props.index, props.recipe.videos.length);
+  const stop = useCallback(() => setPlaying(false), []);
+
+  if (playing) {
+    return (
+      <View style={{ flex: 1 }} testID={props.testID}>
+        <VideoStage video={props.video} title={props.recipe.title} onEnd={stop} />
+      </View>
+    );
+  }
+  return (
+    <Pressable
+      onPress={offline ? undefined : () => setPlaying(true)}
+      disabled={offline}
+      accessibilityRole="button"
+      accessibilityLabel={`${label} zu ${props.recipe.title} abspielen`}
+      accessibilityState={{ disabled: offline }}
+      style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
+      testID={props.testID}
+    >
+      {source ? (
+        <View pointerEvents="none" style={{ position: 'absolute', inset: 0 }}>
+          <ViewerPhoto sources={[source]} alt="" />
+        </View>
+      ) : (
+        <Icon name="film" size={48} color="muted" />
+      )}
+      <View pointerEvents="none" style={{ position: 'absolute', alignItems: 'center' }}>
+        {offline ? (
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+              paddingHorizontal: 14,
+              paddingVertical: 8,
+              borderRadius: stage.shape.radius.chip,
+              backgroundColor: stage.colors.surface,
+            }}
+            testID={`${props.testID}-offline`}
+          >
+            <Icon name="wifi-off" size={18} color="muted" />
+            <Text color="muted">Video braucht Netz</Text>
+          </View>
+        ) : (
+          <View
+            style={{
+              width: PLAY_SIZE,
+              height: PLAY_SIZE,
+              borderRadius: PLAY_SIZE / 2,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: stage.colors.accent,
+            }}
+          >
+            <Icon name="play" size={30} color="onAccent" />
+          </View>
+        )}
+      </View>
+    </Pressable>
   );
 }

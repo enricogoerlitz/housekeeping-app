@@ -20,6 +20,7 @@ import {
   Text,
   TextField,
   openKeyboardNow,
+  toast,
 } from '@housekeeping/ui';
 import { useEffect, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
@@ -41,7 +42,8 @@ type LinkAction = 'edit' | 'up' | 'down' | 'remove';
  * in a new tab and the app stays. The app never loads the page. A link that fails the check on the
  * device is plain text. Read and open offline; editing online only. A TikTok link of a recipe
  * whose video is not saved yet has the save button at its right end (spec 0046, REQ-002). "+ Link"
- * in the read view opens the edit mode with the window "Link", like "+ Zutat" (spec 0047, REQ-003).
+ * in the read view opens the window "Link" and saves at once (spec 0056, REQ-001; replaces spec
+ * 0047, AC-011).
  */
 export function LinksSection(props: { recipe: Recipe; editor: PageEditor }) {
   const { recipe, editor } = props;
@@ -49,6 +51,13 @@ export function LinksSection(props: { recipe: Recipe; editor: PageEditor }) {
   const video = useSaveVideo(recipe);
   const online = useOnlineOnly();
   const full = recipe.links.length >= MAX_LINKS;
+  // "+ Link" saves at once (spec 0056, REQ-001): the window works on the links as stored.
+  const [adding, setAdding] = useState<LinksDraft | undefined>();
+  const saveAdded = (base: LinksDraft, links: RecipeLink[]) => {
+    const hint = editor.saveNow({ ...base, links });
+    if (hint) toast.show({ message: hint });
+    else setAdding(undefined);
+  };
   const add = (
     <View style={{ flexDirection: 'row' }}>
       <Button
@@ -59,10 +68,17 @@ export function LinksSection(props: { recipe: Recipe; editor: PageEditor }) {
         hint={online.hint ?? (full ? LINK_LIMIT_HINT : undefined)}
         onPress={() => {
           openKeyboardNow();
-          editor.start({ kind: 'link' });
+          setAdding(editor.stored().links);
         }}
         testID="recipe-read-add-link"
       />
+      {adding ? (
+        <LinkSheet
+          links={adding.links}
+          onApply={(links) => saveAdded(adding, links)}
+          onClose={() => setAdding(undefined)}
+        />
+      ) : null}
     </View>
   );
   return (
@@ -232,7 +248,8 @@ function LinksFields(props: { draft: LinksDraft; editor: PageEditor }) {
 
 /**
  * The window "Link": "Adresse" (required) and "Bezeichnung (freiwillig)", checked like the
- * database checks (core validateLink). "Übernehmen" only changes the draft.
+ * database checks (core validateLink). "Übernehmen" changes the draft of the edit mode, or in the
+ * read view saves at once (spec 0056).
  */
 function LinkSheet(props: {
   links: RecipeLink[];

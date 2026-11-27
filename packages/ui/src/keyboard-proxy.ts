@@ -17,3 +17,13 @@ export function handOverKeyboard(_input: unknown): boolean {
 export function holdHandOver(): void {
   return undefined;
 }
+
+/** The new content first, then its field takes the cursor (spec 0055, REQ-001). */
+export function focusAfterChange(
+  change: () => void,
+  field: () => unknown,
+  _options: { onlyWhenTyping?: boolean } = {},
+): void {
+  change();
+  setTimeout(() => (field() as { focus?: () => void } | null)?.focus?.(), 0);
+}

@@ -610,8 +610,8 @@ test('AC-017: Nadja’s photo of Spaghetti Bolognese shows on Enrico’s device 
   const nadja = await secondDevice(browser, 'nadja');
   await nadja.page.goto(`/rezept/${BOLOGNESE}`);
   await expect(tid(nadja.page, 'recipe-detail')).toBeVisible({ timeout: 30_000 });
-  await tid(nadja.page, 'recipe-more').click();
-  await pickFile(nadja.page, 'recipe-more-photo', GPS_PHOTO, { prefix: 'recipe' });
+  // "Foto ändern" stands under the photo (spec 0054, AC-008).
+  await pickFile(nadja.page, 'recipe-photo-change', GPS_PHOTO, { prefix: 'recipe' });
   await expectOwnPhoto(tid(nadja.page, 'recipe-photo'));
   await nadja.context.close();
   await page.bringToFront();
@@ -638,19 +638,19 @@ test('AC-018: "Foto entfernen" on Lasagne shows the sample photo again and delet
   const image = tid(page, 'recipe-photo').locator('img').first();
   const sample = await image.getAttribute('src');
   expect(sample).not.toMatch(/^blob:/);
-  await tid(page, 'recipe-more').click();
-  await pickFile(page, 'recipe-more-photo', GPS_PHOTO, { prefix: 'recipe' });
+  await pickFile(page, 'recipe-photo-change', GPS_PHOTO, { prefix: 'recipe' });
   await expectOwnPhoto(tid(page, 'recipe-photo'));
   const objectPath = await photoPathOf('recipes', LASAGNE);
   const enrico = await accessToken('enrico');
   expect(typeof (await download(objectPath ?? '', enrico))).not.toBe('number');
 
-  await tid(page, 'recipe-more').click();
-  await tid(page, 'recipe-more-photo-remove').click();
+  // "Foto entfernen" is in the window "Foto", not in ⋯ (spec 0054, AC-010).
+  await tid(page, 'recipe-photo-change').click();
+  await tid(page, 'recipe-photo-remove').click();
   await tid(page, 'confirm-remove-photo-confirm').click();
   await expect(image).toHaveAttribute('src', sample ?? '', SYNC);
-  await tid(page, 'recipe-more').click();
-  await expect(page.locator(`[data-testid="recipe-more-photo-remove"]${ACTIVE}`)).toHaveCount(0);
+  await tid(page, 'recipe-photo-change').click();
+  await expect(page.locator(`[data-testid="recipe-photo-remove"]${ACTIVE}`)).toHaveCount(0);
   await page.keyboard.press('Escape');
   expect(await photoPathOf('recipes', LASAGNE)).toBeNull();
   await expect.poll(async () => typeof (await download(objectPath ?? '', enrico))).toBe('number');

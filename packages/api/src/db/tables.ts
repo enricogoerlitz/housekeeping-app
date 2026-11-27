@@ -139,6 +139,10 @@ export const WRITABLE_COLUMNS = {
     'note',
     'eater_ids',
     'guests',
+    // Spec 0059, REQ-003: "Erinnern" of every Termin.
+    'reminder_day_offset',
+    'reminder_at',
+    'reminder_text',
   ],
   // An exception keeps its day; it moves to the next series on "Serie bearbeiten".
   activity_series_exceptions: ['series_id', 'on_date', 'moved_to', 'slot_id', 'starts_at'],
@@ -160,6 +164,8 @@ export const WRITABLE_COLUMNS = {
     'active_months',
     'due_time',
     'remind_at_due_time',
+    // Spec 0059, REQ-004: "Vorwarnung".
+    'notice_days_before',
   ],
   // Entries are only patched: booked by complete_chore, removed by remove_chore_event (spec 0011),
   // their chore set only by delete_chore / restore_chore (spec 0031, REQ-016).
@@ -239,6 +245,9 @@ export const PATCH_COLUMNS: Partial<Record<WritableTable, readonly string[]>> = 
     'note',
     'eater_ids',
     'guests',
+    'reminder_day_offset',
+    'reminder_at',
+    'reminder_text',
   ],
   activity_series_exceptions: ['series_id', 'moved_to', 'slot_id', 'starts_at'],
   // Spec 0060: a Dauerposten keeps its article.

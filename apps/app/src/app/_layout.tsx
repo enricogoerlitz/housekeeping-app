@@ -1,8 +1,7 @@
-import { ThemeProvider, ToastHost, fontAssets, getTheme, useTheme } from '@housekeeping/ui';
-import { useFonts } from 'expo-font';
+import { ThemeProvider, ToastHost, getTheme, useTheme, useThemeFonts } from '@housekeeping/ui';
 import { Stack } from 'expo-router';
 import * as SystemUI from 'expo-system-ui';
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Platform, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -41,20 +40,23 @@ export default function RootLayout() {
 }
 
 /**
- * Applies the stored theme. All theme fonts load once at start (theme previews need them too),
- * so switching themes later never unmounts the app.
+ * Applies the stored theme. At start only its fonts load (spec 0058, REQ-006); the app waits for
+ * them once. A theme chosen later loads its fonts while the app stays (the picker's preview has
+ * usually loaded them already), so switching never unmounts the app.
  */
 function Themed(props: { children: ReactNode }) {
   const { themeId, mode } = useSettings();
   const theme = getTheme(themeId, mode);
-  const [loaded, error] = useFonts(fontAssets);
+  const fontsReady = useThemeFonts(theme.fonts);
+  const [started, setStarted] = useState(false);
+  if (fontsReady && !started) setStarted(true);
   useEffect(() => {
     SystemUI.setBackgroundColorAsync(theme.colors.bg).catch(() => undefined);
     // The status bar and the area behind it follow the theme without a reload (AC-023).
     paintBrowserChrome(theme.colors.bg, mode);
   }, [theme.colors.bg, mode]);
-  // A font that fails to load must not block the app; the system font takes over.
-  if (!loaded && !error) return null;
+  // A font that fails to load does not block the app either; the system font takes over.
+  if (!started && !fontsReady) return null;
   return (
     <ThemeProvider themeId={themeId} mode={mode}>
       {props.children}

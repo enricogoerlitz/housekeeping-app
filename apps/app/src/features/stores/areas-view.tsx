@@ -15,7 +15,6 @@ import {
   type Id,
 } from '@housekeeping/core';
 import {
-  Button,
   EmptyState,
   Icon,
   IconButton,
@@ -41,7 +40,6 @@ import { MergeAreaPicker, NameSheet } from './store-dialogs';
 
 type AreaAction = 'rename' | 'merge' | 'delete';
 type Dialog =
-  | { kind: 'new' }
   | { kind: 'rename'; areaId: Id }
   | { kind: 'mergePick'; areaId: Id }
   | { kind: 'mergeConfirm'; areaId: Id; targetId: Id }
@@ -50,9 +48,10 @@ type Dialog =
 /**
  * "Märkte & Bereiche" → "Bereiche" (REQ-010): the household's areas in the order without store,
  * each with its number of articles and ⋯ ("Umbenennen", "Zusammenlegen mit …", "Löschen …"),
- * then "Ohne Bereich · n Artikel ›" and "+ Neuer Bereich" (AC-051).
+ * then "Ohne Bereich · n Artikel ›" (AC-051). "Bereich anlegen" stands in the page's header
+ * (spec 0054, REQ-001); `creating` opens its window.
  */
-export function AreasView() {
+export function AreasView(props: { creating: boolean; onCreatingChange: (open: boolean) => void }) {
   const areas = useAreas();
   const articles = useArticles();
   const online = useOnlineOnly();
@@ -178,18 +177,8 @@ export function AreasView() {
           testID="areas-without"
         />
       </List>
-      <View style={{ marginTop: 16, alignItems: 'flex-start' }}>
-        <Button
-          label="Neuer Bereich"
-          icon="plus"
-          disabled={online.disabled}
-          hint={online.hint}
-          onPress={() => setDialog({ kind: 'new' })}
-          testID="areas-new"
-        />
-      </View>
 
-      {dialog?.kind === 'new' ? (
+      {props.creating ? (
         <NameSheet
           title="Neuer Bereich"
           label="Name"
@@ -203,11 +192,11 @@ export function AreasView() {
             } catch (caught) {
               return messageOf(caught);
             }
-            close();
+            props.onCreatingChange(false);
             newAreaHint(name);
             return undefined;
           }}
-          onClose={close}
+          onClose={() => props.onCreatingChange(false)}
           testID="area-new-sheet"
         />
       ) : null}

@@ -1,5 +1,5 @@
-import { Children, useRef, useState, type ReactNode } from 'react';
-import { ScrollView, View, type ScrollViewInstance } from 'react-native';
+import { Children, useEffect, useRef, useState, type ReactNode } from 'react';
+import { ScrollView, View, type HostInstance, type ScrollViewInstance } from 'react-native';
 
 import { IconButton } from './controls';
 import { galleryKeyStep, pageAt, stepPage } from './gallery-pages';
@@ -13,8 +13,18 @@ type KeyEvent = { key: string; preventDefault: () => void };
 export interface MediaGalleryProps {
   /** The pages, each filling the frame (a photo, a video's poster). */
   children: ReactNode;
-  /** Width : height of the frame, the same for every page. */
-  aspectRatio: number;
+  /**
+   * Width : height of the frame, the same for every page; without it the gallery fills its parent
+   * (the full-screen viewer, spec 0056, REQ-003).
+   */
+  aspectRatio?: number;
+  /** The page it opens on (spec 0056, AC-013). */
+  initialIndex?: number;
+  /**
+   * With a mouse it takes the keyboard focus when it appears, so ← and → turn the pages at once
+   * (spec 0056, AC-012).
+   */
+  autoFocus?: boolean;
   /** Accessible names from the feature: the arrows and "2 von 3". */
   labels: { previous: string; next: string; position: (page: number, count: number) => string };
   onIndexChange?: (index: number) => void;
@@ -39,16 +49,38 @@ export function MediaGallery(props: MediaGalleryProps) {
   const stage = getTheme(theme.id, 'dark');
   const fine = useFinePointer();
   const scrollRef = useRef<ScrollViewInstance>(null);
-  const [width, setWidth] = useState(0);
-  const [shown, setShown] = useState(0);
+  const frameRef = useRef<HostInstance>(null);
+  const [size, setSize] = useState({ width: 0, height: 0 });
+  const width = size.width;
+  const [shown, setShown] = useState(props.initialIndex ?? 0);
+  const fill = props.aspectRatio === undefined;
+  // Each page in numbers: a percentage of the scrolling content would be circular.
+  const pageHeight = fill ? size.height : width / (props.aspectRatio ?? 1);
+  // Filling the whole screen, a focus ring would frame the screen itself (the viewer's window
+  // focuses it on opening, also on a touch screen).
+  const frame = fill
+    ? { flex: 1, width: '100%' as const, outlineWidth: 0 }
+    : { width: '100%' as const, aspectRatio: props.aspectRatio };
   // A page that went away (a removed video) leaves the gallery on the last one there is.
   const index = Math.min(shown, Math.max(0, count - 1));
   const { onIndexChange } = props;
   const id = (part: string) => (props.testID ? `${props.testID}-${part}` : undefined);
+  // The page it opens on, once its width is known; the focus for the arrow keys.
+  const placed = useRef(false);
+  useEffect(() => {
+    if (placed.current || width === 0) return;
+    placed.current = true;
+    if (index > 0) scrollRef.current?.scrollTo({ x: index * width, animated: false });
+  }, [width, index]);
+  // Only with a mouse: a touch screen has no arrow keys and would show the focus ring.
+  const takeFocus = props.autoFocus === true && fine;
+  useEffect(() => {
+    if (takeFocus) frameRef.current?.focus();
+  }, [takeFocus]);
 
   if (count <= 1) {
     return (
-      <View testID={props.testID} style={{ width: '100%', aspectRatio: props.aspectRatio }}>
+      <View testID={props.testID} style={frame}>
         {pages}
       </View>
     );
@@ -69,10 +101,16 @@ export function MediaGallery(props: MediaGalleryProps) {
 
   return (
     <View
+      ref={frameRef}
       testID={props.testID}
       focusable
-      style={{ width: '100%', aspectRatio: props.aspectRatio }}
-      onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
+      style={frame}
+      onLayout={(event) =>
+        setSize({
+          width: event.nativeEvent.layout.width,
+          height: event.nativeEvent.layout.height,
+        })
+      }
       {...({ onKeyDown } as object)}
     >
       <ScrollView
@@ -95,8 +133,7 @@ export function MediaGallery(props: MediaGalleryProps) {
             // Only the page shown is read out; the others are beside it, off the frame.
             accessibilityElementsHidden={at !== index}
             importantForAccessibility={at === index ? 'auto' : 'no-hide-descendants'}
-            // Sized in numbers: a percentage of the scrolling content would be circular.
-            style={{ width: width || '100%', height: width ? width / props.aspectRatio : '100%' }}
+            style={{ width: width || '100%', height: width && pageHeight ? pageHeight : '100%' }}
           >
             {page}
           </View>

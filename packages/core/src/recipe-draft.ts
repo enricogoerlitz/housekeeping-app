@@ -1,5 +1,6 @@
-import type { RecipeDraft, RecipeDraftSource } from './ai-contract';
+import type { DraftIngredient, RecipeDraft, RecipeDraftSource } from './ai-contract';
 import { exactCatalogHit, type StarterCatalogEntry } from './article-catalog';
+import type { ArticleProposal } from './ingredient-drafts';
 import type { PageDraftInput, PageDraftStep } from './page-editor';
 import {
   cleanTags,
@@ -8,7 +9,7 @@ import {
   type IngredientRowArticle,
 } from './recipe-editor';
 import { normalizeText } from './text';
-import type { Article, Id, Recipe, RecipeLink, RecipeVariant } from './types';
+import type { Area, Article, Id, Recipe, RecipeLink, RecipeVariant } from './types';
 import { linkHost } from './web-link';
 
 // "Mit KI ausfüllen" (spec 0040, REQ-001 – REQ-006): what the app does with the AI's answer before
@@ -58,13 +59,26 @@ export function linkChipLabel(url: string, state: 'reading' | 'read' | 'failed')
 }
 
 function articleOf(
-  name: string,
+  ingredient: DraftIngredient,
   articles: readonly Article[],
   catalog: readonly StarterCatalogEntry[],
+  areas: readonly Area[],
 ): IngredientRowArticle {
+  const { name } = ingredient;
   const hit = exactCatalogHit(name, articles, catalog);
-  if (!hit) return { kind: 'new', name };
-  return hit.kind === 'article' ? { kind: 'article', articleId: hit.id } : { kind: 'hit', hit };
+  if (hit) {
+    return hit.kind === 'article' ? { kind: 'article', articleId: hit.id } : { kind: 'hit', hit };
+  }
+  // Spec 0055, REQ-009: the area by its name (AC-031: one the household lacks stays empty).
+  const proposed: ArticleProposal = {};
+  const area = ingredient.area
+    ? areas.find(
+        (candidate) => normalizeText(candidate.name) === normalizeText(ingredient.area ?? ''),
+      )
+    : undefined;
+  if (area) proposed.areaId = area.id;
+  if (ingredient.diet) proposed.diet = ingredient.diet;
+  return Object.keys(proposed).length > 0 ? { kind: 'new', name, proposed } : { kind: 'new', name };
 }
 
 /** Tags of a draft (spec 0045, REQ-002): at most 5 (AC-004). */
@@ -107,6 +121,8 @@ export function draftToPageInput(
     newId: () => Id;
     /** The household's tags (tagValues). */
     tags: readonly string[];
+    /** The household's areas, for the area a new article gets (spec 0055, REQ-009). */
+    areas?: readonly Area[];
   },
 ): PageDraftInput {
   const variants: RecipeVariant[] = [];
@@ -127,7 +143,7 @@ export function draftToPageInput(
       amountText: ingredient.amount,
       prepNote: ingredient.note ?? '',
       group: ingredient.group ?? '',
-      article: articleOf(ingredient.name, context.articles, context.catalog),
+      article: articleOf(ingredient, context.articles, context.catalog, context.areas ?? []),
     };
     const id = variantId(ingredient.variant);
     if (id !== undefined) row.variantId = id;

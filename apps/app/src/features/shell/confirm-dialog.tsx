@@ -1,4 +1,4 @@
-import { Button, createRequestSlot, Row, Sheet, Stack, Text } from '@housekeeping/ui';
+import { createRequestSlot, Sheet, Stack, Text } from '@housekeeping/ui';
 import { useState, useSyncExternalStore } from 'react';
 
 import { useOnlineOnly } from './offline';
@@ -19,6 +19,8 @@ export function ConfirmDialog(props: {
   needsNetwork?: boolean;
   onConfirm: () => string | undefined | void;
   onCancel: () => void;
+  /** Escape or a tap outside, when it means something else than the cancel button (spec 0056). */
+  onDismiss?: () => void;
   testID: string;
 }) {
   const online = useOnlineOnly();
@@ -30,25 +32,24 @@ export function ConfirmDialog(props: {
       visible
       size="s"
       title={props.title}
-      onClose={props.onCancel}
+      onClose={props.onDismiss ?? props.onCancel}
       testID={props.testID}
-      footer={
-        <Row gap={10} style={{ justifyContent: 'flex-end' }}>
-          <Button
-            label={props.cancelLabel ?? 'Abbrechen'}
-            variant="secondary"
-            onPress={props.onCancel}
-            testID={`${props.testID}-cancel`}
-          />
-          <Button
-            label={props.confirmLabel}
-            disabled={blocked}
-            hint={blocked ? online.hint : undefined}
-            onPress={() => setError(props.onConfirm() ?? undefined)}
-            testID={`${props.testID}-confirm`}
-          />
-        </Row>
-      }
+      // The head of every window that decides something: "Abbrechen" · question · the named
+      // button on phones, both at the bottom on wider screens (spec 0054, REQ-007).
+      actions={{
+        cancel: {
+          label: props.cancelLabel ?? 'Abbrechen',
+          onPress: props.onCancel,
+          testID: `${props.testID}-cancel`,
+        },
+        primary: {
+          label: props.confirmLabel,
+          disabled: blocked,
+          hint: blocked ? online.hint : undefined,
+          onPress: () => setError(props.onConfirm() ?? undefined),
+          testID: `${props.testID}-confirm`,
+        },
+      }}
     >
       {props.message || hint ? (
         <Stack gap={10}>

@@ -21,10 +21,10 @@ import {
 import {
   Badge,
   Button,
+  CreateButton,
   Chip,
   EmptyState,
   Icon,
-  IconButton,
   InfiniteList,
   List,
   ListDetail,
@@ -157,21 +157,9 @@ export function ArticlesScreen() {
   };
   const sortLabel = SORT_OPTIONS.find((option) => option.value === sort)?.label ?? '';
 
-  const addButton = isPhone ? (
-    <IconButton
-      icon="plus"
-      label="Neuer Artikel"
-      variant="soft"
-      disabled={online.disabled}
-      hint={online.hint}
-      onPress={() => startCreating()}
-      testID="articles-new"
-    />
-  ) : (
-    <Button
-      label="Neu"
-      icon="plus"
-      size="sm"
+  const addButton = (
+    <CreateButton
+      label="Artikel anlegen"
       disabled={online.disabled}
       hint={online.hint}
       onPress={() => startCreating()}
