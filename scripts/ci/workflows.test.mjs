@@ -553,7 +553,7 @@ describe('preview.yml (Task 7)', () => {
       assert.equal(envName(jobs[id]), 'preview', id);
   });
 
-  test('AC-017, AC-014: status, config, reset without seed, preview seed, invitations, then config, functions, secrets', () => {
+  test('AC-017, AC-014: status, config, reset without seed, preview seed, invitations, restart, then config, functions, secrets', () => {
     const job = jobs['supabase-vorschau'];
     assertOrder(
       job,
@@ -563,6 +563,8 @@ describe('preview.yml (Task 7)', () => {
         RESET,
         /supabase db query .*--file supabase\/preview-seed\.sql/,
         /^node scripts\/preview-invites\.mjs$/,
+        // Finding of 27.11.2026: the pg_cron launcher keeps its job list across the reset.
+        /^node scripts\/ci\/supabase-restart\.mjs$/,
         /supabase config push/,
         /supabase functions deploy .*--prune/,
         /supabase secrets set/,
