@@ -213,7 +213,16 @@ Befund 7. Offline: offline vollständig.
       Schließen an das zurück, was ihn beim Öffnen hatte — das versteckte Feld, das die Tastatur
       offen hielt. Es verlässt die Seite, sobald es übergeben hat. Der leere Rand beim Schließen
       aus Runde 1 trat in der installierten App nicht mehr auf.
+    - **Gemerkte Tastaturhöhe (I-22).** Gemerkt wird je Fenstergröße die höchste gemessene
+      Tastatur (mit Vorschlagsleiste), nicht die letzte: nach einer Adress-Tastatur (369 pt)
+      rechnete das Antippen von „+ Posten hinzufügen“ mit zu wenig, und Safari schob die Seite
+      ~90 ms um 158 pt hoch. Zu hoch geschätzt bleibt nur kurz eine Lücke. Gelesen wird der
+      Speicher jedes Mal (nur ohne Speicher gilt der Wert im Arbeitsspeicher).
     - I-06 (erster Tipp auf einen Treffer kam nicht an) ließ sich nicht nachstellen.
+    - Nachweis (27.11.): Tests rot, dann grün (`overlay-handy.test.tsx`, `keyboard-proxy.test.tsx`,
+      `keyboard-state.test.ts`, `title-fit.test.ts`, core `add-entry.test.ts`); `pnpm format:check
+&& pnpm check && pnpm build:web` grün; installierte PWA im iPhone-18-Pro-Simulator: ˅ in
+      „Link“, Schließen ohne hängende Tastatur, `scrollY` 0 in „+ Posten hinzufügen“.
 
 ## Daten
 

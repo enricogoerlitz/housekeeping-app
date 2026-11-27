@@ -6,6 +6,7 @@ import { TextInput, View, type HostInstance } from 'react-native';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { TextField } from './controls';
+import { useKeyboard } from './keyboard';
 import { HANDOVER_MS, openKeyboardNow } from './keyboard-proxy';
 import { Sheet, ToastHost, toast, useToastAvoid } from './overlay';
 import { Text } from './primitives';
@@ -372,6 +373,27 @@ describe('Sheet with the keyboard on iPhone (spec 0044, REQ-002, REQ-003)', () =
     report(464);
     expect(layer()).toBe('380px');
     act(() => vi.advanceTimersByTime(2000));
+    expect(layer()).toBe('380px');
+  });
+
+  it('AC-004: it waits for the tallest keyboard measured, as a smaller guess lets Safari push the page (iPhone click-through)', () => {
+    setWindow(390, 844);
+    // Something on the page listens to the keyboard.
+    function Listener() {
+      useKeyboard();
+      return null;
+    }
+    const page = render(<Listener />);
+    // A keyboard with suggestions (380), then one without (350, e.g. a URL field).
+    report(464);
+    act(() => vi.advanceTimersByTime(200));
+    report(undefined);
+    report(494);
+    act(() => vi.advanceTimersByTime(200));
+    report(undefined);
+    act(() => openKeyboardNow());
+    page.unmount();
+    openSheet();
     expect(layer()).toBe('380px');
   });
 

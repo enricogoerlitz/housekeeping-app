@@ -67,6 +67,7 @@ beforeEach(() => {
     ],
   });
   setWindow(390, 844);
+  window.localStorage.clear();
   vi.spyOn(window, 'scrollTo').mockImplementation(() => undefined);
 });
 afterEach(() => {
