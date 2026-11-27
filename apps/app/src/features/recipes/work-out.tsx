@@ -50,8 +50,9 @@ export function useWorkOut(): (recipeId: Id, how: { order: readonly Id[] } | 're
  * The card at the top of a recipe's page (REQ-004, REQ-005): on an unfinished recipe "Noch nicht
  * ausgearbeitet" with "Mit KI ausarbeiten" and "Weiter zum nächsten"; after saving one that was
  * unfinished when its page opened (`openedUnfinished`, kept by the page: the card remounts when
- * the edit mode changes the frame), "Ausgearbeitet · noch 11 unfertig" (Entscheidung 6). Nothing
- * while editing; beside the list without "Weiter zum nächsten" (AC-023).
+ * the edit mode changes the frame), "Ausgearbeitet · noch 11 unfertig" (Entscheidung 6), nothing
+ * when it was the last (AC-020). Nothing while editing; beside the list without "Weiter zum
+ * nächsten" (AC-023).
  */
 export function UnfinishedCard(props: {
   recipe: Recipe;
@@ -87,6 +88,9 @@ export function UnfinishedCard(props: {
     ) : null;
 
   if (!unfinished) {
+    // AC-020 (changed 27.11.): the last one worked out, the card simply goes away.
+    const worked = workedOutLabel(remaining);
+    if (worked === undefined) return null;
     return (
       <Surface testID="recipe-worked-out">
         <Row gap={10} wrap>
@@ -96,7 +100,7 @@ export function UnfinishedCard(props: {
             style={{ flexGrow: 1, flexShrink: 1 }}
             testID="recipe-worked-out-text"
           >
-            {workedOutLabel(remaining)}
+            {worked}
           </Text>
           {nextButton(true)}
         </Row>

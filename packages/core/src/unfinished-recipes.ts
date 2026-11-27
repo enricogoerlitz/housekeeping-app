@@ -57,9 +57,10 @@ export function unfinishedOthersLabel(remaining: number): string | undefined {
   return remaining === 1 ? 'Noch 1 weiteres unfertig' : `Noch ${remaining} weitere unfertig`;
 }
 
-/** After saving a recipe that was unfinished (AC-017, AC-020). */
-export function workedOutLabel(remaining: number): string {
-  return remaining === 0
-    ? 'Alle Rezepte sind ausgearbeitet'
-    : `Ausgearbeitet · noch ${remaining} unfertig`;
+/**
+ * After saving a recipe that was unfinished (AC-017); nothing once none is left, so the card goes
+ * away (AC-020, changed 27.11.: no "all done" state).
+ */
+export function workedOutLabel(remaining: number): string | undefined {
+  return remaining === 0 ? undefined : `Ausgearbeitet · noch ${remaining} unfertig`;
 }

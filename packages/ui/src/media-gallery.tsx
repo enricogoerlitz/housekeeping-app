@@ -1,5 +1,11 @@
 import { Children, useEffect, useRef, useState, type ReactNode } from 'react';
-import { ScrollView, View, type HostInstance, type ScrollViewInstance } from 'react-native';
+import {
+  ScrollView,
+  View,
+  type HostInstance,
+  type LayoutChangeEvent,
+  type ScrollViewInstance,
+} from 'react-native';
 
 import { IconButton } from './controls';
 import { galleryKeyStep, pageAt, stepPage } from './gallery-pages';
@@ -72,15 +78,45 @@ export function MediaGallery(props: MediaGalleryProps) {
     placed.current = true;
     if (index > 0) scrollRef.current?.scrollTo({ x: index * width, animated: false });
   }, [width, index]);
+  // The pages turn only when the person turns them (spec 0046, AC-021): Safari restores the
+  // frame's scroll position when the page loads again, and a browser keeps the snapped page in
+  // view when a page comes in front of it. Until a touch, a click or the wheel such a scroll is
+  // undone, so a recipe always opens on its first page.
+  const moved = useRef(false);
+  const paged = count > 1;
+  useEffect(() => {
+    if (!paged) return;
+    // On the web the frame is a DOM element; native restores nothing and every scroll is a swipe.
+    const node = frameRef.current as unknown as Partial<EventTarget> | null;
+    if (!node?.addEventListener) {
+      moved.current = true;
+      return;
+    }
+    const mark = () => {
+      moved.current = true;
+    };
+    const kinds = ['pointerdown', 'touchstart', 'wheel'];
+    for (const kind of kinds) node.addEventListener(kind, mark, { passive: true });
+    return () => {
+      for (const kind of kinds) node.removeEventListener?.(kind, mark);
+    };
+  }, [paged]);
   // Only with a mouse: a touch screen has no arrow keys and would show the focus ring.
   const takeFocus = props.autoFocus === true && fine;
   useEffect(() => {
     if (takeFocus) frameRef.current?.focus();
   }, [takeFocus]);
 
+  // The frame is measured from the start, also with a single page: react-native-web observes a
+  // view's size only if it has onLayout when it mounts, so a video saved to a recipe with only its
+  // photo would otherwise leave the pages without width, blank until the page is opened again
+  // (spec 0046, AC-020).
+  const onLayout = (event: LayoutChangeEvent) =>
+    setSize({ width: event.nativeEvent.layout.width, height: event.nativeEvent.layout.height });
+
   if (count <= 1) {
     return (
-      <View testID={props.testID} style={frame}>
+      <View testID={props.testID} style={frame} onLayout={onLayout}>
         {pages}
       </View>
     );
@@ -88,6 +124,7 @@ export function MediaGallery(props: MediaGalleryProps) {
 
   const show = (next: number) => {
     if (next === index) return;
+    moved.current = true;
     setShown(next);
     onIndexChange?.(next);
     scrollRef.current?.scrollTo({ x: next * width, animated: true });
@@ -105,12 +142,7 @@ export function MediaGallery(props: MediaGalleryProps) {
       testID={props.testID}
       focusable
       style={frame}
-      onLayout={(event) =>
-        setSize({
-          width: event.nativeEvent.layout.width,
-          height: event.nativeEvent.layout.height,
-        })
-      }
+      onLayout={onLayout}
       {...({ onKeyDown } as object)}
     >
       <ScrollView
@@ -122,6 +154,10 @@ export function MediaGallery(props: MediaGalleryProps) {
         onScroll={(event) => {
           const next = pageAt(event.nativeEvent.contentOffset.x, width, count);
           if (next === index) return;
+          if (!moved.current) {
+            scrollRef.current?.scrollTo({ x: index * width, animated: false });
+            return;
+          }
           setShown(next);
           onIndexChange?.(next);
         }}

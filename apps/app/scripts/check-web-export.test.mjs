@@ -36,6 +36,7 @@ const validDirectives = {
   'style-src': "'self' 'unsafe-inline'",
   'img-src': "'self' data: blob:",
   'media-src': "'self' blob:",
+  'worker-src': "'self'",
   'connect-src':
     "'self' blob: https://abc.supabase.co wss://abc.supabase.co https://*.stt.speech.microsoft.com",
   'object-src': "'none'",
@@ -83,6 +84,16 @@ test('spec 0043: media-src is exactly self and blob: (the recipe video plays fro
     ).join('\n'),
     /media-src must be exactly 'self' blob:/,
   );
+});
+
+test('spec 0003 AC-028 (27.11.): worker-src is exactly self; no data: or blob: worker (the Speech SDK runs its timers without one)', () => {
+  for (const value of [undefined, "'self' data:", "'self' blob:", "'self' *", "'self' https:"]) {
+    assert.match(
+      checkExport(exportWith({ directives: { 'worker-src': value } })).join('\n'),
+      /worker-src must be exactly 'self'/,
+      String(value),
+    );
+  }
 });
 
 test('hashes in script-src-elem pass', () => {

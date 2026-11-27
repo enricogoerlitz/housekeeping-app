@@ -153,14 +153,17 @@ test('AC-005, AC-007, AC-008, AC-010, AC-017 – AC-020: the chip, „Ausarbeite
   await tid(page, 'recipe-unfinished-next').click();
   await expect(tid(page, 'recipe-ai-fill-web-query')).toHaveValue('Bami Goreng');
 
-  // AC-020: the last one.
+  // AC-020 (changed 27.11.): after the last one the card goes away, no "all done" text.
   await takeFirstHitAndSave(page);
-  await expect(tid(page, 'recipe-worked-out-text')).toHaveText('Alle Rezepte sind ausgearbeitet');
-  await expect(tid(page, 'recipe-unfinished-next')).toHaveCount(0);
+  await expect(tid(page, 'recipe-ingredients')).toBeVisible();
+  await expect(tid(page, 'recipe-worked-out')).toHaveCount(0);
+  await expect(tid(page, 'recipe-unfinished')).toHaveCount(0);
+  await expect(page.getByText('Alle Rezepte sind ausgearbeitet')).toHaveCount(0);
 
-  // AC-009: the list with the filter on and nothing left.
+  // AC-009 (changed 27.11.): the list with the filter on and nothing left is a plain empty filter.
   await open(page, '/rezepte?unfertig=1');
-  await expect(tid(page, 'recipes-no-results')).toContainText('Alle Rezepte sind ausgearbeitet');
+  await expect(tid(page, 'recipes-no-results')).toContainText('Keine Rezepte für diese Filter');
+  await expect(page.getByText('Alle Rezepte sind ausgearbeitet')).toHaveCount(0);
   await expect(tid(page, 'recipe-quick-unfinished')).toHaveText('Unfertig (0)');
   await tid(page, 'recipes-reset-filters').click();
   await expect(tid(page, 'recipe-quick-unfinished')).toHaveCount(0);

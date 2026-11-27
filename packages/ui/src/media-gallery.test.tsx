@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { MediaGallery } from './media-gallery';
@@ -106,5 +106,90 @@ describe('MediaGallery (spec 0046, REQ-003)', () => {
       </MediaGallery>,
     );
     expect(screen.getByLabelText('2 von 2')).toBeTruthy();
+  });
+});
+
+// react-native-web measures a view (onLayout) only if it has an onLayout when it mounts: it starts
+// observing it with the ResizeObserver then and never later. `resize` reports a new size.
+const observed = new Set<Element>();
+let resize: ((entries: { target: Element }[]) => void) | undefined;
+class FakeResizeObserver {
+  constructor(callback: (entries: { target: Element }[]) => void) {
+    resize = callback;
+  }
+  observe(node: Element) {
+    observed.add(node);
+  }
+  unobserve(node: Element) {
+    observed.delete(node);
+  }
+  disconnect() {
+    observed.clear();
+  }
+}
+
+const keyed = (keys: readonly string[]) =>
+  keys.map((key) => <Text key={key}>{`Seite ${key}`}</Text>);
+
+/** Lays the gallery out 400 px wide (react-native-web measures offsetWidth after a tick). */
+async function layOut(frame: HTMLElement): Promise<void> {
+  Object.defineProperty(frame, 'offsetWidth', { configurable: true, value: 400 });
+  Object.defineProperty(frame, 'offsetHeight', { configurable: true, value: 300 });
+  await act(async () => {
+    resize?.([{ target: frame }]);
+    await new Promise((done) => setTimeout(done, 0));
+  });
+}
+
+/** The browser scrolls the frame to `left`, as Safari does when it restores a page. */
+function scrollTo(frame: HTMLElement, left: number): void {
+  const scroller = frame.firstElementChild as HTMLElement;
+  scroller.scrollLeft = left;
+  fireEvent.scroll(scroller);
+}
+
+describe('MediaGallery, findings from production (spec 0046, 27.11.)', () => {
+  vi.stubGlobal('ResizeObserver', FakeResizeObserver);
+
+  it('AC-020: a video added to the single photo keeps the frame measured, so the pages get their width', () => {
+    const { rerender } = render(
+      <MediaGallery aspectRatio={4 / 3} labels={labels} testID="gallery">
+        {keyed(['photo'])}
+      </MediaGallery>,
+    );
+    rerender(
+      <MediaGallery aspectRatio={4 / 3} labels={labels} testID="gallery">
+        {keyed(['photo', 'video-1'])}
+      </MediaGallery>,
+    );
+    expect(screen.getByLabelText('1 von 2')).toBeTruthy();
+    expect(observed.has(screen.getByTestId('gallery'))).toBe(true);
+  });
+
+  it('AC-021: a scroll the person did not make (Safari restoring the page) leaves the gallery on the photo', async () => {
+    render(
+      <MediaGallery aspectRatio={4 / 3} labels={labels} testID="gallery">
+        {keyed(['photo', 'video-1', 'video-2'])}
+      </MediaGallery>,
+    );
+    const frame = screen.getByTestId('gallery');
+    await layOut(frame);
+    scrollTo(frame, 800);
+    expect(screen.getByLabelText('1 von 3')).toBeTruthy();
+    expect((frame.firstElementChild as HTMLElement).scrollLeft).toBe(0);
+  });
+
+  it('AC-021: a swipe of the person turns the page', async () => {
+    render(
+      <MediaGallery aspectRatio={4 / 3} labels={labels} testID="gallery">
+        {keyed(['photo', 'video-1', 'video-2'])}
+      </MediaGallery>,
+    );
+    const frame = screen.getByTestId('gallery');
+    await layOut(frame);
+    const touch = { identifier: 1, force: 1, clientX: 300, clientY: 100, pageX: 300, pageY: 100 };
+    fireEvent.touchStart(frame, { touches: [touch], changedTouches: [touch] });
+    scrollTo(frame, 800);
+    expect(screen.getByLabelText('3 von 3')).toBeTruthy();
   });
 });
