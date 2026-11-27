@@ -90,10 +90,11 @@ export function webSearchPrimary(
   return {
     label: search.state.status === 'searching' ? 'Sucht …' : 'Suchen',
     icon: 'search',
-    disabled: online.disabled || search.busy || search.query.trim() === '',
+    disabled:
+      online.disabled || search.busy || (search.query.trim() === '' && !search.dictation.pending),
     hint: online.hint,
     testID: `${testID}-submit`,
-    onPress: () => search.search(),
+    onPress: search.dictation.send,
   };
 }
 
@@ -479,7 +480,8 @@ export function WebSearchPanel(props: {
             }
             search.setQuery(text.slice(0, WEB_SEARCH_LIMITS.query));
           }}
-          onSubmitEditing={() => search.search()}
+          dictation={search.dictation}
+          onSubmitEditing={search.dictation.send}
           returnKeyType="search"
           autoFocus={props.autoFocus === true || search.focusRequest > 0}
           inputRef={props.inputRef}

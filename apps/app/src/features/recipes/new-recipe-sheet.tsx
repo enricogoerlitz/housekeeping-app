@@ -53,6 +53,7 @@ import {
 } from '@/features/web-search/web-search-panel';
 import { features } from '@/lib/features';
 import { CAN_PICK_PHOTO, pickPhotoFile } from '@/lib/pick-photo';
+import { usePromptDictation } from '@/lib/use-prompt-dictation';
 
 import { draftPhoto, handOverNewRecipe, startPhotoSuggestions } from './ai-draft';
 import { AiFillFields, toastUnreadLinks, useAiFill, useAiFillTabs, useDraftInput } from './ai-fill';
@@ -274,6 +275,12 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
   };
 
   const collection = kind === 'collection';
+  // Spec 0068, AC-001: "Erzeugen" while dictating writes with the last words.
+  const dictation = usePromptDictation({
+    value: fill.text,
+    onChangeText: fill.setText,
+    onSend: writeWithAi,
+  });
   // REQ-001: the head names what happens on the shown tab: "Anlegen" with the title on "Websuche"
   // (a previewed hit makes it "Übernehmen", spec 0049), "Erzeugen" on "KI-Rezept" — there is no
   // title to save, the AI writes the recipe (owner, 27.11.2026: no second button below).
@@ -284,8 +291,8 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
         ? {
             label: 'Erzeugen',
             icon: 'sparkles',
-            onPress: writeWithAi,
-            disabled: online.disabled || fill.busy || !aiReady,
+            onPress: dictation.send,
+            disabled: online.disabled || fill.busy || (!aiReady && !dictation.pending),
             hint: online.hint,
             testID: 'new-recipe-ai-submit',
           }
@@ -445,7 +452,12 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
               ) : null}
             </Stack>
           ) : (
-            <AiFillFields fill={fill} inputRef={tabs.promptField} testID="new-recipe-ai" />
+            <AiFillFields
+              fill={fill}
+              dictation={dictation}
+              inputRef={tabs.promptField}
+              testID="new-recipe-ai"
+            />
           )}
           {extras.has('photo') ? <NewPhotoSlot photo={photo} onChange={setPhoto} /> : null}
           {!collection && extras.has('ingredients') ? (

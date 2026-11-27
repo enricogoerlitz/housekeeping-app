@@ -74,6 +74,7 @@ import {
   WebSearchPanel,
   type WebTake,
 } from '@/features/web-search/web-search-panel';
+import { usePromptDictation, type PromptDictation } from '@/lib/use-prompt-dictation';
 
 import { draftPhoto } from './ai-draft';
 import { newRowKey } from './sections/ingredient-handover';
@@ -341,6 +342,8 @@ export function AiFillFields(props: {
   compact?: boolean;
   /** The recipe has content the wish changes (spec 0055, REQ-006): its words, not "new" ones (D-02). */
   changes?: boolean;
+  /** The window's dictation: its primary action sends with the last words (spec 0068). */
+  dictation: PromptDictation;
   testID: string;
 }) {
   const { fill, testID } = props;
@@ -373,6 +376,7 @@ export function AiFillFields(props: {
         }
         value={fill.text}
         onChangeText={fill.setText}
+        dictation={props.dictation}
         multiline
         maxLength={RECIPE_DRAFT_LIMITS.text}
         editable={!disabled}
@@ -711,6 +715,12 @@ export function AiFillSheet(props: {
         });
       });
   };
+  // Spec 0068, AC-012: "Vorschlag" / "Ausfüllen" while dictating takes the last words along.
+  const dictation = usePromptDictation({
+    value: fill.text,
+    onChangeText: fill.setText,
+    onSend: submit,
+  });
   const take = (taken: WebTake) => {
     if (!taken.recipe) return;
     props.onClose();
@@ -753,8 +763,8 @@ export function AiFillSheet(props: {
                     ? 'Vorschlag'
                     : 'Ausfüllen',
                 icon: 'sparkles',
-                onPress: submit,
-                disabled: online.disabled || fill.busy || !fill.ready,
+                onPress: dictation.send,
+                disabled: online.disabled || fill.busy || (!fill.ready && !dictation.pending),
                 hint: online.hint,
                 testID: `${id}-submit`,
               },
@@ -780,6 +790,7 @@ export function AiFillSheet(props: {
             fill={fill}
             compact={changing}
             changes={props.hasContent}
+            dictation={dictation}
             autoFocus={defaults.tab === 'prompt'}
             inputRef={tabs.promptField}
             testID={`${id}-field`}

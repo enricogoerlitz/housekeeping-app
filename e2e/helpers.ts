@@ -644,16 +644,33 @@ export async function routeUrl(page: Page, button: string): Promise<string> {
  * microphone (Chromium flags in playwright.config.ts) over the WebSocket, and this answers with
  * one recognised phrase in the service's text protocol (headers, blank line, JSON body; the
  * X-RequestId must echo the SDK's). Nothing reaches Azure.
+ *
+ * Spec 0068: with `finalOnStop` the words of `transcript` stay interim while listening, and the
+ * final phrase `finalOnStop` comes only after the stop — the last words still on their way;
+ * `null` never sends it (the 1.5 s wait runs out). An empty `transcript` hears nothing.
  */
-export async function fakeSpeech(page: Page, transcript: string): Promise<void> {
+export async function fakeSpeech(
+  page: Page,
+  transcript: string,
+  options: { finalOnStop?: string | null } = {},
+): Promise<void> {
   await page.context().grantPermissions(['microphone']);
   await page.routeWebSocket(/\.stt\.speech\.microsoft\.com\//, (ws) => {
     let requestId = '';
-    let answered = false;
+    let listening = false;
+    let ended = false;
+    const duration = 20_000_000;
     const send = (pathName: string, body: object) =>
       ws.send(
         `X-RequestId:${requestId}\r\nContent-Type:application/json; charset=utf-8\r\nPath:${pathName}\r\n\r\n${JSON.stringify(body)}`,
       );
+    const phrase = (text: string) =>
+      send('speech.phrase', {
+        RecognitionStatus: 'Success',
+        DisplayText: text,
+        Offset: 0,
+        Duration: duration,
+      });
     const idOf = (headers: string) => /X-RequestId:\s*([0-9a-f]+)/i.exec(headers)?.[1];
     ws.onMessage((message) => {
       if (typeof message === 'string') {
@@ -663,21 +680,19 @@ export async function fakeSpeech(page: Page, transcript: string): Promise<void> 
       const headerLength = message.readUInt16BE(0);
       requestId = idOf(message.subarray(2, 2 + headerLength).toString('utf8')) ?? requestId;
       const audio = message.length - 2 - headerLength > 0;
-      if (audio && !answered) {
-        answered = true;
-        const duration = 20_000_000;
+      if (audio && !listening) {
+        listening = true;
         send('turn.start', { context: { serviceTag: 'e2e' } });
+        if (transcript === '') return;
         send('speech.startDetected', { Offset: 0 });
         send('speech.hypothesis', { Text: transcript, Offset: 0, Duration: duration });
-        send('speech.phrase', {
-          RecognitionStatus: 'Success',
-          DisplayText: transcript,
-          Offset: 0,
-          Duration: duration,
-        });
-      } else if (!audio && answered) {
-        // End of the audio stream (the person pressed "Fertig"): close the turn.
-        send('speech.endDetected', { Offset: 20_000_000 });
+        if (options.finalOnStop === undefined) phrase(transcript);
+      } else if (!audio && listening && !ended) {
+        // End of the audio stream (the person pressed "Fertig" or send): close the turn.
+        ended = true;
+        if (options.finalOnStop === null) return;
+        if (options.finalOnStop !== undefined) phrase(options.finalOnStop);
+        send('speech.endDetected', { Offset: duration });
         send('turn.end', {});
       }
     });
