@@ -12,6 +12,7 @@ import {
   articleUsage,
   seriesRuleLabel,
   mergeTargets,
+  changedArticleName,
   validateArticleDraft,
   type Article,
   type Id,
@@ -153,6 +154,8 @@ export function useArticleEditor(props: ArticleEditorProps): {
     session: recurringSession,
   });
   const [name, setName] = useState(article?.name ?? '');
+  // The name the window opened with or saved last: only a change against it is saved (AC-057).
+  const [shownName, setShownName] = useState(name);
   const [synonym, setSynonym] = useState('');
   const [synonymError, setSynonymError] = useState<string | undefined>();
   const [error, setError] = useState<string | undefined>();
@@ -170,14 +173,21 @@ export function useArticleEditor(props: ArticleEditorProps): {
     }
   };
 
-  const nameProblem = validateArticleDraft(
-    { id: article.id, name, synonyms: article.synonyms },
-    articles,
-  ).find((problem) => problem.field === 'name');
+  const newName = changedArticleName(shownName, name);
+  const nameProblem =
+    newName === undefined
+      ? undefined
+      : validateArticleDraft(
+          { id: article.id, name: newName, synonyms: article.synonyms },
+          articles,
+        ).find((problem) => problem.field === 'name');
+  // Blur, Enter and "Fertig" write nothing without a change (AC-057).
   const saveName = (): boolean => {
+    if (newName === undefined) return true;
     if (nameProblem) return false;
-    if (collapse(name) === article.name) return true;
-    return write(() => updateArticle(article.id, { name }));
+    if (!write(() => updateArticle(article.id, { name: newName }))) return false;
+    setShownName(newName);
+    return true;
   };
   const done = () => {
     if (online.disabled || saveName()) props.onClose();

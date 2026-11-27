@@ -76,6 +76,17 @@ function collapse(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
 }
 
+/**
+ * The name "Artikel bearbeiten" saves (spec 0007, AC-057): the typed name, spaces collapsed, when it
+ * differs from the name the window opened with (or saved last); undefined when it does not. The
+ * window compares with what it showed, not with the cache now: a rename on another device that a
+ * delta sync brought while the window was open must not be overwritten by an untouched field.
+ */
+export function changedArticleName(opened: string, typed: string): string | undefined {
+  const name = collapse(typed);
+  return name === collapse(opened) ? undefined : name;
+}
+
 function keysOf(article: { name: string; synonyms?: readonly string[] }): string[] {
   return [article.name, ...(article.synonyms ?? [])].map(normalizeText);
 }
