@@ -132,3 +132,15 @@ export function filterRemembered<T extends Pick<Activity, 'remembered'>>(
   const wanted = filter === 'remembered';
   return activities.filter((activity) => activity.remembered === wanted);
 }
+
+/** AC-016: how many activities each filter would show, for the counts in its menu. */
+export function countRememberFilters(
+  activities: readonly Pick<Activity, 'remembered'>[],
+): Record<RememberFilter, number> {
+  const remembered = activities.filter((activity) => activity.remembered).length;
+  return {
+    remembered,
+    all: activities.length,
+    forgotten: activities.length - remembered,
+  };
+}

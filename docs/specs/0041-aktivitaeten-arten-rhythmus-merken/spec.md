@@ -79,6 +79,20 @@ gemerkt“. Quelle: A-03. Offline: offline lesend.
 - AC-013: Angenommen ich schalte auf „Alle“ und verlasse die Liste · Wenn ich wiederkomme · Dann ist
   „Gemerkt“ gewählt
 
+**REQ-004a — Merken mit einem Tipp (Nachklick 27.11.).** Auf der Detailseite (Seite und
+Seitenfenster) steht neben dem Herzen ein Lesezeichen „Merken“ / „Gemerkt“; es schaltet ohne das
+Bearbeiten-Fenster. Herz = Favorit (persönlich), Lesezeichen = Gemerkt (Haushaltsliste). Das Menü
+„Merken“ der Liste nennt die Anzahl je Wahl. Offline: Knopf ausgegraut mit dem üblichen Hinweis.
+
+- AC-015: Angenommen „Bouldern“ ist gemerkt · Wenn ich auf dem Detail das Lesezeichen „Gemerkt“
+  tippe · Dann ist es nicht mehr gemerkt, der Hinweis „Nicht mehr gemerkt“ mit „Rückgängig“ erscheint
+  (Und umgekehrt „Gemerkt“) und das Bearbeiten-Fenster bleibt zu
+- AC-016: Angenommen 3 gemerkte, 1 nicht gemerkte Aktivität · Wenn ich das Menü öffne · Dann steht
+  dort „Gemerkt (3)“, „Alle (4)“, „Nicht gemerkt (1)“, und die Zahlen folgen Suche und „Favoriten“
+- AC-017: Angenommen die Liste oder die Kacheln · Dann stehen Herz und Lesezeichen jeder Zeile und
+  Kachel oben rechts (je 44 pt, leer = Umriss, gesetzt = gefüllt), ein Tipp schaltet ohne die
+  Aktivität zu öffnen; bei Restaurants steht das Herz am selben Platz
+
 **REQ-005 — Personen bei Aktivitäten.** Ein Planeintrag einer Aktivität hat „Wer ist dabei?“
 (Mitglieder) und „Gäste“ (Anzahl), wie Mitesser beim Essen. Quelle: A-04. Offline: offline lesend.
 
@@ -129,6 +143,13 @@ gemerkt“. Quelle: A-03. Offline: offline lesend.
     (`seriesPlanButtonLabel`), im Fenster „Einplanen“ der Aktivität und im „+“ des Kalenders.
 17. Browser-Durchklick 27.11., Folge (B-14): Das Feld „Art“ trägt auch beim Suchen die
     Beschriftung „Art“, wie „Name“ darüber.
+18. Nachklick 27.11. (Merken): Das Lesezeichen ist ein eigener Knopf neben dem Herzen (Symbol
+    `bookmark`), Hinweis mit „Rückgängig“ über `snapshot`/`undoAction` wie beim Verschieben;
+    Schreibweg ist `updateActivity(id, { remembered })`, online-only. Das Herz hinter dem Titel
+    entfällt: Herz und Lesezeichen sitzen in Zeile und Kachel oben rechts und sind dort tippbar
+    (`CornerToggle`, `PlaceTile corner`). Das teilen sich Restaurants (nur Herz, sie kennen kein
+    „Merken“); Rezepte nutzen andere Bausteine und bleiben unverändert. Die Zählung ist
+    `countRememberFilters` in core.
 
 ## Daten
 
@@ -162,6 +183,7 @@ Größengrenze, ist aber durch die genauen Schlüssel und begrenzten Werte klein
 - [x] 4. Liste: Filter Gemerkt/Alle/Nicht gemerkt (AC-012, AC-013)
 - [x] 5. Einplanen mit Rhythmus, Serie bearbeiten, Termin absagen (AC-006–AC-009)
 - [x] 6. Personen am Planeintrag (AC-014)
+- [x] 8. Merken mit einem Tipp, Zählung, Herz und Lesezeichen oben rechts (AC-015–AC-017)
 - [x] 7. Glossar „Aktivitätsart“, „Serie“
 - [x] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün;
       `pnpm exec supabase test db`; `/security-check`

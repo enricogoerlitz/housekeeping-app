@@ -27,6 +27,7 @@ import { View } from 'react-native';
 import { PlanPlaceSheet } from '@/features/meal-plan/plan-place-sheet';
 import { RouteSheet } from '@/features/restaurants/route-sheet';
 import { DetailPage } from '@/features/shell/detail-page';
+import { RememberButton } from '@/features/shell/corner-toggle';
 import { FavoriteButton } from '@/features/shell/favorite-button';
 import { MemberRatings } from '@/features/shell/member-ratings';
 import { useOnlineOnly } from '@/features/shell/offline';
@@ -39,6 +40,7 @@ import { shareTarget } from '@/lib/share';
 import { ActivityFormSheet } from './activity-form';
 import { useActivityIcon } from './activity-photo';
 import { activityVisitsLabel } from './labels';
+import { toggleRemembered } from './remember';
 
 /** The windows of an activity's detail; they stand in the address (spec 0019, REQ-013). */
 export type ActivityWindow = 'bearbeiten' | 'einplanen';
@@ -130,6 +132,16 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
       onPress={() => toggleActivityFavorite(activity.id)}
     />
   );
+  // Heart = my favourite, bookmark = remembered by the household (spec 0041, AC-015).
+  const remember = (
+    <RememberButton
+      testID="activity-remember-toggle"
+      active={activity.remembered}
+      disabled={online.disabled}
+      hint={online.hint}
+      onPress={() => toggleRemembered(activity)}
+    />
+  );
   // "Teilen" (spec 0047, REQ-001): only the link to the page; works offline.
   const share = () => void shareTarget({ kind: 'activity', id: activity.id });
   // Spec 0037 and review 0003 (B-06): editing is the pencil at the top right, as on a recipe. The
@@ -169,6 +181,7 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
       right={
         <Row gap={4}>
           {favorite}
+          {remember}
           {editButton}
           {more}
         </Row>
@@ -191,6 +204,7 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
             )}
             <Row gap={4}>
               {favorite}
+              {remember}
               {editButton}
               {more}
             </Row>

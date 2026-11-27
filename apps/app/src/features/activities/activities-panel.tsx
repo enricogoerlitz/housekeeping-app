@@ -3,11 +3,13 @@ import {
   useActivityKindsById,
   useCurrentMember,
   usePlanEntries,
+  toggleActivityFavorite,
   useToday,
 } from '@housekeeping/api';
 import {
   ACTIVITY_SORTS,
   activityMatches,
+  countRememberFilters,
   filterRemembered,
   REMEMBER_FILTERS,
   sortActivities,
@@ -46,6 +48,7 @@ import { useIsFocused, useRouter } from 'expo-router';
 import { type ComponentRef, useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, View, type TextInput } from 'react-native';
 
+import { CornerToggle } from '@/features/shell/corner-toggle';
 import { ListViewSwitch, PlaceTile, TILE_MIN_WIDTH, useListView } from '@/features/shell/list-view';
 import { useOnlineOnly } from '@/features/shell/offline';
 import { ScrollColumn } from '@/features/shell/scroll-column';
@@ -57,6 +60,7 @@ import { ActivityFormSheet } from './activity-form';
 import { ActivityKindsSheet } from './activity-kinds-sheet';
 import { ActivityPhoto, useActivityIcon } from './activity-photo';
 import { activityPlaceLine, activityVisitsLabel } from './labels';
+import { toggleRemembered } from './remember';
 
 const SORT_OF_SLUG = { name: 'name', bewertung: 'rating', zuletzt: 'recent' } as const;
 const SLUG_OF_SORT = { name: 'name', rating: 'bewertung', recent: 'zuletzt' } as const;
@@ -67,8 +71,8 @@ function sortShortLabel(sort: ActivitySort): string {
   return ACTIVITY_SORTS.find((entry) => entry.value === sort)?.label ?? '';
 }
 
-const rememberLabel = (filter: RememberFilter) =>
-  REMEMBER_FILTERS.find((entry) => entry.value === filter)?.label ?? '';
+const rememberLabel = (filter: RememberFilter, counts: Record<RememberFilter, number>) =>
+  `${REMEMBER_FILTERS.find((entry) => entry.value === filter)?.label ?? ''} (${counts[filter]})`;
 
 /** The list column next to a chosen activity on wide screens ("Liste und Detail"). */
 const LIST_COLUMN_WIDTH = 380;
@@ -156,18 +160,17 @@ export function ActivitiesScreen() {
   const visitsById = new Map<Id, Visits>(
     activities.map((activity) => [activity.id, visitsOf('activity', activity.id, entries, today)]),
   );
-  const results = sortActivities(
-    filterRemembered(
-      activities.filter(
-        (activity) =>
-          (!favoritesOnly || activity.favoriteOf.includes(me.id)) &&
-          activityMatches(query, activity),
-      ),
-      remember,
-    ),
-    sort,
-    { me: me.id, entries, today },
+  // The counts in the "Merken" menu follow search and "Favoriten" (spec 0041, AC-016).
+  const searched = activities.filter(
+    (activity) =>
+      (!favoritesOnly || activity.favoriteOf.includes(me.id)) && activityMatches(query, activity),
   );
+  const rememberCounts = countRememberFilters(searched);
+  const results = sortActivities(filterRemembered(searched, remember), sort, {
+    me: me.id,
+    entries,
+    today,
+  });
 
   // The window's name field gets the keyboard with the tap (spec 0033, REQ-006).
   const startCreating = () => {
@@ -312,12 +315,15 @@ export function ActivitiesScreen() {
             testID="activity-sort"
           />
           <Menu
-            label={rememberLabel(remember)}
-            accessibilityLabel={`Merken: ${rememberLabel(remember)}`}
+            label={rememberLabel(remember, rememberCounts)}
+            accessibilityLabel={`Merken: ${rememberLabel(remember, rememberCounts)}`}
             icon="bookmark"
             value={remember}
             onChange={setRemember}
-            options={[...REMEMBER_FILTERS]}
+            options={REMEMBER_FILTERS.map((entry) => ({
+              value: entry.value,
+              label: `${entry.label} (${rememberCounts[entry.value]})`,
+            }))}
             testID="activity-remember"
           />
           <Chip
@@ -425,6 +431,39 @@ export function ActivitiesScreen() {
 }
 
 /**
+ * Heart (my favourite) and bookmark (remembered by the household) at the top right of every row
+ * and tile; a tap toggles without opening the activity (spec 0041, AC-017).
+ */
+function ActivityToggles(props: { activity: Activity; isFavorite: boolean; overlay?: boolean }) {
+  const online = useOnlineOnly();
+  const { activity } = props;
+  return (
+    <Row gap={0}>
+      <CornerToggle
+        icon="heart"
+        label={props.isFavorite ? 'Favorit' : 'Als Favorit markieren'}
+        active={props.isFavorite}
+        disabled={online.disabled}
+        hint={online.hint}
+        overlay={props.overlay}
+        onPress={() => toggleActivityFavorite(activity.id)}
+        testID={`activity-${activity.id}-favorite`}
+      />
+      <CornerToggle
+        icon="bookmark"
+        label={activity.remembered ? 'Gemerkt' : 'Merken'}
+        active={activity.remembered}
+        disabled={online.disabled}
+        hint={online.hint}
+        overlay={props.overlay}
+        onPress={() => toggleRemembered(activity)}
+        testID={`activity-${activity.id}-remember`}
+      />
+    </Row>
+  );
+}
+
+/**
  * "Kacheln" (spec 0038, AC-006): the own photo big in 4:3, else the symbol of its kind or its own
  * symbol (spec 0041, AC-005); kind, place, favourite, rating and visits below the name.
  */
@@ -442,7 +481,7 @@ function ActivityTile(props: {
   const kind = activity.kindId === undefined ? undefined : kindsById[activity.kindId];
   const placeLine = [kind?.name, activityPlaceLine(activity)].filter(Boolean).join(' · ');
   const last = props.visits ? activityVisitsLabel(props.visits) : undefined;
-  const signals = props.isFavorite || props.myRating > 0 || last !== undefined;
+  const signals = props.myRating > 0 || last !== undefined;
   return (
     <PlaceTile
       testID={`activity-${id}`}
@@ -458,15 +497,6 @@ function ActivityTile(props: {
           ) : null}
           {signals ? (
             <Row gap={8} wrap>
-              {props.isFavorite ? (
-                <View
-                  testID={`activity-${id}-favorite`}
-                  accessibilityLabel="Favorit"
-                  accessibilityRole="image"
-                >
-                  <Icon name="heart" size={15} color="accent" filled />
-                </View>
-              ) : null}
               {props.myRating ? (
                 <Stars value={props.myRating} size={13} testID={`activity-${id}-stars`} />
               ) : null}
@@ -479,6 +509,7 @@ function ActivityTile(props: {
           ) : null}
         </View>
       }
+      corner={<ActivityToggles activity={activity} isFavorite={props.isFavorite} overlay />}
       onPress={props.onPress}
     />
   );
@@ -500,59 +531,56 @@ function ActivityCard(props: {
   const placeLine = [kind?.name, activityPlaceLine(activity)].filter(Boolean).join(' · ');
   const last = props.visits ? activityVisitsLabel(props.visits) : undefined;
   return (
-    <Pressable
-      testID={`activity-${id}`}
-      accessibilityRole="button"
-      accessibilityLabel={activity.name}
-      aria-selected={!!props.selected}
-      onPress={props.onPress}
-      // Cards of one row are as tall as the tallest (review 0003, B-15).
-      style={(state) => ({
-        flexGrow: 1,
-        opacity: state.pressed ? 0.75 : 1,
-        borderRadius: theme.shape.radius.card,
-      })}
-    >
-      <Surface
-        padding={12}
-        style={[
-          { flexGrow: 1, flexDirection: 'row', alignItems: 'center', gap: 12 },
-          props.selected ? { borderWidth: 1.5, borderColor: theme.colors.accent } : null,
-        ]}
+    // The toggles stand beside the card's button, not inside it (button in button).
+    <View style={{ flexGrow: 1 }}>
+      <Pressable
+        testID={`activity-${id}`}
+        accessibilityRole="button"
+        accessibilityLabel={activity.name}
+        aria-selected={!!props.selected}
+        onPress={props.onPress}
+        // Cards of one row are as tall as the tallest (review 0003, B-15).
+        style={(state) => ({
+          flexGrow: 1,
+          opacity: state.pressed ? 0.75 : 1,
+          borderRadius: theme.shape.radius.card,
+        })}
       >
-        <ActivityPhoto activity={activity} width={56} height={56} testID={`activity-${id}`} />
-        <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-          <Row gap={6}>
-            <Text variant="rowTitle" numberOfLines={1} style={{ flexShrink: 1 }}>
-              {activity.name}
-            </Text>
-            {props.isFavorite ? (
-              <View
-                testID={`activity-${id}-favorite`}
-                accessibilityLabel="Favorit"
-                accessibilityRole="image"
-              >
-                <Icon name="heart" size={15} color="accent" filled />
-              </View>
-            ) : null}
-          </Row>
-          {placeLine ? (
-            <Text variant="small" color="muted" numberOfLines={1} testID={`activity-${id}-place`}>
-              {placeLine}
-            </Text>
-          ) : null}
-          <Row gap={8} wrap>
-            {props.myRating ? (
-              <Stars value={props.myRating} size={13} testID={`activity-${id}-stars`} />
-            ) : null}
-            {last ? (
-              <Text variant="caption" color="muted" testID={`activity-${id}-last`}>
-                {last}
+        <Surface
+          padding={12}
+          style={[
+            { flexGrow: 1, flexDirection: 'row', alignItems: 'center', gap: 12 },
+            props.selected ? { borderWidth: 1.5, borderColor: theme.colors.accent } : null,
+          ]}
+        >
+          <ActivityPhoto activity={activity} width={56} height={56} testID={`activity-${id}`} />
+          <View style={{ flex: 1, minWidth: 0, gap: 2, paddingRight: 76 }}>
+            <Row gap={6}>
+              <Text variant="rowTitle" numberOfLines={1} style={{ flexShrink: 1 }}>
+                {activity.name}
+              </Text>
+            </Row>
+            {placeLine ? (
+              <Text variant="small" color="muted" numberOfLines={1} testID={`activity-${id}-place`}>
+                {placeLine}
               </Text>
             ) : null}
-          </Row>
-        </View>
-      </Surface>
-    </Pressable>
+            <Row gap={8} wrap>
+              {props.myRating ? (
+                <Stars value={props.myRating} size={13} testID={`activity-${id}-stars`} />
+              ) : null}
+              {last ? (
+                <Text variant="caption" color="muted" testID={`activity-${id}-last`}>
+                  {last}
+                </Text>
+              ) : null}
+            </Row>
+          </View>
+        </Surface>
+      </Pressable>
+      <View style={{ position: 'absolute', top: 4, right: 4 }}>
+        <ActivityToggles activity={activity} isFavorite={props.isFavorite} />
+      </View>
+    </View>
   );
 }

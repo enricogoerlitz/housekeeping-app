@@ -680,13 +680,16 @@ test('AC-020: Nadja rates Bouldern 4 stars and favours it; Enrico sees her ratin
     'aria-label',
     '4 von 5 Sternen',
   );
-  await expect(tid(nadja.page, `activity-${BOULDERN}-favorite`)).toBeVisible();
+  await expect(tid(nadja.page, `activity-${BOULDERN}-favorite`)).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
   await nadja.context.close();
 
   await page.bringToFront();
   await open(page, '/aktivitaeten');
   await expect(tid(page, `activity-${BOULDERN}`)).toBeVisible();
-  await expect(tid(page, `activity-${BOULDERN}-favorite`)).toHaveCount(0);
+  await expect(tid(page, `activity-${BOULDERN}-favorite`)).toHaveAttribute('aria-pressed', 'false');
   await expect(tid(page, `activity-${BOULDERN}-stars`)).toHaveCount(0);
   await tid(page, `activity-${BOULDERN}`).click();
   // Spec 0031, AC-086: the ratings as on a recipe, "Du" once and Nadja's stars to look at.
