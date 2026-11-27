@@ -552,20 +552,20 @@ In der `.env`: `FOUNDRY_PROJECT_ENDPOINT` wie oben, `FOUNDRY_PLACES_AGENT=places
 `FOUNDRY_PLACES_AGENT_VERSION` leer (neueste) oder die genannte Nummer. Danach den lokalen Stack aus
 einer Shell mit geladener `.env` neu starten (`supabase/functions/README.md`).
 
-**Einrichtung für die Pipeline (einmal, Enrico).** Die Foundry-Ressource liegt in einem anderen
+**Einrichtung für die Pipeline (einmal; erledigt am 27.11.2026).** App `enrico-n8n-testing`, appId `79c0ab1a-e3a0-4290-8787-cf62d1bae91e`, Rolle „Foundry User“ auf dem Projekt `n8n`, Variablen in `preview` und `production` gesetzt. Namen außerhalb des Abos folgen dem Muster „enrico n8n testing“ (Enrico). Die Foundry-Ressource liegt in einem anderen
 Tenant als die Static Web Apps; die vorhandene Pipeline-Identität (`AZURE_CLIENT_ID`) reicht nicht
 hinüber. Deshalb eine eigene App-Registrierung im Foundry-Tenant, ohne Client-Secret (OIDC):
 
 1. Im Foundry-Tenant anmelden: `az login --tenant d941a86d-6c69-4fa3-8181-3c23e0cba0fc`.
-2. App anlegen: `az ad app create --display-name housekeeping-foundry-agents` → `appId` merken;
+2. App anlegen: `az ad app create --display-name enrico-n8n-testing --sign-in-audience AzureADMyOrg` → `appId` merken;
    Service-Principal: `az ad sp create --id <appId>`.
 3. Föderierte Anmeldedaten je GitHub-Umgebung (Issuer `https://token.actions.githubusercontent.com`,
    Audience `api://AzureADTokenExchange`):
-   `az ad app federated-credential create --id <appId> --parameters '{"name":"github-preview","issuer":"https://token.actions.githubusercontent.com","subject":"repo:enricogoerlitz/housekeeping-app:environment:preview","audiences":["api://AzureADTokenExchange"]}'`
-   und dasselbe mit `github-production` / `environment:production`.
+   `az ad app federated-credential create --id <appId> --parameters '{"name":"github-housekeeping-preview","issuer":"https://token.actions.githubusercontent.com","subject":"repo:enricogoerlitz/housekeeping-app:environment:preview","audiences":["api://AzureADTokenExchange"]}'`
+   und dasselbe mit `github-housekeeping-production` / `environment:production`.
 4. Rolle **„Foundry User“** (kleinste Rolle mit Datenaktionen eines Projekts; „Foundry Agent
    Consumer“ darf nur ausführen, nicht anlegen) auf dem **Projekt**, nicht auf der Ressource:
-   `az role assignment create --assignee <appId> --role "Foundry User" --scope /subscriptions/82126bbb-75fc-4908-889e-7569202a21b8/resourceGroups/rg-n8n-ai/providers/Microsoft.CognitiveServices/accounts/msf-n8n-ai/projects/n8n`
+   `az role assignment create --assignee-object-id <spObjectId> --assignee-principal-type ServicePrincipal --role "Foundry User" --scope /subscriptions/82126bbb-75fc-4908-889e-7569202a21b8/resourceGroups/rg-n8n-ai/providers/Microsoft.CognitiveServices/accounts/msf-n8n-ai/projects/n8n`
 5. GitHub-Variablen (keine Secrets) **je Umgebung** `preview` und `production`:
    `gh variable set FOUNDRY_AZURE_CLIENT_ID --env preview --body <appId>` (ebenso `production`),
    `gh variable set FOUNDRY_AZURE_TENANT_ID --env preview --body d941a86d-6c69-4fa3-8181-3c23e0cba0fc`
