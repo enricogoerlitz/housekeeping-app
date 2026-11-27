@@ -111,3 +111,22 @@ export function recapEarlierLabel(stars: number | undefined): string | undefined
 export function notDoneMessage(title: string): string {
   return `„${title}“ als nicht gemacht markiert`;
 }
+
+/**
+ * The entry the stack of "Wie war's?" shows (spec 0057, REQ-001): the first of `preferred` (the
+ * entry last touched, then the one shown so far) where it stands now; when none is open any more,
+ * the one that took the place (at the end the last). So an entry leaving before it never swaps the
+ * one under the finger, and one brought back by "Rückgängig" shows again. -1 when nothing is open.
+ */
+export function recapStackIndex(
+  ids: readonly string[],
+  preferred: readonly (string | undefined)[],
+  lastIndex: number,
+): number {
+  if (ids.length === 0) return -1;
+  for (const id of preferred) {
+    const at = id === undefined ? -1 : ids.indexOf(id);
+    if (at >= 0) return at;
+  }
+  return Math.min(Math.max(lastIndex, 0), ids.length - 1);
+}

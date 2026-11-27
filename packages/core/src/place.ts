@@ -1,5 +1,6 @@
 import {
   SECTION_START,
+  sectionOfOrigin,
   sectionOfPath,
   sectionOfStartPath,
   startPageHref,
@@ -40,12 +41,28 @@ export function placeQuery(params: RawParams): string {
   return pairs.length > 0 ? `?${pairs.join('&')}` : '';
 }
 
+/** The five sections of the tab bar: their start pages always highlight themselves. */
+const TAB_SECTIONS = new Set<Origin>(['uebersicht', 'essen', 'kalender', 'liste', 'haushalt']);
+
+/**
+ * The section a page highlights in the tab bar and the sidebar (spec 0057, REQ-003): the origin
+ * named by `von` while "Zurück" leads there, else the page's own section. A tab's start page is
+ * always its own. Replaces spec 0035, REQ-002 (highlight by the page).
+ */
+function highlightedSection(pathname: string, params: RawParams): Origin {
+  const own = sectionOfPath(pathname);
+  const start = sectionOfStartPath(pathname);
+  if (start !== undefined && TAB_SECTIONS.has(start)) return own;
+  const von = params.von;
+  return sectionOfOrigin(typeof von === 'string' ? von : undefined, own);
+}
+
 /** The state after the router showed `pathname` with `params`. */
 export function placeAfter(state: PlaceState, pathname: string, params: RawParams): PlaceState {
   const href = pathname + placeQuery(params);
   const start = sectionOfStartPath(pathname);
   return {
-    current: { href, section: sectionOfPath(pathname) },
+    current: { href, section: highlightedSection(pathname, params) },
     previous: pathOf(state.current) === pathname ? state.previous : state.current,
     startPages: start ? { ...state.startPages, [start]: startPageHref(href) } : state.startPages,
   };
@@ -63,6 +80,18 @@ export function forgetPlace(state: PlaceState): PlaceState {
 /** The start page of a section as last left, without window and detail (REQ-005). */
 export function sectionHref(state: PlaceState, section: Origin): string {
   return state.startPages[section] ?? SECTION_START[section];
+}
+
+/** What a tap on a section in the tab bar or the sidebar does (spec 0057, REQ-002). */
+export type TabPress = { kind: 'top' } | { kind: 'open'; href: string };
+
+/**
+ * A tap on `section`: on its start page as last left (no window, no detail) the page scrolls to
+ * the top; anywhere else the start page opens as last left (REQ-005).
+ */
+export function tabPressAction(state: PlaceState, section: Origin): TabPress {
+  const href = sectionHref(state, section);
+  return state.current?.href === href ? { kind: 'top' } : { kind: 'open', href };
 }
 
 /**

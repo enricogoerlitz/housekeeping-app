@@ -15,7 +15,7 @@ import { collageInsets, collageLayout } from './collage-layout';
 import { Button, Checkbox, keyboardFocusRing } from './controls';
 import { useHover } from './pointer';
 import type { IconName } from './icons';
-import { HYPHENATE, Icon, Surface, Text } from './primitives';
+import { Icon, Surface, Text, TITLE_BREAK } from './primitives';
 import { ToneContext, useTheme } from './theme-context';
 import { useTooltip } from './tooltip';
 import type { KindColor, Tone } from './themes';
@@ -436,6 +436,8 @@ export function MediaCard(props: MediaCardProps) {
       <Text
         variant="cardTitle"
         numberOfLines={2}
+        // Narrow cards in a grid: never "Halloumi-Pfan-|ne" (spec 0057, REQ-004).
+        wholeWords
         style={
           large
             ? {
@@ -1001,8 +1003,8 @@ export function KindLine(props: KindLineProps) {
       numberOfLines={compact ? 1 : 2}
       style={[
         props.detail ? { minWidth: 0 } : { flex: 1, minWidth: 0 },
-        // A calendar entry is a title too, also in `small` and `body` (spec 0031, REQ-033).
-        HYPHENATE,
+        // A calendar entry is a title too, also in `small` and `body` (spec 0057, REQ-004).
+        TITLE_BREAK,
         props.struck ? { textDecorationLine: 'line-through' } : null,
       ]}
     >

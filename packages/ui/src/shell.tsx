@@ -21,6 +21,7 @@ import { bottomInset } from './bottom-inset';
 import { IconButton, keyboardFocusRing } from './controls';
 import { useKeyboard } from './keyboard';
 import { useHover } from './pointer';
+import { scrollableNode, useTopScroller } from './scroll-top';
 import { tabSwipeTouchAction, type TabSwipe } from './tab-swipe';
 import { TabPreviewContext } from './tab-preview';
 import { TabSwipeArea, arrivingChrome } from './tab-swipe-area';
@@ -204,6 +205,14 @@ export function Screen(props: ScreenProps) {
       else view.measureInWindow((x, y, width, height) => done({ x, y, width, height }));
     },
   }));
+  // A second tap on the active tab brings the page to the top (spec 0057, REQ-002).
+  useTopScroller(
+    {
+      node: () => scrollableNode(scrollView.current),
+      toTop: (animated) => scrollView.current?.scrollTo({ y: 0, animated }),
+    },
+    props.scroll !== false && !preview,
+  );
   const scrollHandler = useAnimatedScrollHandler({
     onScroll: (event) => {
       onPageScroll(event.contentOffset.y);

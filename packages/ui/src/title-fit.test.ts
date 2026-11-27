@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { naturalTitleWidth, titleOnOwnLine } from './title-fit';
+import { naturalTitleWidth, titleOnOwnLine, wordOverflows } from './title-fit';
 
 describe('titleOnOwnLine (review 0003: "Einplan…" and "Q…" beside long actions on phones)', () => {
   it('a title that fits between the actions stays in their row', () => {
@@ -36,5 +36,18 @@ describe('naturalTitleWidth (iPhone click-through, I-19)', () => {
   it('without a text measure (native) it falls back to scrollWidth', () => {
     expect(naturalTitleWidth({ scrollWidth: 120 })).toBe(120);
     expect(naturalTitleWidth(null)).toBe(0);
+  });
+});
+
+describe('wordOverflows (spec 0057, REQ-004)', () => {
+  it('AC-023: a word wider than the box overflows it', () => {
+    expect(wordOverflows({ scrollWidth: 96, clientWidth: 80 })).toBe(true);
+  });
+
+  it('AC-021: words that fit, a rounding pixel and an unmeasured node do not', () => {
+    expect(wordOverflows({ scrollWidth: 140, clientWidth: 140 })).toBe(false);
+    expect(wordOverflows({ scrollWidth: 141, clientWidth: 140 })).toBe(false);
+    expect(wordOverflows({ scrollWidth: 0, clientWidth: 0 })).toBe(false);
+    expect(wordOverflows(null)).toBe(false);
   });
 });

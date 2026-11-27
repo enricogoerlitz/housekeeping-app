@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { act, render, screen } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 
 import { Divider, Icon, Row, Stack, Surface, Text, useColor, type ColorToken } from './primitives';
 import { ThemeProvider, ToneContext } from './theme-context';
@@ -31,19 +31,83 @@ describe('Text', () => {
     expect(screen.getByTestId('t').style.textDecorationLine).toBe('line-through');
   });
 
-  it('REQ-033: title roles hyphenate long German words on the web, body text does not', () => {
+  it('spec 0057 AC-021: title roles break between words only, never by automatic hyphenation', () => {
     render(
       <>
         <Text variant="rowTitle" testID="title">
-          Rindfleischetikettierung
+          Halloumi-Pfanne
+        </Text>
+        <Text variant="cardTitle" testID="card">
+          Spaghetti Bolognese
         </Text>
         <Text testID="body">Rindfleischetikettierung</Text>
       </>,
     );
-    expect(screen.getByTestId('title').style.getPropertyValue('hyphens')).toBe('auto');
+    expect(screen.getByTestId('title').style.getPropertyValue('hyphens')).toBe('manual');
+    expect(screen.getByTestId('card').style.getPropertyValue('hyphens')).toBe('manual');
     expect(screen.getByTestId('body').style.getPropertyValue('hyphens')).toBe('');
   });
+
+  it('spec 0057 AC-022, AC-023: with wholeWords a word wider than the line cuts the title to one line with "…"', () => {
+    vi.useFakeTimers();
+    render(
+      <Text variant="caption" numberOfLines={2} wholeWords testID="tile">
+        Kichererbsen-Eintopf
+      </Text>,
+    );
+    const tile = screen.getByTestId('tile');
+    // Words are not broken inside, so a too long one overflows and can be told.
+    expect(tile.style.getPropertyValue('overflow-wrap')).toBe('normal');
+    expect(oneLine(tile)).toBe(false);
+    Object.defineProperty(tile, 'scrollWidth', { configurable: true, value: 96 });
+    Object.defineProperty(tile, 'clientWidth', { configurable: true, value: 80 });
+    layout(tile, 80, 32);
+    expect(oneLine(tile)).toBe(true);
+    vi.useRealTimers();
+  });
+
+  it('spec 0057 AC-021: with wholeWords a title whose words fit keeps its lines', () => {
+    vi.useFakeTimers();
+    render(
+      <Text variant="cardTitle" numberOfLines={2} wholeWords testID="card">
+        Halloumi-Pfanne
+      </Text>,
+    );
+    const card = screen.getByTestId('card');
+    Object.defineProperty(card, 'scrollWidth', { configurable: true, value: 140 });
+    Object.defineProperty(card, 'clientWidth', { configurable: true, value: 140 });
+    layout(card, 140, 46);
+    expect(oneLine(card)).toBe(false);
+    vi.useRealTimers();
+  });
 });
+
+// onLayout in react-native-web comes from a ResizeObserver, which jsdom lacks: this one reports
+// the size a test gives a view.
+let reportResize: ((entries: { target: Element }[]) => void) | undefined;
+Object.defineProperty(globalThis, 'ResizeObserver', {
+  configurable: true,
+  value: class {
+    constructor(callback: (entries: { target: Element }[]) => void) {
+      reportResize = callback;
+    }
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  },
+});
+/** react-native-web draws one line with "…" by classes: no wrapping, text-overflow ellipsis. */
+function oneLine(node: Element): boolean {
+  return node.className.includes('r-whiteSpace') && node.className.includes('r-textOverflow');
+}
+function layout(node: Element, width: number, height: number) {
+  Object.defineProperty(node, 'offsetWidth', { configurable: true, value: width });
+  Object.defineProperty(node, 'offsetHeight', { configurable: true, value: height });
+  act(() => {
+    reportResize?.([{ target: node }]);
+    vi.advanceTimersByTime(0);
+  });
+}
 
 function Colors(props: { fallback?: ColorToken }) {
   const resolved = {

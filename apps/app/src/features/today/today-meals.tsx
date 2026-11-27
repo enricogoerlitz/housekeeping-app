@@ -256,6 +256,8 @@ function PlannedCard(props: {
         <Text
           variant="cardTitle"
           numberOfLines={2}
+          // Whole words only, too long ones cut with "…" (spec 0057, REQ-004).
+          wholeWords
           style={{ minHeight: theme.type.cardTitle.lineHeight * 2 }}
         >
           {props.title}
