@@ -256,6 +256,28 @@ describe('draftToPageInput: links (AC-016, AC-017)', () => {
   });
 });
 
+describe('draftToPageInput: a YouTube link (spec 0064)', () => {
+  it('AC-009: the normalized YouTube address is the recipe link, labelled „YouTube“', () => {
+    const input = draftToPageInput(
+      draft,
+      [
+        {
+          url: 'https://youtu.be/gkgJAPBrwT8?si=x',
+          kind: 'youtube',
+          read: true,
+          resolvedUrl: 'https://www.youtube.com/watch?v=gkgJAPBrwT8',
+        },
+        { url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', kind: 'youtube', read: false },
+      ],
+      context,
+    );
+    expect(input.links).toEqual([
+      { url: 'https://www.youtube.com/watch?v=gkgJAPBrwT8', label: 'YouTube' },
+      { url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', label: 'YouTube' },
+    ]);
+  });
+});
+
 describe('fillPageDraft with a draft from the AI', () => {
   const recipe = makeRecipe({
     id: 'rec-1',
@@ -530,6 +552,21 @@ describe('draftPagePhotoUrl', () => {
         false,
       ),
     ).toBe('https://p16.example/c.jpeg');
+  });
+  it('spec 0064 AC-010: without "Foto generieren" a YouTube thumbnail is the photo', () => {
+    expect(
+      draftPagePhotoUrl(
+        [
+          {
+            url: 'https://youtu.be/gkgJAPBrwT8',
+            kind: 'youtube',
+            read: true,
+            coverUrl: 'https://i.ytimg.com/vi/gkgJAPBrwT8/maxresdefault.jpg',
+          },
+        ],
+        false,
+      ),
+    ).toBe('https://i.ytimg.com/vi/gkgJAPBrwT8/maxresdefault.jpg');
   });
   it('spec 0049 AC-042: with "Foto generieren", or without any photo, none', () => {
     expect(

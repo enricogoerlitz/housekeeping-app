@@ -161,6 +161,24 @@ describe('RecipeDraftSchema and RecipeDraftReplySchema', () => {
   });
 });
 
+describe('Spec 0064: a YouTube video as a source', () => {
+  it('AC-004: a reply carries a YouTube source with its address and thumbnail', () => {
+    const reply = {
+      draft,
+      sources: [
+        {
+          url: 'https://youtu.be/gkgJAPBrwT8?si=x',
+          kind: 'youtube',
+          read: true,
+          resolvedUrl: 'https://www.youtube.com/watch?v=gkgJAPBrwT8',
+          coverUrl: 'https://i.ytimg.com/vi/gkgJAPBrwT8/maxresdefault.jpg',
+        },
+      ],
+    };
+    expect(RecipeDraftReplySchema.parse(reply)).toEqual(reply);
+  });
+});
+
 describe('AiImageRequestSchema and AiImageReplySchema (REQ-004, REQ-005)', () => {
   it('AC-012: a prompt with style chips', () => {
     expect(

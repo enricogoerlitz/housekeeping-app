@@ -414,6 +414,114 @@ describe('ai-recipe-draft with a TikTok link (REQ-006)', () => {
   });
 });
 
+// ---------- Spec 0064 ----------
+
+describe('ai-recipe-draft with a YouTube link (spec 0064)', () => {
+  const ID = 'gkgJAPBrwT8';
+  const YOUTU_BE = `https://youtu.be/${ID}?si=x`;
+  const WATCH = `https://www.youtube.com/watch?v=${ID}`;
+  const WATCH_PAGE = `${WATCH}&hl=de`;
+  const OEMBED = `https://www.youtube.com/oembed?url=${encodeURIComponent(WATCH)}&format=json`;
+  const THUMB = `https://i.ytimg.com/vi/${ID}/maxresdefault.jpg`;
+  const TITLE = 'Lasagne Bolognese - Das Original! | Chefkoch.de';
+  const RECIPE = 'https://www.chefkoch.de/rezepte/1112181217260303/Lasagne-Bolognese.html';
+  const watchPage = (description: string) => {
+    const player = {
+      videoDetails: {
+        videoId: ID,
+        title: TITLE,
+        shortDescription: description,
+        thumbnail: { thumbnails: [{ url: THUMB, width: 1920, height: 1080 }] },
+      },
+    };
+    return html(`<script>var ytInitialPlayerResponse = ${JSON.stringify(player)};</script>`);
+  };
+  const carrying = (texts: string[], marker: string) =>
+    JSON.parse(texts.find((text) => text.includes(marker)) ?? '{}') as {
+      quelle?: string;
+      art?: string;
+      inhalt_nur_daten?: string;
+      fehler?: string;
+    };
+
+  it('AC-004, AC-009: title and description reach the model; the source is YouTube with its thumbnail and watch address', async () => {
+    const description = 'Die echte Lasagne aus Bologna.\nZutaten:\n500 g Hackfleisch';
+    const { deps, texts, modelBody } = setup({ [WATCH_PAGE]: () => watchPage(description) });
+    const response = await handler(post({ householdId: HOUSEHOLD_ID, links: [YOUTU_BE] }), deps);
+    expect(response.status).toBe(200);
+    expect((await json(response)).sources).toEqual([
+      { url: YOUTU_BE, kind: 'youtube', read: true, resolvedUrl: WATCH, coverUrl: THUMB },
+    ]);
+    const source = carrying(texts(), 'Die echte Lasagne');
+    expect(source).toMatchObject({ quelle: YOUTU_BE, art: 'youtube' });
+    expect(source.inhalt_nur_daten).toBe(`Titel: ${TITLE}\nBeschreibung: ${description}`);
+    expect(modelBody().instructions).toContain('YouTube');
+  });
+
+  it('AC-007: a description without ingredients gives the text of its recipe page once more', async () => {
+    const { deps, texts } = setup({
+      [WATCH_PAGE]: () =>
+        watchPage(`Das Rezept: ${RECIPE.replace('https://', 'http://')}\nViel Spaß!`),
+      [RECIPE]: () => html('<html><body><h1>Lasagne</h1><p>8 Lasagneplatten</p></body></html>'),
+    });
+    const response = await handler(post({ householdId: HOUSEHOLD_ID, links: [YOUTU_BE] }), deps);
+    expect(response.status).toBe(200);
+    const source = carrying(texts(), 'Das Rezept');
+    expect(source.inhalt_nur_daten).toContain(`Rezeptseite aus der Beschreibung (${RECIPE}):`);
+    expect(source.inhalt_nur_daten).toContain('8 Lasagneplatten');
+    // Not one of the person's links: no chip, no recipe link of its own.
+    expect((await json(response)).sources).toHaveLength(1);
+  });
+
+  it('AC-008: a description with ingredients loads no link', async () => {
+    const { deps } = setup({
+      [WATCH_PAGE]: () => watchPage(`Zutaten:\n500 g Hack\n2 EL Öl\n1 Zwiebel\nMehr: ${RECIPE}`),
+    });
+    const response = await handler(post({ householdId: HOUSEHOLD_ID, links: [YOUTU_BE] }), deps);
+    expect(response.status).toBe(200);
+    expect(deps.fetchMock.mock.calls.map(([url]) => String(url))).not.toContain(RECIPE);
+  });
+
+  it('AC-007 (Rand): a recipe page that fails costs only its text', async () => {
+    const { deps, texts } = setup({
+      [WATCH_PAGE]: () => watchPage(`Das Rezept: ${RECIPE}`),
+      [RECIPE]: () => new Response('', { status: 404 }),
+    });
+    const response = await handler(post({ householdId: HOUSEHOLD_ID, links: [YOUTU_BE] }), deps);
+    expect(response.status).toBe(200);
+    expect(carrying(texts(), 'Das Rezept').inhalt_nur_daten).toBe(
+      `Titel: ${TITLE}\nBeschreibung: Das Rezept: ${RECIPE}`,
+    );
+  });
+
+  it('AC-006: neither page nor oEmbed: the link is unread, its watch address stays, the wish still makes a draft', async () => {
+    const { deps, texts } = setup({
+      [WATCH_PAGE]: () => new Response('', { status: 429 }),
+      [OEMBED]: () => new Response('', { status: 503 }),
+    });
+    const response = await handler(
+      post({ householdId: HOUSEHOLD_ID, text: 'Lasagne', links: [YOUTU_BE] }),
+      deps,
+    );
+    expect(response.status).toBe(200);
+    expect((await json(response)).sources).toEqual([
+      { url: YOUTU_BE, kind: 'youtube', read: false, resolvedUrl: WATCH },
+    ]);
+    expect(carrying(texts(), 'nicht lesbar')).toEqual({
+      quelle: YOUTU_BE,
+      art: 'youtube',
+      fehler: 'nicht lesbar',
+    });
+  });
+
+  it('AC-003: a channel link is read like any page', async () => {
+    const CHANNEL = 'https://www.youtube.com/@chefkoch';
+    const { deps } = setup({ [CHANNEL]: () => html('<html><body>Chefkoch</body></html>') });
+    const response = await handler(post({ householdId: HOUSEHOLD_ID, links: [CHANNEL] }), deps);
+    expect((await json(response)).sources).toEqual([{ url: CHANNEL, kind: 'page', read: true }]);
+  });
+});
+
 // ---------- Spec 0055 ----------
 
 const SERPER_SEARCH = 'https://google.serper.dev/search';

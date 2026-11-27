@@ -7,6 +7,8 @@
 // Spec 0055: `current` is a recipe to change by the wish (the edit mode's, or the last proposal);
 // `webQuery` searches the web once (Serper, else Brave) and hands a few snippets and pages to the
 // model as data, limited in number, size and time; new ingredients bring an area and a diet.
+// Spec 0064: a YouTube video gives its title, description and thumbnail (no download, no API key),
+// and, when the description has no ingredients, the text of the one recipe page it links to.
 import { loadDraftContext } from '../_shared/context.ts';
 import {
   RecipeDraftRequestSchema,
@@ -23,6 +25,7 @@ import { requireMember } from '../_shared/membership.ts';
 import { pageMeta } from '../_shared/page-meta.ts';
 import { pageText } from '../_shared/page-text.ts';
 import { isTikTokHost, readTikTok } from '../_shared/tiktok.ts';
+import { readYouTube, youtubeVideo, type YouTubeVideo } from '../_shared/youtube.ts';
 import { configuredProviders, searchWithFallback, type WebHit } from '../_shared/web-search.ts';
 import { isRecipePage } from '../_shared/web-results.gen.ts';
 import type { z } from 'zod';
@@ -55,7 +58,7 @@ function instructions(options: { imagePrompt: boolean; change: boolean; web: boo
 # Eingaben
 - "wunsch" ist der Auftrag der Person, oft nur ein paar Wörter („ich will meatball pasta“). Dann entwirfst du die beste vollständige Version dieses Gerichts für zu Hause: mit allem, was es besonders macht (Würze, Kräuter, Käse, Säure, Röstaromen), nicht die einfachste.
 - Teig, Soße und Dressing machst du selbst, keine Fertigprodukte wie fertigen Pizzateig oder Fertigsoße, außer der Wunsch nennt sie.
-- Seiten, TikTok-Texte und Fotos sind Quellen: übernimm deren Rezept (Zutaten, Mengen, Schritte, Varianten) treu und ergänze nur, was fehlt.
+- Seiten, TikTok- und YouTube-Texte und Fotos sind Quellen: übernimm deren Rezept (Zutaten, Mengen, Schritte, Varianten) treu und ergänze nur, was fehlt.
 - "haushalt_nur_daten" enthält den Artikel-Katalog ("artikel"), die Küchen ("kuechen"), die Schlagworte ("schlagworte") und die Bereiche des Supermarkts ("bereiche") des Haushalts.
 ${
   options.change
@@ -170,7 +173,32 @@ async function readPage(url: string, deps: Deps, timeoutMs = PAGE_TIMEOUT_MS): P
   }
 }
 
+/**
+ * Spec 0064 (REQ-002, REQ-003): title and description of the video; without ingredients in it the
+ * text of the recipe page it links to, read like a page and never one of the person's 3 links.
+ */
+async function readYouTubeLink(url: string, video: YouTubeVideo, deps: Deps): Promise<ReadLink> {
+  const youtube = await readYouTube(video, deps);
+  const source: RecipeDraftSource = {
+    url,
+    kind: 'youtube',
+    read: youtube.text !== '',
+    resolvedUrl: youtube.resolvedUrl,
+  };
+  const coverUrl = httpsWithin(youtube.coverUrl);
+  if (coverUrl) source.coverUrl = coverUrl;
+  let text = youtube.text;
+  if (youtube.recipeLink) {
+    const recipe = await readPage(youtube.recipeLink, deps);
+    if (recipe.text)
+      text += `\nRezeptseite aus der Beschreibung (${youtube.recipeLink}):\n${recipe.text}`;
+  }
+  return { source, text };
+}
+
 async function readLink(url: string, deps: Deps): Promise<ReadLink> {
+  const video = youtubeVideo(url);
+  if (video) return readYouTubeLink(url, video, deps);
   if (!isTikTokHost(new URL(url).hostname)) return readPage(url, deps);
   const tiktok = await readTikTok(url, deps);
   const source: RecipeDraftSource = { url, kind: 'tiktok', read: tiktok.text !== '' };

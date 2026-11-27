@@ -287,12 +287,15 @@ export type RecipeDraftRequest = z.input<typeof RecipeDraftRequestSchema>;
 export const RecipeDraftSourceSchema = z.strictObject({
   /** The link as sent. */
   url: HttpsUrl,
-  kind: z.enum(['page', 'tiktok']),
+  kind: z.enum(['page', 'tiktok', 'youtube']),
   /** false: the chip says "… konnte nicht gelesen werden" (AC-004, AC-017). */
   read: z.boolean(),
-  /** TikTok: where the short link leads; saved as the recipe's link (AC-016). */
+  /**
+   * TikTok: where the short link leads (AC-016); YouTube: the normalized watch address (spec 0064,
+   * AC-009). Saved as the recipe's link.
+   */
   resolvedUrl: HttpsUrl.optional(),
-  /** TikTok: the video's cover, the reference for "Foto generieren" (REQ-006). */
+  /** TikTok's cover or YouTube's thumbnail: the reference for "Foto generieren" (REQ-006). */
   coverUrl: HttpsUrl.optional(),
   /** A page: its photo (JSON-LD image, else og:image), the photo without "Foto generieren" (spec 0049, AC-042). */
   imageUrl: HttpsUrl.optional(),
