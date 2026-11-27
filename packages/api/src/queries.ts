@@ -62,6 +62,8 @@ export const useActivitySeriesExceptions = () =>
 export const useShoppingItems = () => useDataSelector((data) => data.items);
 /** Spec 0060: "Dauerposten" in creation order. */
 export const useRecurringItems = () => useDataSelector((data) => data.recurringItems);
+/** Spec 0066: "Verlauf" of the KI-Agent, last used first. */
+export const useAiChats = () => useDataSelector((data) => data.aiChats);
 export const useChores = () => useDataSelector((data) => data.chores);
 export const useChoreEvents = () => useDataSelector((data) => data.choreEvents);
 /** Spec 0022: trips with their people, in creation order (core tripStripes). */

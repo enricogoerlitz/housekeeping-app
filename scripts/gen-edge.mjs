@@ -22,6 +22,11 @@ const copies = [
     allowedImports: [],
   },
   {
+    source: 'packages/core/src/ai-agent.ts',
+    target: 'supabase/functions/_shared/ai-agent.gen.ts',
+    allowedImports: ['zod'],
+  },
+  {
     source: 'packages/core/src/web-results.ts',
     target: 'supabase/functions/_shared/web-results.gen.ts',
     allowedImports: [],

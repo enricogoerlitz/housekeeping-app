@@ -2,6 +2,8 @@
 // (docs/architecture/sync.md). JSON keys are the database's snake_case. Two implementations:
 // SupabaseTransport (transport-supabase.ts) and an in-memory server for tests (transport-fake.ts).
 import {
+  type AgentLoadReply,
+  type AgentSendRequest,
   type AiImageReply,
   type AiImageRequest,
   type AiSearchRequest,
@@ -591,6 +593,19 @@ export interface Transport {
   webSearch(request: Extract<WebSearchRequest, { mode: 'search' }>): Promise<WebSearchReply>;
   /** The preview of a place card (`web-search`, spec 0049): cuisine or kind, description. */
   placePreview(request: Extract<WebSearchRequest, { mode: 'place' }>): Promise<PlacePreviewReply>;
+  /**
+   * KI-Agent (`ai-agent`, spec 0066): one answer as server-sent events of core
+   * `AgentStreamEvent`; `forbidden`, `chat_too_long` (409), `quota_exceeded` before it starts.
+   * `signal` stops it ("Recherche anhalten").
+   */
+  agentSend(request: AgentSendRequest, signal: AbortSignal): Promise<ReadableStream<Uint8Array>>;
+  /** The messages of a chat from its Foundry conversation (online only, ADR-0018). */
+  agentLoad(householdId: string, chatId: string): Promise<AgentLoadReply>;
+  /**
+   * Deletes a chat in Foundry (conversation and answers) and its row; without `chatId` every
+   * chat of the household (before "Haushalt endgültig löschen"). The number deleted.
+   */
+  agentDelete(householdId: string, chatId?: string): Promise<number>;
   // Photo storage: the private bucket household-media, path <household>/<activities|recipes>/<id>/<file>
   /** Stores a JPEG under a new name (never overwrites). */
   uploadMedia(path: string, photo: Blob): Promise<void>;
@@ -681,6 +696,9 @@ export function switchable(inner: Transport): SwitchableTransport {
     aiImage: guard(inner.aiImage.bind(inner)),
     webSearch: guard(inner.webSearch.bind(inner)),
     placePreview: guard(inner.placePreview.bind(inner)),
+    agentSend: guard(inner.agentSend.bind(inner)),
+    agentLoad: guard(inner.agentLoad.bind(inner)),
+    agentDelete: guard(inner.agentDelete.bind(inner)),
     uploadMedia: guard(inner.uploadMedia.bind(inner)),
     downloadMedia: guard(inner.downloadMedia.bind(inner)),
     removeMedia: guard(inner.removeMedia.bind(inner)),

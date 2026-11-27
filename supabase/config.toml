@@ -438,6 +438,11 @@ FOUNDRY_IMAGE_DEPLOYMENT = "env(FOUNDRY_IMAGE_DEPLOYMENT)"
 # web-search (spec 0049): Serper.dev first, the Brave Search API as fallback.
 SERPER_API_KEY = "env(SERPER_API_KEY)"
 BRAVE_SEARCH_API_KEY = "env(BRAVE_SEARCH_API_KEY)"
+# ai-agent (spec 0066, ADR-0018): the Foundry project and the pinned version of the places agent
+# (infra/foundry/). The runtime uses FOUNDRY_API_KEY; the agent is created with Entra.
+FOUNDRY_PROJECT_ENDPOINT = "env(FOUNDRY_PROJECT_ENDPOINT)"
+FOUNDRY_PLACES_AGENT = "env(FOUNDRY_PLACES_AGENT)"
+FOUNDRY_PLACES_AGENT_VERSION = "env(FOUNDRY_PLACES_AGENT_VERSION)"
 # Not a secret: the browser origins of the local web app and the e2e server.
 ALLOWED_ORIGINS = "http://localhost:8081,http://127.0.0.1:8081,http://127.0.0.1:8790"
 # media-sweep (spec 0039): the shared secret the database signs the nightly sweep with (Vault
@@ -483,6 +488,11 @@ import_map = "./functions/deno.json"
 
 # Spec 0049: "Websuche" (Serper/Brave, recipe pages, place preview).
 [functions.web-search]
+verify_jwt = false
+import_map = "./functions/deno.json"
+
+# Spec 0066: "KI-Agent" (Foundry places agent, streams server-sent events).
+[functions.ai-agent]
 verify_jwt = false
 import_map = "./functions/deno.json"
 
