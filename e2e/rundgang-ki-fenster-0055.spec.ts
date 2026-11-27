@@ -81,7 +81,7 @@ test.describe('REQ-001, REQ-004: the tabs and the cursor', () => {
     await expect(tid(page, 'new-recipe-title')).toHaveValue('Pasta');
     await expect(tid(page, 'new-recipe-title')).toBeFocused();
     await tid(page, 'new-recipe-ai-tab-prompt').click();
-    await expect(tid(page, 'new-recipe-ai-generate-photo')).toBeChecked();
+    await expect(tid(page, 'new-recipe-ai-generate-photo').locator('input')).toBeChecked();
   });
 
   test('AC-002, AC-003: a tap on a tab gives its field the cursor', async ({ page }) => {
@@ -134,7 +134,24 @@ test.describe('REQ-001, REQ-004: the tabs and the cursor', () => {
 test.describe('REQ-002: swiping between the tabs', () => {
   test.use({ hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 } });
 
+  /** The window stands: it slides in and grows to its height first, a finger would miss it. */
+  async function standing(page: Page): Promise<void> {
+    let last = '';
+    await expect
+      .poll(
+        async () => {
+          const now = JSON.stringify(await tid(page, 'new-recipe-ai-swipe').boundingBox());
+          const same = now === last;
+          last = now;
+          return same;
+        },
+        { intervals: [100] },
+      )
+      .toBe(true);
+  }
+
   async function swipe(page: Page, dx: number, at: 'top' | 'bottom' = 'top') {
+    await standing(page);
     const box = await tid(page, 'new-recipe-ai-swipe').boundingBox();
     const y = at === 'top' ? (box?.y ?? 400) + 40 : (box?.y ?? 400) + (box?.height ?? 400) - 40;
     const x = 200;
@@ -176,6 +193,7 @@ test.describe('REQ-002: swiping between the tabs', () => {
     page,
   }) => {
     await newRecipeWithAi(page, 'Pasta');
+    await standing(page);
     const window = await tid(page, 'new-recipe-sheet').boundingBox();
     const area = await tid(page, 'new-recipe-ai-swipe').boundingBox();
     const links = await tid(page, 'new-recipe-open-photo').boundingBox();
@@ -275,7 +293,9 @@ test.describe('REQ-006 – REQ-008: „Prompt“ on the recipe, the web search, 
 
   test('AC-026, AC-027, AC-028: „Anpassen“ sends the proposal; a failure keeps it and the sentence', async ({
     page,
+    allowConsoleError,
   }) => {
+    allowConsoleError(/^Failed to load resource: the server responded with a status of 503/);
     const tofu: RecipeDraft = {
       ...DRAFT,
       ingredients: [

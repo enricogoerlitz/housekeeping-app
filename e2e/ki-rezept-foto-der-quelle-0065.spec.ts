@@ -63,7 +63,7 @@ async function aiRecipeWithWebSearch(page: Page, wish: string): Promise<void> {
   await tid(page, 'new-recipe-ai-tab-prompt').click();
   await tid(page, 'new-recipe-ai-text').fill(wish);
   await tid(page, 'new-recipe-ai-web-search').click();
-  await expect(tid(page, 'new-recipe-ai-web-search')).toBeChecked();
+  await expect(tid(page, 'new-recipe-ai-web-search').locator('input')).toBeChecked();
 }
 
 test.describe('REQ-002, REQ-003: the photo choice of "KI-Rezept" with "Websuche"', () => {
@@ -108,7 +108,10 @@ test.describe('REQ-002, REQ-003: the photo choice of "KI-Rezept" with "Websuche"
 
   test('AC-007: "Original" without a photo of the web search makes three suggestions', async ({
     page,
+    allowConsoleError,
   }) => {
+    // The ai-image stub only counts and answers 503 (no paid call).
+    allowConsoleError(/^Failed to load resource: the server responded with a status of 503/);
     const title = `Chili ${unique()}`;
     const { loaded, images } = await stubs(page, () => ({
       draft: draft(title),

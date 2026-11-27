@@ -96,34 +96,44 @@ test('AC-020 / AC-022: "+" plans at once for everyone with "Rückgängig"; undo 
 test('AC-019 / AC-021: a vorgemerkt dish comes first and "+" moves it to the day', async ({
   page,
 }) => {
+  // A dish that fits that evening: the last of the three shown. Which one it is follows from the
+  // seed's history, dated from today (a fixed name like "Shakshuka" was cooked two days ago).
+  await openAddWindow(page, LATER_WEEK);
+  await expect(suggestionRows(page)).toHaveCount(3);
+  const last = suggestionRows(page).last();
+  const rowId = (await last.getAttribute('data-testid')) ?? '';
+  const recipeId = rowId.replace('plan-suggestion-', '');
+  const label = (await tid(page, `plan-suggestion-add-${recipeId}`).getAttribute('aria-label')) ?? '';
+  const title = label.replace(/ einplanen$/, '');
+  expect(title).not.toBe('');
+  await page.keyboard.press('Escape');
+  await expect(tid(page, 'add-entry-sheet')).toBeHidden();
+
   await open(page, '/kalender');
   await tid(page, 'add-later').click();
-  await tid(page, 'add-entry-search').fill('Shakshuka');
-  await page.locator('[data-testid^="add-entry-recipe-"]').first().click();
+  await tid(page, 'add-entry-search').fill(title);
+  await tid(page, `add-entry-recipe-${recipeId}`).click();
   await tid(page, 'add-entry-save').click();
-  await expect(tid(page, 'planned-later')).toContainText('Shakshuka');
+  await expect(tid(page, 'planned-later')).toContainText(title);
 
   await showPlanWeek(page, LATER_WEEK);
   await tid(page, `add-${LATER_WEEK}`).click();
   const first = suggestionRows(page).first();
-  await expect(first).toContainText('Shakshuka');
+  await expect(first).toHaveAttribute('data-testid', rowId);
   await expect(first).toContainText('Vorgemerkt');
-  await tid(page, 'plan-suggestions-list')
-    .locator('[data-testid^="plan-suggestion-add-"]')
-    .first()
-    .click();
-  await expect(entriesOf(page, LATER_WEEK).filter({ hasText: 'Shakshuka' })).toHaveCount(1);
-  await expect(tid(page, 'planned-later')).not.toContainText('Shakshuka');
+  await tid(page, `plan-suggestion-add-${recipeId}`).click();
+  await expect(entriesOf(page, LATER_WEEK).filter({ hasText: title })).toHaveCount(1);
+  await expect(tid(page, 'planned-later').getByText(title)).toHaveCount(0);
 });
 
 test('AC-023: offline the suggestions stay visible and "+" is greyed out', async ({ page }) => {
-  await open(page, '/kalender');
-  await goOffline(page);
-  await showPlanWeek(page, LATER_WEEK);
-  await tid(page, `add-${LATER_WEEK}`).click();
+  // Offline the day's "Hinzufügen" is greyed out itself, so the window is opened online.
+  await openAddWindow(page, LATER_WEEK);
   const add = tid(page, 'plan-suggestions-list')
     .locator('[data-testid^="plan-suggestion-add-"]')
     .first();
+  await expect(add).toBeEnabled();
+  await goOffline(page);
   await expect(add).toBeVisible();
   await expect(add).toBeDisabled();
 });
