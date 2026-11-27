@@ -229,6 +229,14 @@ Abschnitt „Daten“ jeder Spec):
       `version.mjs` die neue Basis einmal zu (0031 REQ-001). Schritt 8 setzt `min_app_version` in der
       neuen Basis auf „2026.11.2“. Die Reihenfolge der Schritte 6 bis 9 steht als Runbook in
       `docs/architecture/betrieb.md`, Abschnitt „Erste produktive Version (0028)“.
+      _Stand 27.11.2026:_ Erster Lauf von Hand (`restore-test.yml` 45944125006, Sicherung vom
+      27.11.) rot beim Einspielen (`data.sql:36`). Die Sicherung ist vollständig (Prüfsumme stimmt).
+      Ursache ist der Test-Aufbau: Supabase hat in der Produktion `auth.custom_oauth_providers` um
+      zwei Spalten erweitert, die das Postgres-Image der festen CLI 3.2.0 noch nicht kennt. Fix:
+      `scripts/backup/align.mjs` liest nur die COPY-Köpfe und ergänzt fehlende Plattform-Spalten und
+      -Tabellen in der Wegwerf-Datenbank als `text` (als `supabase_admin`). `public` und `private`
+      werden nie angepasst. Lokal nachgestellt: ohne Abgleich derselbe Fehler, mit Abgleich
+      vollständig und gleiche Zahlen. Offen: grüner Lauf auf `main` nach der nächsten Veröffentlichung.
 
 - [x] Nachweis: `pnpm format:check && pnpm check && pnpm build:web`, `pnpm exec supabase test db`,
       `pnpm e2e`, `pnpm e2e:dev` grün
