@@ -594,11 +594,19 @@ async function stubEdgeFunctions(context: BrowserContext): Promise<void> {
   // needs one answers it with its own `page.route`, which goes first. Anything else gets "KI nicht
   // erreichbar" (and its console error fails the test unless the test expects it).
   if (process.env.E2E_LIVE_AI) return;
-  for (const name of ['ai-image', 'ai-recipe-draft', 'web-search', 'ai-agent']) {
+  for (const name of ['ai-image', 'ai-recipe-draft', 'web-search']) {
     await context.route(`**/functions/v1/${name}*`, (route) =>
       fulfilError(route, 'ai_unavailable'),
     );
   }
+  // Deleting a household first purges its KI-Agent chats (spec 0066, REQ-010): without seeded
+  // chats there is nothing in Foundry, so the purge answers "0 deleted". Every other action of
+  // the agent costs money and is answered by the test that needs it.
+  await context.route('**/functions/v1/ai-agent*', (route) =>
+    requestBody(route).action === 'purge'
+      ? fulfilFunction(route, 200, { deleted: 0 })
+      : fulfilError(route, 'ai_unavailable'),
+  );
 }
 
 // ---------- Map apps (never really opened) ----------

@@ -100,7 +100,11 @@ async function deleteChat(foundry: Foundry, client: UserClient, chat: ChatRow): 
   await rpc(client, 'delete_ai_chat', { chat_id: chat.id });
 }
 
-async function purge(foundry: Foundry, client: UserClient, householdId: string): Promise<number> {
+async function purge(
+  foundry: () => Foundry,
+  client: UserClient,
+  householdId: string,
+): Promise<number> {
   const { data, error } = await client
     .from('ai_chats')
     .select('id, household_id, conversation_id, response_ids')
@@ -109,7 +113,7 @@ async function purge(foundry: Foundry, client: UserClient, householdId: string):
   if (error) throw new Error('chat_lookup_failed');
   const chats = (Array.isArray(data) ? data : []) as ChatRow[];
   for (const chat of chats) {
-    await deleteChat(foundry, client, {
+    await deleteChat(foundry(), client, {
       ...chat,
       response_ids: Array.isArray(chat.response_ids) ? chat.response_ids : [],
     });
@@ -490,8 +494,15 @@ async function streamed(
 }
 
 async function run(deps: Deps, client: UserClient, input: AgentRequest, request: Request) {
-  const foundry = foundryClient(deps, agentConfig(deps.env));
   await requireMember(client, input.householdId);
+  // Deleting a household without chats must not depend on the agent settings (REQ-010): only
+  // the purge reaches here without needing Foundry when there is nothing to delete.
+  if (input.action === 'purge') {
+    let lazy: Foundry | undefined;
+    const foundry = () => (lazy ??= foundryClient(deps, agentConfig(deps.env)));
+    return { deleted: await purge(foundry, client, input.householdId) };
+  }
+  const foundry = foundryClient(deps, agentConfig(deps.env));
   switch (input.action) {
     case 'send':
       return streamed(deps, foundry, client, input, request);
@@ -506,8 +517,6 @@ async function run(deps: Deps, client: UserClient, input: AgentRequest, request:
       await deleteChat(foundry, client, chat);
       return { deleted: 1 };
     }
-    case 'purge':
-      return { deleted: await purge(foundry, client, input.householdId) };
   }
 }
 

@@ -154,9 +154,11 @@ test('AC-001, AC-003, AC-004, AC-005: ✨ in "Restaurants" opens the empty page,
   await expect(tid(page, 'agent-open')).toHaveCount(0);
   await openAgentFromRestaurants(page);
   await expect(tid(page, 'agent-title')).toContainText('KI-Agent');
-  await expect(tid(page, 'agent-title')).toContainText('Restaurants und Aktivitäten, mit Websuche');
+  await expect(tid(page, 'agent-title-subtitle')).toHaveText(
+    'Restaurants und Aktivitäten, mit Websuche',
+  );
   await expect(tid(page, 'agent-place-chip')).toContainText('Hier · Zu Fuß');
-  await expect(tid(page, 'agent-messages')).toHaveText('');
+  await expect(page.locator('[data-testid^="agent-turn-"]')).toHaveCount(0);
   await expect(tid(page, 'agent-send')).toHaveAttribute('aria-disabled', 'true');
   await tid(page, 'agent-input').fill('   ');
   await expect(tid(page, 'agent-send')).toHaveAttribute('aria-disabled', 'true');
@@ -165,6 +167,7 @@ test('AC-001, AC-003, AC-004, AC-005: ✨ in "Restaurants" opens the empty page,
 });
 
 test('AC-002: ✨ in "Aktivitäten" and back there', async ({ page }) => {
+  await open(page, '/kalender');
   await openManaged(page, 'activities');
   await tid(page, 'agent-open').click();
   await expect(tid(page, 'agent-screen')).toBeVisible();
@@ -200,7 +203,10 @@ test('AC-014, AC-016, AC-017, AC-020, AC-021: an answer with steps, cards, sourc
   await expect(tid(page, 'agent-turn-1-sources')).toContainText('tip-berlin.de');
   // The address follows the new chat; the head names it.
   await expect(page).toHaveURL(new RegExp(`chat=${CHAT}`));
-  await expect(tid(page, 'agent-title')).toContainText('Romantisch in Mitte');
+  // The head collapses while the answer scrolls in; at the top it names the chat.
+  await tid(page, 'agent-messages').hover();
+  await page.mouse.wheel(0, -10_000);
+  await expect(tid(page, 'agent-title-subtitle')).toContainText('Romantisch in Mitte');
 
   // AC-007: the device location goes rounded to ≈ 100 m with the message; no instructions.
   expect(sent[0]).toMatchObject({

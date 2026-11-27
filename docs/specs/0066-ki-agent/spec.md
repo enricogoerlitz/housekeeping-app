@@ -259,7 +259,7 @@ Beim Bauen entschieden:
     ohne eigenen `fetch` mit Token.
 13. **Grenzen:** Nachricht 2000 Zeichen, 20 Antworten je Chat (danach neuer Chat; der Verlauf wird sonst langsam und
     teuer, PoC Lauf 07: 51k Input-Tokens), 5 Einheiten des KI-Kontingents je Antwort (200/Tag → 40 Recherchen je
-    Person und Tag, ≈ 5–10 ct je Runde), Gesamtzeit 120 s, Anreicherung 1 Serper-Anfrage je Karte (höchstens 8), Titel
+    Person und Tag, ≈ 5–10 ct je Runde), Gesamtzeit 120 s, Anreicherung bis zu 2 Serper-Anfragen je Karte (frei und mit Ort, höchstens 8 Karten = 16), Titel
     60 Zeichen, Ortsbezeichnung 120.
 14. **Schritt 2, entschieden (Enrico, 27.11.2026; nicht gebaut):** Haushaltsdaten bekommt der Agent über **eigene
     Client-Funktions-Werkzeuge (Option A)**, die die Edge Function mit dem JWT der Person ausführt (RLS gilt); der Agent
@@ -297,7 +297,15 @@ Beim Bauen entschieden:
     schwereres Debugging; ADR-0019, Option F). Vorerst ein Agent mit Werkzeugen; `places-agent` bleibt eigenständig
     (eigene YAML, Instruktion, Version), damit er später ohne Umbau Spezialist eines zentralen Agents werden kann
     (Spec 0067). Den Wechsel schlagen wir vor, wenn der zentrale Agent aufbläht (≈ 15–20+ Werkzeuge, sich störende
-    Instruktionen, messbar schlechtere Antworten).
+    Instruktionen, messbar schlechtere Antworten). **Spätere Option „zentraler Agent + Spezialisten“ (nicht gebaut,
+    Abwägung in ADR-0019, Option F).** Spec 0067 müsste dafür ändern: eine neue YAML `household-agent` mit den
+    Spezialisten als verbundene Agents (gepinnte Versionen, Upsert-Reihenfolge Spezialisten zuerst); die Edge Function
+    spricht dann `FOUNDRY_HOUSEHOLD_AGENT` statt `FOUNDRY_PLACES_AGENT` an, behält aber Werkzeugliste, Schrittzeile und
+    SSE-Vertrag; `show_suggestions` bleibt ein UI-Werkzeug, auch wenn ein Spezialist es aufruft; das Löschen erfasst
+    jede Antwort-ID jeder Runde (auch die der Spezialisten, falls Foundry sie getrennt speichert); das Kontingent je
+    Antwort steigt mit der Zahl der Spezialistenläufe; der Einstieg wandert aus „Restaurants“/„Aktivitäten“ an eine
+    allgemeine Stelle. Vorher zu prüfen (PoC): ob eingebundene Agents Funktionsaufrufe an den Aufrufer zurückgeben
+    und wie ihre Schritte im Stream erscheinen.
 
 ## Daten
 
@@ -314,35 +322,88 @@ Beim Bauen entschieden:
 
 ## Risiken
 
-| Risiko                                                                                          | Gegenmaßnahme                                                                                                 | Test                                              |
-| ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
-| Fremder Haushalt oder Abgemeldeter liest Chats                                                  | RLS, Grant nur `select`, `anon` nichts                                                                        | pgTAP `ai_chats.test.sql`                         |
-| Der Foundry-Schlüssel listet **alle** Conversations: eine `conv_…`-ID vom Client ist Behauptung | Function prüft Mitglied, Zeile im Haushalt **und** Conversation-Metadaten; `conversation_id` global eindeutig | edge `ai-agent/handler.test.ts` AC-033/034, pgTAP |
-| Gefälschte Antwort-IDs löschen fremde Antworten                                                 | vor `DELETE /responses/{id}` gehört die Antwort zur Conversation des Chats                                    | edge AC-030                                       |
-| Kosten laufen weg (Web IQ, Tokens)                                                              | 5 Kontingent-Einheiten je Antwort, 20 Antworten je Chat, 120 s, Serper ≤ 8                                    | edge AC-035/036                                   |
-| Systemprompt oder Rohdaten gelangen in die App                                                  | nur eigene, mit Zod geprüfte Ereignisse; Karten-Argumente validiert, https-Links, Längen                      | edge AC-037, core `ai-agent.test.ts` AC-019       |
-| Prompt-Injection über Webseiten                                                                 | Karten sind Daten, Speichern erst auf Tipp über den Schreibweg; Maps-Link nur aus Serper                      | core AC-017/018                                   |
-| Standort landet dauerhaft in Foundry                                                            | gerundet, nur je Nachricht; Löschen löscht Conversation **und** Antworten; Haushalt löschen löscht Chats      | edge AC-028, api AC-031, pgTAP AC-032             |
-| Abgebrochene Antwort blockiert den Chat (offener `function_call`)                               | vor jeder Nachricht offene Aufrufe schließen                                                                  | edge AC-038                                       |
-| Fehlerpfad Foundry/Serper                                                                       | `ai_unavailable` im Stream, Karten ohne Anreicherung, Löschen bleibt wiederholbar                             | edge, api                                         |
-| Suchanfragen verlassen die Azure-Compliance-Grenze (Web IQ)                                     | bewusst akzeptiert (ADR-0018), Agent-Instruktion: keine persönlichen Daten in Suchbegriffen                   | —                                                 |
+| Risiko                                                                                                                                                              | Gegenmaßnahme                                                                                                                                                                                                                                                                                  | Test                                                                |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| Fremder Haushalt oder Abgemeldeter liest Chats                                                                                                                      | RLS, Grant nur `select`, `anon` nichts                                                                                                                                                                                                                                                         | pgTAP `ai_chats.test.sql`                                           |
+| Der Foundry-Schlüssel listet **alle** Conversations: eine `conv_…`-ID vom Client ist Behauptung                                                                     | Function prüft Mitglied, Zeile im Haushalt **und** Conversation-Metadaten; `conversation_id` global eindeutig                                                                                                                                                                                  | edge `ai-agent/handler.test.ts` AC-033/034, pgTAP                   |
+| Gefälschte Antwort-IDs löschen fremde Antworten                                                                                                                     | vor `DELETE /responses/{id}` gehört die Antwort zur Conversation des Chats                                                                                                                                                                                                                     | edge AC-030                                                         |
+| Kosten laufen weg (Web IQ, Tokens)                                                                                                                                  | 5 Kontingent-Einheiten je Antwort, 20 Antworten je Chat, 120 s, Serper ≤ 16; bricht der Stream ab, endet auch der Foundry-Lauf                                                                                                                                                                 | edge AC-035/036                                                     |
+| Systemprompt oder Rohdaten gelangen in die App                                                                                                                      | nur eigene, mit Zod geprüfte Ereignisse; Karten-Argumente validiert, https-Links, Längen                                                                                                                                                                                                       | edge AC-037, core `ai-agent.test.ts` AC-019                         |
+| Prompt-Injection über Webseiten                                                                                                                                     | Karten sind Daten, Speichern erst auf Tipp über den Schreibweg; Maps-Link nur aus Serper                                                                                                                                                                                                       | core AC-017/018                                                     |
+| Standort landet dauerhaft in Foundry                                                                                                                                | gerundet, nur je Nachricht; Löschen löscht Conversation **und** Antworten; Haushalt löschen löscht Chats                                                                                                                                                                                       | edge AC-028, api AC-031, pgTAP AC-032                               |
+| Genauer Standort geht an Serper (Security-Check 27.11., mittel; behoben)                                                                                            | App rundet vor dem Senden, das Schema rundet beim Parsen in der Function (≈ 100 m)                                                                                                                                                                                                             | core AC-007, edge AC-007 (Serper `ll`)                              |
+| Conversation oder Antwort ohne Zeile bleibt für immer in Foundry (Security-Check, niedrig; behoben)                                                                 | scheitert `create_ai_chat`, löscht die Function die Conversation; scheitert `record_ai_chat_turn`, die Antwort                                                                                                                                                                                 | edge „row that cannot be written“, „answer that cannot be recorded“ |
+| Steuerzeichen in Titel/Ort lassen `create_ai_chat` scheitern; überlange Quell-Hosts brechen `load` (Security-Check, niedrig; behoben)                               | Schema und `chatTitle` entfernen Steuerzeichen; `sourcesOf` überspringt Hosts > 200 Zeichen                                                                                                                                                                                                    | core                                                                |
+| „Zuletzt“ bleibt nach erzwungener Abmeldung (Security-Check, niedrig; behoben)                                                                                      | `startAuth({ clearDevice })` leert „Zuletzt“ und Entwurfssicherungen bei jeder Abmeldung                                                                                                                                                                                                       | api `auth-start.test.ts`                                            |
+| Ein Mitglied ruft `delete_ai_chat` direkt per RPC: die Zeile ist weg, Conversation und Antworten bleiben in Foundry (Security-Check, mittel; **akzeptiert**)        | Nur der eigene Haushalt betroffen, die App ruft es nie direkt; Conversations tragen `household_id` in den Metadaten und lassen sich finden (`betrieb.md`). Folge-Spec: Löschprotokoll in `private` (Conversation- und Antwort-IDs), das die Function beim nächsten `delete`/`purge` abarbeitet | pgTAP (Mitglied darf es)                                            |
+| Alle Umgebungen teilen ein Foundry-Projekt; Metadaten nennen keine Umgebung, der Reset der Vorschau lässt Conversations liegen (Security-Check, niedrig; **offen**) | Eine fremde `conv_…`-ID muss man kennen; Folge: `env` in die Metadaten und prüfen, Vorschau vor dem Reset purgen                                                                                                                                                                               | —                                                                   |
+| 20-Antworten-Grenze ohne Sperre: parallele Sends bei 19 kommen beide durch (Security-Check, Hinweis; akzeptiert)                                                    | Das Kontingent deckelt die Kosten                                                                                                                                                                                                                                                              | —                                                                   |
+| Abgebrochene Antwort blockiert den Chat (offener `function_call`)                                                                                                   | vor jeder Nachricht offene Aufrufe schließen                                                                                                                                                                                                                                                   | edge AC-038                                                         |
+| Fehlerpfad Foundry/Serper                                                                                                                                           | `ai_unavailable` im Stream, Karten ohne Anreicherung, Löschen bleibt wiederholbar                                                                                                                                                                                                              | edge, api                                                           |
+| Suchanfragen verlassen die Azure-Compliance-Grenze (Web IQ)                                                                                                         | bewusst akzeptiert (ADR-0018), Agent-Instruktion: keine persönlichen Daten in Suchbegriffen                                                                                                                                                                                                    | —                                                                   |
 
 ## Umsetzung
 
-- [ ] 1. Spec, ADR-0018, Glossar, `docs/ARTIFACTS.md`, `docs/specs/README.md`
-- [ ] 2. core `ai-agent.ts`: Kontextblock, Umkreis, Zitat-Filter, SSE-Parser, Kartenschema, Anreicherung,
+- [x] 1. Spec, ADR-0018, Glossar, `docs/ARTIFACTS.md`, `docs/specs/README.md`
+- [x] 2. core `ai-agent.ts`: Kontextblock, Umkreis, Zitat-Filter, SSE-Parser, Kartenschema, Anreicherung,
       Items → Nachrichten, Titel, „Zuletzt“ (AC-007, 009–013, 016–019, 025) — rot zuerst
-- [ ] 3. Migration `ai_chats` + RPCs + `sync_pull` + `delete_household`, pgTAP (AC-026, 032, 040, 041)
-- [ ] 4. api: Tabelle registrieren, Cache 26, `sendAgentMessage`/`loadAgentChat`/`deleteAgentChat`, Haushalt
+- [x] 3. Migration `ai_chats` + RPCs + `sync_pull` + `delete_household`, pgTAP (AC-026, 032, 040, 041)
+- [x] 4. api: Tabelle registrieren, Cache 26, `sendAgentMessage`/`loadAgentChat`/`deleteAgentChat`, Haushalt
       löschen (AC-031)
-- [ ] 5. Edge Function `ai-agent` mit Tests (AC-028–030, 033–038)
-- [ ] 6. `foundry/agents/places-agent.yaml`, Paket `@housekeeping/foundry` (Upsert, Tests), Schritte in `preview.yml`
+- [x] 5. Edge Function `ai-agent` mit Tests (AC-028–030, 033–038)
+- [x] 6. `foundry/agents/places-agent.yaml`, Paket `@housekeeping/foundry` (Upsert, Tests), Schritte in `preview.yml`
       und `release.yml` mit `workflows.test.mjs`, `betrieb.md` (AC-042 bis AC-045)
-- [ ] 7. App: ✨, Seite, Eingabe, Ort-Fenster, Karten, Verlauf, Offline (AC-001–006, 008, 014, 015, 020–024, 027, 039)
-- [ ] 8. e2e `rundgang-ki-agent.spec.ts` (Function per `page.route` nachgebildet)
-- [ ] 9. Screenshots (Desktop, Handy), iPhone-Simulator, `/security-check`, höchstens 5 echte Foundry-Läufe
-- [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün, `pnpm exec supabase test db` grün
+- [x] 7. App: ✨, Seite, Eingabe, Ort-Fenster, Karten, Verlauf, Offline (AC-001–006, 008, 014, 015, 020–024, 027, 039)
+- [x] 8. e2e `rundgang-ki-agent.spec.ts` (Function per `page.route` nachgebildet)
+- [x] 9. Screenshots (Desktop, Handy), iPhone-Simulator, `/security-check`, höchstens 5 echte Foundry-Läufe
+- [ ] 10. Volle e2e-Suite in GitHub — vor dem nächsten Release (Regel: die ganze Suite läuft einmal vor einer Veröffentlichung)
+- [x] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün, `pnpm exec supabase test db` grün
 
 ## Nachweis
 
-(wird beim Abschluss ergänzt)
+- **Rot zuerst:** core `ai-agent.test.ts`, `ai-agent-places.test.ts`, ui `progress-steps.test.tsx`, edge
+  `ai-agent/handler.test.ts`, api `ai-agent.backend.test.ts`, foundry `run.test.ts`, pgTAP `ai_chats.test.sql` (32/32
+  rot vor der Migration). Runde 2 (Security-Check): 4 core-Tests (Rundung beim Parsen, Steuerzeichen in Ort und
+  Titel, überlanger Quell-Host), 3 edge-Tests (Serper bekommt `@52.511,13.459`, Conversation ohne Zeile wird gelöscht,
+  nicht erfasste Antwort wird gelöscht und der Lauf abgebrochen), 1 edge-Test „Haushalt ohne Chats ohne
+  Foundry-Konfiguration“ (AC-031, rot: 500), 1 api-Test (`clearDevice` bei erzwungener Abmeldung) — je rot, dann grün.
+- **Prüfungen (27.11.2026):** `pnpm format:check && pnpm check` grün, `pnpm build:web` grün, pgTAP auf eigenem
+  Wegwerf-Stack (`hk-0066c`, Ports 546xx): 58 Dateien, 2773 Tests grün. CI von PR #143 grün (nach dem Fix der
+  Unicode-Anführungszeichen, die `shellcheck` in „Foundry-Konfiguration vorhanden“ beanstandete).
+- **e2e:** `pnpm e2e:dev` (Dev-Smoke, jetzt mit KI-Agent-Seite, Ort-Fenster und Verlauf) 7/7 grün gegen den
+  Wegwerf-Stack. Ein vor der Regel „volle Suite nur vor einem Release“ gestarteter Lauf in GitHub (Run 46061979237,
+  für diesen PR nicht maßgeblich) fand echte Fehler, alle behoben: (1) Haushalt löschen ruft zuerst `purge` — der
+  Standard-Stub der e2e beantwortete `ai-agent` aber immer mit `ai_unavailable`; er antwortet `purge` jetzt mit
+  „0 gelöscht“ (`e2e/helpers.ts`), und die Function braucht für einen Haushalt ohne Chats keine
+  Foundry-Konfiguration mehr; (2) `rundgang-ki-agent-0066` prüfte den Untertitel am Titel-Element (neu:
+  `agent-title-subtitle`), die leere Seite an einem Element ohne Höhe und öffnete „Aktivitäten“ ohne Startseite.
+  Lokal liefen AC-002, AC-014–021, AC-008/009/012 und AC-039 grün; AC-024–028 lässt sich lokal nicht gegen einen
+  Wegwerf-Stack prüfen (die SQL-Helfer der e2e schreiben in den Container des Haupt-Stacks). **Unverifiziert bis zum
+  vollen Lauf vor dem nächsten Release:** die korrigierten Tests (leere Seite, Untertitel, Haushalt löschen).
+- **Echte Foundry-Läufe (höchstens 5, lokal, `places-agent-local` Version 1, Wegwerf-Stack):**
+  1. Neuer Chat „Romantisches Abendessen, einer isst Fleisch, die andere vegetarisch“, Ort „Kreuzberg, Graefekiez“:
+     17,3 s, Schrittzeile „Sucht im Web · 46“ mit 2 Suchbegriffen, 2 Karten (eine angereichert ★ 4,8 (398), Maps-Link,
+     Foto; „Fourty Years Kitchen“ ohne Serper-Treffer → ohne Sterne/Maps), 2 Folgefragen, 2 Quellen, keine
+     Zitat-Marken, Titel der Zeile danach „Dinner zu zweit im Graefekiez“ (Kartentitel).
+  2. Rückfrage „Eher etwas mit Terrasse?“: 13,0 s, bezieht sich auf die Vorschläge davor.
+  3. „Recherche anhalten“ nach 6 s (Client bricht ab): Lauf endet, Antwort-ID trotzdem in `response_ids`.
+  4. Nächste Nachricht im selben Chat: 11,2 s, 2 angereicherte Bar-Karten — der Chat bleibt nach dem Abbruch benutzbar.
+  5. Im iPhone-Simulator „Pizza zum Mitnehmen“ mit Gerätestandort: der Aufruf an Foundry scheiterte nach ≈ 90 s mit
+     einem Netzwerkfehler (gleichzeitig meldete die App kurz „Offline“ — Netzaussetzer des Hosts); die App zeigte „Der
+     Assistent ist gerade nicht erreichbar“. Kein weiterer Versuch (Grenze 5).
+     Danach ohne Modelllauf: `load` lieferte 6 Nachrichten mit Karten, Sternen und Maps-Link aus dem
+     `function_call_output`, ohne „[KONTEXT]“ und ohne Koordinaten; `delete` löschte Conversation, 4 Antworten und Zeile.
+- **iPhone-Simulator (iPhone 18 Pro, Safari, eigener Dev-Server :8177):** Eingabe und Tastatur bewegen sich in einem
+  Zug (Aufnahme 0,25 s nach dem Tippen zeigt den Endzustand), Kopf bleibt stehen, auch in einem langen Chat; Safari
+  fragt den Standort erst beim Senden; „Verlauf“ zeigt beide Chats mit Ort, Datum, Person; ein geöffneter Chat zeigt
+  Fotos, Sterne, Markdown, Schrittzeile und Quellen; Löschen fragt „Chat löschen?“ und entfernt ihn; „In der Nähe von“
+  mit Tastatur (Feld bleibt sichtbar), „Übernehmen“ setzt den Chip. Screenshots in `tmp/review-0004/0066/sim/`, Protokolle der Läufe in `tmp/review-0004/0066/smoke-*.log`.
+- **Screenshots (Playwright, Runde 1, KI-Antwort nachgebildet):** Desktop 1440 × 900 und Handy 390 × 844, hell — Restaurants mit ✨, leere Seite, Ort-Fenster, Arbeiten, Antwort, Verlauf in `tmp/review-0004/0066/shots/`.
+- **Security-Check (27.11.2026):** 0 kritisch, 0 hoch, 2 mittel, 5 niedrig, 1 Hinweis. Behoben: genauer Standort an
+  Serper, verwaiste Conversation/Antwort, Steuerzeichen, überlanger Host, „Zuletzt“ bei erzwungener Abmeldung.
+  Akzeptiert bzw. offen (unter „Risiken“): direkter Aufruf von `delete_ai_chat`, Umgebung nicht in den Metadaten,
+  20-Antworten-Grenze ohne Sperre.
+- **Beobachtet, nicht geändert:** Nach dem Öffnen eines Chats zeigt der Ort-Chip den Ort des Geräts, nicht den des
+  Chats (der Ort gilt je Nachricht, REQ-004). Der Kopf klappt beim Scrollen auf „KI-Agent“ zusammen und zeigt den
+  Chat-Titel dann nicht. Eine abgebrochene Nachricht steht nach dem Neuladen nicht im Verlauf (Foundry speichert die
+  Eingabe eines abgebrochenen Laufs nicht).

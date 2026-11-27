@@ -133,6 +133,18 @@ test('dev smoke: every screen renders without a React warning or error', async (
   await tid(page, `restaurant-${seedIds['rest-pho']}`).click();
   await expect(tid(page, 'restaurant-title')).toHaveText('Pho Saigon');
   await back(page);
+  // ✨ "KI-Agent" (spec 0066): the page, the window "In der Nähe von" and "Verlauf" once.
+  await tid(page, 'agent-open').click();
+  await expect(tid(page, 'agent-screen')).toBeVisible();
+  await tid(page, 'agent-place-chip').click();
+  await expect(tid(page, 'agent-place-sheet')).toBeVisible();
+  await tid(page, 'agent-place-done').click();
+  await expect(tid(page, 'agent-place-sheet')).toBeHidden();
+  await tid(page, 'agent-history-open').click();
+  await expect(tid(page, 'agent-history')).toBeVisible();
+  await tid(page, 'agent-history-close').click();
+  await expect(tid(page, 'agent-history')).toBeHidden();
+  await back(page);
 
   // Verwalten → Aktivitäten: the page, one activity, the add sheet's tabs and its "Neu anlegen"
   // forms (spec 0010, REQ-007, REQ-008; spec 0024, REQ-009).

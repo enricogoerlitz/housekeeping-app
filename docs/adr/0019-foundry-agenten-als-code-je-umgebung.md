@@ -100,6 +100,20 @@ an: in GitHub per `azure/login` mit OIDC (eigene App-Registrierung im Foundry-Te
   später ohne Umbau Spezialist werden kann. Den Wechsel schlagen wir vor, wenn der zentrale Agent
   aufbläht: etwa 15–20 Werkzeuge oder mehr, sich störende Instruktionen verschiedener Bereiche oder
   messbar schlechtere Antworten.
+- **Spätere Option, nicht gebaut (Spec 0067):** Ein Orchestrator `household-agent` mit
+  Spezialisten als „connected agents“ (in Foundry eingebunden) oder über A2A (eigener Endpunkt je
+  Spezialist). Abwägung im Einzelnen:
+
+  | Gesichtspunkt        | Ein Agent mit Werkzeugen (heute)                                       | Orchestrator + Spezialisten                                                                                                                                                                                                                             |
+  | -------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | Latenz, Kosten       | ein Modelllauf je Runde                                                | je Spezialist ein weiterer Lauf; Kontingent je Antwort neu bemessen                                                                                                                                                                                     |
+  | Instruktionen        | eine, wächst mit jedem Bereich                                         | je Bereich kurz und getrennt versionierbar                                                                                                                                                                                                              |
+  | Haushaltsdaten (RLS) | Funktions-Werkzeuge laufen in der Edge Function mit dem JWT der Person | Spezialisten, die Haushaltsdaten brauchen, müssen ihre Funktionsaufrufe ebenfalls an die Edge Function zurückgeben; ob Foundry das für eingebundene Agents durchreicht, ist zu prüfen — sonst nur Spezialisten ohne Haushaltsdaten (wie `places-agent`) |
+  | Schrittzeile, Stream | alle Schritte im eigenen Stream                                        | Schritte der Spezialisten sind nur so sichtbar, wie Foundry sie streamt                                                                                                                                                                                 |
+  | Fehlersuche          | eine Conversation                                                      | Antwort über mehrere Agents verteilt; Löschen muss jede Antwort jedes Agents erfassen                                                                                                                                                                   |
+  | Pipeline             | eine YAML je Agent, Upsert je Umgebung                                 | bleibt gleich; zusätzlich Reihenfolge (Spezialisten vor dem Orchestrator) und gepinnte Versionen der Spezialisten im Orchestrator                                                                                                                       |
+
+  Was Spec 0067 dafür ändern müsste, steht in Spec 0066 unter Entscheidung 18.
 
 ## Begründung
 

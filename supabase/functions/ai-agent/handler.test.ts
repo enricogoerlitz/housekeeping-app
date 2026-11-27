@@ -645,6 +645,17 @@ describe('ai-agent: delete', () => {
     expect(client.rpcCalls.map((call) => call.fn)).toEqual(['delete_ai_chat', 'delete_ai_chat']);
   });
 
+  it('AC-031: a household without chats is purged without any Foundry setting (no agent configured)', async () => {
+    const { deps, state } = setup({
+      chats: [],
+      env: { FOUNDRY_PROJECT_ENDPOINT: '', FOUNDRY_PLACES_AGENT: '' },
+    });
+    const response = await handler(post({ action: 'purge', householdId: HOUSEHOLD_ID }), deps);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ deleted: 0 });
+    expect(state.calls).toHaveLength(0);
+  });
+
   it('only a member deletes', async () => {
     const { deps } = setup();
     const response = await handler(post({ action: 'purge', householdId: FOREIGN_HOUSEHOLD }), deps);
