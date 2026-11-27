@@ -11,6 +11,7 @@ import {
   draftImageContext,
   IMAGE_EXTRA_MAX,
   imageFailureNotice,
+  isUnfinishedRecipe,
   proposalIsEmpty,
   proposesPagePhoto,
   recipeDraftOf,
@@ -59,15 +60,28 @@ function offersAi(recipe: Recipe): boolean {
 }
 
 /**
- * ✨ "Mit KI ändern" in the header of the reading recipe page (spec 0062, REQ-007): on phones the
- * symbol, from tablet width with its text; greyed out offline. The keyboard comes with the tap
- * for the window's field (spec 0055, AC-004).
+ * ✨ in the header of the reading recipe page (spec 0062, REQ-007): on phones the symbol, from
+ * tablet width with its text; greyed out offline. "Mit KI ändern" opens its window, the keyboard
+ * comes with the tap for the window's field (spec 0055, AC-004). On an unfinished recipe it is
+ * "Mit KI ausarbeiten" and does what the card does (Nachklick 27.11., N-02): the edit mode with
+ * the web search of the title, without the keyboard.
  */
-export function AiChangeButton(props: { recipe: Recipe; onPress: () => void }) {
+export function AiChangeButton(props: {
+  recipe: Recipe;
+  onPress: () => void;
+  onWorkOut: () => void;
+}) {
   const online = useOnlineOnly();
   const { isPhone } = useBreakpoint();
   if (!offersAi(props.recipe)) return null;
+  const workOut = isUnfinishedRecipe(props.recipe);
+  const label = workOut ? 'Mit KI ausarbeiten' : 'Mit KI ändern';
+  const testID = workOut ? 'recipe-ai-work-out' : 'recipe-ai-change-open';
   const press = () => {
+    if (workOut) {
+      props.onWorkOut();
+      return;
+    }
     openKeyboardNow();
     props.onPress();
   };
@@ -75,23 +89,27 @@ export function AiChangeButton(props: { recipe: Recipe; onPress: () => void }) {
     <IconButton
       icon="sparkles"
       size={44}
-      label="Mit KI ändern"
+      label={label}
       disabled={online.disabled}
       hint={online.hint}
       onPress={press}
-      testID="recipe-ai-change-open"
+      testID={testID}
     />
   ) : (
-    <Button
-      label="Mit KI ändern"
-      icon="sparkles"
-      variant="ghost"
-      size="sm"
-      disabled={online.disabled}
-      hint={online.hint}
-      onPress={press}
-      testID="recipe-ai-change-open"
-    />
+    // Nachklick 27.11., N-15: a Button keeps to the top of its row; the wrapper is centred like
+    // the other buttons of the header.
+    <View>
+      <Button
+        label={label}
+        icon="sparkles"
+        variant="ghost"
+        size="sm"
+        disabled={online.disabled}
+        hint={online.hint}
+        onPress={press}
+        testID={testID}
+      />
+    </View>
   );
 }
 
@@ -255,7 +273,8 @@ export function AiPageTools(props: {
       {editing ? (
         <View style={{ alignItems: 'flex-start' }}>
           <Button
-            label="Mit KI ausfüllen"
+            // Nachklick 27.11., iN-05: the name of the window it opens.
+            label={hasContent ? 'Mit KI ändern' : 'Mit KI ausfüllen'}
             icon="sparkles"
             variant="link"
             size="sm"

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { naturalTitleWidth, titleOnOwnLine, wordOverflows } from './title-fit';
+import { hyphenHang, naturalTitleWidth, titleOnOwnLine, wordOverflows } from './title-fit';
 
 describe('titleOnOwnLine (review 0003: "Einplan…" and "Q…" beside long actions on phones)', () => {
   it('a title that fits between the actions stays in their row', () => {
@@ -60,5 +60,18 @@ describe('wordOverflows (spec 0057, REQ-004)', () => {
     expect(wordOverflows({ scrollWidth: 141, clientWidth: 140 })).toBe(false);
     expect(wordOverflows({ scrollWidth: 0, clientWidth: 0 })).toBe(false);
     expect(wordOverflows(null)).toBe(false);
+  });
+
+  it('N-18 (review 0004): a hyphen standing past the line within its slack does not count', () => {
+    // "Kichererbsen-" 5 px wider than the line, 7 px of room for the hyphen.
+    expect(wordOverflows({ scrollWidth: 106, clientWidth: 101 }, 8)).toBe(false);
+    expect(wordOverflows({ scrollWidth: 120, clientWidth: 101 }, 8)).toBe(true);
+  });
+});
+
+describe('hyphenHang (review 0004, N-18)', () => {
+  it('leaves a hyphen of the font size room past the line, in whole pixels', () => {
+    expect(hyphenHang(16)).toBe(7);
+    expect(hyphenHang(13.5)).toBe(6);
   });
 });

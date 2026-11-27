@@ -34,10 +34,11 @@ import {
   Text,
   TextField,
   ViewTabs,
+  focusAfterChange,
   toast,
   type SheetAction,
 } from '@housekeeping/ui';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Keyboard, View } from 'react-native';
 
 import { discardFirst } from '@/features/shell/confirm-dialog';
@@ -100,7 +101,7 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
   const [error, setError] = useState<string | undefined>(undefined);
   const fill = useAiFill();
   const draftInput = useDraftInput();
-  const search = useWebSearch('recipe');
+  const search = useWebSearch('recipe', '', 'KI-Rezept');
   const tabs = useAiFillTabs('web', search, NEW_TABS);
   const tab = features.aiRecipes ? tabs.tab : 'web';
   // Every opening starts with the kind chosen (state adjusted while rendering).
@@ -132,8 +133,23 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
     ingredients.trim() !== '' ||
     recipeIds.length > 0 ||
     photo !== undefined;
-  const dismiss = () => discardFirst(dirty, close, 'confirm-discard-new');
+  // Nachklick 27.11., N-13: nothing exists yet, so it is a draft that goes, not changes.
+  const dismiss = () => discardFirst(dirty, close, 'confirm-discard-new', 'Entwurf verwerfen?');
   const open = (extra: Extra) => setExtras((current) => new Set(current).add(extra));
+  // Nachklick 27.11., N-12: the field opens with the cursor and in sight (the keyboard comes
+  // with the tap on the iPhone).
+  const ingredientsField = useRef<unknown>(null);
+  const openIngredients = () => {
+    focusAfterChange(
+      () => open('ingredients'),
+      () => ingredientsField.current,
+    );
+    requestAnimationFrame(() =>
+      (
+        ingredientsField.current as { scrollIntoView?: (options: object) => void } | null
+      )?.scrollIntoView?.({ block: 'nearest' }),
+    );
+  };
   const chooseKind = (next: RecipeKind) => {
     setError(undefined);
     setKind(next);
@@ -149,8 +165,10 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
   // REQ-004 (AC-001 of spec 0040): the draft opens on the recipe page in the edit mode; the
   // recipe exists only there until "Speichern". A typed title, pasted ingredients and a chosen
   // photo go along.
+  // Nachklick 27.11., N-12: pasted ingredients go to the AI too, so they alone are enough.
+  const aiReady = fill.ready || ingredients.trim() !== '';
   const writeWithAi = () => {
-    if (fill.busy || !fill.ready) return;
+    if (fill.busy || !aiReady) return;
     const typed = [
       title.trim() ? `Titel: ${title.trim()}` : '',
       ingredients.trim() ? `Zutaten:\n${ingredients.trim()}` : '',
@@ -218,7 +236,9 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
     const problem = newEntryTitleProblem(title);
     if (problem) {
       setError(problem);
-      if (kind === 'recipe' && tab !== 'web') tabs.choose('web');
+      // Nachklick 27.11., iN-06: the title gets the cursor within the tap, so the keyboard stays
+      // and the window does not sink.
+      if (kind === 'recipe') tabs.choose('web');
       return;
     }
     let recipeId: Id;
@@ -261,7 +281,7 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
             label: 'Erzeugen',
             icon: 'sparkles',
             onPress: writeWithAi,
-            disabled: online.disabled || fill.busy || !fill.ready,
+            disabled: online.disabled || fill.busy || !aiReady,
             hint: online.hint,
             testID: 'new-recipe-ai-submit',
           }
@@ -273,8 +293,6 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
             hint: online.hint,
             testID: 'new-recipe-save',
           };
-  const grown =
-    !collection && (tab === 'prompt' || search.state.status !== 'idle' || !!search.preview);
 
   const titleField = (
     <TextField
@@ -333,7 +351,7 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
           label="Zutaten einfügen"
           icon="clipboard-list"
           variant="link"
-          onPress={() => open('ingredients')}
+          onPress={openIngredients}
           testID="new-recipe-open-ingredients"
         />
       ) : null}
@@ -364,7 +382,8 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
       onClose={dismiss}
       title="Neu"
       testID="new-recipe-sheet"
-      size={grown ? 'l' : 'm'}
+      // Nachklick 27.11., N-06: one size whatever the tab shows, so nothing jumps.
+      size="l"
       header={
         !collection && features.aiRecipes ? (
           <ViewTabs
@@ -436,7 +455,9 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
             onChangeText={setIngredients}
             picks={picks}
             onChangePicks={setPicks}
-            autoFocus
+            onInput={(input) => {
+              ingredientsField.current = input;
+            }}
             testID="new-recipe-ingredients"
           />
         ) : null}

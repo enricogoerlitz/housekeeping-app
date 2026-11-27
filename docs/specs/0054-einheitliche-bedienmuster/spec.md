@@ -205,6 +205,9 @@ bei den Bausteinen. Quelle: Auftrag. Offline: entfällt.
     zeigt kein Knopf einen Fokusring (vorher trugen ✕ und „Abbrechen“ einen alten Fokus mit,
     `keyboardFocused`). Durchklick 27.11., Dauerposten: Das Fenster „Neuer Dauerposten“ hat wie jedes
     Formular „Abbrechen · Speichern“, ab Tablet unten nebeneinander.
+12. Nachklick 27.11., N-14: Die Fläche hinter einem Fenster (Scrim) zeigt keinen Fokusrahmen.
+    Das Modal gibt ihr beim Öffnen per Tastatur (Escape auf „Neu“ → Rückfrage) den Fokus; der
+    Browser-Rahmen lag dann um die ganze Seite.
 
 ## Daten
 

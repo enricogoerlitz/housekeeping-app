@@ -130,9 +130,11 @@ function RestaurantDetailBody(props: RestaurantDetailProps & { restaurant: Resta
   const meta = [restaurant.cuisine, priceLabel(restaurant.priceLevel)].filter(Boolean).join(' · ');
   const website =
     restaurant.websiteUrl && isWebUrl(restaurant.websiteUrl) ? restaurant.websiteUrl : undefined;
-  // "Bearbeiten" puts the cursor into "Name", with the keyboard on the iPhone (spec 0033, REQ-006).
-  const edit = (at: RestaurantFormFocus = 'name') => {
-    openKeyboardNow();
+  // The pencil opens the form calm, without a cursor: the keyboard coming up while the window slid
+  // in made it judder (Nachklick 27.11., Ruckeln). An action aimed at a field ("Notiz
+  // hinzufügen") puts the cursor there, with the keyboard on the iPhone (spec 0033, REQ-006).
+  const edit = (at?: RestaurantFormFocus) => {
+    if (at) openKeyboardNow();
     setFocus(at);
     props.onWindow('bearbeiten');
   };

@@ -45,6 +45,15 @@ describe('Sheet (AC-029)', () => {
     expect(onClose).toHaveBeenCalledTimes(2);
   });
 
+  it('Nachklick 27.11., N-14: the scrim takes the focus of the modal without a frame around the page', () => {
+    render(
+      <Sheet visible onClose={() => undefined} title="Entwurf verwerfen?" size="s" testID="sheet">
+        <Text>Inhalt</Text>
+      </Sheet>,
+    );
+    expect(screen.getByTestId('sheet-scrim').style.outlineWidth).toBe('0px');
+  });
+
   it('closed: not shown; after closing it is gone once faded out', () => {
     const { rerender } = render(
       <Sheet visible={false} onClose={() => undefined} title="Einplanen" size="s" />,

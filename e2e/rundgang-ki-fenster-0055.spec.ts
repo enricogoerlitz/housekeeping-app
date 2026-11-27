@@ -111,6 +111,12 @@ test.describe('REQ-001, REQ-004: the tabs and the cursor', () => {
     await editWithAi(page);
     await expect(tid(page, 'recipe-ai-fill-tab-prompt')).toHaveAttribute('aria-selected', 'true');
     await expect(tid(page, 'recipe-ai-fill-field-text')).toBeFocused();
+    // Nachklick 27.11., iN-05: the same window as ✨ on the page — "Mit KI ändern", "Prompt" first,
+    // the chips "Web" and "Bild".
+    await expect(tid(page, 'recipe-ai-fill')).toContainText('Mit KI ändern');
+    await expect(tid(page, 'recipe-ai-fill-tab').getByRole('tab').first()).toHaveText('Prompt');
+    await expect(tid(page, 'recipe-ai-fill-field-web-search')).toHaveText('Web');
+    await expect(tid(page, 'recipe-ai-fill-field-photo')).toHaveCount(0);
     // Durchklick 27.11., D-02: the words of a change, and a proposal comes, not a draft.
     await expect(tid(page, 'recipe-ai-fill')).toContainText('Was soll anders sein?');
     await expect(tid(page, 'recipe-ai-fill-field-text')).toHaveAttribute(

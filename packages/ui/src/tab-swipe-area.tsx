@@ -371,12 +371,15 @@ export function TabSwipeArea(props: {
 /**
  * The content of a window's tabs (spec 0055, REQ-002): swipes between them like a page's tabs.
  * Inside the window's scroll area it pans only vertically, so a sideways finger reaches the swipe.
+ * It fills the window down to its bottom.
  */
 export function TabSwipeContent(props: { swipe: TabSwipe; children: ReactNode; testID?: string }) {
   return (
     <View
       testID={props.testID ?? 'tab-swipe-content'}
-      style={tabSwipeTouchAction(true, Platform.OS)}
+      // Nachklick 27.11., iN-07: down to the window's bottom, so the empty space under a short
+      // tab swipes too (the window's content grows to its height).
+      style={[{ flexGrow: 1 }, tabSwipeTouchAction(true, Platform.OS)]}
     >
       <TabSwipeArea swipe={props.swipe}>{props.children}</TabSwipeArea>
     </View>

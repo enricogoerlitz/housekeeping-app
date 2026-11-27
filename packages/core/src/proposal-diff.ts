@@ -25,8 +25,12 @@ export interface RowChange<T = unknown> {
   status: RowStatus;
   /** The row as shown: the proposed one, or the old one when removed. */
   label: string;
-  /** "geändert": the old row as shown, struck through. */
+  /** "geändert": the old row as shown, struck through, when it reads otherwise. */
   beforeLabel?: string;
+  /** "geändert" without another text: where the row went, e.g. „jetzt nur in „Original““. */
+  hint?: string;
+  /** The heading the row stands under (a variant, a group), set by the item's proposal. */
+  section?: string;
   before?: T;
   after?: T;
 }
@@ -93,6 +97,13 @@ export interface RowRules<T> {
   label: (row: T) => string;
   /** Same key but `false` here: "geändert" (another amount). Default: always the same. */
   same?: (before: T, after: T) => boolean;
+  /**
+   * Rows left over after matching by `key` match by this one: a row that only moved (to another
+   * variant or group) is one "geändert" row, not "entfernt" + "neu" (Nachklick 27.11., N-01).
+   */
+  loose?: (row: T) => string;
+  /** What a "geändert" row says besides its text, e.g. where it moved. */
+  hint?: (before: T, after: T) => string | undefined;
 }
 
 /**
@@ -105,15 +116,21 @@ export function diffRowChanges<T>(
   after: readonly T[],
   rules: RowRules<T>,
 ): RowChange<T>[] {
-  const beforeKeys = before.map(rules.key);
   const matched = new Set<number>();
-  const matchOf = after.map((row) => {
-    const key = rules.key(row);
-    const index = beforeKeys.findIndex((candidate, at) => candidate === key && !matched.has(at));
-    if (index === -1) return undefined;
-    matched.add(index);
-    return index;
-  });
+  const matchOf: (number | undefined)[] = after.map(() => undefined);
+  const match = (keyOf: (row: T) => string) => {
+    const beforeKeys = before.map(keyOf);
+    after.forEach((row, at) => {
+      if (matchOf[at] !== undefined) return;
+      const key = keyOf(row);
+      const index = beforeKeys.findIndex((candidate, i) => candidate === key && !matched.has(i));
+      if (index === -1) return;
+      matched.add(index);
+      matchOf[at] = index;
+    });
+  };
+  match(rules.key);
+  if (rules.loose) match(rules.loose);
   const rows: RowChange<T>[] = [];
   const flushed = new Set<number>();
   const flushRemovedBelow = (limit: number) => {
@@ -140,11 +157,15 @@ export function diffRowChanges<T>(
     flushRemovedBelow(index);
     const old = before[index] as T;
     const same = rules.same ? rules.same(old, row) : true;
+    const label = rules.label(row);
+    const beforeLabel = rules.label(old);
+    const hint = same ? undefined : rules.hint?.(old, row);
     rows.push({
       id: `${group}:b${index}`,
       status: same ? 'same' : 'changed',
-      label: rules.label(row),
-      ...(same ? {} : { beforeLabel: rules.label(old) }),
+      label,
+      ...(same || beforeLabel === label ? {} : { beforeLabel }),
+      ...(hint ? { hint } : {}),
       before: old,
       after: row,
     });

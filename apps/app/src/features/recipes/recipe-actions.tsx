@@ -76,27 +76,23 @@ export function RecipeActions(props: RecipeActionsProps) {
       size={size}
       full={isPhone}
       onPress={props.onList}
-      disabled={online.disabled || !props.canGoOnList}
-      hint={online.hint ?? (props.canGoOnList ? undefined : NO_INGREDIENTS_HINT)}
+      disabled={online.disabled}
+      hint={online.hint}
       testID="recipe-to-list"
     />
   );
-  const noIngredients = props.canGoOnList ? null : (
-    <Text variant="caption" color="muted" testID="recipe-to-list-hint">
-      {NO_INGREDIENTS_HINT}
-    </Text>
-  );
-  const cook = (
-    <Button
-      label="Kochen"
-      icon="chef-hat"
-      size={size}
-      full={isPhone}
-      onPress={props.onCook}
-      disabled={recipe.steps.length === 0}
-      testID="start-cooking"
-    />
-  );
+  // Nachklick 27.11., N-03: what would do nothing is not shown — nothing to buy, nothing to cook.
+  const cook =
+    recipe.steps.length === 0 ? null : (
+      <Button
+        label="Kochen"
+        icon="chef-hat"
+        size={size}
+        full={isPhone}
+        onPress={props.onCook}
+        testID="start-cooking"
+      />
+    );
   const adjust = features.ai ? (
     <Button
       label="Anpassen"
@@ -115,10 +111,7 @@ export function RecipeActions(props: RecipeActionsProps) {
           {cook}
           <Row gap={10} align="flex-start">
             <View style={{ flex: 1, minWidth: 0 }}>{plan}</View>
-            <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
-              {toList}
-              {noIngredients}
-            </View>
+            {props.canGoOnList ? <View style={{ flex: 1, minWidth: 0 }}>{toList}</View> : null}
           </Row>
         </View>
         {adjust}
@@ -128,10 +121,7 @@ export function RecipeActions(props: RecipeActionsProps) {
   return (
     <Row gap={props.compact ? 8 : 10} wrap>
       {plan}
-      <Row gap={8}>
-        {toList}
-        {noIngredients}
-      </Row>
+      {props.canGoOnList ? toList : null}
       {cook}
       {adjust}
     </Row>

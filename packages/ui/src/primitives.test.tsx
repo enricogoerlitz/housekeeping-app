@@ -80,6 +80,31 @@ describe('Text', () => {
     expect(oneLine(card)).toBe(false);
     vi.useRealTimers();
   });
+
+  it('N-18 (review 0004): with hangingHyphens "Kichererbsen-" keeps its hyphen, which may stand past the line', () => {
+    vi.useFakeTimers();
+    render(
+      <Text numberOfLines={2} wholeWords hangingHyphens testID="line">
+        Kichererbsen-Eintopf
+      </Text>,
+    );
+    const line = screen.getByTestId('line');
+    // Breaks only after the hyphen; the hyphen gets room past the line, the line keeps its width.
+    expect(line.style.getPropertyValue('overflow-wrap')).toBe('normal');
+    const hang = parseFloat(line.style.getPropertyValue('padding-right'));
+    expect(hang).toBeGreaterThan(0);
+    expect(parseFloat(line.style.getPropertyValue('margin-right'))).toBe(-hang);
+    // The hyphen standing past the line is no word too long.
+    Object.defineProperty(line, 'scrollWidth', { configurable: true, value: 100 + hang - 1 });
+    Object.defineProperty(line, 'clientWidth', { configurable: true, value: 100 });
+    layout(line, 100, 44);
+    expect(oneLine(line)).toBe(false);
+    // A word wider than that is.
+    Object.defineProperty(line, 'scrollWidth', { configurable: true, value: 100 + hang + 10 });
+    layout(line, 101, 44);
+    expect(oneLine(line)).toBe(true);
+    vi.useRealTimers();
+  });
 });
 
 // onLayout in react-native-web comes from a ResizeObserver, which jsdom lacks: this one reports

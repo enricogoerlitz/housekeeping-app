@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { scrollFade, scrollFadeMask } from './scroll-fade';
+import { revealOffset, scrollFade, scrollFadeMask } from './scroll-fade';
 
 describe('scrollFade (review 0003: chips cut hard at the end of the filter row)', () => {
   it('a row that fits fades nowhere', () => {
@@ -30,6 +30,29 @@ describe('scrollFade (review 0003: chips cut hard at the end of the filter row)'
     );
     expect(scrollFadeMask({ start: true, end: false })).toBe(
       'linear-gradient(to right, transparent 0px, #000 28px, #000 calc(100% - 0px), #000 100%)',
+    );
+  });
+});
+
+describe('revealOffset (iPhone click-through, review 0004, iN-08)', () => {
+  const row = { offset: 0, content: 500, view: 300 };
+
+  it('the last chip, half out of the row, scrolls in whole: to the end, where nothing fades', () => {
+    expect(revealOffset(row, { start: 380, end: 480 })).toBe(200);
+  });
+
+  it('a chip further in stands clear of the fade at the end', () => {
+    expect(revealOffset(row, { start: 220, end: 290 })).toBe(18);
+  });
+
+  it('a chip under the fade at the start scrolls back, clear of it', () => {
+    expect(revealOffset({ ...row, offset: 200 }, { start: 150, end: 250 })).toBe(122);
+  });
+
+  it('a chip in full view, or a row that fits, does not move', () => {
+    expect(revealOffset(row, { start: 100, end: 200 })).toBeUndefined();
+    expect(revealOffset({ offset: 0, content: 300, view: 300 }, { start: 250, end: 300 })).toBe(
+      undefined,
     );
   });
 });

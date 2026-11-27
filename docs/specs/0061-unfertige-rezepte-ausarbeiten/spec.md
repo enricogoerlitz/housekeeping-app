@@ -170,6 +170,11 @@ Ist keins mehr übrig, steht „Alle Rezepte sind ausgearbeitet“ ohne Knopf. N
    Inhalt; die Karte „Noch nicht ausgearbeitet“ ist der Einstieg für Rezepte ohne. Beide öffnen
    dasselbe KI-Fenster. Ohne den Schalter `features.aiRecipes` gibt es die Karte nicht; Chip,
    Zähler und „Ausarbeiten“ öffnen dann den Bearbeitungsmodus ohne KI-Fenster.
+10. Nachklick 27.11., N-02/iN-03 (ändert Entscheidung 9): Auf einem unfertigen Rezept heißt ✨ im
+    Kopf „Mit KI ausarbeiten“ und tut dasselbe wie die Karte (Bearbeitungsmodus, „Mit KI ausfüllen“
+    sucht den Titel sofort, ohne Tastatur). „Mit KI ändern“ gibt es nur bei Rezepten mit Inhalt; so
+    hat jeder Einstieg eine Bedeutung. iN-08: Ein gewählter Chip der Chipzeile scrollt ganz ins
+    Bild, frei vom Ausblendverlauf („Unfertig (4)“ lesbar).
 
 ## Daten
 

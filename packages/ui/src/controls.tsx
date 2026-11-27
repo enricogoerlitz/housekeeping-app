@@ -39,6 +39,7 @@ import {
   type StarStep,
 } from './star-value';
 import { revealsError } from './reveal-error';
+import { ScrollRowRevealContext } from './scroll-fade';
 import { SheetFocusContext, SheetSubmitContext } from './sheet-focus';
 import { switchRowParts } from './time-field-state';
 import { ToneContext, bubbleCorners, useAreaColors, useTheme } from './theme-context';
@@ -301,6 +302,13 @@ export function ChipView(props: ChipProps & { role: 'button' | 'radio' }) {
   const theme = useTheme();
   const hover = useHover();
   const hintRef = useHint(props.hint);
+  // In a row that scrolls, a chosen chip stands whole, not half under its fade (iN-08).
+  const reveal = useContext(ScrollRowRevealContext);
+  const own = useRef<HostInstance | null>(null);
+  const chosen = !!props.selected;
+  useEffect(() => {
+    if (chosen && reveal) reveal(own.current);
+  }, [chosen, reveal]);
   const c = theme.colors;
   const tone = props.tone ? c.tones[props.tone] : undefined;
   const background = props.selected ? c.accent : tone ? tone.bg : c.surface;
@@ -352,7 +360,7 @@ export function ChipView(props: ChipProps & { role: 'button' | 'radio' }) {
     );
   return (
     <Pressable
-      ref={hintRef}
+      ref={mergeRefs(hintRef, own)}
       testID={props.testID}
       accessibilityRole={props.role}
       accessibilityLabel={

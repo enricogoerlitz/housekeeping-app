@@ -50,12 +50,26 @@ export function domTextWidth(node: unknown): number {
 
 /**
  * Whether a word of a title is wider than its box (spec 0057, REQ-004): titles break only between
- * words, so a too long word overflows instead of being cut; one rounding pixel does not count.
+ * words, so a too long word overflows instead of being cut; `slack` pixels do not count (one
+ * rounding pixel, plus a hyphen's room with `hyphenHang`).
  */
 export function wordOverflows(
   node: { scrollWidth?: number; clientWidth?: number } | null | undefined,
+  slack = 1,
 ): boolean {
   const scroll = node?.scrollWidth ?? 0;
   const client = node?.clientWidth ?? 0;
-  return client > 0 && scroll > client + 1;
+  return client > 0 && scroll > client + slack;
+}
+
+/** A hyphen is about a third of the font size wide; a little more, so it always fits. */
+const HYPHEN_EM = 0.4;
+
+/**
+ * Room for a hyphen past the line (review 0004, N-18): "Kichererbsen-" a few pixels wider than a
+ * narrow calendar column breaks after its hyphen and lets it stand out, instead of breaking the
+ * word right before it ("Kichererbsen|-Eintopf"). In px for a font size in px.
+ */
+export function hyphenHang(fontSize: number): number {
+  return Math.ceil(fontSize * HYPHEN_EM);
 }

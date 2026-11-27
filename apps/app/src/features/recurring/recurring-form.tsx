@@ -124,7 +124,8 @@ function ArticleChoice(props: { onChosen: (articleId: Id) => void; disabled: boo
 
 /**
  * The fields of a Dauerposten (spec 0060, REQ-001): Artikel, Menge, Zusatz, Rhythmus (weekly on
- * weekdays every N weeks, or monthly on a day) and "Pausiert", with "Speichern" and "Löschen".
+ * weekdays every N weeks, or monthly on a day) and "Pausiert", with "Anlegen" (a new one) or
+ * "Speichern" and "Löschen" (an existing one).
  * Shown in its own window on "Dauerposten" and as a step of "Artikel bearbeiten". Online only.
  */
 export function useRecurringForm(props: RecurringFormProps): RecurringForm {
@@ -328,7 +329,8 @@ export function useRecurringForm(props: RecurringFormProps): RecurringForm {
     title: existing ? 'Dauerposten bearbeiten' : 'Neuer Dauerposten',
     body,
     save: {
-      label: 'Speichern',
+      // N-10 (review 0004): a new one is created, an existing one changed.
+      label: existing ? 'Speichern' : 'Anlegen',
       icon: 'check',
       disabled: online.disabled || problem !== undefined,
       hint: online.hint ?? (articleId ? problem : undefined),

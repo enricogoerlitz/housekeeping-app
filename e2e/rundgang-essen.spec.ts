@@ -139,9 +139,10 @@ test('AC-021 (0001) / AC-003 (0008) / AC-060 (0006): "Neu" → "Rezept" creates 
   await tid(page, 'new-recipe-title').fill('Linsen-Dal');
   await tid(page, 'new-recipe-save').click();
   await expect(tid(page, 'recipe-title')).toHaveText('Linsen-Dal');
-  // Spec 0006, AC-060: without ingredients "Auf die Liste" is greyed out with the reason.
-  await expect(tid(page, 'recipe-to-list')).toHaveAttribute('aria-disabled', 'true');
-  await expect(tid(page, 'recipe-to-list-hint')).toHaveText('Noch keine Zutaten');
+  // Nachklick 27.11., N-03 (replaces AC-060 of spec 0006): without ingredients and steps
+  // "Auf die Liste" and "Kochen" are not there.
+  await expect(tid(page, 'recipe-to-list')).toHaveCount(0);
+  await expect(tid(page, 'start-cooking')).toHaveCount(0);
   await back(page);
   const cards = tidPrefix(page, 'recipe-card-').and(page.locator('[role="button"]'));
   await expect(cards.first()).toContainText('Linsen-Dal');

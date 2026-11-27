@@ -252,6 +252,13 @@ online (der Knopf ist deaktiviert).
     Variante“ gilt nur noch beim Anlegen. Keine zusätzliche Absicherung in der App: die
     Änderungsansicht vergleicht schon ohne Leerzeichen-Unterschiede; was das Modell umschreibt, ist
     eine echte Änderung und bleibt sichtbar.
+15. Nachklick 27.11.: iN-05: Ein Rezept mit Inhalt hat ein KI-Fenster, ob über ✨ oder den Stift:
+    „Mit KI ändern“, „Prompt · Websuche“, Chips „Web“ und „Bild“; der Link im Bearbeitungsmodus heißt
+    dann auch „Mit KI ändern“. „Mit KI ausfüllen“ (Websuche zuerst, Schalter, Fotos) bleibt für ein
+    Rezept ohne Inhalt. Unterschied bleibt nur, wohin „Übernehmen“ führt (Seite speichert sofort,
+    Bearbeitungsmodus füllt den Entwurf). N-05: Die Ladezeilen stehen direkt unter dem Wunschfeld und
+    damit immer im Bild. N-08: Beim Ändern heißt der Ladetext „Die KI schreibt einen Vorschlag …“.
+    iN-07: Die Wischfläche eines Fensters mit Reitern reicht bis zu seinem unteren Rand.
 
 ## Daten
 

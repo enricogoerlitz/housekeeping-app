@@ -1,3 +1,4 @@
+import { ALL_VARIANTS_LABEL, variantLabel } from './ingredient-groups';
 import type { PageDraft } from './page-editor';
 import {
   applyFieldChanges,
@@ -6,6 +7,7 @@ import {
   diffRowChanges,
   type ChangeProposal,
   type Rejected,
+  type RowChange,
   type RowRules,
 } from './proposal-diff';
 import type { IngredientRow } from './recipe-editor';
@@ -63,20 +65,59 @@ function articleKey(row: IngredientRow): string {
   return `name:${normalizeText(name ?? '')}`;
 }
 
-function rules(context: Context) {
+/** Where a row stands: its variant (undefined: every variant) and its group. */
+interface Place {
+  variantId?: Id;
+  group?: string;
+}
+
+/** The variants of both pages by id, for headings and hints. */
+function variantNames(before: PageDraft, after: PageDraft): Map<Id, string> {
+  const names = new Map<Id, string>();
+  for (const variant of [...after.ingredients.variants, ...before.ingredients.variants]) {
+    if (!names.has(variant.id)) names.set(variant.id, variantLabel(variant.name));
+  }
+  return names;
+}
+
+/**
+ * "jetzt nur in „Original“ · jetzt unter „Soße“": where a row that keeps its text went
+ * (Nachklick 27.11., N-01).
+ */
+function movedHint(before: Place, after: Place, names: Map<Id, string>): string | undefined {
+  const parts: string[] = [];
+  if (before.variantId !== after.variantId) {
+    const name = after.variantId === undefined ? undefined : names.get(after.variantId);
+    parts.push(name ? `jetzt nur in „${name}“` : 'jetzt in allen Varianten');
+  }
+  const group = (after.group ?? '').trim();
+  if ((before.group ?? '').trim() !== group) {
+    parts.push(group ? `jetzt unter „${group}“` : 'jetzt ohne Gruppe');
+  }
+  return parts.length > 0 ? parts.join(' · ') : undefined;
+}
+
+function rules(context: Context, names: Map<Id, string>) {
   const ingredients: RowRules<IngredientRow> = {
     key: (row) => `${row.variantId ?? ''}|${articleKey(row)}`,
+    loose: articleKey,
     label: (row) =>
       [`${row.amountText.trim()} ${context.articleName(row)}`.trim(), row.prepNote.trim()]
         .filter(Boolean)
         .join(', '),
     same: (before, after) =>
       before.amountText.trim() === after.amountText.trim() &&
-      before.prepNote.trim() === after.prepNote.trim(),
+      before.prepNote.trim() === after.prepNote.trim() &&
+      before.variantId === after.variantId &&
+      before.group.trim() === after.group.trim(),
+    hint: (before, after) => movedHint(before, after, names),
   };
   const steps: RowRules<RecipeStep> = {
     key: (step) => `${step.variantId ?? ''}|${normalizeText(step.text)}`,
+    loose: (step) => normalizeText(step.text),
     label: (step) => step.text,
+    same: (before, after) => before.variantId === after.variantId,
+    hint: (before, after) => movedHint(before, after, names),
   };
   const links: RowRules<RecipeLink> = {
     key: (link) => link.url,
@@ -92,7 +133,7 @@ function rules(context: Context) {
 }
 
 function groups(before: PageDraft, after: PageDraft, context: Context) {
-  const rule = rules(context);
+  const rule = rules(context, variantNames(before, after));
   return {
     variants: diffRowChanges(
       'variants',
@@ -120,6 +161,46 @@ function groups(before: PageDraft, after: PageDraft, context: Context) {
 const show = { course: (value: string) => courseLabel(value as Course) };
 
 /**
+ * The rows of a list under the headings of the recipe page (Nachklick 27.11., N-01): with
+ * variants „Alle Varianten“ first, then each variant in its order; within each, the rows without
+ * group first, then each group. Only for showing: saving keeps the proposed order.
+ */
+function inSections<T extends Place>(
+  rows: RowChange<T>[],
+  before: PageDraft,
+  after: PageDraft,
+): RowChange<T>[] {
+  const names = variantNames(before, after);
+  const order = [...names.keys()];
+  const withVariants = order.length > 0;
+  const groupOrder: string[] = [];
+  const placed = rows.map((row, index) => {
+    const place: Place = row.after ?? row.before ?? {};
+    const variantId =
+      place.variantId !== undefined && names.has(place.variantId) ? place.variantId : undefined;
+    const group = (place.group ?? '').trim();
+    const groupKey = `${variantId ?? ''}|${group.toLocaleLowerCase('de')}`;
+    if (group !== '' && !groupOrder.includes(groupKey)) groupOrder.push(groupKey);
+    const heading = [
+      withVariants ? (variantId === undefined ? ALL_VARIANTS_LABEL : names.get(variantId)) : '',
+      group,
+    ]
+      .filter(Boolean)
+      .join(' · ');
+    const section: RowChange<T> = heading ? { ...row, section: heading } : row;
+    return {
+      row: section,
+      index,
+      variant: variantId === undefined ? -1 : order.indexOf(variantId),
+      group: group === '' ? -1 : groupOrder.indexOf(groupKey),
+    };
+  });
+  return placed
+    .sort((a, b) => a.variant - b.variant || a.group - b.group || a.index - b.index)
+    .map((entry) => entry.row);
+}
+
+/**
  * Spec 0049, AC-047: the page's photo is proposed with "Ersetzen", and with "Ergänzen" only for a
  * recipe without a photo — "Ergänzen" never changes what is there.
  */
@@ -141,8 +222,8 @@ export function recipeProposal(
     groups: [
       { id: 'tags', label: 'Schlagworte', rows: rows.tags },
       { id: 'variants', label: 'Varianten', rows: rows.variants },
-      { id: 'ingredients', label: 'Zutaten', rows: rows.ingredients },
-      { id: 'steps', label: 'Schritte', rows: rows.steps },
+      { id: 'ingredients', label: 'Zutaten', rows: inSections(rows.ingredients, before, after) },
+      { id: 'steps', label: 'Schritte', rows: inSections(rows.steps, before, after) },
       { id: 'links', label: 'Links', rows: rows.links },
     ].filter((group) => group.rows.length > 0),
   };

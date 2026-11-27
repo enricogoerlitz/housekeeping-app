@@ -78,6 +78,10 @@ export type EditIntent =
 const CHANGED_MEANWHILE_NOTICE =
   'Das Rezept wurde zwischendurch geändert. Deine Änderungen gelten, die übrigen bleiben.';
 const DISCARD_TITLE = 'Änderungen verwerfen?';
+/** How long "Rezept geändert · Rückgängig" stands after "Übernehmen" (Nachklick 27.11.). */
+const APPLIED_UNDO_MS = 10_000;
+/** A recipe that exists only in the edit mode has no changes, it is a draft (Nachklick 27.11., N-13). */
+const DISCARD_DRAFT_TITLE = 'Entwurf verwerfen?';
 
 export interface PageEditor {
   /** The page as edited; undefined = the page only reads. */
@@ -148,9 +152,9 @@ export interface PageEditor {
 let idSeq = 0;
 const newId = (): Id => `draft-${++idSeq}-${Date.now().toString(36)}`;
 
-function asked(onDiscard: () => void): void {
+function asked(onDiscard: () => void, unsaved: boolean): void {
   confirmFirst({
-    title: DISCARD_TITLE,
+    title: unsaved ? DISCARD_DRAFT_TITLE : DISCARD_TITLE,
     confirmLabel: 'Verwerfen',
     cancelLabel: 'Weiter bearbeiten',
     needsNetwork: false,
@@ -233,9 +237,9 @@ export function usePageEditor(
 
   const cancel = useCallback(() => {
     if (!state.draft || state.saving) return;
-    if (changed) asked(discard);
+    if (changed) asked(discard, unsaved);
     else discard();
-  }, [state.draft, state.saving, changed, discard]);
+  }, [state.draft, state.saving, changed, discard, unsaved]);
 
   const guard = useCallback(
     (leave: () => void) => {
@@ -248,7 +252,7 @@ export function usePageEditor(
         close();
         if (unsaved) forgetUnsavedRecipe(recipeId);
         leave();
-      });
+      }, unsaved);
     },
     [state.draft, changed, close, unsaved, recipeId],
   );
@@ -401,6 +405,8 @@ export function usePageEditor(
           message: changedMeanwhile ? CHANGED_MEANWHILE_NOTICE : 'Rezept geändert',
           actionLabel: 'Rückgängig',
           onAction: undoAction(() => undo(before)),
+          // Nachklick 27.11.: an AI change is checked on the page first; 5 s were too short.
+          duration: APPLIED_UNDO_MS,
         });
       },
       () => {

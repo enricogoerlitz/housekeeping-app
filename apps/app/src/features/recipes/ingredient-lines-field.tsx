@@ -54,6 +54,8 @@ export interface IngredientLinesFieldProps {
   hint?: string;
   error?: string;
   autoFocus?: boolean;
+  /** The field's input, for a window that gives it the cursor itself (Nachklick 27.11., N-12). */
+  onInput?: (input: unknown) => void;
   testID: string;
 }
 
@@ -158,7 +160,10 @@ export function IngredientLinesField(props: IngredientLinesFieldProps) {
           onSelectionChange={(event) => setCursor(event.nativeEvent.selection.end)}
           multiline
           autoFocus={props.autoFocus}
-          inputRef={input}
+          inputRef={(node: InputRef | null) => {
+            input.current = node;
+            props.onInput?.(node);
+          }}
           testID={props.testID}
         />
       </View>

@@ -16,9 +16,10 @@ import {
   Text,
   useTheme,
 } from '@housekeeping/ui';
-import { useState, type ReactNode } from 'react';
+import { Fragment, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 
+import { confirmFirst } from '@/features/shell/confirm-dialog';
 import { DictationField } from '@/features/shell/dictation-field';
 import { useOnlineOnly } from '@/features/shell/offline';
 
@@ -240,6 +241,12 @@ function RowLine(props: {
               {row.beforeLabel}
             </Text>
           ) : null}
+          {/* Nachklick 27.11., N-01: a row that only moved says where to. */}
+          {row.status === 'changed' && row.hint && !rejected ? (
+            <Text variant="small" color="muted" testID={`${testID}-hint`}>
+              {row.hint}
+            </Text>
+          ) : null}
         </View>
         <Button
           label={toggle}
@@ -255,7 +262,8 @@ function RowLine(props: {
 
 /**
  * AC-016 – AC-021: the proposal with its sticky summary; "Übernehmen" gives the ids the person
- * took back, "Abbrechen" closes without a change ("Alles verwerfen" did the same; review 0004).
+ * took back, "Abbrechen" closes without a change ("Alles verwerfen" did the same; review 0004)
+ * after „Vorschlag verwerfen?“ (Nachklick 27.11., N-17).
  */
 export function ProposalSheet(props: {
   proposal: ChangeProposal;
@@ -287,12 +295,22 @@ export function ProposalSheet(props: {
       return next;
     });
   const summary = proposalSummaryText(proposalSummary(props.proposal, rejected));
+  // Nachklick 27.11., N-17: the proposal cost a search or an AI call; it goes only when asked.
+  const dismiss = () =>
+    confirmFirst({
+      title: 'Vorschlag verwerfen?',
+      confirmLabel: 'Verwerfen',
+      cancelLabel: 'Weiter prüfen',
+      needsNetwork: false,
+      onConfirm: props.onClose,
+      testID: `${testID}-discard`,
+    });
   return (
     <Sheet
       visible
       size="l"
       title="Vorschlag prüfen"
-      onClose={props.onClose}
+      onClose={dismiss}
       header={
         <View
           style={{
@@ -320,7 +338,7 @@ export function ProposalSheet(props: {
           disabled: props.refine?.busy === true,
           testID: `${testID}-apply`,
         },
-        cancel: { label: 'Abbrechen', onPress: props.onClose, testID: `${testID}-cancel` },
+        cancel: { label: 'Abbrechen', onPress: dismiss, testID: `${testID}-cancel` },
       }}
       // D-03 (review 0004): reachable without scrolling past every row; on phones it ends the list.
       footer={
@@ -363,14 +381,26 @@ export function ProposalSheet(props: {
               {(props.onlyChanges
                 ? group.rows.filter((row) => row.status !== 'same')
                 : group.rows
-              ).map((row) => (
-                <RowLine
-                  key={row.id}
-                  row={row}
-                  rejected={rejected.has(row.id)}
-                  onToggle={() => toggle(row.id)}
-                  testID={`${testID}-row-${row.id.replace(':', '-')}`}
-                />
+              ).map((row, index, rows) => (
+                <Fragment key={row.id}>
+                  {/* Nachklick 27.11., N-01: under the variant and group, as on the recipe page. */}
+                  {row.section && row.section !== rows[index - 1]?.section ? (
+                    <Text
+                      variant="smallStrong"
+                      color="muted"
+                      style={{ marginTop: index === 0 ? 0 : 6 }}
+                      testID={`${testID}-section-${group.id}-${index}`}
+                    >
+                      {row.section}
+                    </Text>
+                  ) : null}
+                  <RowLine
+                    row={row}
+                    rejected={rejected.has(row.id)}
+                    onToggle={() => toggle(row.id)}
+                    testID={`${testID}-row-${row.id.replace(':', '-')}`}
+                  />
+                </Fragment>
               ))}
             </Stack>
           ),

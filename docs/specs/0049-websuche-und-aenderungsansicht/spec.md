@@ -320,6 +320,10 @@ blob:`); das Foto einer Karte wird bei „Übernehmen“ zum Foto des Eintrags.
     „Abbrechen“ schließt ohne Änderung. Durchklick 27.11., D-01: Nach dem Tipp auf einen Treffer
     steht das Foto klein neben Titel und Quelle, bis das Rezept gelesen ist; die Ladezeilen stehen
     so sofort im Bild. Das große Foto und die Foto-Wahl kommen mit der Vorschau.
+22. Nachklick 27.11., N-16: Das Foto eines Treffers steht auch in der Vorschau klein (112 px)
+    neben Titel und Quelle, darunter die Foto-Wahl; Zutaten und Schritte sind ohne Scrollen zu
+    sehen. N-01: Zeilen, die nur in eine andere Variante oder Gruppe wandern, gelten als eine
+    geänderte Zeile mit Hinweis (`RowRules.loose`, `hint`), nicht als „entfernt“ + „neu“.
 
 ## Daten
 

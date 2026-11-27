@@ -194,4 +194,13 @@ describe('TabSwipeContent (spec 0055, REQ-002)', () => {
     expect(area.style.touchAction).toBe('pan-y');
     expect(screen.getByText('Inhalt')).toBeTruthy();
   });
+
+  it('Nachklick 27.11., iN-07: the area grows to the bottom of the window, so a swipe under a short content counts', () => {
+    render(
+      <TabSwipeContent swipe={{ index: 0, count: 2, onStep: () => undefined }}>
+        <Text>Inhalt</Text>
+      </TabSwipeContent>,
+    );
+    expect(screen.getByTestId('tab-swipe-content').style.flexGrow).toBe('1');
+  });
 });

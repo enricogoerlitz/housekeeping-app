@@ -157,7 +157,7 @@ export function StoreEditSheet(props: { store: Store; onClose: () => void }) {
           error={nameError}
           hint={online.hint}
           editable={!online.disabled}
-          autoFocus
+          // An edit form opens without a cursor (Nachklick 27.11., Ruckeln).
           returnKeyType="done"
           testID="store-rename-sheet-name"
         />

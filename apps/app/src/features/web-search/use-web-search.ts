@@ -73,9 +73,9 @@ export interface WebSearch {
   busy: boolean;
 }
 
-function searchMessage(error: unknown, kind: WebSearchKind): string {
+function searchMessage(error: unknown, kind: WebSearchKind, promptTab: string): string {
   if (error instanceof OfflineError) return OFFLINE_EDIT_HINT;
-  return kind === 'recipe' ? `${UNAVAILABLE} oder nutze „Prompt“.` : `${UNAVAILABLE}.`;
+  return kind === 'recipe' ? `${UNAVAILABLE} oder nutze „${promptTab}“.` : `${UNAVAILABLE}.`;
 }
 
 /** AC-008: where the household's restaurants and activities are. */
@@ -87,7 +87,12 @@ function useSearchCenter() {
   );
 }
 
-export function useWebSearch(kind: WebSearchKind, initialQuery = ''): WebSearch {
+export function useWebSearch(
+  kind: WebSearchKind,
+  initialQuery = '',
+  /** The tab the hint names when the search fails: „KI-Rezept“ in „Neu“ (Nachklick 27.11., N-07). */
+  promptTab = 'Prompt',
+): WebSearch {
   const near = useSearchCenter();
   const [query, setQuery] = useState(initialQuery);
   const [state, setState] = useState<SearchState>({ status: 'idle' });
@@ -164,7 +169,7 @@ export function useWebSearch(kind: WebSearchKind, initialQuery = ''): WebSearch 
       },
       (error: unknown) => {
         if (round.current !== mine) return;
-        setState({ status: 'failed', message: searchMessage(error, kind) });
+        setState({ status: 'failed', message: searchMessage(error, kind, promptTab) });
       },
     );
   };

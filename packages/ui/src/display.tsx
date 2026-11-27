@@ -1057,6 +1057,9 @@ export function KindLine(props: KindLineProps) {
       variant={compact ? 'caption' : props.quiet ? 'small' : 'body'}
       color={props.quiet || props.struck ? 'muted' : 'text'}
       numberOfLines={compact ? 1 : 2}
+      // Narrow week columns: "Kichererbsen-|Eintopf", never "Kichererbsen|-Eintopf" (N-18).
+      wholeWords={!compact}
+      hangingHyphens
       style={[
         props.detail ? { minWidth: 0 } : { flex: 1, minWidth: 0 },
         // A calendar entry is a title too, also in `small` and `body` (spec 0057, REQ-004).

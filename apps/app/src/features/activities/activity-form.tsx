@@ -285,6 +285,8 @@ export function ActivityFormFields(props: {
   autoFocus?: boolean;
   /** Right in the field "Name": "Im Web suchen" of a new one (spec 0055, REQ-010). */
   nameAction?: ReactNode;
+  /** Return in "Name" searches like the magnifier instead of saving (review 0004, N-04). */
+  onNameSearch?: () => void;
 }) {
   const { form } = props;
   const kindsById = useActivityKindsById();
@@ -310,6 +312,9 @@ export function ActivityFormFields(props: {
           autoFocus={props.autoFocus}
           error={form.nameError}
           right={props.nameAction}
+          onSubmitEditing={props.onNameSearch}
+          returnKeyType={props.onNameSearch ? 'search' : undefined}
+          submitsWindow={props.onNameSearch ? false : undefined}
           testID="activity-name"
         />
         {form.duplicate ? (
@@ -461,7 +466,8 @@ export function ActivityFormSheet(props: {
     props.onClose();
     props.onSaved?.(id);
     savePhotoChoice(id, values.photo);
-    toast.show({ message: 'Aktivität gespeichert' });
+    // Review 0004, N-09: the toast says what happened, like the window's "Anlegen".
+    toast.show({ message: editing ? 'Aktivität gespeichert' : 'Aktivität angelegt' });
   };
 
   // Spec 0049: a new one is filled at once, an existing one shows its changes first.
@@ -504,8 +510,10 @@ export function ActivityFormSheet(props: {
         {editing ? web.link : null}
         <ActivityFormFields
           form={form}
-          autoFocus
-          {...(editing ? {} : { nameAction: web.nameButton })}
+          // Only a new one starts typing; an existing one opens calm, without the keyboard coming
+          // up while the window slides in (Nachklick 27.11., Ruckeln).
+          autoFocus={!editing}
+          {...(editing ? {} : { nameAction: web.nameButton, onNameSearch: web.searchName })}
           onOpenExisting={(existing) => {
             props.onClose();
             props.onOpenExisting(existing.id);
