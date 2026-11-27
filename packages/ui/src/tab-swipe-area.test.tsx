@@ -306,6 +306,7 @@ describe('TabSwipeArea (spec 0029, REQ-003)', () => {
     const onStep = vi.fn();
     const dragging = {
       getSnapshot: () => ({ phase: 'dragging', sourceId: 'trip:2027-01-04' }),
+      subscribe: () => () => undefined,
     } as unknown as DragController<ReactNode>;
     render(
       <DragContext.Provider value={dragging}>

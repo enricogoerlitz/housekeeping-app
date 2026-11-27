@@ -108,11 +108,13 @@ export function TabSwipeArea(props: {
   // A held entry or a trip drawn with the finger (the calendar's drag) keeps the finger: its move
   // is no tab swipe, also once its drag source lets go of the swipe in the grid (AC-029, spec 0016).
   const drag = useContext(DragContext);
-  const dragRef = useRef(drag);
-  useLayoutEffect(() => {
-    dragRef.current = drag;
-  });
-  const holdsDrag = () => (dragRef.current?.getSnapshot().phase ?? 'idle') !== 'idle';
+  const dragging = useSharedValue(false);
+  useEffect(() => {
+    if (!drag) return undefined;
+    const update = () => dragging.set(drag.getSnapshot().phase !== 'idle');
+    update();
+    return drag.subscribe(update);
+  }, [drag, dragging]);
   // Where the finger went down, and how far it had come when the swipe took over: a swipe taken
   // after a native scroll counts from there (spec 0030, REQ-007).
   const start = useSharedValue({ x: 0, y: 0 });
@@ -248,7 +250,7 @@ export function TabSwipeArea(props: {
       onMoveShouldSetPanResponder: (_event, gesture) =>
         enabled.get() &&
         !blocked.get() &&
-        !holdsDrag() &&
+        !dragging.get() &&
         mode.get() === 'idle' &&
         claimsTabSwipe(gesture, width.get()),
       // Spec 0030, REQ-007: once the swipe has the finger, or holds it after a native scroll
@@ -324,7 +326,8 @@ export function TabSwipeArea(props: {
     // while the move may still become a swipe; the page keeps scrolling natively either way.
     const scrollClaim = {
       onScrollShouldSetResponderCapture: () => {
-        if (!enabled.get() || blocked.get() || holdsDrag() || mode.get() !== 'idle') return false;
+        if (!enabled.get() || blocked.get() || dragging.get() || mode.get() !== 'idle')
+          return false;
         mode.set('pending');
         return true;
       },
