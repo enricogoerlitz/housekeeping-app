@@ -17,6 +17,7 @@ import { Pressable, View } from 'react-native';
 
 import { DictationField } from '@/features/shell/dictation-field';
 import { useOnlineOnly } from '@/features/shell/offline';
+import { revokeLater } from '@/features/shell/revoke-later';
 import { ProposalSheet } from '@/features/web-search/proposal-sheet';
 import { features } from '@/lib/features';
 
@@ -145,7 +146,7 @@ function RecipeReview(props: {
   const [uri] = useState(() => (photo ? URL.createObjectURL(photo) : undefined));
   useEffect(
     () => () => {
-      if (uri) URL.revokeObjectURL(uri);
+      if (uri) revokeLater(uri);
     },
     [uri],
   );

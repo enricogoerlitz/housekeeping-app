@@ -43,6 +43,12 @@ export function ActivityKindField(props: {
   const online = useOnlineOnly();
   const chosen = props.kindId === undefined ? undefined : kindsById[props.kindId];
   const [searching, setSearching] = useState(chosen === undefined);
+  // A kind set from outside (web search „Übernehmen“, spec 0049 AC-043) shows compact, not the search.
+  const [shownKindId, setShownKindId] = useState(props.kindId);
+  if (props.kindId !== shownKindId) {
+    setShownKindId(props.kindId);
+    setSearching(props.kindId === undefined);
+  }
   const [query, setQuery] = useState('');
   const [creating, setCreating] = useState<string | undefined>();
   const [icon, setIcon] = useState<ActivityIcon>(NEW_KIND_ICON);

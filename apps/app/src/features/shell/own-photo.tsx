@@ -17,6 +17,7 @@ import { Pressable, View } from 'react-native';
 
 import { useOnlineOnly } from '@/features/shell/offline';
 import { PhotoWindow } from '@/features/shell/photo-window';
+import { revokeLater } from '@/features/shell/revoke-later';
 import { CAN_PICK_PHOTO, pickPhotoFile } from '@/lib/pick-photo';
 import { errorMessage, FAILED_MESSAGE } from '@/features/shell/error-message';
 
@@ -250,7 +251,8 @@ export function usePhotoChoice(savedPath: string | undefined) {
   const previewUri = photo.kind === 'new' ? photo.uri : undefined;
   useEffect(
     () => () => {
-      if (previewUri) URL.revokeObjectURL(previewUri);
+      // The closing form still shows it for a moment.
+      if (previewUri) revokeLater(previewUri);
     },
     [previewUri],
   );

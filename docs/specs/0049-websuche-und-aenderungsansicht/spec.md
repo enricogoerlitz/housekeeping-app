@@ -71,6 +71,10 @@ Name, Bewertung, Adresse, Art; gesucht wird um die Orte des Haushalts herum. Off
   die erste Karte das „Mutzenbacher“ in Berlin
 - AC-040: Angenommen der Haushalt hat keine Orte · Wenn ich „eislaufen“ suche · Dann zeigen die
   Karten Orte in Deutschland, nie die Voreinstellung des Anbieters (USA)
+- AC-041: Angenommen chefkoch.de nennt das Rezept „Albertos Spaghetti mit Meatballs von caralb“
+  und „caralb“ ist sein Autor · Dann heißt die Karte „Albertos Spaghetti mit Meatballs“
+- AC-045: Angenommen die Orte des Haushalts liegen in Köln · Wenn ich „Trattoria Da Enzo“ suche ·
+  Dann ist die erste Karte die „Trattoria Da Enzo“ in der Nähe (Engelskirchen), nicht die in Rom
 
 **REQ-003 — Vorschau.** Ein Tipp auf eine Karte zeigt die Vorschau im Fenster: großes Foto; beim
 Rezept Zutaten, schon den Artikeln des Haushalts zugeordnet, und Schritte; bei Restaurant und
@@ -97,6 +101,8 @@ die Links bzw. als Webseite, das Foto der Seite wird das Foto. Offline: nur onli
 - AC-015: Angenommen „Restaurant hinzufügen“ · Wenn ich „Übernehmen“ tippe · Dann stehen Name,
   Adresse, Küche, Webseite, Karten-Link und Foto im Formular · Und gespeichert wird erst mit
   „Speichern“
+- AC-043: Angenommen „Neu → Aktivität“ · Wenn ich „Berta Block“ übernehme · Dann steht unter
+  „Art“ kompakt „Sport“ mit „Ändern“, nicht die Auswahl aller Arten mit „Abbrechen“
 
 **REQ-005 — Änderungsansicht.** Ein Vorschlag für einen vorhandenen Eintrag (Websuche oder
 „Eigene Angaben“) öffnet nach „Ergänzen oder ersetzen?“ die Änderungsansicht: oben fest „Vorschlag:
@@ -122,6 +128,9 @@ Bearbeitungsmodus bzw. das Formular, „Speichern“ speichert es (Entscheidung 
 - AC-021: Angenommen „Madame Hien“ ohne Webseite · Wenn ich in „Restaurant bearbeiten“ über „Im Web
   suchen“ „Übernehmen“ tippe · Dann zeigt die Änderungsansicht „Webseite“ mit „neu“ · Und nach
   „Übernehmen“ und „Speichern“ hat das Restaurant die Webseite
+- AC-044: Angenommen „Lasagne“ mit Zutaten und Schritten · Wenn ich einen Vorschlag mit
+  „Ergänzen“ übernehme · Dann kommen nur Zutaten dazu, deren Artikel (je Variante) noch fehlt, und
+  Schritte nur für einen Teil ohne Schritte (z. B. eine neue Variante) · Und nichts steht doppelt
 
 ### Server
 
@@ -200,6 +209,9 @@ behalten ihre Knöpfe. Quelle: Enrico, 26.11. abends. Offline: nur online.
   Foto-Fensters
 - AC-033: Angenommen iPhone · Dann zeigt „Eigene Angaben“ „Foto aufnehmen“ und „Fotomediathek“ wie
   bisher, ohne „Bildadresse“
+- AC-042: Angenommen „Eigene Angaben“ mit dem Chefkoch-Link „Lasagne“ und „Foto generieren“ aus ·
+  Wenn ich „Ausfüllen“ tippe · Dann hat der Entwurf das Foto der Seite (JSON-LD-Bild, sonst
+  og:image; bei TikTok das Vorschaubild) · Und es entstehen keine Fotovorschläge
 
 ## Entscheidungen
 
@@ -253,6 +265,36 @@ blob:`); das Foto einer Karte wird bei „Übernehmen“ zum Foto des Eintrags.
 12. Agent, 26.11. (KI-Testlauf): Die Vorschau einer Karte wird je Suche nur einmal gelesen; ein
     zweiter Tipp nach „Zurück zu den Ergebnissen“ zeigt sie sofort (vorher zweiter KI-Aufruf,
     12–14 s). Zutaten einer Variante tragen in der Vorschau ihren Namen („· Vegetarisch“).
+13. Agent, 27.11. (KI-Testlauf Teil 2, `tmp/review-0003/ki-test/p2/`): Chefkoch schreibt den Autor in
+    den Rezeptnamen („Albertos Spaghetti mit Meatballs von caralb“). Die Karte nimmt den Namen ohne
+    „von <Autor>“, wenn der Autor im JSON-LD steht (direkt oder über `@id`); ein „von“, das nicht
+    der Autor ist („Lasagne von der Oma“), bleibt (AC-041).
+14. Agent, 27.11. (KI-Testlauf Teil 2): „Trattoria Da Enzo“ aus dem Kölner Haushalt fand nach
+    Entscheidung 11 die berühmte Trattoria in Rom (1.100 km, unter 2000 km). Jetzt gilt zuerst: Hat
+    die Suche um den Haushalt einen Treffer bis 100 km, dessen Name alle Suchwörter enthält, gelten
+    diese Treffer (AC-045); sonst Entscheidung 11. „Mutzenbacher“ findet so weiter Berlin (der Bach
+    „Mutzbach“ heißt anders), „vietnamesisch friedrichshain gut“ weiter Friedrichshain. Kein
+    zusätzlicher Anbieter-Aufruf.
+15. Agent, 27.11. (KI-Testlauf Teil 2, präzisiert Spec 0040 AC-011): „Eigene Angaben“ mit einem
+    Link und „Foto generieren“ aus gab kein Foto, obwohl die Seite eins hat. `ai-recipe-draft` gibt
+    je gelesener Seite ihr Foto (`imageUrl`: JSON-LD-Bild, sonst og:image, nur https) mit; die App
+    lädt es über `fetch-image` und setzt es wie „Original“ der Websuche (AC-042), bei TikTok das
+    Vorschaubild. Erzeugt wird weiterhin kein Bild (AC-011 gilt). Ein in „Neu“ gewähltes Foto hat
+    Vorrang; beim Bearbeiten erscheint das Seitenfoto als Feld „Foto“ in der Änderungsansicht.
+16. Agent, 27.11. (KI-Testlauf Teil 2, präzisiert Spec 0040 AC-006 und 0045 Entscheidung 2):
+    „Ergänzen“ mit derselben Quelle verdoppelte die Lasagne (34 neue Zeilen: jede Zutat und alle
+    Schritte ein zweites Mal). **„Ergänzen“ fügt nur hinzu, was fehlt:** eine Zutat nur, wenn ihr
+    Artikel für dieselbe Variante noch nicht da ist (wie „Doppelt“ beim Einfügen, Spec 0023); Schritte
+    nur für einen Teil ohne Schritte (gemeinsam oder je Variante, z. B. eine neue Variante) — die
+    Zubereitung wird nie ein zweites Mal angehängt. Wer die Schritte der Quelle will, nimmt
+    „Ersetzen“ und behält in der Änderungsansicht mit „↺ behalten“, was bleiben soll. Titel,
+    Portionen, Zeit und Notizen verhalten sich wie bisher (in der Änderungsansicht mit ↺
+    zurückzunehmen).
+17. Agent, 27.11. (KI-Testlauf Teil 2): Nach „Übernehmen“ stand „Art“ der neuen Aktivität in der
+    Auswahl (alle Arten, „Abbrechen“): das Feld merkte sich nur beim Öffnen, ob eine Art gewählt
+    war. Eine von außen gesetzte Art zeigt es jetzt kompakt (AC-043). Schließende Fenster geben
+    ihre Fotos (`blob:`) erst nach dem Schließen frei (`revokeLater`), sonst meldete die Konsole
+    `net::ERR_FILE_NOT_FOUND`.
 
 ## Daten
 
@@ -319,3 +361,13 @@ gespeichert, bevor die Person „Speichern“ tippt.
       diesem Stand aus Köln: „vietnamesisch friedrichshain gut“ → 5 × Friedrichshain, „mutzenbacher“
       → Mutzenbacher Berlin, „sushi prenzlauer berg“ → 5 × Prenzlauer Berg, „botanischer garten“
       und „eislaufen“ → Köln (`tmp/review-0003/ki-test/fix-location.log`).
+- [x] Nachweis KI-Testlauf Teil 2 (27.11., Entscheidungen 13–17): Tests rot → grün: edge
+      `page-meta` (AC-041), `ai-recipe-draft/handler` (AC-042), `_shared/web-search` (AC-045); core
+      `recipe-draft` (`draftPagePhotoUrl`, AC-042), `page-editor` (AC-044), `web-results` (AC-045).
+      Echt im Browser (App :8099 mit diesem Stand, Edge-Funktionen in einer zweiten Edge Runtime mit
+      diesem Stand, Handy 390×844 und Desktop 1440×900): Lasagne → Websuche → „Ersetzen“ und
+      „Ergänzen“ → Änderungsansicht (↺, ×, „↺ behalten“) → Speichern → neu geladen = Änderungsansicht
+      (Datenbank-Vergleich `check-recipe.py`), Restaurant ebenso (`check-place.py`); Foto-Fenster
+      „KI“, „Neu erzeugen“, „Aus diesem Foto“; Ziehen, ⌘V und Bildadresse; Chefkoch-Link ohne „Foto
+      generieren“ → Seitenfoto; „Art“ kompakt (:8081 vorher rot); „Trattoria Da Enzo“ → Engelskirchen
+      statt Rom. Ergebnisse `tmp/review-0003/ki-test/ERGEBNIS.md` (Teil 2).
