@@ -239,6 +239,29 @@ describe('ai-recipe-draft (spec 0040, REQ-001)', () => {
     expect(texts().some((text) => text.includes('250 g Linsen kochen'))).toBe(true);
   });
 
+  it('spec 0049 AC-042: a page brings its photo (JSON-LD image, else og:image) as data', async () => {
+    const OG = 'https://www.example.org/og.jpg';
+    const { deps } = setup({
+      [PAGE]: () =>
+        html(`<html><head><meta property="og:image" content="${OG}">
+          <script type="application/ld+json">{"@type":"Recipe","name":"Linsensuppe",
+          "image":"https://img.chefkoch-cdn.de/linsen.jpg"}</script></head>
+          <body><p>250 g Linsen kochen</p></body></html>`),
+      [BROKEN]: () =>
+        html(
+          `<html><head><meta property="og:image" content="${OG}"></head><body><p>Dal</p></body></html>`,
+        ),
+    });
+    const response = await handler(
+      post({ householdId: HOUSEHOLD_ID, text: 'x', links: [PAGE, BROKEN], imagePrompt: false }),
+      deps,
+    );
+    expect((await json(response)).sources).toEqual([
+      { url: PAGE, kind: 'page', read: true, imageUrl: 'https://img.chefkoch-cdn.de/linsen.jpg' },
+      { url: BROKEN, kind: 'page', read: true, imageUrl: OG },
+    ]);
+  });
+
   it('AC-004: an internal address is never loaded and counts as unread', async () => {
     const { deps } = setup();
     deps.resolveDns = async () => ['10.0.0.1'];

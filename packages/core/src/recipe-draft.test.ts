@@ -6,6 +6,7 @@ import { fillPageDraft, pageDraft } from './page-editor';
 import {
   AI_DRAFT_UNREACHABLE_MESSAGE,
   defaultImagePrompt,
+  draftPagePhotoUrl,
   draftLinks,
   draftToPageInput,
   imageFailureNotice,
@@ -230,11 +231,8 @@ describe('fillPageDraft with a draft from the AI', () => {
     const filled = fillPageDraft(pageDraft(recipe, []), input, newKey);
     expect(filled.ingredients.rows).toHaveLength(5);
     expect(filled.ingredients.rows[0]?.ingredientId).toBe('i-milch');
-    expect(filled.steps?.steps.map((step) => step.text)).toEqual([
-      'Alt',
-      'Streusel kneten',
-      'Backen',
-    ]);
+    // Spec 0049, AC-044: the recipe has its method already, so the draft's is not appended.
+    expect(filled.steps?.steps.map((step) => step.text)).toEqual(['Alt']);
   });
 
   it('AC-006: "Ersetzen" replaces ingredients and steps', () => {
@@ -266,7 +264,7 @@ describe('fillPageDraft with a draft from the AI', () => {
   });
 
   it('AC-013: a step keeps its timer', () => {
-    const filled = fillPageDraft(pageDraft(recipe, []), input, newKey);
+    const filled = fillPageDraft(pageDraft({ ...recipe, steps: [] }, []), input, newKey);
     expect(filled.steps?.steps.at(-1)).toMatchObject({ text: 'Backen', timerMinutes: 45 });
   });
 
@@ -462,5 +460,39 @@ describe('isDictationStopWord: „Ende“ as its own utterance ends dictation (s
     ]) {
       expect(isDictationStopWord(segment)).toBe(false);
     }
+  });
+});
+
+describe('draftPagePhotoUrl', () => {
+  const page = (extra: Partial<RecipeDraftSource>): RecipeDraftSource => ({
+    url: 'https://www.chefkoch.de/rezepte/1/lasagne.html',
+    kind: 'page',
+    read: true,
+    ...extra,
+  });
+  it('spec 0049 AC-042: without "Foto generieren" the photo of the first page that has one', () => {
+    expect(
+      draftPagePhotoUrl([page({}), page({ imageUrl: 'https://img.example/a.jpg' })], false),
+    ).toBe('https://img.example/a.jpg');
+    // A TikTok without a page photo gives its cover.
+    expect(
+      draftPagePhotoUrl(
+        [
+          {
+            url: 'https://vm.tiktok.com/x/',
+            kind: 'tiktok',
+            read: true,
+            coverUrl: 'https://p16.example/c.jpeg',
+          },
+        ],
+        false,
+      ),
+    ).toBe('https://p16.example/c.jpeg');
+  });
+  it('spec 0049 AC-042: with "Foto generieren", or without any photo, none', () => {
+    expect(
+      draftPagePhotoUrl([page({ imageUrl: 'https://img.example/a.jpg' })], true),
+    ).toBeUndefined();
+    expect(draftPagePhotoUrl([page({}), page({ read: false })], false)).toBeUndefined();
   });
 });

@@ -16,6 +16,7 @@ import { fetchPublic, PublicFetchError } from '../_shared/fetch-public.ts';
 import { callFoundry, type FoundryContentPart } from '../_shared/foundry.ts';
 import { handleRequest } from '../_shared/http.ts';
 import { requireMember } from '../_shared/membership.ts';
+import { pageMeta } from '../_shared/page-meta.ts';
 import { pageText } from '../_shared/page-text.ts';
 import { isTikTokHost, readTikTok } from '../_shared/tiktok.ts';
 import type { z } from 'zod';
@@ -91,6 +92,16 @@ interface ReadLink {
 const httpsWithin = (url: string | undefined) =>
   url !== undefined && url.length <= MAX_URL && url.startsWith('https://') ? url : undefined;
 
+/** Spec 0049, AC-042: the page's photo (JSON-LD image, else og:image); a parser error costs only it. */
+function pagePhoto(html: string): string | undefined {
+  try {
+    const meta = pageMeta(html);
+    return httpsWithin(meta.recipe?.imageUrl ?? meta.ogImage);
+  } catch {
+    return undefined;
+  }
+}
+
 async function readPage(url: string, deps: Deps): Promise<ReadLink> {
   try {
     const page = await fetchPublic(
@@ -105,7 +116,10 @@ async function readPage(url: string, deps: Deps): Promise<ReadLink> {
     );
     const raw = new TextDecoder().decode(page.bytes);
     const text = page.contentType === 'text/plain' ? pageText(`<pre>${raw}</pre>`) : pageText(raw);
-    return { source: { url, kind: 'page', read: text !== '' }, text };
+    const source: RecipeDraftSource = { url, kind: 'page', read: text !== '' };
+    const imageUrl = page.contentType === 'text/plain' ? undefined : pagePhoto(raw);
+    if (imageUrl) source.imageUrl = imageUrl;
+    return { source, text };
   } catch (error) {
     if (!(error instanceof PublicFetchError)) throw error;
     // Only the reason, never the address.

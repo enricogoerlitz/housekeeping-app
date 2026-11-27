@@ -5,11 +5,13 @@ import {
   preparePhoto,
 } from '@housekeeping/api';
 import {
+  draftPagePhotoUrl,
   IMAGE_EDIT_MAX_SIDE,
   type AiImageContext,
   type Id,
   type PageDraftInput,
   type Recipe,
+  type RecipeDraftReply,
 } from '@housekeeping/core';
 import { useSyncExternalStore } from 'react';
 
@@ -98,6 +100,23 @@ function set(recipeId: Id, next: PhotoSuggestions | undefined): void {
   if (next) suggestions.set(recipeId, next);
   else suggestions.delete(recipeId);
   for (const listener of listeners) listener();
+}
+
+/**
+ * Spec 0049, AC-042: "Eigene Angaben" with a link and "Foto generieren" off takes the page's photo
+ * (through fetch-image, like the web search's „Original“); undefined without one or when it fails.
+ */
+export async function draftPagePhoto(
+  reply: RecipeDraftReply,
+  generatePhoto: boolean,
+): Promise<Blob | undefined> {
+  const url = draftPagePhotoUrl(reply.sources, generatePhoto);
+  if (!url) return undefined;
+  try {
+    return await preparePhoto(await loadPhotoFromAddress(url));
+  } catch {
+    return undefined;
+  }
 }
 
 /** A TikTok cover as the reference, shrunk like "Aus diesem Foto"; undefined when it fails. */

@@ -53,6 +53,7 @@ import {
   type WebTake,
 } from '@/features/web-search/web-search-panel';
 
+import { draftPagePhoto } from './ai-draft';
 import { newRowKey } from './sections/ingredient-handover';
 
 // "Mit KI ausfüllen" (spec 0040, REQ-001 – REQ-003, REQ-006): a sentence, up to three links and
@@ -438,10 +439,18 @@ export function AiFillSheet(props: {
   const [mode, setMode] = useState<'add' | 'replace'>('add');
   const submit = () => {
     if (!fill.ready || fill.busy) return;
-    void fill.run().then((reply) => {
+    const generatePhoto = fill.generatePhoto;
+    void fill.run().then(async (reply) => {
       if (!reply) return;
+      // AC-042 (spec 0049): without "Foto generieren" the linked page's photo is proposed.
+      const photo = await draftPagePhoto(reply, generatePhoto);
       props.onClose();
-      props.onDraft({ reply, replace: mode === 'replace', generatePhoto: fill.generatePhoto });
+      props.onDraft({
+        reply,
+        replace: mode === 'replace',
+        generatePhoto,
+        ...(photo ? { photo } : {}),
+      });
     });
   };
   const take = (taken: WebTake) => {
