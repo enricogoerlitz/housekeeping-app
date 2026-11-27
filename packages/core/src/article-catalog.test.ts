@@ -6,6 +6,7 @@ import {
   applyArticleMerge,
   articlesInArea,
   articleUsage,
+  changedArticleName,
   classifyIngredientLines,
   cleanSynonyms,
   defaultShoppingRuleFor,
@@ -1106,5 +1107,25 @@ describe('applyArticleMerge', () => {
     const result = applyArticleMerge(milchkokos, kokosmilch, [], [source, target]);
     expect(result.items).toEqual([target]);
     expect(result.removedItemId).toBe('s-done');
+  });
+});
+
+describe('changedArticleName (AC-057): only a name the person changed is saved', () => {
+  it('AC-057: the name from opening, untouched → nothing to save, even after a rename elsewhere', () => {
+    // Opened as „Milchkokos“; Nadja renamed it to „Kokosnussmilch“ meanwhile, the field still shows
+    // the name from opening.
+    expect(changedArticleName('Milchkokos', 'Milchkokos')).toBeUndefined();
+  });
+
+  it('AC-057: a typed name is saved, with spaces collapsed', () => {
+    expect(changedArticleName('Milchkokos', '  Kokos   milch ')).toBe('Kokos milch');
+  });
+
+  it('AC-057: a name changed back to the one from opening is not saved', () => {
+    expect(changedArticleName('Milchkokos', ' Milchkokos  ')).toBeUndefined();
+  });
+
+  it('a recased name is a change (AC-030 allows it)', () => {
+    expect(changedArticleName('milchkokos', 'Milchkokos')).toBe('Milchkokos');
   });
 });
