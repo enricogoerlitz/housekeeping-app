@@ -22,6 +22,7 @@ import {
   removeFilterChip,
   shuffleOrder,
   sortRecipeList,
+  tileCourseLabel,
   toggleQuickFilter,
   toggleRecipeKind,
   type RecipeListContext,
@@ -481,5 +482,34 @@ describe('canReshuffle (spec 0036, REQ-001)', () => {
 
   it('AC-002: a search hides "Neu mischen" (the search sorts by hit)', () => {
     expect(canReshuffle('random', 'Nudeln')).toBe(false);
+  });
+});
+
+describe('tileCourseLabel (spec 0038, REQ-002)', () => {
+  it('AC-007: a recipe tile names its course in German', () => {
+    expect(tileCourseLabel(makeRecipe({ id: 'r1', title: 'Mango-Curry', course: 'main' }))).toBe(
+      'Hauptgericht',
+    );
+    expect(tileCourseLabel(makeRecipe({ id: 'r2', title: 'Tiramisu', course: 'dessert' }))).toBe(
+      'Dessert',
+    );
+    expect(tileCourseLabel(makeRecipe({ id: 'r3', title: 'Ofenkartoffeln', course: 'side' }))).toBe(
+      'Beilage',
+    );
+  });
+
+  it('AC-008: a collection and a recipe without a course show no course', () => {
+    expect(tileCourseLabel(makeCollection({ id: 'c1', title: 'Grillabend' }))).toBeUndefined();
+    const withoutCourse = makeRecipe({ id: 'r4', title: 'Ohne Art' });
+    delete withoutCourse.course;
+    expect(tileCourseLabel(withoutCourse)).toBeUndefined();
+  });
+
+  it('AC-008: a collection carrying a course by mistake still shows none', () => {
+    const collection = {
+      ...makeCollection({ id: 'c2', title: 'Brunch' }),
+      course: 'breakfast' as const,
+    };
+    expect(tileCourseLabel(collection)).toBeUndefined();
   });
 });

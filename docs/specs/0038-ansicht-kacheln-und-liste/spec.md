@@ -38,6 +38,17 @@ Aktivitäten „Liste“. Gespeichert lokal je Gerät. Offline: offline vollstä
 - AC-006: Angenommen Aktivitäten „Kacheln“ · Dann zeigt jede Kachel das Foto groß (4:3) bzw. das
   Symbol der Art, wenn es kein Foto gibt
 
+**REQ-002 — Gerichtart auf der Rezept-Kachel** (Nachtrag 27.11., Enricos Wunsch). In der Ansicht
+„Kacheln“ zeigt jede Rezept-Kachel ihre Gerichtart („Hauptgericht“, „Beilage“, „Dessert“,
+„Frühstück“, „Snack“, „Getränk“) als kleines, ruhiges Kennzeichen; die Liste bleibt, wie sie ist.
+Offline: offline vollständig.
+
+- AC-007: Angenommen Rezepte „Kacheln“ · Dann steht auf der Kachel „Mango-Curry“ „Hauptgericht“ und
+  auf „Gemischter Salat“ „Beilage“, vor Minuten, Ernährung und Bewertung
+- AC-008: Angenommen Rezepte „Kacheln“ · Dann zeigt die Sammlung „Grillabend“ keine Gerichtart (nur
+  „Sammlung“ und „2 Rezepte“ wie bisher) · Wenn ich auf „Liste“ umschalte · Dann zeigt kein Eintrag
+  eine Gerichtart
+
 ## Entscheidungen
 
 1. Enrico, 26.11.: Der Umschalter sind zwei verbundene Symbol-Knöpfe (Raster/Liste) am rechten Ende
@@ -61,6 +72,15 @@ Aktivitäten „Liste“. Gespeichert lokal je Gerät. Offline: offline vollstä
 8. Browser-Durchklick 27.11., Folge (B-15): Karten einer Zeile in der Liste der Aktivitäten
    sind gleich hoch; eine Karte ohne „Zuletzt“-Zeile wächst auf die Höhe der höchsten.
 
+9. REQ-002, beim Bau 27.11.: Die Gerichtart steht als neutrales `Badge` (grau, ohne Symbol, keine
+   neue Farbe) als erstes Element der Zeile unter dem Titel, nicht über dem Foto: unten links über
+   dem Foto steht das Kennzeichen „Sammlung“, das die Art des Eintrags meint; eine zweite Plakette
+   dort würde es verwässern. Die Zeile bricht um, deshalb läuft auch auf dem Handy (zwei schmale
+   Spalten) nichts über; die Kachel wird dort eine Zeile höher. Die Regel steht in `core`
+   (`tileCourseLabel`): keine Gerichtart bei einer Sammlung oder ohne Gerichtart. Weil die
+   Datenbank jedem Rezept eine Gerichtart gibt (Standard „Hauptgericht“), trägt praktisch jede
+   Rezept-Kachel eine, auch schnell angelegte Rezepte. Liste und KI-Treffer zeigen sie nicht.
+
 ## Daten
 
 Entfällt (lokale Einstellung).
@@ -78,8 +98,15 @@ Schnellansicht liest nur aus dem lokalen Cache.
 - [x] 2. Einstellung je Bereich (AC-004; `core/list-views.ts`, `LocalSettings.listViews`)
 - [x] 3. Rezepte: Liste + Schnellansicht (AC-001, AC-003; Adress-Param `rezept`)
 - [x] 4. Restaurants und Aktivitäten: Kacheln (AC-002, AC-005, AC-006)
+- [x] 5. Gerichtart auf der Rezept-Kachel (AC-007, AC-008; `tileCourseLabel`, `RecipeCardMeta course`)
 - [x] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün; Screenshots Handy
       390×844 und Desktop 1440×900 in `tmp/review-0003/0038/` (Klickpfade AC-001 bis AC-006 per
       Playwright gegen den Dev-Server, keine Konsolenfehler). Tests: `list-views.test.ts`
       (AC-001–AC-004), `url-params.test.ts` (Schnellansicht), `view-switch.test.tsx`,
       `filter-bar.test.tsx`.
+- [x] Nachweis REQ-002 (27.11.): rot zuerst `recipe-list.test.ts` (AC-007, AC-008: 3 Tests rot,
+      `tileCourseLabel is not a function`), danach grün; `pnpm format:check && pnpm check` grün;
+      e2e `rundgang-essen.spec.ts` „AC-007 / AC-008 (0038)“ lokal grün (Handy, ohne Zurücksetzen).
+      Dev-Server Handy 390×844 und Desktop 1440×900, hell und dunkel: Kennzeichen in allen
+      Kacheln, keines in der Liste und bei „Grillabend“, nichts ragt aus einer Kachel, keine
+      Seitenfehler.

@@ -5,6 +5,7 @@ import {
   deriveRecipeDiet,
   formatAverage,
   recipeFitsPreference,
+  tileCourseLabel,
   type Article,
   type CollectionContent,
   type Id,
@@ -48,13 +49,16 @@ function collectionDietHint(
 /**
  * The line under a recipe title: minutes, diet hint, average rating ("★ 4,8", AC-040). A
  * collection shows the number of its recipes instead of minutes ("2 Rezepte", none at 0;
- * spec 0009, AC-018, AC-024).
+ * spec 0009, AC-018, AC-024). With `course` the tile leads with the course as a neutral badge
+ * (spec 0038, AC-007); the list entry and the AI hits leave it out.
  */
 export function RecipeCardMeta(props: {
   recipe: Recipe;
   articlesById: Record<Id, Article>;
   /** What a collection contains; only read for a collection. */
   contents?: readonly CollectionContent[];
+  /** Shows the course first ("Hauptgericht"); only the tile view sets it. */
+  course?: boolean;
 }) {
   const { recipe } = props;
   const collection = recipe.kind === 'collection';
@@ -64,8 +68,10 @@ export function RecipeCardMeta(props: {
     : dietHint(recipe, props.articlesById);
   const count = collection ? collectionRecipeCountLabel(contents.length) : '';
   const rating = averageRating(recipe);
+  const course = props.course ? tileCourseLabel(recipe) : undefined;
   return (
     <Row gap={8} wrap>
+      {course ? <Badge label={course} testID={`recipe-card-course-${recipe.id}`} /> : null}
       {count ? (
         <Text variant="caption" color="muted" testID={`recipe-card-count-${recipe.id}`}>
           {count}
