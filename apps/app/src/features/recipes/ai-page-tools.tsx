@@ -1,4 +1,10 @@
-import { draftRecipeAsync, OfflineError, useArticlesById } from '@housekeeping/api';
+import {
+  draftRecipeAsync,
+  OfflineError,
+  PHOTO_UPLOAD_FAILED_MESSAGE,
+  setRecipePhoto,
+  useArticlesById,
+} from '@housekeeping/api';
 import {
   AI_DRAFT_UNREACHABLE_MESSAGE,
   applyRecipeProposal,
@@ -17,6 +23,7 @@ import {
 } from '@housekeeping/core';
 import {
   Button,
+  IconButton,
   Notice,
   Photo,
   Row,
@@ -24,27 +31,84 @@ import {
   Text,
   openKeyboardNow,
   toast,
+  useBreakpoint,
   useTheme,
 } from '@housekeeping/ui';
 import { useEffect, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { DictationField } from '@/features/shell/dictation-field';
+import { errorMessage } from '@/features/shell/error-message';
 import { OFFLINE_EDIT_HINT, useOnlineOnly } from '@/features/shell/offline';
 import { revokeLater } from '@/features/shell/revoke-later';
 import { ProposalSheet, type ProposalRefine } from '@/features/web-search/proposal-sheet';
 import { features } from '@/lib/features';
 
-import { regeneratePhotoSuggestions, startPhotoSuggestions, usePhotoSuggestions } from './ai-draft';
+import {
+  dismissPhotoSuggestions,
+  regeneratePhotoSuggestions,
+  startPhotoSuggestions,
+  usePhotoSuggestions,
+} from './ai-draft';
 import { AiFillSheet, toastUnreadLinks, useDraftInput, type AiFillResult } from './ai-fill';
 import type { PageEditor } from './sections/use-page-editor';
 
+/** Whether a recipe page offers the AI at all: recipes only, with the AI switch. */
+function offersAi(recipe: Recipe): boolean {
+  return features.aiRecipes && recipe.kind === 'recipe';
+}
+
 /**
- * The AI in the edit mode of a recipe (spec 0040): "Mit KI ausfüllen" (REQ-001, AC-006) and the
- * three photo suggestions of "Foto generieren" (REQ-003, AC-010). Hidden while reading and for
- * collections; only with `features.aiRecipes`.
+ * ✨ "Mit KI ändern" in the header of the reading recipe page (spec 0062, REQ-007): on phones the
+ * symbol, from tablet width with its text; greyed out offline. The keyboard comes with the tap
+ * for the window's field (spec 0055, AC-004).
  */
-export function AiPageTools(props: { recipe: Recipe; editor: PageEditor }) {
+export function AiChangeButton(props: { recipe: Recipe; onPress: () => void }) {
+  const online = useOnlineOnly();
+  const { isPhone } = useBreakpoint();
+  if (!offersAi(props.recipe)) return null;
+  const press = () => {
+    openKeyboardNow();
+    props.onPress();
+  };
+  return isPhone ? (
+    <IconButton
+      icon="sparkles"
+      size={44}
+      label="Mit KI ändern"
+      disabled={online.disabled}
+      hint={online.hint}
+      onPress={press}
+      testID="recipe-ai-change-open"
+    />
+  ) : (
+    <Button
+      label="Mit KI ändern"
+      icon="sparkles"
+      variant="ghost"
+      size="sm"
+      disabled={online.disabled}
+      hint={online.hint}
+      onPress={press}
+      testID="recipe-ai-change-open"
+    />
+  );
+}
+
+/**
+ * The AI of a recipe page (spec 0040): "Mit KI ausfüllen" in the edit mode (REQ-001, AC-006),
+ * ✨ "Mit KI ändern" of the reading page (spec 0062, `changing`) and the three photo suggestions
+ * of "Foto generieren" (REQ-003, AC-010). Both open the Änderungsansicht (spec 0049, REQ-005);
+ * from the edit mode "Übernehmen" fills it, from the reading page it saves at once (spec 0062,
+ * REQ-010). Not for collections; only with `features.aiRecipes`.
+ */
+export function AiPageTools(props: {
+  recipe: Recipe;
+  editor: PageEditor;
+  /** ✨ was tapped: "Mit KI ändern" is open. */
+  changing: boolean;
+  onChangeClose: () => void;
+}) {
   const { recipe, editor } = props;
   const online = useOnlineOnly();
   const [filling, setFilling] = useState(false);
@@ -60,11 +124,12 @@ export function AiPageTools(props: { recipe: Recipe; editor: PageEditor }) {
     setFilling(false);
     if (workOut) editor.clearIntent();
   };
-  if (!features.aiRecipes || !editor.draft || recipe.kind !== 'recipe') return null;
-  const page = editor.draft;
-  const hasIngredients = editor.draft.ingredients.rows.length > 0;
+  if (!offersAi(recipe)) return null;
+  const editing = editor.draft !== undefined;
+  const page = editor.page();
+  const hasIngredients = page.ingredients.rows.length > 0;
   // Spec 0055, REQ-005: something to change — then "Prompt" first and the recipe goes along.
-  const hasContent = hasIngredients || (editor.draft.steps?.steps.length ?? 0) > 0;
+  const hasContent = hasIngredients || (page.steps?.steps.length ?? 0) > 0;
   const hadPhoto = recipe.photoPath !== undefined || recipe.photo !== undefined;
   const articleName = (row: IngredientRow) => {
     const article = row.article;
@@ -72,26 +137,28 @@ export function AiPageTools(props: { recipe: Recipe; editor: PageEditor }) {
     if (article?.kind === 'hit') return article.hit.name;
     return article?.name ?? row.name ?? '';
   };
-  // Spec 0049, REQ-005: a draft for a recipe that has content opens the Änderungsansicht first.
-  const propose = ({
-    reply,
-    replace,
-    change = false,
-    generatePhoto,
-    photo,
-    makePhoto,
-    imageWish,
-  }: AiFillResult) => {
-    const before = editor.draft;
-    if (!before) return;
-    const input = draftInput(reply);
-    const proposal = recipeProposal(before, editor.filled(input, { replace, change }), {
-      articleName,
-    });
-    // AC-047 (spec 0049): "Ergänzen" proposes the page's photo only to a recipe without one.
+  // The proposal for one way of comparing; the page's photo only where it is proposed (AC-047 of
+  // spec 0049: "Ergänzen" proposes it only to a recipe without one).
+  const compare = (
+    reply: RecipeDraftReply,
+    replace: boolean,
+    change: boolean,
+    photo: Blob | undefined,
+  ) => {
+    const proposal = recipeProposal(
+      editor.page(),
+      editor.filled(draftInput(reply), { replace, change }),
+      { articleName },
+    );
     const pagePhoto =
       photo && proposesPagePhoto({ hasPhoto: hadPhoto, replace }) ? photo : undefined;
     if (pagePhoto) proposal.fields.push(photoField(hadPhoto));
+    return { proposal, pagePhoto };
+  };
+  // Spec 0049, REQ-005: a draft for a recipe that has content opens the Änderungsansicht first.
+  const propose = (result: AiFillResult, direct: boolean) => {
+    const { reply, replace, change = false, generatePhoto, photo, makePhoto, imageWish } = result;
+    const { proposal, pagePhoto } = compare(reply, replace, change, photo);
     toastUnreadLinks(reply.sources);
     if (generatePhoto && reply.draft.imagePrompt) {
       startPhotoSuggestions(recipe.id, {
@@ -106,18 +173,41 @@ export function AiPageTools(props: { recipe: Recipe; editor: PageEditor }) {
         context: draftImageContext(reply.draft),
       });
     }
-    if (proposalIsEmpty(proposal)) {
+    // Spec 0062, REQ-009: "Ergänzen" may change nothing where "Ersetzen" would.
+    if (proposalIsEmpty(proposal) && !result.fromWeb) {
       toast.show({ message: 'Der Vorschlag ändert nichts am Rezept.' });
       return;
     }
     setRefineError(undefined);
-    setReview({ proposal, reply, replace, change, ...(pagePhoto ? { photo: pagePhoto } : {}) });
+    setReview({
+      proposal,
+      reply,
+      replace,
+      change,
+      direct,
+      fromWeb: result.fromWeb === true,
+      ...(photo ? { sourcePhoto: photo } : {}),
+      ...(pagePhoto ? { photo: pagePhoto } : {}),
+    });
+  };
+  // Spec 0062, REQ-009: "Ergänzen · Ersetzen" compares the same answer again.
+  const switchMode = (mode: 'add' | 'replace') => {
+    if (!review) return;
+    const replace = mode === 'replace';
+    const { proposal, pagePhoto } = compare(
+      review.reply,
+      replace,
+      review.change,
+      review.sourcePhoto,
+    );
+    const next: Review = { ...review, proposal, replace };
+    delete next.photo;
+    setReview(pagePhoto ? { ...next, photo: pagePhoto } : next);
   };
   // Spec 0055, REQ-008: the proposal and one sentence go to the AI; its answer is compared with
   // the same page, in the same way, and replaces the proposal (AC-026). A failure keeps it (AC-027).
   const refine = async (wish: string): Promise<boolean> => {
-    const before = editor.draft;
-    if (!review || !before) return false;
+    if (!review) return false;
     setRefining(true);
     setRefineError(undefined);
     try {
@@ -131,7 +221,7 @@ export function AiPageTools(props: { recipe: Recipe; editor: PageEditor }) {
       // The links read for the first proposal stay its links.
       const reply = { ...answer, sources: review.reply.sources };
       const proposal = recipeProposal(
-        before,
+        editor.page(),
         editor.filled(draftInput(reply), { replace: review.replace, change: review.change }),
         { articleName },
       );
@@ -147,46 +237,59 @@ export function AiPageTools(props: { recipe: Recipe; editor: PageEditor }) {
       setRefining(false);
     }
   };
+  const window = (entry: 'page' | 'edit', onClose: () => void) => (
+    <AiFillSheet
+      entry={entry}
+      title={page.head.title}
+      hasIngredients={hasIngredients}
+      hasContent={hasContent}
+      hasPhoto={hadPhoto || editor.chosenPhoto !== undefined}
+      current={() => recipeDraftOf(editor.page(), articleName)}
+      onClose={onClose}
+      searchNow={entry === 'edit' && workOut}
+      onDraft={(result) => propose(result, entry === 'page')}
+    />
+  );
   return (
     <Stack gap={12}>
-      <View style={{ alignItems: 'flex-start' }}>
-        <Button
-          label="Mit KI ausfüllen"
-          icon="sparkles"
-          variant="link"
-          size="sm"
-          disabled={online.disabled || editor.saving}
-          hint={online.hint}
-          onPress={() => {
-            // Spec 0055, AC-004: the keyboard comes with the tap, for the field of the window.
-            openKeyboardNow();
-            setFilling(true);
-          }}
-          testID="recipe-ai-fill-open"
-        />
-      </View>
-      <PhotoSuggestionsPanel recipe={recipe} editor={editor} />
-      {filling || workOut ? (
-        <AiFillSheet
-          title={editor.draft.head.title}
-          hasIngredients={hasIngredients}
-          hasContent={hasContent}
-          hasPhoto={hadPhoto || editor.chosenPhoto !== undefined}
-          current={() => recipeDraftOf(page, articleName)}
-          searchNow={workOut}
-          onClose={closeFill}
-          onDraft={propose}
-        />
+      {editing ? (
+        <View style={{ alignItems: 'flex-start' }}>
+          <Button
+            label="Mit KI ausfüllen"
+            icon="sparkles"
+            variant="link"
+            size="sm"
+            disabled={online.disabled || editor.saving}
+            hint={online.hint}
+            onPress={() => {
+              // Spec 0055, AC-004: the keyboard comes with the tap, for the field of the window.
+              openKeyboardNow();
+              setFilling(true);
+            }}
+            testID="recipe-ai-fill-open"
+          />
+        </View>
       ) : null}
+      <PhotoSuggestionsPanel recipe={recipe} editor={editor} />
+      {(filling || workOut) && editing ? window('edit', closeFill) : null}
+      {props.changing && !editing ? window('page', props.onChangeClose) : null}
       {review ? (
         <RecipeReview
           review={review}
           refine={{ busy: refining, error: refineError, onSend: refine }}
           onApply={(rejected) => {
-            editor.adopt(applyRecipeProposal(review.proposal, rejected));
-            if (review.photo && !rejected.has(PHOTO_FIELD)) editor.choosePhoto(review.photo);
+            const next = applyRecipeProposal(review.proposal, rejected);
+            const photo = review.photo && !rejected.has(PHOTO_FIELD) ? review.photo : undefined;
             setReview(undefined);
+            // Spec 0062, REQ-008: from the reading page "Übernehmen" saves at once.
+            if (review.direct && !editor.draft) {
+              editor.apply(next, photo);
+              return;
+            }
+            editor.adopt(next);
+            if (photo) editor.choosePhoto(photo);
           }}
+          onMode={review.fromWeb ? switchMode : undefined}
           onClose={() => setReview(undefined)}
         />
       ) : null}
@@ -196,11 +299,18 @@ export function AiPageTools(props: { recipe: Recipe; editor: PageEditor }) {
 
 interface Review {
   proposal: RecipeProposal;
+  /** The page's photo the proposal shows as the field "Foto". */
   photo?: Blob;
+  /** The photo of the page found on the web, for comparing again (REQ-011). */
+  sourcePhoto?: Blob;
   /** The AI's answer the proposal shows, for "Anpassen" (spec 0055, REQ-008). */
   reply: RecipeDraftReply;
   replace: boolean;
   change: boolean;
+  /** ✨ "Mit KI ändern": "Übernehmen" saves (spec 0062, REQ-008). */
+  direct: boolean;
+  /** From the web search for a recipe with ingredients: "Ergänzen · Ersetzen" (REQ-011). */
+  fromWeb: boolean;
 }
 
 const PHOTO_FIELD = 'photo';
@@ -221,21 +331,29 @@ function RecipeReview(props: {
   review: Review;
   refine: ProposalRefine;
   onApply: (rejected: ReadonlySet<string>) => void;
+  onMode?: (mode: 'add' | 'replace') => void;
   onClose: () => void;
 }) {
-  const { photo } = props.review;
-  const [uri] = useState(() => (photo ? URL.createObjectURL(photo) : undefined));
+  const { sourcePhoto } = props.review;
+  const [uri] = useState(() => (sourcePhoto ? URL.createObjectURL(sourcePhoto) : undefined));
   useEffect(
     () => () => {
       if (uri) revokeLater(uri);
     },
     [uri],
   );
+  // The photo comes and goes with "Ergänzen · Ersetzen"; it is always the page's.
+  const shown = props.review.photo ? uri : undefined;
+  const { onMode } = props;
   return (
     <ProposalSheet
       proposal={props.review.proposal}
-      {...(uri ? { photo: { uri } } : {})}
+      {...(shown ? { photo: { uri: shown } } : {})}
       refine={props.refine}
+      onlyChanges
+      {...(onMode
+        ? { mode: { value: props.review.replace ? 'replace' : 'add', onChange: onMode } }
+        : {})}
       onApply={props.onApply}
       onClose={props.onClose}
       testID="recipe-proposal"
@@ -251,7 +369,8 @@ const TILE_MAX = 200;
 /**
  * AC-010: three suggestions; "Übernehmen" makes one the draft's photo (saved with "Speichern").
  * Spec 0045: the tiles pulse while the photos are made (REQ-005); "Neu generieren" with an
- * optional wish makes three new ones (REQ-006) and replaces "Keins davon".
+ * optional wish makes three new ones (REQ-006) and replaces "Keins davon". On the reading page
+ * (after ✨, spec 0062, REQ-010) "Übernehmen" saves the photo at once and "Ausblenden" closes.
  */
 function PhotoSuggestionsPanel(props: { recipe: Recipe; editor: PageEditor }) {
   const { recipe, editor } = props;
@@ -260,7 +379,36 @@ function PhotoSuggestionsPanel(props: { recipe: Recipe; editor: PageEditor }) {
   const suggestions = usePhotoSuggestions(recipe.id);
   const [selected, setSelected] = useState(0);
   const [extra, setExtra] = useState('');
+  const [saving, setSaving] = useState(false);
   if (!suggestions) return null;
+  const reading = editor.draft === undefined;
+  const take = (photo: Blob) => {
+    if (!reading) {
+      editor.choosePhoto(photo);
+      return;
+    }
+    setSaving(true);
+    setRecipePhoto(recipe.id, photo).then(
+      () => {
+        setSaving(false);
+        dismissPhotoSuggestions(recipe.id);
+        toast.show({ message: 'Foto gespeichert' });
+      },
+      (cause: unknown) => {
+        setSaving(false);
+        toast.show({ message: errorMessage(cause, PHOTO_UPLOAD_FAILED_MESSAGE) });
+      },
+    );
+  };
+  const hide = reading ? (
+    <Button
+      label="Ausblenden"
+      variant="link"
+      size="sm"
+      onPress={() => dismissPhotoSuggestions(recipe.id)}
+      testID="recipe-photo-suggestions-hide"
+    />
+  ) : null;
   const id = 'recipe-photo-suggestions';
   const loading = suggestions.status === 'loading';
   const regenerate = () => {
@@ -320,6 +468,7 @@ function PhotoSuggestionsPanel(props: { recipe: Recipe; editor: PageEditor }) {
       <Stack gap={8}>
         <Notice icon="circle-alert" text={suggestions.message} testID={`${id}-error`} />
         {again}
+        {hide}
       </Stack>
     );
   }
@@ -359,21 +508,23 @@ function PhotoSuggestionsPanel(props: { recipe: Recipe; editor: PageEditor }) {
       ) : null}
       <Row gap={12} wrap align="center">
         <Button
-          label={chosen === selected ? 'Übernommen' : 'Übernehmen'}
+          label={saving ? 'Wird gespeichert …' : chosen === selected ? 'Übernommen' : 'Übernehmen'}
           icon="check"
           size="sm"
-          disabled={chosen === selected}
+          disabled={chosen === selected || saving || (reading && online.disabled)}
+          hint={reading ? online.hint : undefined}
           onPress={() => {
             const entry = suggestions.photos[selected];
-            if (entry) editor.choosePhoto(entry.photo);
+            if (entry) take(entry.photo);
           }}
           testID={`${id}-apply`}
         />
-        {chosen >= 0 ? (
+        {chosen >= 0 && !reading ? (
           <Text variant="small" color="muted" testID={`${id}-chosen`}>
             Wird mit „Speichern“ das Foto des Rezepts.
           </Text>
         ) : null}
+        {hide}
       </Row>
       {again}
     </Stack>

@@ -5,7 +5,17 @@ import {
   type FieldChange,
   type RowChange,
 } from '@housekeeping/core';
-import { Badge, Button, LoadingLines, Photo, Sheet, Stack, Text, useTheme } from '@housekeeping/ui';
+import {
+  Badge,
+  Button,
+  ChoiceChips,
+  LoadingLines,
+  Photo,
+  Sheet,
+  Stack,
+  Text,
+  useTheme,
+} from '@housekeeping/ui';
 import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 
@@ -17,7 +27,8 @@ import { useOnlineOnly } from '@/features/shell/offline';
 // "neu" / "geändert"; an old value stands small, red and struck through with ↺; a removed row
 // stays visible, red and struck through, with "↺ behalten"; a new row can be left out with ×.
 // Never colour alone: every change has its word. "Übernehmen" hands what is still active to the
-// edit mode or the form, where "Speichern" stores it (Entscheidung 6).
+// edit mode or the form, where "Speichern" stores it (Entscheidung 6); after ✨ "Mit KI ändern" the
+// recipe page saves it at once (spec 0062, REQ-008).
 
 const WORDS = { new: 'neu', changed: 'geändert', removed: 'entfernt' } as const;
 const PHOTO_SIZE = 96;
@@ -246,6 +257,10 @@ export function ProposalSheet(props: {
   photo?: ProposedPhoto;
   /** Recipes: "Was soll noch anders sein?" below the proposal (spec 0055, REQ-008). */
   refine?: ProposalRefine;
+  /** Spec 0062, REQ-009: a recipe from the web search can add to or replace the one there is. */
+  mode?: { value: 'add' | 'replace'; onChange: (value: 'add' | 'replace') => void };
+  /** Spec 0062, REQ-009: only the rows that change, not the unchanged ones of a group. */
+  onlyChanges?: boolean;
   onApply: (rejected: ReadonlySet<string>) => void;
   onClose: () => void;
   testID?: string;
@@ -312,6 +327,19 @@ export function ProposalSheet(props: {
       testID={testID}
     >
       <Stack gap={16}>
+        {props.mode ? (
+          <ChoiceChips
+            label="Ergänzen oder ersetzen?"
+            options={[
+              { value: 'add', label: 'Ergänzen' },
+              { value: 'replace', label: 'Ersetzen' },
+            ]}
+            value={props.mode.value}
+            onChange={props.mode.onChange}
+            disabled={props.refine?.busy === true}
+            testID={`${testID}-mode`}
+          />
+        ) : null}
         {props.proposal.fields.length > 0 ? (
           <Stack gap={8}>
             {props.proposal.fields.map((field) => (
@@ -330,7 +358,10 @@ export function ProposalSheet(props: {
           group.rows.every((row) => row.status === 'same') ? null : (
             <Stack key={group.id} gap={6}>
               <Text variant="groupLabel">{group.label}</Text>
-              {group.rows.map((row) => (
+              {(props.onlyChanges
+                ? group.rows.filter((row) => row.status !== 'same')
+                : group.rows
+              ).map((row) => (
                 <RowLine
                   key={row.id}
                   row={row}

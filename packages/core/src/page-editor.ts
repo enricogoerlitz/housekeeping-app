@@ -178,6 +178,33 @@ export function readViewSave(
   return { section: { ...next, rows: next.rows.filter((row) => !openKeys.has(row.key)) }, open };
 }
 
+/**
+ * "Rückgängig" after "Mit KI ändern" saved a proposal (spec 0062, REQ-008): `now` as stored after
+ * the save, with every value of `before` (the page as stored before it). A row of `before` that
+ * is still stored edits it; one that is gone meanwhile comes back as a new row. Saved like
+ * "Speichern", so only the sections that differ go out and `seenUpdatedAt` is the current one.
+ */
+export function revertPageDraft(before: PageDraft, now: PageDraft): PageDraft {
+  const stored = new Set(now.ingredients.base.ingredients.map((ingredient) => ingredient.id));
+  const rows = before.ingredients.rows.map((row) => {
+    if (row.ingredientId === undefined || stored.has(row.ingredientId)) return row;
+    const copy = { ...row };
+    delete copy.ingredientId;
+    return copy;
+  });
+  const page: PageDraft = {
+    ...now,
+    head: { ...before.head, base: now.head.base },
+    ingredients: { ...before.ingredients, rows, base: now.ingredients.base },
+    notes: { ...before.notes, base: now.notes.base },
+    links: { ...before.links, base: now.links.base },
+  };
+  if (before.classification && now.classification)
+    page.classification = { ...before.classification, base: now.classification.base };
+  if (before.steps && now.steps) page.steps = { ...before.steps, base: now.steps.base };
+  return page;
+}
+
 // ---------- A draft from outside ----------
 
 /**

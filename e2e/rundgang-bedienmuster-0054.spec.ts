@@ -42,8 +42,10 @@ test('AC-001 / AC-002 / AC-005 / AC-006: "Rezept anlegen" opens "Neu" at once; "
   await create.click();
   await expect(menuItems(page)).toHaveCount(0);
   await expect(tid(page, 'new-recipe-sheet')).toBeVisible();
-  await expect(tid(page, 'new-recipe-kind-recipe')).toHaveAttribute('aria-checked', 'true');
-  await tid(page, 'new-recipe-kind-collection').click();
+  // Spec 0062, REQ-007: "Sammlung" under the tabs turns the window into a new collection.
+  await expect(tid(page, 'new-recipe-title')).toBeFocused();
+  await tid(page, 'new-recipe-open-collection').click();
+  await expect(tid(page, 'new-recipe-kind-collection')).toHaveAttribute('aria-checked', 'true');
   const title = `Brunch ${unique()}`;
   await tid(page, 'new-recipe-title').fill(title);
   await tid(page, 'new-recipe-save').click();

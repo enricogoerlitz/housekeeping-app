@@ -425,35 +425,40 @@ export function WebSearchPanel(props: {
   autoFocus?: boolean;
   /** The search field, to give it the cursor on a tab change (spec 0055, REQ-001). */
   inputRef?: Ref<ComponentRef<typeof TextInput>>;
+  /** false: the window's own field above searches (spec 0062, REQ-004); only cards and preview. */
+  withField?: boolean;
   testID: string;
 }) {
   const { search, testID } = props;
   const online = useOnlineOnly();
   if (search.preview) return <Preview search={search} rows={props.recipeRows} testID={testID} />;
   const status = searchStatusLine(search.kind);
+  const withField = props.withField !== false;
   return (
     <Stack gap={12}>
-      <DictationField
-        key={search.focusRequest}
-        label="Im Web suchen"
-        placeholder={PLACEHOLDERS[search.kind]}
-        value={search.query}
-        onChangeText={(text) => {
-          const link = props.onLink ? pastedLink(text) : undefined;
-          if (link && props.onLink) {
-            props.onLink(link);
-            return;
-          }
-          search.setQuery(text.slice(0, WEB_SEARCH_LIMITS.query));
-        }}
-        onSubmitEditing={() => search.search()}
-        returnKeyType="search"
-        autoFocus={props.autoFocus === true || search.focusRequest > 0}
-        inputRef={props.inputRef}
-        editable={!online.disabled && search.state.status !== 'searching'}
-        maxLength={WEB_SEARCH_LIMITS.query}
-        testID={`${testID}-query`}
-      />
+      {withField ? (
+        <DictationField
+          key={search.focusRequest}
+          label="Im Web suchen"
+          placeholder={PLACEHOLDERS[search.kind]}
+          value={search.query}
+          onChangeText={(text) => {
+            const link = props.onLink ? pastedLink(text) : undefined;
+            if (link && props.onLink) {
+              props.onLink(link);
+              return;
+            }
+            search.setQuery(text.slice(0, WEB_SEARCH_LIMITS.query));
+          }}
+          onSubmitEditing={() => search.search()}
+          returnKeyType="search"
+          autoFocus={props.autoFocus === true || search.focusRequest > 0}
+          inputRef={props.inputRef}
+          editable={!online.disabled && search.state.status !== 'searching'}
+          maxLength={WEB_SEARCH_LIMITS.query}
+          testID={`${testID}-query`}
+        />
+      ) : null}
       {search.state.status === 'searching' ? (
         <Stack gap={8}>
           <Text variant="small" color="muted" testID={`${testID}-status`}>
@@ -483,15 +488,17 @@ export function WebSearchPanel(props: {
                 testID={`${testID}-card-${index}`}
               />
             ))}
-            <View style={{ alignItems: 'flex-start' }}>
-              <Button
-                label="Nichts dabei? Suche ändern"
-                variant="link"
-                size="sm"
-                onPress={search.edit}
-                testID={`${testID}-edit`}
-              />
-            </View>
+            {withField ? (
+              <View style={{ alignItems: 'flex-start' }}>
+                <Button
+                  label="Nichts dabei? Suche ändern"
+                  variant="link"
+                  size="sm"
+                  onPress={search.edit}
+                  testID={`${testID}-edit`}
+                />
+              </View>
+            ) : null}
           </Stack>
         )
       ) : null}

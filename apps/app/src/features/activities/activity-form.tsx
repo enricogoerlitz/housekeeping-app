@@ -483,7 +483,8 @@ export function ActivityFormSheet(props: {
       size="m"
       actions={{
         primary: {
-          label: 'Speichern',
+          // Spec 0062, REQ-006: a new one is created with "Anlegen" in the window's head.
+          label: editing ? 'Speichern' : 'Anlegen',
           icon: 'check',
           disabled: online.disabled || !!form.duplicate || form.saving || form.preparing,
           hint:

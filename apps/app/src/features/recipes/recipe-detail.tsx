@@ -32,7 +32,7 @@ import { useBrowseSwipe } from '@/lib/browse-order';
 
 import { AddToCollectionSheet } from './add-to-collection-sheet';
 import { unsavedRecipe } from './ai-draft';
-import { AiPageTools } from './ai-page-tools';
+import { AiChangeButton, AiPageTools } from './ai-page-tools';
 import { CollectionDetailBody } from './collection-detail';
 import { RecipeActions, RecipeMoreMenu, useRecipePhoto } from './recipe-actions';
 import { ClassificationSection } from './sections/classification-section';
@@ -175,6 +175,8 @@ function RecipeDetailBody(props: {
   const editing = editor.draft !== undefined;
   // Spec 0061: whether the page opened on an unfinished recipe ("Ausgearbeitet" after saving).
   const [openedUnfinished] = useState(() => isUnfinishedRecipe(recipe));
+  // ✨ "Mit KI ändern" is open (spec 0062, REQ-007).
+  const [changing, setChanging] = useState(false);
   // While the page is edited nothing leads away without asking (AC-005).
   const swipe = editing ? undefined : browse;
   const back = () => editor.guard(props.onBack);
@@ -227,6 +229,8 @@ function RecipeDetailBody(props: {
         onPress={() => toggleFavorite(recipe.id)}
       />
       {desktop ? actions : null}
+      {/* Spec 0062, REQ-007: ✨ beside the pen. */}
+      <AiChangeButton recipe={recipe} onPress={() => setChanging(true)} />
       <EditControls editor={editor} />
       <RecipeMoreMenu
         recipe={recipe}
@@ -296,7 +300,12 @@ function RecipeDetailBody(props: {
       <View testID="recipe-detail" style={{ gap: isPhone ? 24 : 32, paddingTop: 8 }}>
         <EditError editor={editor} />
         <DraftBackupNotice editor={editor} />
-        <AiPageTools recipe={recipe} editor={editor} />
+        <AiPageTools
+          recipe={recipe}
+          editor={editor}
+          changing={changing}
+          onChangeClose={() => setChanging(false)}
+        />
         <UnfinishedCard
           recipe={recipe}
           editor={editor}

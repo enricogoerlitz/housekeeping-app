@@ -1295,3 +1295,14 @@ geänderte und entfernte Felder und Zeilen, jede mit ihrem Wort und einzeln zur�
 
 - **Im Code:** `ChangeProposal`, `ProposalSheet`, `recipeProposal`, `placeProposal`
 - **Nicht verwenden:** Diff, Vergleich, Änderungsprotokoll
+
+### Mit KI ändern
+
+✨ auf der lesenden Rezeptseite (Spec 0062): ein Wunsch („Prompt“, mit „Web“ und „Bild“) oder ein
+Rezept aus der Websuche führt in die Änderungsansicht; dort speichert „Übernehmen“ sofort, mit
+„Rückgängig“. „Mit KI ausfüllen“ heißt der Weg im Bearbeitungsmodus, dessen „Übernehmen“ erst den
+Bearbeitungsmodus füllt.
+
+- **Im Code:** `AiChangeButton`, `AiFillSheet` mit `entry: 'page'`, `PageEditor.apply`,
+  `revertPageDraft`
+- **Nicht verwenden:** KI-Bearbeiten, Assistent (das ist „Anpassen“, Spec 0003)
