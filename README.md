@@ -27,6 +27,7 @@ TypeScript · pnpm + Turborepo · Vitest, pgTAP, Playwright.
 ## Loslegen
 
 Voraussetzungen: **Node 24** (`.nvmrc`), pnpm 11, Docker (für die lokale Supabase).
+Optional für UI-Prüfungen im iPhone-Simulator (einmalig pro Maschine): Xcode 27, `brew trust facebook/fb && brew install idb-companion`, `pip install fb-idb`; Details in `.claude/skills/ui-verify/references/ios-simulator.md`.
 
 ```bash
 pnpm install
