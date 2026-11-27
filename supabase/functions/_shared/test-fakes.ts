@@ -36,6 +36,11 @@ function query(rows: Row[], maxRows = Number.POSITIVE_INFINITY): Query {
     gte: (column, value) => next(rows.filter((row) => String(row[column]) >= value)),
     lte: (column, value) => next(rows.filter((row) => String(row[column]) <= value)),
     limit: (count) => next(rows.slice(0, count)),
+    order: (column) =>
+      next(
+        [...rows].sort((a, b) => String(a[column] ?? '').localeCompare(String(b[column] ?? ''))),
+      ),
+    range: (from, to) => next(rows.slice(from, to + 1)),
     then: (onFulfilled, onRejected) => Promise.resolve(result()).then(onFulfilled, onRejected),
   };
 }

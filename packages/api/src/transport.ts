@@ -3,6 +3,7 @@
 // SupabaseTransport (transport-supabase.ts) and an in-memory server for tests (transport-fake.ts).
 import {
   type AgentLoadReply,
+  type AppView,
   type AgentSendRequest,
   type AiImageReply,
   type AiImageRequest,
@@ -565,6 +566,11 @@ export interface Transport {
    * notification_settings); `invalid_notice`, `not_found`.
    */
   acknowledgeNotices(householdId: string, keys: readonly string[]): Promise<void>;
+  /**
+   * Spec 0067, REQ-001: the caller's view in all her households (her own rows of
+   * notification_settings); `invalid_view`.
+   */
+  setAppView(view: AppView): Promise<void>;
   // Edge functions
   /** Follows a short map link on the server (`resolve-maps-link`); `not_a_maps_link` when none. */
   resolveMapsLink(url: string): Promise<ResolveMapsLinkReply>;
@@ -686,6 +692,7 @@ export function switchable(inner: Transport): SwitchableTransport {
     beginHouseholdDeletion: guard(inner.beginHouseholdDeletion.bind(inner)),
     deleteHousehold: guard(inner.deleteHousehold.bind(inner)),
     acknowledgeNotices: guard(inner.acknowledgeNotices.bind(inner)),
+    setAppView: guard(inner.setAppView.bind(inner)),
     resolveMapsLink: guard(inner.resolveMapsLink.bind(inner)),
     fetchImage: guard(inner.fetchImage.bind(inner)),
     fetchVideo: guard(inner.fetchVideo.bind(inner)),

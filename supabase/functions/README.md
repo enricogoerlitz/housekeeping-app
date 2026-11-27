@@ -104,16 +104,18 @@ is refused the file is removed again (`false`, the same link saved meanwhile: 40
 which the app loads through `fetch-image` as the video's poster. No server key, no quota. Nothing
 about the link or the video is logged.
 
-**`ai-agent`** (spec 0066, ADR-0018, "KI-Agent"): the common path (64 KB, `AgentRequestSchema` from
+**`ai-agent`** (spec 0066, ADR-0018, "KI-Agent"; since spec 0067 the one household agent, ADR-0020):
+the common path (a body up to 8 MB for photos and PDF files, `AgentRequestSchema` from
 core `ai-agent.ts`, copied by `pnpm gen:edge`), membership of `householdId` (403), then one of four
 actions. `send`: the chat row under the caller's RLS **and** the conversation's metadata
 (`household_id`) must name the household (403; the Foundry key can read every conversation of the
 project), at most 20 answers per chat (409 `chat_too_long`), quota 5 units per answer, open
 `function_call`s of an interrupted answer closed first, a new chat gets a conversation with that
-metadata and its row (`create_ai_chat`). Then the pinned agent (`FOUNDRY_PLACES_AGENT`,
-`FOUNDRY_PLACES_AGENT_VERSION`) answers in `FOUNDRY_PROJECT_ENDPOINT` with `stream: true`; the
-message carries a `[KONTEXT]` block (place, coordinates rounded to 3 decimals, radius, local time),
-because a request may not override an agent's instructions. The function answers
+metadata and its row (`create_ai_chat`). Then the pinned agent (`FOUNDRY_HOUSEHOLD_AGENT`,
+`FOUNDRY_HOUSEHOLD_AGENT_VERSION`) answers in `FOUNDRY_PROJECT_ENDPOINT` with `stream: true`; the
+message carries a `[KONTEXT]` block (place, coordinates rounded to 3 decimals, radius, local time,
+the household's day in `households.timezone`, the badges as hints), because a request may not
+override an agent's instructions; photos go as `input_image` (JPEG), PDF files as `input_file`. The function answers
 `text/event-stream` with its own events (`AgentStreamEvent`: chat, step, text without citation
 tokens, cards_pending, cards, sources, done, error) — never Foundry's objects, which carry the
 instructions. Every `show_suggestions` call is validated (zod), its cards enriched by one Serper
@@ -124,10 +126,14 @@ aborts the run; 120 s at most. `load`: the conversation's items (5 pages of 100)
 messages by core `messagesFromItems` (without the context block). `delete`: each recorded answer
 that belongs to this conversation, the conversation, then `delete_ai_chat`; a Foundry failure
 keeps the row (503). `purge`: every chat of the household, before "Haushalt endgültig löschen".
-Logs carry a step and a status, never a message, a place or a body. Household tools (step 2) plug
-into `ai-agent/tools.ts`. The agent itself: `foundry/agents/places-agent.yaml`, deployed per
+Logs carry a step and a status, never a message, a place or a body. **Household tools** (spec 0067,
+`ai-agent/tools.ts`): every other function call is checked by core `agent-tools.ts` (allow-listed
+fields, sorts and filters; values only compared in code, never put into a query), then read as the
+caller (her JWT, RLS) from fixed tables and columns, always `household_id` = the chat's household —
+never an id from the model — in pages of 1000; the outputs (with `total`) go to the next model run,
+at most 5 runs per answer, and every call is a step row of the stream. The agent itself: `foundry/agents/household-agent.yaml`, deployed per
 environment by `@housekeeping/foundry` (ADR-0019, `docs/architecture/betrieb.md`); the pipeline sets
-`FOUNDRY_PLACES_AGENT` and the pinned `FOUNDRY_PLACES_AGENT_VERSION`, locally an empty version means
+`FOUNDRY_HOUSEHOLD_AGENT` and the pinned `FOUNDRY_HOUSEHOLD_AGENT_VERSION`, locally an empty version means
 the latest.
 
 **Exception `media-sweep`** (spec 0039, REQ-005): called nightly by pg_net from
@@ -177,7 +183,7 @@ Read by the functions (names only; values live in `.env`, never in the app):
 - `FOUNDRY_IMAGE_DEPLOYMENT` — the FLUX.2-pro deployment (`ai-image`); the resource is the first
   label of `FOUNDRY_OPENAI_BASE_URL`'s host, the key `FOUNDRY_API_KEY`.
 - `FOUNDRY_SPEECH_REGION`, `FOUNDRY_STT_LANGUAGE`, `FOUNDRY_STT_MODEL` (optional) — speech token.
-- `FOUNDRY_PROJECT_ENDPOINT`, `FOUNDRY_PLACES_AGENT`, `FOUNDRY_PLACES_AGENT_VERSION` — the KI-Agent
+- `FOUNDRY_PROJECT_ENDPOINT`, `FOUNDRY_HOUSEHOLD_AGENT`, `FOUNDRY_HOUSEHOLD_AGENT_VERSION` — the KI-Agent
   (`ai-agent`, spec 0066); with `FOUNDRY_API_KEY` and, for the cards, `SERPER_API_KEY`.
 - `ALLOWED_ORIGINS` — comma-separated browser origins, e.g. `http://localhost:8081`.
 - `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEYS` (or legacy `SUPABASE_ANON_KEY`) — set by Supabase.

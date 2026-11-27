@@ -1,7 +1,7 @@
 // `foundry-agents --env <local|preview|prod> [--check]` (spec 0066, ADR-0019): upserts every agent
 // of foundry/agents for one environment. Prints only name, version and status; a failure only its
 // HTTP status and error code — never a token, a header or a body. In GitHub Actions it writes
-// `<agent>_name` and `<agent>_version` (e.g. places_agent_version) to $GITHUB_OUTPUT.
+// `<agent>_name` and `<agent>_version` (e.g. household_agent_version) to $GITHUB_OUTPUT.
 import { ENVIRONMENTS, type AgentSpec, type Environment } from './environments';
 import { upsertAgent, type AgentsApi } from './upsert';
 

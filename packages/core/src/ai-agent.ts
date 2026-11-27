@@ -4,7 +4,8 @@ import { z } from 'zod';
 // and the pure logic both sides share — the context block of a message, the stream filter for
 // citation tokens, the SSE framing, the cards of `show_suggestions` with their enrichment from
 // Google (Serper), and the messages of a Foundry conversation. Copied into the edge functions by
-// `pnpm gen:edge`, so it imports nothing but zod.
+// `pnpm gen:edge`, so it imports nothing but zod. Spec 0067 (one household agent): badges and the
+// household's day in the context block, photos and PDF files as attachments.
 
 export const AGENT_LIMITS = {
   /** Characters of one message (AC-006). */
@@ -19,7 +20,39 @@ export const AGENT_LIMITS = {
   cards: 8,
   /** Follow-up chips of one answer. */
   followUps: 3,
+  /** Step rows of one answer: the web search and every tool call (spec 0067, REQ-008). */
+  steps: 20,
+  /** Badges of one message (spec 0067, REQ-004). */
+  badges: 5,
+  /** Photos and files of one message (spec 0067, REQ-005). */
+  attachments: 4,
+  /** Base64 characters of one photo: a JPEG of preparePhoto (1280 px) is far below. */
+  imageChars: 2_000_000,
+  /** Base64 characters of one PDF (about 4 MB). */
+  pdfChars: 5_600_000,
+  /** All attachments of one message together; the function takes a body of this much. */
+  attachmentChars: 8_000_000,
 } as const;
+
+// ---------- Badges (spec 0067, REQ-004) ----------
+
+/** The badges of the agent: hints of the person, never a lock (decision 2). */
+export const AGENT_BADGE_SLUGS = [
+  'rezepte',
+  'ausgehen',
+  'planen',
+  'einkaufen',
+  'haushalt',
+] as const;
+export type AgentBadgeSlug = (typeof AGENT_BADGE_SLUGS)[number];
+
+export const AGENT_BADGE_LABELS: Record<AgentBadgeSlug, string> = {
+  rezepte: 'Rezepte',
+  ausgehen: 'Ausgehen',
+  planen: 'Planen',
+  einkaufen: 'Einkaufen',
+  haushalt: 'Haushalt',
+};
 
 /** Units of the AI quota one answer costs (decision 13). */
 export const AGENT_QUOTA_PER_TURN = 5;
@@ -101,6 +134,26 @@ const REFERENCE: Record<AgentPlace['source'], string> = {
   trip: 'Reise',
 };
 
+/** "Freitag, 2026-11-27" in the zone, Europe/Berlin when the zone is unknown (AC-025). */
+function zonedDay(now: Date, timeZone: string | undefined): { text: string; zone: string } {
+  const format = (zone: string) => {
+    const parts = new Intl.DateTimeFormat('de-DE', {
+      weekday: 'long',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      timeZone: zone,
+    }).formatToParts(now);
+    const part = (type: string) => parts.find((entry) => entry.type === type)?.value ?? '';
+    return `${part('weekday')}, ${part('year')}-${part('month')}-${part('day')}`;
+  };
+  try {
+    return { text: format(timeZone ?? 'Europe/Berlin'), zone: timeZone ?? 'Europe/Berlin' };
+  } catch {
+    return { text: format('Europe/Berlin'), zone: 'Europe/Berlin' };
+  }
+}
+
 function localTime(now: Date, timeZone: string): { text: string; zone: string } {
   const format = (zone: string) =>
     new Intl.DateTimeFormat('de-DE', {
@@ -123,12 +176,22 @@ function localTime(now: Date, timeZone: string): { text: string; zone: string } 
  * The first text part of every message (decision 5): the agent's place and time. Per-request
  * instructions are refused by Foundry while an agent is named, so this is the only channel.
  */
-export function contextBlock(input: { place: AgentPlace; now: Date; timeZone: string }): string {
+export function contextBlock(input: {
+  place: AgentPlace;
+  now: Date;
+  timeZone: string;
+  /** Spec 0067, AC-008: the badges of the message, as hints. */
+  badges?: readonly AgentBadgeSlug[];
+  /** Spec 0067, AC-025: the household's zone (`households.timezone`) for "heute", "morgen". */
+  householdTimeZone?: string;
+}): string {
   const { place } = input;
   const time = localTime(input.now, input.timeZone);
   const label =
     place.source === 'device'
-      ? 'Aktueller Standort (Ortsname unbekannt)'
+      ? place.location
+        ? 'Aktueller Standort (Ortsname unbekannt)'
+        : 'unbekannt (kein Standort mitgeschickt)'
       : [place.label, place.address]
           .map((part) => contextText(part ?? ''))
           .filter(Boolean)
@@ -144,22 +207,89 @@ export function contextBlock(input: { place: AgentPlace; now: Date; timeZone: st
       : []),
     `Umkreis: ${RADIUS_TEXT[place.radius]}`,
     `Lokale Zeit: ${time.text} (${time.zone})`,
+    ...(input.householdTimeZone !== undefined
+      ? [householdDayLine(input.now, input.householdTimeZone)]
+      : []),
+    ...(input.badges && input.badges.length > 0
+      ? [
+          `Hinweise der Person: ${input.badges.map((badge) => AGENT_BADGE_LABELS[badge]).join(', ')} (nur Hinweise – passt die Frage nicht dazu, folge der Frage)`,
+        ]
+      : []),
     '[/KONTEXT]',
   ].join('\n');
 }
 
+function householdDayLine(now: Date, timeZone: string): string {
+  const day = zonedDay(now, timeZone);
+  return `Heute im Haushalt: ${day.text} (${day.zone})`;
+}
+
 // ---------- Requests ----------
 
-export const AgentSendRequestSchema = z.strictObject({
-  action: z.literal('send'),
-  householdId: Uuid,
-  /** Missing: a new chat. */
-  chatId: Uuid.optional(),
-  message: z.string().trim().min(1).max(AGENT_LIMITS.message),
-  place: AgentPlaceSchema,
-  /** The device's IANA zone, for the local time in the context. */
-  timeZone: z.string().trim().min(1).max(64),
-});
+// ---------- Attachments (spec 0067, REQ-005, decision 9) ----------
+
+/** AC-010: what the app says to any file that is neither a photo nor a PDF. */
+export const AGENT_ATTACHMENT_REJECTED = 'Dieses Format geht nicht – Fotos und PDF schon';
+
+/**
+ * What a picked file becomes (AC-010): a photo (turned into a JPEG by the app, HEIC from the
+ * iPhone too) or a PDF; anything else is refused before it is sent.
+ */
+export function attachmentKind(file: { type: string; name: string }): 'image' | 'pdf' | undefined {
+  const type = file.type.toLowerCase();
+  const name = file.name.toLowerCase();
+  if (type.startsWith('image/') || /\.(jpe?g|png|heic|heif|webp|gif)$/.test(name)) return 'image';
+  if (type === 'application/pdf' || name.endsWith('.pdf')) return 'pdf';
+  return undefined;
+}
+
+const base64Of = (prefix: string, max: number) =>
+  z
+    .string()
+    .max(prefix.length + max)
+    .refine(
+      (value) =>
+        value.startsWith(prefix) && /^[A-Za-z0-9+/]+={0,2}$/.test(value.slice(prefix.length)),
+    );
+
+export const AgentAttachmentSchema = z.discriminatedUnion('kind', [
+  z.strictObject({
+    kind: z.literal('image'),
+    dataUrl: base64Of('data:image/jpeg;base64,', AGENT_LIMITS.imageChars),
+  }),
+  z.strictObject({
+    kind: z.literal('pdf'),
+    name: z.string().transform(oneLine).pipe(z.string().min(1).max(120)),
+    dataUrl: base64Of('data:application/pdf;base64,', AGENT_LIMITS.pdfChars),
+  }),
+]);
+export type AgentAttachment = z.infer<typeof AgentAttachmentSchema>;
+
+export const AgentSendRequestSchema = z
+  .strictObject({
+    action: z.literal('send'),
+    householdId: Uuid,
+    /** Missing: a new chat. */
+    chatId: Uuid.optional(),
+    /** Empty only with an attachment (a photo alone is a question too). */
+    message: z.string().trim().max(AGENT_LIMITS.message),
+    place: AgentPlaceSchema,
+    /** The device's IANA zone, for the local time in the context. */
+    timeZone: z.string().trim().min(1).max(64),
+    /** Spec 0067, REQ-004: hints, each once. */
+    badges: z
+      .array(z.enum(AGENT_BADGE_SLUGS))
+      .max(AGENT_LIMITS.badges)
+      .refine((badges) => new Set(badges).size === badges.length)
+      .default([]),
+    attachments: z.array(AgentAttachmentSchema).max(AGENT_LIMITS.attachments).default([]),
+  })
+  .refine((request) => request.message !== '' || request.attachments.length > 0)
+  .refine(
+    (request) =>
+      request.attachments.reduce((sum, attachment) => sum + attachment.dataUrl.length, 0) <=
+      AGENT_LIMITS.attachmentChars,
+  );
 
 export const AgentRequestSchema = z.discriminatedUnion('action', [
   AgentSendRequestSchema,
@@ -525,7 +655,9 @@ export const AgentStepSchema = z.strictObject({
 export type AgentStep = z.infer<typeof AgentStepSchema>;
 
 export function stepLine(step: AgentStep): string {
-  const count = step.count ? `${step.count} ${step.countLabel ?? ''}`.trim() : undefined;
+  // A tool that found nothing says so ("0 von 143"); a search without sources says nothing.
+  const shown = step.count !== undefined && (step.count > 0 || step.kind === 'tool');
+  const count = shown ? `${step.count} ${step.countLabel ?? ''}`.trim() : undefined;
   const parts = [step.label, step.detail, count].filter(Boolean);
   if (parts.length === 1 && step.status === 'running') return `${step.label} …`;
   return parts.join(' · ');
@@ -605,11 +737,13 @@ export function createSseParser(): { push(chunk: string): unknown[] } {
 export const AgentMessageSchema = z.strictObject({
   role: z.enum(['user', 'assistant']),
   text: z.string().max(40_000),
+  /** Spec 0067: photos and files of a user message, counted; their data never comes back. */
+  attachments: z.number().int().min(0).max(AGENT_LIMITS.attachments).optional(),
   cards: z.array(AgentCardSchema).max(AGENT_LIMITS.cards),
   cardsTitle: z.string().max(AGENT_LIMITS.title).optional(),
   followUps: z.array(z.string().max(120)).max(AGENT_LIMITS.followUps),
   sources: z.array(AgentSourceSchema).max(12),
-  steps: z.array(AgentStepSchema).max(10),
+  steps: z.array(AgentStepSchema).max(AGENT_LIMITS.steps),
 });
 export type AgentMessage = z.infer<typeof AgentMessageSchema>;
 
@@ -636,10 +770,17 @@ function emptyAnswer(): AgentMessage {
  * without the context block, the answer's text without citation tokens, its cards with the
  * enrichment of the matching `function_call_output`, its web searches as one step.
  */
-export function messagesFromItems(items: readonly unknown[]): AgentMessage[] {
+export function messagesFromItems(
+  items: readonly unknown[],
+  options: {
+    /** Spec 0067: the step of a household tool call from its arguments and its output. */
+    toolStep?: (name: string, args: string, output: string, id: string) => AgentStep;
+  } = {},
+): AgentMessage[] {
   const messages: AgentMessage[] = [];
   let answer: AgentMessage | undefined;
   const callOf = new Map<string, AgentMessage>();
+  const toolCalls = new Map<string, { message: AgentMessage; name: string; args: string }>();
   const answerNow = () => {
     if (!answer) {
       answer = emptyAnswer();
@@ -652,13 +793,23 @@ export function messagesFromItems(items: readonly unknown[]): AgentMessage[] {
     if (!item) continue;
     const type = str(item.type);
     if (type === 'message' && item.role === 'user') {
-      const text = list(item.content)
-        .map((part) => str(record(part)?.text) ?? '')
+      const parts = list(item.content).map(record);
+      const text = parts
+        .map((part) => (part?.type === 'input_text' ? str(part.text) : undefined) ?? '')
         .filter((part) => part !== '' && !part.startsWith('[KONTEXT]'))
         .join('\n')
         .trim();
-      if (!text) continue;
-      messages.push({ ...emptyAnswer(), role: 'user', text: text.slice(0, AGENT_LIMITS.message) });
+      const attachments = Math.min(
+        AGENT_LIMITS.attachments,
+        parts.filter((part) => part?.type === 'input_image' || part?.type === 'input_file').length,
+      );
+      if (!text && attachments === 0) continue;
+      messages.push({
+        ...emptyAnswer(),
+        role: 'user',
+        text: text.slice(0, AGENT_LIMITS.message),
+        ...(attachments > 0 ? { attachments } : {}),
+      });
       answer = undefined;
     } else if (type === 'message' && item.role === 'assistant') {
       const parts = list(item.content)
@@ -701,10 +852,32 @@ export function messagesFromItems(items: readonly unknown[]): AgentMessage[] {
       if (parsed.title) current.cardsTitle = parsed.title;
       const callId = str(item.call_id);
       if (callId) callOf.set(callId, current);
+    } else if (type === 'function_call' && options.toolStep) {
+      const callId = str(item.call_id);
+      if (callId)
+        toolCalls.set(callId, {
+          message: answerNow(),
+          name: str(item.name) ?? '',
+          args: str(item.arguments) ?? '',
+        });
     } else if (type === 'function_call_output') {
-      const target = callOf.get(str(item.call_id) ?? '');
+      const callId = str(item.call_id) ?? '';
+      const target = callOf.get(callId);
       if (target)
         target.cards = mergeCards(target.cards, parseFunctionOutput(str(item.output) ?? ''));
+      const call = toolCalls.get(callId);
+      if (call && options.toolStep && call.message.steps.length < AGENT_LIMITS.steps) {
+        const step = options.toolStep(
+          call.name,
+          call.args,
+          str(item.output) ?? '',
+          `t${call.message.steps.length + 1}`,
+        );
+        // The web search stays the last row, as it was while the answer streamed.
+        const web = call.message.steps.findIndex((entry) => entry.id === 'web');
+        if (web < 0) call.message.steps.push(step);
+        else call.message.steps.splice(web, 0, step);
+      }
     }
   }
   return messages.filter(

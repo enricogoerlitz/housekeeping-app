@@ -21,6 +21,7 @@ export * from './commands-recurring';
 export * from './commands-places';
 export * from './commands-packing';
 export * from './commands-notices';
+export * from './commands-view';
 export * from './assistant';
 export * from './ai';
 export * from './ai-agent';

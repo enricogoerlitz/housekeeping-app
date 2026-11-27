@@ -190,9 +190,9 @@ jobs:
         # The allowed origin and, since spec 0066, the agent of this run (name, pinned version,
         # project); never a key (decision 8: FOUNDRY_API_KEY and SERPER_API_KEY stay Enrico's).
         env:
-          FOUNDRY_PLACES_AGENT: ${{ steps.foundry.outputs.places_agent_name }}
-          FOUNDRY_PLACES_AGENT_VERSION: ${{ steps.foundry.outputs.places_agent_version }}
-        run: supabase secrets set --remote="$SUPABASE_PROJECT_REF" --yes "ALLOWED_ORIGINS=$PREVIEW_WEB_ORIGIN" "FOUNDRY_PROJECT_ENDPOINT=$FOUNDRY_PROJECT_ENDPOINT" "FOUNDRY_PLACES_AGENT=$FOUNDRY_PLACES_AGENT" "FOUNDRY_PLACES_AGENT_VERSION=$FOUNDRY_PLACES_AGENT_VERSION"
+          FOUNDRY_HOUSEHOLD_AGENT: ${{ steps.foundry.outputs.household_agent_name }}
+          FOUNDRY_HOUSEHOLD_AGENT_VERSION: ${{ steps.foundry.outputs.household_agent_version }}
+        run: supabase secrets set --remote="$SUPABASE_PROJECT_REF" --yes "ALLOWED_ORIGINS=$PREVIEW_WEB_ORIGIN" "FOUNDRY_PROJECT_ENDPOINT=$FOUNDRY_PROJECT_ENDPOINT" "FOUNDRY_HOUSEHOLD_AGENT=$FOUNDRY_HOUSEHOLD_AGENT" "FOUNDRY_HOUSEHOLD_AGENT_VERSION=$FOUNDRY_HOUSEHOLD_AGENT_VERSION"
 
   web-vorschau:
     name: Web Vorschau

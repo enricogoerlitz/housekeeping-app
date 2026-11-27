@@ -136,6 +136,7 @@ type RpcName =
   | 'begin_household_deletion'
   | 'delete_household'
   | 'acknowledge_notices'
+  | 'set_app_view'
   | 'resolve-maps-link'
   | 'fetch-image'
   | 'fetch-video'
@@ -1075,20 +1076,48 @@ export function createFakeServer(): FakeServer {
     ]);
   }
 
+  /** The view of a person (spec 0067): the same in each of her rows, "normal" without one. */
+  function appViewOf(profileId: string): string {
+    for (const tables of data.values()) {
+      const own = Object.values(tables.notification_settings ?? {}).find(
+        (row) => row.member_id === profileId,
+      );
+      if (own?.app_view === 'ai_first') return 'ai_first';
+    }
+    return 'normal';
+  }
+
+  /** private.set_app_view (spec 0067, REQ-001): every own row; `invalid_view`. */
+  function setAppView(userId: string, view: string): void {
+    if (view !== 'normal' && view !== 'ai_first') throw reject('invalid_view');
+    for (const [householdId, tables] of data) {
+      const own = Object.values(tables.notification_settings ?? {}).find(
+        (row) => row.member_id === userId,
+      );
+      if (!own) continue;
+      transaction(householdId, (current) => [
+        withRow(current, 'notification_settings', { ...own, app_view: view }),
+        undefined,
+      ]);
+    }
+  }
+
   /**
    * household_members_create_notification_settings (spec 0013, Decision 3): a new member gets her
-   * row, nothing acknowledged yet (spec 0051); an existing one is kept.
+   * row, nothing acknowledged yet (spec 0051), with her view (spec 0067); an existing one is kept.
    */
   function createNotificationSettings(householdId: string, profileId: string): void {
     const exists = Object.values(data.get(householdId)?.notification_settings ?? {}).some(
       (row) => row.member_id === profileId,
     );
     if (exists) return;
+    const appView = appViewOf(profileId);
     transaction(householdId, (tables) => [
       withRow(tables, 'notification_settings', {
         id: crypto.randomUUID(),
         member_id: profileId,
         acknowledged_notices: [],
+        app_view: appView,
       }),
       undefined,
     ]);
@@ -3645,6 +3674,8 @@ export function createFakeServer(): FakeServer {
 
       acknowledgeNotices: (householdId, keys) =>
         run(userId, 'acknowledge_notices', () => acknowledgeNotices(userId, householdId, keys)),
+
+      setAppView: (view) => run(userId, 'set_app_view', () => setAppView(userId, view)),
 
       resolveMapsLink: (url) =>
         run(userId, 'resolve-maps-link', () => {

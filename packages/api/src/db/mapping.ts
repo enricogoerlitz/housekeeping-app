@@ -601,6 +601,7 @@ const settingsRow = (householdId: string, settings: NotificationSettings) =>
     household_id: householdId,
     member_id: settings.memberId,
     acknowledged_notices: settings.acknowledgedNotices,
+    app_view: settings.appView,
   }));
 
 /** The row of a bag of a packing list as an insert of `apply_changes` takes it. */
@@ -1200,6 +1201,8 @@ function toNotificationSettings(row: Row): NotificationSettings {
     acknowledgedNotices: Array.isArray(r.acknowledged_notices)
       ? r.acknowledged_notices.filter((key): key is string => typeof key === 'string')
       : [],
+    // Spec 0067: anything but "KI zuerst" is the default "Normal".
+    appView: r.app_view === 'ai_first' ? 'ai_first' : 'normal',
   };
 }
 

@@ -3,6 +3,7 @@ import {
   householdTime,
   resolveShoppingStore,
   type Activity,
+  type AppView,
   type ActivityKind,
   type Article,
   type CollectionContent,
@@ -82,6 +83,13 @@ export const usePackingItems = () => useDataSelector((data) => data.packingItems
 export const useAcknowledgedNotices = (): readonly string[] =>
   useDataSelector((data) => data.notificationSettings?.acknowledgedNotices ?? NONE_ACKNOWLEDGED);
 const NONE_ACKNOWLEDGED: readonly string[] = [];
+
+/**
+ * Spec 0067, REQ-001: the signed-in person's view, "normal" until the first pull brought her row;
+ * offline the last one synced (AC-003).
+ */
+export const useAppView = (): AppView =>
+  useDataSelector((data) => data.notificationSettings?.appView ?? 'normal');
 
 export interface PackingList {
   listBags: PackingListBag[];

@@ -17,6 +17,9 @@ export interface Query extends PromiseLike<DbResult> {
   gte(column: string, value: string): Query;
   lte(column: string, value: string): Query;
   limit(count: number): Query;
+  /** Spec 0067: stable pages of the agent's reads. */
+  order(column: string): Query;
+  range(from: number, to: number): Query;
 }
 
 export interface ClaimsResult {

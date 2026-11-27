@@ -1,7 +1,7 @@
 // The Foundry Agents runtime as ai-agent uses it (spec 0066, PoC tmp/ki-chat-poc): conversations,
-// their items, responses of the places agent, all with the resource key (`api-key`). The agent is
-// foundry/agents/places-agent.yaml, deployed per environment by @housekeeping/foundry with Entra
-// (ADR-0019). Answers of Foundry carry the agent's instructions: nothing here is ever handed to
+// their items, responses of the agent, all with the resource key (`api-key`). Since spec 0067 the
+// agent is the one household agent, foundry/agents/household-agent.yaml, deployed per environment
+// by @housekeeping/foundry with Entra (ADR-0019, ADR-0020). Answers of Foundry carry the agent's instructions: nothing here is ever handed to
 // the app as it came.
 import type { Deps } from '../_shared/deps.ts';
 import { HttpError, requireEnv } from '../_shared/errors.ts';
@@ -9,7 +9,7 @@ import { HttpError, requireEnv } from '../_shared/errors.ts';
 export interface AgentConfig {
   base: string;
   apiKey: string;
-  /** places-agent-local, -preview or -prod. */
+  /** household-agent-local, -preview or -prod. */
   agent: string;
   /** Pinned by the pipeline (the version its upsert named); unset locally means the latest. */
   version?: string;
@@ -19,9 +19,9 @@ export function agentConfig(env: Deps['env']): AgentConfig {
   return {
     base: `${requireEnv(env, 'FOUNDRY_PROJECT_ENDPOINT').replace(/\/+$/, '')}/openai/v1`,
     apiKey: requireEnv(env, 'FOUNDRY_API_KEY'),
-    agent: requireEnv(env, 'FOUNDRY_PLACES_AGENT'),
-    ...(env('FOUNDRY_PLACES_AGENT_VERSION')?.trim()
-      ? { version: env('FOUNDRY_PLACES_AGENT_VERSION')?.trim() }
+    agent: requireEnv(env, 'FOUNDRY_HOUSEHOLD_AGENT'),
+    ...(env('FOUNDRY_HOUSEHOLD_AGENT_VERSION')?.trim()
+      ? { version: env('FOUNDRY_HOUSEHOLD_AGENT_VERSION')?.trim() }
       : {}),
   };
 }

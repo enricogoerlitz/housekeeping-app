@@ -38,6 +38,8 @@ function userClient(env: Deps['env'], authorization: string): UserClient {
     gte: (column, value) => wrap(builder.gte(column, value)),
     lte: (column, value) => wrap(builder.lte(column, value)),
     limit: (count) => wrap(builder.limit(count)),
+    order: (column) => wrap(builder.order(column, { ascending: true })),
+    range: (from, to) => wrap(builder.range(from, to)),
     then: (onFulfilled, onRejected) =>
       builder
         .then(({ data, error }): DbResult => ({
