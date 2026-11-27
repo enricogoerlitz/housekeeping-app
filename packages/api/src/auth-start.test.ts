@@ -125,6 +125,18 @@ describe('startAuth', () => {
     });
   });
 
+  it('spec 0066, AC-013: the device stores of the app go with every sign-out, also a forced one', async () => {
+    const auth = await freshAuth();
+    const clearDevice = vi.fn();
+    const controller = auth.startAuth(CONFIG, { cacheStorage: createMemoryStorage(), clearDevice });
+    await settle(() => controller.getState().status === 'signedIn');
+    await settle(() => fake.getUser.mock.calls.length === 1);
+    fake.getUserError = { code: 'user_not_found', message: 'gone' };
+    windowEvents.dispatchEvent(new Event('online'));
+    await settle(() => controller.getState().status === 'signedOut');
+    expect(clearDevice).toHaveBeenCalledTimes(1);
+  });
+
   it('signed out at start: no backend, the login shows', async () => {
     fake.session = null;
     const auth = await freshAuth();

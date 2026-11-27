@@ -1,4 +1,9 @@
-import { decodeRecentPlaces, encodeRecentPlaces, type AgentPlace } from '@housekeeping/core';
+import {
+  decodeRecentPlaces,
+  encodeRecentPlaces,
+  roundCoordinate,
+  type AgentPlace,
+} from '@housekeeping/core';
 import { Platform } from 'react-native';
 
 // Spec 0066, REQ-003/REQ-004: where the KI-Agent looks. The device's location comes from the
@@ -9,13 +14,20 @@ export const NO_LOCATION_HINT = 'Standort nicht verfügbar – wähle einen Ort.
 
 const LOCATION_MS = 10_000;
 
-/** The device location, or undefined without permission, without a fix or within 10 s. */
+/**
+ * The device location rounded to ≈ 100 m (REQ-003: nothing more leaves the device), or undefined
+ * without permission, without a fix or within 10 s.
+ */
 export function deviceLocation(): Promise<{ lat: number; lng: number } | undefined> {
   const geo = typeof navigator === 'undefined' ? undefined : navigator.geolocation;
   if (!geo) return Promise.resolve(undefined);
   return new Promise((resolve) => {
     geo.getCurrentPosition(
-      (position) => resolve({ lat: position.coords.latitude, lng: position.coords.longitude }),
+      (position) =>
+        resolve({
+          lat: roundCoordinate(position.coords.latitude),
+          lng: roundCoordinate(position.coords.longitude),
+        }),
       () => resolve(undefined),
       { enableHighAccuracy: false, timeout: LOCATION_MS, maximumAge: 5 * 60_000 },
     );

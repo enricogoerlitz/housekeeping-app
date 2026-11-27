@@ -452,6 +452,66 @@ describe('ai-agent: send', () => {
     expect(JSON.stringify(vi.mocked(console.error).mock.calls)).not.toContain(SECRET_PROMPT);
   });
 
+  it('AC-007: Serper gets the place rounded to about 100 m, never the exact location', async () => {
+    const { deps, state } = setup();
+    await events(await handler(send({ chatId: CHAT_ID }), deps));
+    const lls = state.calls
+      .filter((call) => call.url.startsWith('https://google.serper.dev/maps'))
+      .flatMap((call) =>
+        (call.body as { ll?: string }).ll ? [(call.body as { ll: string }).ll] : [],
+      );
+    expect(lls.length).toBeGreaterThan(0);
+    for (const ll of lls) expect(ll).toMatch(/^@52\.511,13\.459,/);
+  });
+
+  it('a row that cannot be written deletes the new conversation again', async () => {
+    const { deps, state } = setup({
+      rpc: (fn) =>
+        fn === 'create_ai_chat'
+          ? { data: null, error: { code: 'XX000', message: 'boom' } }
+          : { data: true, error: null },
+    });
+    const response = await handler(send(), deps);
+    expect(response.status).toBe(500);
+    expect(calls(state, 'DELETE', '/conversations/conv_new')).toHaveLength(1);
+    expect(calls(state, 'POST', '/responses')).toHaveLength(0);
+  });
+
+  it('an answer that cannot be recorded is deleted and its run aborted', async () => {
+    let upstream: AbortSignal | undefined;
+    const { deps, state } = setup({
+      state: { responses: { resp_x: { conversation: 'conv_old' } } },
+      rpc: (fn) =>
+        fn === 'record_ai_chat_turn'
+          ? { data: null, error: { code: 'P0001', message: 'chat_not_found' } }
+          : { data: true, error: null },
+    });
+    const fetch = deps.fetch;
+    deps.fetch = (input, init) => {
+      if (String(input).endsWith('/openai/v1/responses') && init?.method === 'POST')
+        upstream = init.signal ?? undefined;
+      return fetch(input, init);
+    };
+    state.stream = () =>
+      new Response(
+        new ReadableStream({
+          start(stream) {
+            stream.enqueue(
+              new TextEncoder().encode(
+                `data: ${JSON.stringify({ type: 'response.created', response: { id: 'resp_x' } })}\n\n`,
+              ),
+            );
+            // Never closes: only the abort ends the upstream run.
+          },
+        }),
+        { headers: { 'content-type': 'text/event-stream' } },
+      );
+    const all = await events(await handler(send({ chatId: CHAT_ID }), deps));
+    expect(all.at(-1)).toEqual({ type: 'error', error: 'ai_unavailable' });
+    expect(calls(state, 'DELETE', '/responses/resp_x')).toHaveLength(1);
+    expect(upstream?.aborted).toBe(true);
+  });
+
   it('a failed response event ends with ai_unavailable', async () => {
     const { deps } = setup({
       state: {

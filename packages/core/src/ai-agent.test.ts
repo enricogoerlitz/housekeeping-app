@@ -137,6 +137,23 @@ describe('request contract', () => {
     ).toBe(false);
     expect(AgentRequestSchema.safeParse({ ...base, instructions: 'x' }).success).toBe(false);
   });
+  it('AC-007: the place arrives rounded to about 100 m, so no exact location reaches Serper', () => {
+    const parsed = AgentRequestSchema.parse({
+      ...base,
+      place: { ...here, location: { lat: 52.510612, lng: 13.459487 } },
+    });
+    expect(parsed.action === 'send' && parsed.place.location).toEqual({ lat: 52.511, lng: 13.459 });
+  });
+  it('control characters in the place label become spaces (the row refuses them)', () => {
+    const parsed = AgentRequestSchema.parse({
+      ...base,
+      place: { ...here, source: 'pinned', label: 'Kreuz\u0001berg\n Graefekiez\u0085' },
+    });
+    expect(parsed.action === 'send' && parsed.place.label).toBe('Kreuz berg Graefekiez');
+    expect(
+      AgentRequestSchema.safeParse({ ...base, place: { ...here, label: '\u0001\u0002' } }).success,
+    ).toBe(false);
+  });
 });
 
 describe('citations', () => {
@@ -161,6 +178,15 @@ describe('citations', () => {
         { type: 'file_citation' },
       ]),
     ).toEqual([{ url: 'https://www.falstaff.com/de/x', host: 'falstaff.com', title: 'NaNum' }]);
+  });
+  it('a host longer than the schema allows is skipped, so the answer still parses', () => {
+    const long = `${'a'.repeat(63)}.${'b'.repeat(63)}.${'c'.repeat(63)}.${'d'.repeat(20)}.de`;
+    const sources = sourcesOf([
+      { type: 'url_citation', url: `https://${long}/x` },
+      { type: 'url_citation', url: 'https://falstaff.com/y' },
+    ]);
+    expect(sources.map((source) => source.host)).toEqual(['falstaff.com']);
+    expect(AgentStreamEventSchema.safeParse({ type: 'sources', sources }).success).toBe(true);
   });
 });
 
@@ -301,6 +327,9 @@ describe('chat title', () => {
     );
     expect(long.length).toBeLessThanOrEqual(AGENT_LIMITS.title);
     expect(long).toBe('Wir suchen ein romantisches, gehobenes Restaurant in Mitte,…');
+  });
+  it('control characters never reach the title (the row refuses them)', () => {
+    expect(chatTitle('Pizza\u0001\u007f in\u0085 Mitte')).toBe('Pizza in Mitte');
   });
 });
 

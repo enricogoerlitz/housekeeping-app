@@ -202,12 +202,12 @@ test('AC-014, AC-016, AC-017, AC-020, AC-021: an answer with steps, cards, sourc
   await expect(page).toHaveURL(new RegExp(`chat=${CHAT}`));
   await expect(tid(page, 'agent-title')).toContainText('Romantisch in Mitte');
 
-  // AC-007: the device location goes with the message; the request has no instructions.
+  // AC-007: the device location goes rounded to ≈ 100 m with the message; no instructions.
   expect(sent[0]).toMatchObject({
     action: 'send',
     householdId: seedIds['hh-demo'],
     message: 'Romantisch in Mitte',
-    place: { source: 'device', location: { lat: 52.510612, lng: 13.459487 }, radius: 'walk' },
+    place: { source: 'device', location: { lat: 52.511, lng: 13.459 }, radius: 'walk' },
   });
 
   // AC-021, AC-023: saved as a restaurant and as an activity through the normal write path.

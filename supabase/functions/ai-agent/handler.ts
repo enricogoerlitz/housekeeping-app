@@ -297,13 +297,20 @@ async function prepareTurn(
     app: 'housekeeping',
   });
   const title = chatTitle(input.message);
+  // Without its row nobody could ever delete the conversation: it goes again (best effort).
   const id = await rpc(client, 'create_ai_chat', {
     household_id: input.householdId,
     conversation_id: conversation,
     title,
     place_label: input.place.label,
+  }).catch(async (error: unknown) => {
+    await foundry.deleteConversation(conversation).catch(() => undefined);
+    throw error;
   });
-  if (typeof id !== 'string') throw new HttpError('internal');
+  if (typeof id !== 'string') {
+    await foundry.deleteConversation(conversation).catch(() => undefined);
+    throw new HttpError('internal');
+  }
   return {
     chat: { id, household_id: input.householdId, conversation_id: conversation, response_ids: [] },
     created: { title },
@@ -356,10 +363,14 @@ async function streamTurn(
       sources,
       onResponse: async (id) => {
         lastResponse = id;
+        // An answer the row does not name could never be deleted (chat deleted meanwhile).
         await rpc(client, 'record_ai_chat_turn', {
           chat_id: chat.id,
           response_id: id,
           title: null,
+        }).catch(async (error: unknown) => {
+          await foundry.deleteResponse(id).catch(() => undefined);
+          throw error;
         });
       },
     });
@@ -455,6 +466,8 @@ async function streamed(
         })
         .finally(() => {
           clearTimeout(timer);
+          // A failure mid-stream must not leave the upstream run going (tokens, web searches).
+          controller.abort();
           try {
             stream.close();
           } catch {

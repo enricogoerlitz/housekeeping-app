@@ -52,20 +52,37 @@ const GeoSchema = z.strictObject({
   lng: z.number().min(-180).max(180),
 });
 
-/** Where the agent looks: the device (AC-007), a chosen place (AC-009/010) or a trip (AC-011). */
-export const AgentPlaceSchema = z.strictObject({
-  source: z.enum(['device', 'pinned', 'trip']),
-  label: z.string().trim().min(1).max(AGENT_LIMITS.placeLabel),
-  address: z.string().trim().max(300).optional(),
-  location: GeoSchema.optional(),
-  radius: z.enum(AGENT_RADII),
-});
-export type AgentPlace = z.infer<typeof AgentPlaceSchema>;
-
-/** About 100 m: what reaches Foundry of a location (spec REQ-003). */
+/** About 100 m: what leaves the device of a location (spec REQ-003). */
 export function roundCoordinate(value: number): number {
   return Math.round(value * 1000) / 1000;
 }
+
+/** C0, DEL and C1 controls: the rows refuse them (`[[:cntrl:]]`), so text loses them first. */
+const CONTROLS = /[\u0000-\u001f\u007f-\u009f]+/g;
+
+/** One line without control characters or repeated whitespace. */
+function oneLine(value: string): string {
+  return value.replace(CONTROLS, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Where the agent looks: the device (AC-007), a chosen place (AC-009/010) or a trip (AC-011). The
+ * coordinates are rounded on parse, so the function never holds more than ≈ 100 m — not for the
+ * context block and not for the Serper enrichment.
+ */
+export const AgentPlaceSchema = z.strictObject({
+  source: z.enum(['device', 'pinned', 'trip']),
+  label: z.string().transform(oneLine).pipe(z.string().min(1).max(AGENT_LIMITS.placeLabel)),
+  address: z.string().trim().max(300).optional(),
+  location: z
+    .strictObject({
+      lat: z.number().min(-90).max(90).transform(roundCoordinate),
+      lng: z.number().min(-180).max(180).transform(roundCoordinate),
+    })
+    .optional(),
+  radius: z.enum(AGENT_RADII),
+});
+export type AgentPlace = z.infer<typeof AgentPlaceSchema>;
 
 /** "Hier · Zu Fuß" for the device, otherwise "<Ort> · <Umkreis>". */
 export function placeChipLabel(place: AgentPlace | undefined): string {
@@ -76,11 +93,7 @@ export function placeChipLabel(place: AgentPlace | undefined): string {
 
 /** Text the person typed goes into one line; brackets cannot open or close a block. */
 function contextText(value: string): string {
-  return value
-    .replace(/[[\]]/g, '')
-    .replace(/[\u0000-\u001f\u007f]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+  return oneLine(value.replace(/[[\]]/g, ''));
 }
 
 const REFERENCE: Record<AgentPlace['source'], string> = {
@@ -469,7 +482,8 @@ export function sourcesOf(annotations: readonly unknown[]): AgentSource[] {
     const host = (/^https:\/\/(?:[^/?#@]*@)?([^/?#:]+)/i.exec(url)?.[1] ?? '')
       .toLowerCase()
       .replace(/^www\./, '');
-    if (seen.has(host)) continue;
+    // A cited page decides its host name: one over the schema's limit would break the answer.
+    if (!host || host.length > 200 || seen.has(host)) continue;
     seen.add(host);
     sources.push({
       url,
@@ -483,7 +497,7 @@ export function sourcesOf(annotations: readonly unknown[]): AgentSource[] {
 
 /** "Brunch mit Kinderwagen": the first message in one line, at most 60 characters (AC-024). */
 export function chatTitle(message: string): string {
-  const line = message.replace(/\s+/g, ' ').trim();
+  const line = oneLine(message);
   if (line.length <= AGENT_LIMITS.title) return line;
   const cut = line.slice(0, AGENT_LIMITS.title - 1);
   // The cut ends a word when the next character is a space; otherwise back to the last space.
