@@ -161,7 +161,9 @@ describe('createRecipeFromPage (spec 0040, AC-001)', () => {
     const recipe = newRecipe({
       id: '0b6f4f39-4a27-4cb2-9c1f-0c8f6b0e0a01',
       kind: 'recipe',
-      title: 'Apfelkuchen',
+      // Like "Neu → Mit KI ausfüllen": the new recipe is made with the draft's title; the empty
+      // fields are filled and its portions follow the draft (no ingredients yet, spec 0049 AC-046).
+      title: 'Apfelkuchen mit Streuseln',
       servings: 2,
       createdAt: '2026-11-26T10:00:00Z',
     });
