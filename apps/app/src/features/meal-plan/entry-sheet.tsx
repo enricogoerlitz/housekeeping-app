@@ -28,6 +28,7 @@ import {
   moveBounds,
   offersReminder,
   planEntryCalendarEvent,
+  calendarSlotIndex,
   planEntryPhoto,
   reminderAfterStart,
   startOfWeek,
@@ -633,6 +634,7 @@ export function EntrySheet(props: {
               entry: { ...entry, startsAt },
               title,
               slotName: household.mealSlots.find((slot) => slot.id === entry.slotId)?.name ?? '',
+              slotIndex: calendarSlotIndex(household.mealSlots, entry.slotId),
               location: restaurant?.address ?? activity?.address ?? activity?.placeName,
               link: appLink({ screen: 'calendar', day: entry.date, entryId: entry.id }),
             })}

@@ -18,6 +18,7 @@ import {
   monthPickerStart,
   peopleLabel,
   planEntryCalendarEvent,
+  calendarSlotIndex,
   reminderTextCounter,
   repeatRule,
   SERIES_REMINDER_DAY_OPTIONS,
@@ -286,6 +287,7 @@ export function SeriesOccurrenceSheet(props: { seriesId: Id; on: ISODate; onClos
                 entry: termin,
                 title: name,
                 slotName,
+                slotIndex: calendarSlotIndex(household.mealSlots, slotId),
                 location: activity?.address ?? activity?.placeName,
                 link: appLink({ screen: 'calendar', day: date }),
               })}

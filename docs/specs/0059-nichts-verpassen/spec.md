@@ -41,8 +41,11 @@ Offline: offline vollständig (die Datei entsteht aus dem lokalen Speicher).
   erzeuge · Dann enthält sie `DTSTART;TZID=Europe/Berlin:20261128T193000`,
   `DTEND;TZID=Europe/Berlin:20261128T213000`, `SUMMARY:Pizzeria Roma`, einen `VTIMEZONE` für
   Europe/Berlin und Zeilenenden CRLF
-- AC-002: Angenommen „Lasagne“ steht am Mo 30.11. ohne Uhrzeit im Plan · Wenn ich die Datei erzeuge
-  · Dann ist der Termin ganztägig: `DTSTART;VALUE=DATE:20261130` und `DTEND;VALUE=DATE:20261201`
+- AC-002: Angenommen „Lasagne“ steht am Mo 30.11. ohne Uhrzeit am „Abend“ (3. Tageszeit) im Plan ·
+  Wenn ich die Datei erzeuge · Dann beginnt der Termin um 17:00 und dauert eine Stunde
+  (`DTSTART;TZID=Europe/Berlin:20261130T170000`); die 1. Tageszeit beginnt um 09:00, die 2. um 13:00,
+  jede weitere 4 Stunden später, nie nach 22:00; ohne bekannte Tageszeit bleibt er ganztägig
+  (geändert auf Enricos Wunsch, 27.11.2026: „ganztägig ist bissl Quatsch“)
 - AC-003: Angenommen die Reise „Ostsee“ dauert vom 18. bis 20.12. · Wenn ich die Datei erzeuge ·
   Dann ist sie ganztägig von `20261218` bis `DTEND;VALUE=DATE:20261221`
 - AC-004: Angenommen der Eintrag hat die Erinnerung „1 Tag vorher um 18:00“ mit Text „Tisch
@@ -172,6 +175,17 @@ vollständig. Kein Schema.
     bis zur Aktualisierung der PWA beim nächsten Start.
 11. `restore_activity` übernimmt die neuen Spalten der Serien, sonst verlöre „Rückgängig“ nach
     „Aktivität löschen“ die Erinnerung; `restore_chore` nimmt ohnehin die ganze Zeile.
+12. **Uhrzeit nach Tageszeit (Enrico, 27.11.2026):** Ein Eintrag ohne eigene Uhrzeit bekommt die
+    Startzeit seiner Tageszeit nach ihrer Reihenfolge im Haushalt (09:00, 13:00, 17:00, dann +4 h,
+    höchstens 22:00) und dauert eine Stunde, damit er im Kalender am richtigen Platz steht. Restaurants
+    und Aktivitäten mit Uhrzeit behalten ihre Zeit und zwei Stunden.
+13. **Später (Enrico, 27.11.2026, zurückgestellt):** Nadja nutzt Proton statt Google. Proton
+    importiert .ics zuverlässig nur über die Web-Version; ob die Android-App eine Datei direkt
+    öffnet, ist ungeprüft. Der saubere Weg wäre ein **Kalender-Abo je Person** (geheimer iCal-Link,
+    den Proton, Apple und Google abonnieren). Das kostet kein Geld (wenige Abrufe am Tag), ist aber
+    ein kritischer Pfad (Zugang über Token ohne Google-Anmeldung → ADR, Security-Check, „Link neu
+    erzeugen“), Aufwand M. Termine per Mail-Einladung verworfen (Mailversand wäre neue
+    Infrastruktur). Zuerst mit Nadja prüfen, ob der .ics-Import auf ihrem Android reicht.
 
 ## Daten
 

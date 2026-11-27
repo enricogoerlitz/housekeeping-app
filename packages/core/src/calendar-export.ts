@@ -27,6 +27,29 @@ export interface CalendarEvent {
 
 /** Decision 6. */
 const PLACE_MINUTES = 120;
+/**
+ * An entry without its own time starts at its Tageszeit (Enrico, 27.11.2026): the first at 09:00,
+ * each next one 4 hours later (13:00, 17:00, …), never after 22:00; it lasts one hour.
+ */
+const SLOT_FIRST_HOUR = 9;
+const SLOT_STEP_HOURS = 4;
+const SLOT_LAST_HOUR = 22;
+const SLOT_MINUTES = 60;
+
+/** Position of a Tageszeit in the household's order (by `sort`); undefined when unknown. */
+export function calendarSlotIndex(
+  slots: readonly { id: string; sort: number }[],
+  slotId: string | null | undefined,
+): number | undefined {
+  const index = [...slots].sort((a, b) => a.sort - b.sort).findIndex((slot) => slot.id === slotId);
+  return index < 0 ? undefined : index;
+}
+
+/** The start of the Tageszeit at `slotIndex` (its position in the household's order). */
+export function calendarSlotTime(slotIndex: number): TimeOfDay {
+  const hour = Math.min(SLOT_FIRST_HOUR + Math.max(0, slotIndex) * SLOT_STEP_HOURS, SLOT_LAST_HOUR);
+  return `${String(hour).padStart(2, '0')}:00` as TimeOfDay;
+}
 const CHORE_MINUTES = 30;
 /** Decision 7: the Vorwarnung of a chore rings at this time. */
 const NOTICE_AT: TimeOfDay = '09:00';
@@ -60,13 +83,17 @@ const BERLIN_VTIMEZONE = [
 
 /**
  * A plan entry with a day (also a Termin of a series): restaurants and activities with a time
- * last two hours, everything else is all-day; its reminder becomes the alarm (AC-001 to AC-004).
+ * last two hours; every other entry starts at its Tageszeit (`slotIndex`, see calendarSlotTime) and
+ * lasts one hour; without a known Tageszeit it is all-day. Its reminder becomes the alarm (AC-001
+ * to AC-004).
  * Throws for an entry without a day (AC-007: the window does not offer it).
  */
 export function planEntryCalendarEvent(input: {
   entry: MealPlanEntry;
   title: string;
   slotName: string;
+  /** Position of the entry's Tageszeit in the household's order; undefined = unknown. */
+  slotIndex?: number;
   location?: string;
   link?: string;
 }): CalendarEvent {
@@ -74,13 +101,20 @@ export function planEntryCalendarEvent(input: {
   const date = entry.date;
   if (date === null) throw new Error('Ein vorgemerkter Eintrag hat keinen Termin.');
   const placed = entry.kind === 'restaurant' || entry.kind === 'activity';
-  const time = placed ? entry.startsAt : undefined;
+  const own = placed ? entry.startsAt : undefined;
+  const slot =
+    own === undefined && input.slotIndex !== undefined
+      ? calendarSlotTime(input.slotIndex)
+      : undefined;
+  const time = own ?? slot;
   const { reminder } = entry;
   return {
     uid: entry.id,
     title: input.title,
     date,
-    ...(time === undefined ? {} : { time, minutes: PLACE_MINUTES }),
+    ...(time === undefined
+      ? {}
+      : { time, minutes: own === undefined ? SLOT_MINUTES : PLACE_MINUTES }),
     location: input.location,
     description: input.slotName || undefined,
     url: input.link,
