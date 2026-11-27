@@ -775,6 +775,8 @@ eine [Mitteilung](#mitteilung) an der Glocke (Spec 0051).
 
 - **Im Code:** Spalten `reminder_day_offset`, `reminder_at`, `reminder_text` an `meal_plan_entries`;
   core `reminder.ts`; als Mitteilung Art `entryReminder`
+- **An Serien (Spec 0059):** „Erinnern“ in „Serie bearbeiten“ gilt für jeden Termin der Serie (am
+  Tag, 1, 3 oder 7 Tage vorher); dieselben Spalten an `activity_series`, `ActivitySeries.reminder`
 - **Abgrenzung:** Eine eigene _Reservierungs-Erinnerung_ („Erinnern 2 h vorher“, Spec 0013) gibt es
   seit Spec 0021 nicht mehr; sie geht in diese Erinnerung auf (Uhrzeit am Eintrag setzen schaltet sie
   ein, 2 Stunden vorher).
@@ -998,13 +1000,35 @@ und Packstücke sofort beim Tipp (Spec 0006; Spec 0012, Offene Frage 3), Aufgabe
 
 Was für die angemeldete Person gerade ansteht, an der Glocke oben gezählt (roter Kreis mit Zahl,
 ab 10 „9+“) und im Fenster „Mitteilungen“ gelistet (Spec 0051): fällige Erinnerungen an Einträgen,
-Aufgaben mit Uhrzeit ab der Uhrzeit für wer dran ist, heutiger Vorlauf, „Du kochst“ heute und
-Aktivitäten ab 19 Uhr am Vortag. Entsteht auf dem Gerät aus dem lokalen Speicher; während einer
-eigenen Reise gibt es keine. Ein Tipp öffnet den Eintrag oder die Aufgabe.
+Aufgaben mit Uhrzeit ab der Uhrzeit für wer dran ist, heutiger Vorlauf, „Du kochst“ heute,
+Aktivitäten ab 19 Uhr am Vortag, die [Vorwarnung](#vorwarnung) an Aufgaben und am Vorabend einer
+Reise ab 18 Uhr „Morgen geht's los · 12 von 30 gepackt“ (Spec 0059). Entsteht auf dem Gerät aus dem
+lokalen Speicher; während einer eigenen Reise gibt es keine. Ein Tipp öffnet den Eintrag, die
+Aufgabe oder die Reise.
 
 - **Im Code:** `Notice`, `dueNotices` (core `notices.ts`), Arten `NoticeKind`; Glocke `NoticeBell`
   (`features/notices`), Zähler `WithBadge`
 - **Nicht verwenden:** Benachrichtigung, Push, Notification (in der Oberfläche)
+
+### Vorwarnung
+
+Wie viele Tage vor dem Termin einer Aufgabe sie schon in der Glocke steht („Keine“, „3 Tage“,
+„1 Woche“, „2 Wochen“, „1 Monat“), z. B. „Handyvertrag kündigen · fällig in 18 Tagen“; nur bei
+festem Termin (nicht „Flexibel“, nicht „Bei Bedarf“), bis einschließlich des Termins (Spec 0059).
+
+- **Im Code:** `chores.notice_days_before`, `Chore.noticeDaysBefore`; Mitteilungsart `deadline`
+- **Abgrenzung:** Nicht der [Vorlauf](#vorlauf) eines Rezepts und nicht die
+  [Erinnerung](#erinnerung) an einem Planeintrag.
+- **Nicht verwenden:** Frist (als Feldname), Deadline (in der Oberfläche)
+
+### In meinen Kalender
+
+Ein Termin der App (Planeintrag mit Tag, Termin einer Serie, Reise, Aufgabe mit Termin) als Kopie
+im eigenen Kalender: „Als Datei (.ics)“ für iPhone, Mac und Outlook oder „In Google Kalender“ als
+Link (Spec 0059). Änderungen in der App kommen nicht mit; ein Abo gibt es nicht.
+
+- **Im Code:** core `calendar-export.ts` (`toICalendar`, `googleCalendarUrl`), App `AddToCalendar`
+- **Nicht verwenden:** Export, Sync, Abo, Kalender-Feed
 
 ### Bestätigen (Mitteilung)
 

@@ -37,6 +37,8 @@ const KIND_ICON: Record<NoticeKind, IconName> = {
   prep: 'clock',
   cook: 'chef-hat',
   activity: 'calendar-days',
+  deadline: 'timer',
+  packing: 'luggage',
 };
 
 /** The bell in a header or the sidebar; a tap opens "Mitteilungen". */

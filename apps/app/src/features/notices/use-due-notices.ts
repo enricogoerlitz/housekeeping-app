@@ -5,11 +5,13 @@ import {
   useCurrentMemberId,
   useHousehold,
   useHouseholdClock,
+  usePackingItems,
+  usePackingListBags,
   useRecipeBook,
   useRestaurants,
   useToday,
 } from '@housekeeping/api';
-import { addDays, dueNotices, type Notice } from '@housekeeping/core';
+import { addDays, dueNotices, SERIES_NOTICE_DAYS, type Notice } from '@housekeeping/core';
 import { useEffect, useMemo, useState } from 'react';
 
 import { useChoreAway } from '@/features/chores/use-chore-away';
@@ -37,14 +39,18 @@ export function useDueNotices(): Notice[] {
   const today = useToday();
   const clock = useHouseholdClock();
   const household = useHousehold();
-  // Yesterday to tomorrow covers every kind: today's items and the activities of tomorrow.
-  const entries = usePlanEntriesWithSeries(addDays(today, -1), addDays(today, 1));
+  // Yesterday on covers today's items and the activities of tomorrow; the Termine of the series
+  // reach 30 days ahead for their "Erinnern" (spec 0059, Decision 2).
+  const entries = usePlanEntriesWithSeries(addDays(today, -1), addDays(today, SERIES_NOTICE_DAYS));
   const chores = useChores();
   const book = useRecipeBook();
   const restaurants = useRestaurants();
   const activities = useActivities();
   const away = useChoreAway();
   const acknowledged = useAcknowledgedNotices();
+  const listBags = usePackingListBags();
+  const items = usePackingItems();
+  const packing = useMemo(() => ({ listBags, items }), [listBags, items]);
   const now = useMinuteClock(clock);
   const restaurantsById = useMemo(
     () => Object.fromEntries(restaurants.map((restaurant) => [restaurant.id, restaurant])),
@@ -68,6 +74,7 @@ export function useDueNotices(): Notice[] {
         activitiesById,
         away,
         acknowledged,
+        packing,
       }),
     [
       me,
@@ -81,6 +88,7 @@ export function useDueNotices(): Notice[] {
       activitiesById,
       away,
       acknowledged,
+      packing,
     ],
   );
 }

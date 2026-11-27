@@ -15,6 +15,7 @@ import {
   stripeOf,
   tripDeleteDialog,
   tripHeader,
+  tripCalendarEvent,
   tripPreview,
   validateTripDraft,
   type Id,
@@ -37,6 +38,7 @@ import {
 import { useState } from 'react';
 import { View } from 'react-native';
 
+import { AddToCalendar, appLink } from '@/features/calendar/add-to-calendar';
 import { FAILED, messageOf } from '@/features/packing/packing-labels';
 import { TripAddBagSheet } from '@/features/packing/trip-add-bag-sheet';
 import { confirmFirst, ConfirmDialog } from '@/features/shell/confirm-dialog';
@@ -303,6 +305,15 @@ function TripWindow(props: { tripId: Id; onClose: () => void }) {
             {preview.duration}
           </Text>
         </Stack>
+
+        <AddToCalendar
+          event={tripCalendarEvent({
+            trip,
+            title: head.title,
+            link: appLink({ screen: 'trip', tripId: trip.id }),
+          })}
+          testID="trip-calendar"
+        />
 
         {sections.length > 0 ? (
           <Stack gap={8}>
