@@ -1,9 +1,14 @@
+import type { Page } from '@playwright/test';
+
 import {
+  accessToken,
   contentReady,
   expect,
   freshSeed,
   goOffline,
   open,
+  rpc,
+  supabaseFetch,
   test,
   tid,
   toastMessage,
@@ -22,6 +27,47 @@ freshSeed();
 const LASAGNE = seedIds['plan-2'];
 const EISLAUFEN = seedIds['plan-eislaufen-1'];
 const ENZO = seedIds['plan-enzo-2'];
+const HOUSEHOLD = seedIds['hh-demo'];
+const SYNC = { timeout: 30_000 };
+
+/** Nadja changes the entry on her device (through the same write path as the app). */
+async function nadjaChanges(entryId: string, changes: Record<string, unknown>): Promise<void> {
+  await rpc(await accessToken('nadja'), 'apply_changes', {
+    p_household_id: HOUSEHOLD,
+    p_ops: [{ kind: 'patch', table: 'meal_plan_entries', id: entryId, changes }],
+  });
+}
+
+/** The entry as the server has it. */
+async function serverEntry(entryId: string): Promise<{ portions: number; note: string | null }> {
+  const response = await supabaseFetch(
+    `/rest/v1/meal_plan_entries?select=portions,note&id=eq.${entryId}`,
+    { token: await accessToken('enrico') },
+  );
+  const [row] = (await response.json()) as { portions: number; note: string | null }[];
+  if (!row) throw new Error(`entry ${entryId} not found`);
+  return row;
+}
+
+/** Whether the device's local cache holds the text (the delta sync has brought it). */
+async function cacheHolds(page: Page, text: string): Promise<boolean> {
+  return page.evaluate(
+    (wanted) =>
+      new Promise<boolean>((resolve) => {
+        const request = indexedDB.open('housekeeping');
+        request.onsuccess = () => {
+          const db = request.result;
+          const all = db.transaction('cache').objectStore('cache').getAll();
+          all.onsuccess = () => {
+            db.close();
+            resolve(JSON.stringify(all.result).includes(wanted));
+          };
+        };
+        request.onerror = () => resolve(false);
+      }),
+    text,
+  );
+}
 
 test('AC-015, AC-018: a person more is a portion more, "−" stops at 1', async ({ page }) => {
   await open(page, `/kalender?eintrag=${LASAGNE}`);
@@ -37,6 +83,35 @@ test('AC-015, AC-018: a person more is a portion more, "−" stops at 1', async 
   await contentReady(page);
   await open(page, `/kalender?eintrag=${LASAGNE}`);
   await expect(tid(page, 'entry-portions-value')).toHaveText(String(before + 1));
+});
+
+test('AC-049: closing a window with a stale draft keeps what Nadja changed meanwhile', async ({
+  page,
+}) => {
+  await open(page, `/kalender?eintrag=${LASAGNE}`);
+  await expect(tid(page, 'entry-sheet')).toBeVisible();
+  const before = Number(await tid(page, 'entry-portions-value').textContent());
+
+  // The window shows the state from opening; Nadja's change arrives by the delta sync.
+  await nadjaChanges(LASAGNE, { portions: before + 2, note: 'von Nadja' });
+  await expect.poll(() => cacheHolds(page, 'von Nadja'), SYNC).toBe(true);
+  await expect(tid(page, 'entry-portions-value')).toHaveText(String(before));
+  await tid(page, 'entry-done').click();
+  await expect(tid(page, 'entry-sheet')).toBeHidden();
+  await open(page, `/kalender?eintrag=${LASAGNE}`);
+  await expect(tid(page, 'entry-portions-value')).toHaveText(String(before + 2));
+  await expect(tid(page, 'entry-note-input')).toHaveValue('von Nadja');
+  expect(await serverEntry(LASAGNE)).toEqual({ portions: before + 2, note: 'von Nadja' });
+
+  // Only the changed field goes: one portion more, Nadja's newer Zusatz stays.
+  await nadjaChanges(LASAGNE, { note: 'wieder von Nadja' });
+  await expect.poll(() => cacheHolds(page, 'wieder von Nadja'), SYNC).toBe(true);
+  await tid(page, 'entry-portions-plus').click();
+  await tid(page, 'entry-done').click();
+  await expect(tid(page, 'entry-sheet')).toBeHidden();
+  await expect
+    .poll(() => serverEntry(LASAGNE), SYNC)
+    .toEqual({ portions: before + 3, note: 'wieder von Nadja' });
 });
 
 test('AC-023, AC-025: the Zusatz is saved by ✕ and stands behind the name', async ({ page }) => {
