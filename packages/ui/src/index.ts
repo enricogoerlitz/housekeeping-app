@@ -77,7 +77,7 @@ export { FilterBar, FilterSection } from './filter-bar';
 export { FieldClearButton } from './field-clear';
 export { InfoHint } from './info-hint';
 export { createRequestSlot } from './request-slot';
-export { PhotoViewer } from './photo-viewer';
+export { PhotoViewer, ViewerPhoto } from './photo-viewer';
 export { MediaGallery } from './media-gallery';
 export { InfiniteList } from './infinite-list';
 export { ListDetail } from './list-detail';

@@ -59,6 +59,7 @@ export * from './prep';
 export * from './collections';
 export * from './collection-editor';
 export * from './page-editor';
+export * from './page-draft-backup';
 export * from './cooking';
 export * from './cooking-history';
 export * from './notifications';

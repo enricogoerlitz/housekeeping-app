@@ -1,5 +1,5 @@
 import { Image, type ImageSource } from 'expo-image';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Modal, PanResponder, View } from 'react-native';
 import Animated, {
   useAnimatedStyle,
@@ -11,6 +11,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { IconButton } from './controls';
 import { PhotoCollage } from './display';
+import { MediaGallery } from './media-gallery';
 import { closesViewer, viewerDrag } from './photo-viewer-gesture';
 import { ThemeProvider, useTheme } from './theme-context';
 import { getTheme } from './themes';
@@ -23,8 +24,41 @@ export interface PhotoViewerProps {
   /** Accessible name of ✕, e.g. "Schließen". */
   closeLabel: string;
   onClose: () => void;
-  /** Parts get `${testID}-close`. */
+  /**
+   * Pages to swipe through instead of `sources` (spec 0056, REQ-003): a recipe's photo and its
+   * videos, in the order of its gallery. The photo page is a `ViewerPhoto`.
+   */
+  pages?: {
+    content: readonly ReactNode[];
+    /** The page it opens on. */
+    initialIndex?: number;
+    /** Accessible names from the feature: the arrows and "2 von 3". */
+    labels: { previous: string; next: string; position: (page: number, count: number) => string };
+    onIndexChange?: (index: number) => void;
+  };
+  /** Parts get `${testID}-close`, the pages `${testID}-pages`. */
   testID?: string;
+}
+
+/** A photo (several: their collage) filling the viewer; never takes the drag itself. */
+export function ViewerPhoto(props: { sources: readonly (ImageSource | number)[]; alt?: string }) {
+  const [only] = props.sources;
+  return (
+    // On the web an image would be dragged instead of the viewer.
+    <View pointerEvents="none" style={{ flex: 1, justifyContent: 'center' }}>
+      {props.sources.length > 1 ? (
+        <PhotoCollage sources={props.sources} aspectRatio={4 / 3} radius={0} alt={props.alt} />
+      ) : only !== undefined ? (
+        <Image
+          source={only}
+          contentFit="contain"
+          accessibilityLabel={props.alt}
+          accessible={!!props.alt}
+          style={{ width: '100%', height: '100%' }}
+        />
+      ) : null}
+    </View>
+  );
 }
 
 const SPRING_BACK = { damping: 22, stiffness: 260 };
@@ -38,6 +72,8 @@ const LEAVE_MS = 160;
  * A photo on the whole screen (spec 0036, REQ-009): ✕, Escape (onRequestClose) or a swipe down
  * close it; the photo follows the finger and springs back when the swipe was too short. It always
  * stands in the dark mode of the theme: a near-black stage and a light ✕, also in light mode.
+ * With `pages` it swipes sideways through them like the gallery does (spec 0056, REQ-003): dots,
+ * with a mouse arrows at the sides, ← and →.
  */
 export function PhotoViewer(props: PhotoViewerProps) {
   const { id } = useTheme();
@@ -71,7 +107,6 @@ export function PhotoViewer(props: PhotoViewerProps) {
     transform: [{ translateY: offset.get() }],
     opacity: 1 - Math.min(0.6, Math.max(0, offset.get()) / (height.get() || 1)),
   }));
-  const [only] = props.sources;
   return (
     <Modal visible transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
       <ThemeProvider themeId={id} mode="dark">
@@ -93,25 +128,19 @@ export function PhotoViewer(props: PhotoViewerProps) {
               photoStyle,
             ]}
           >
-            {/* The picture never takes the drag itself (on the web an image would be dragged). */}
-            <View pointerEvents="none" style={{ flex: 1, justifyContent: 'center' }}>
-              {props.sources.length > 1 ? (
-                <PhotoCollage
-                  sources={props.sources}
-                  aspectRatio={4 / 3}
-                  radius={0}
-                  alt={props.alt}
-                />
-              ) : only !== undefined ? (
-                <Image
-                  source={only}
-                  contentFit="contain"
-                  accessibilityLabel={props.alt}
-                  accessible={!!props.alt}
-                  style={{ width: '100%', height: '100%' }}
-                />
-              ) : null}
-            </View>
+            {props.pages ? (
+              <MediaGallery
+                labels={props.pages.labels}
+                initialIndex={props.pages.initialIndex}
+                onIndexChange={props.pages.onIndexChange}
+                autoFocus
+                testID={props.testID ? `${props.testID}-pages` : undefined}
+              >
+                {props.pages.content}
+              </MediaGallery>
+            ) : (
+              <ViewerPhoto sources={props.sources} alt={props.alt} />
+            )}
           </Animated.View>
           <View style={{ position: 'absolute', top: insets.top + 8, right: insets.right + 8 }}>
             <IconButton

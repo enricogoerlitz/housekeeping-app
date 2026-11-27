@@ -172,7 +172,8 @@ Schritte. Offline: offline vollständig.
 - AC-029: Angenommen der Browser kennt kein Web Audio oder keine Vibration · Dann läuft der
   Kochmodus ohne Fehler weiter, und der Timer zeigt „Timer abgelaufen“
 
-**REQ-008 — „Fertig“ trägt „heute gekocht“ ein.** Tippe ich im Kochmodus „Fertig“ und zählt heute
+**REQ-008 — „Fertig“ trägt „heute gekocht“ ein.** Tippe ich im Kochmodus auf dem letzten Schritt
+„Fertig“ und zählt heute
 kein Planeintrag als gekocht für dieses Rezept (Regel von „Zuletzt gekocht“, `cookingHistory`), fragt
 ein kleines Fenster „Heute gekocht eintragen?“ mit „Eintragen“ und „Nicht eintragen“. „Eintragen“
 legt für heute einen Eintrag an (Tageszeit wie „Einplanen“: die letzte, bei Frühstück die erste;
@@ -192,8 +193,8 @@ bisher. Offline: nur online (offline fragt „Fertig“ nicht und verlässt den 
   angelegt und der Kochmodus zu; tippe ich Escape, bin ich weiter im Kochmodus
 - AC-034: Angenommen offline · Wenn ich „Fertig“ tippe · Dann gibt es keine Frage, und der
   Kochmodus schließt
-- AC-035: Angenommen das Rezept wurde zwischendurch gelöscht · Wenn ich „Eintragen“ tippe · Dann
-  sagt das Fenster „Das Rezept gibt es nicht mehr“, und nichts ist eingetragen
+- AC-035: Angenommen das Rezept wurde auf einem anderen Gerät gelöscht · Wenn ich „Eintragen“ tippe
+  · Dann ist nichts eingetragen, und die App sagt „Das Rezept gibt es nicht mehr“ (Spec 0008, E6)
 
 ## Entscheidungen
 
@@ -230,6 +231,15 @@ bisher. Offline: nur online (offline fragt „Fertig“ nicht und verlässt den 
 9. Der Eintrag nach „Fertig“ nutzt `defaultPlanChoice` (heute, letzte Tageszeit bzw. erste bei
    Frühstück, alle zu Hause) und `addPlanEntry`; ob heute schon etwas zählt, entscheidet dieselbe
    Regel wie „Zuletzt gekocht“ (`cookingHistory`), damit beide nie auseinanderlaufen.
+10. Bau 27.11.: Gefragt wird nur beim „Fertig“ unten auf dem letzten Schritt. Das „Fertig“ oben
+    (Hinweis „Kochmodus beenden“) bleibt der Ausgang ohne Frage: wer mittendrin geht, hat meist
+    nicht fertig gekocht.
+11. Bau 27.11.: Die Vollbild-Seiten nehmen nur mit Maus den Tastaturfokus (← →); am Touch-Gerät
+    zeigte der Fokus einen Rahmen um das Bild. Eine Video-Seite, die aus ihrer Kachel geöffnet
+    wurde, spielt sofort; wischt man weg und zurück, steht wieder der Abspielknopf da.
+12. Bau 27.11.: Im Fenster „Neue Zutat“ des Lesemodus heißt es „Wird mit „Übernehmen“ neu
+    angelegt“ statt „… mit „Fertig“ …“, weil dort gleich gespeichert wird. Die Entwurfssicherung
+    gilt auch für Sammlungen (gleicher Bearbeitungsmodus).
 
 ## Daten
 
@@ -240,20 +250,31 @@ bei Speichern, Verwerfen und Abmelden. Keine Schema-Änderung.
 
 ## Umsetzung
 
-- [ ] 1. `core`: Aufteilen neuer Zutatenzeilen in speicherbar/orange für den Lesemodus (AC-007,
+- [x] 1. `core`: Aufteilen neuer Zutatenzeilen in speicherbar/orange für den Lesemodus (AC-007,
       AC-008), rot → grün
-- [ ] 2. `core`: Entwurfssicherung lesen/schreiben/benennen mit Zod-Prüfung (AC-019, AC-024), rot →
+- [x] 2. `core`: Entwurfssicherung lesen/schreiben/benennen mit Zod-Prüfung (AC-019, AC-024), rot →
       grün
-- [ ] 3. `core`: Timer, die klingeln sollen (AC-026–AC-028); „zählt heute als gekocht“
+- [x] 3. `core`: Timer, die klingeln sollen (AC-026–AC-028); „zählt heute als gekocht“
       (AC-030–AC-032), rot → grün
-- [ ] 4. `ui`: `MediaGallery`/`PhotoViewer` mit Seiten, Startseite, Pfeilen und Tasten (AC-010–AC-015),
+- [x] 4. `ui`: `MediaGallery`/`PhotoViewer` mit Seiten, Startseite, Pfeilen und Tasten (AC-010–AC-015),
       rot → grün
-- [ ] 5. App: Lesemodus speichert direkt, „Mehrere einfügen“ (AC-001–AC-009)
-- [ ] 6. App: Vollbild-Blätterer der Rezeptgalerie mit Video-Seiten (AC-010–AC-015)
-- [ ] 7. App: Aktionen nach oben, kompakt ohne Foto (AC-016–AC-018)
-- [ ] 8. App: Entwurf sichern und anbieten, Abmelden löscht ihn (AC-019–AC-025)
-- [ ] 9. App: Timer-Ton und Vibration, „Fertig“-Fenster (AC-026–AC-035)
-- [ ] 10. e2e `e2e/rundgang-rezeptseite-0056.spec.ts` (läuft beim Koordinator); bestehende e2e zu
-      Spec 0037 AC-002 / 0047 AC-011 angepasst
-- [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün; Screenshots Desktop
+- [x] 5. App: Lesemodus speichert direkt, „Mehrere einfügen“ (AC-001–AC-009)
+- [x] 6. App: Vollbild-Blätterer der Rezeptgalerie mit Video-Seiten (AC-010–AC-015)
+- [x] 7. App: Aktionen nach oben, kompakt ohne Foto (AC-016–AC-018)
+- [x] 8. App: Entwurf sichern und anbieten, Abmelden löscht ihn (AC-019–AC-025)
+- [x] 9. App: Timer-Ton und Vibration, „Fertig“-Fenster (AC-026–AC-035)
+- [x] 10. e2e `e2e/rundgang-rezeptseite-0056.spec.ts` (läuft beim Koordinator); bestehende e2e
+      nutzen den Lesemodus-Weg von Spec 0037 AC-002 / 0047 AC-011 nicht
+- [x] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün; Screenshots Desktop
       1440 × 900 und Handy 390 × 844 in `tmp/review-0004/0056/`
+
+**Nachweis (27.11.2026):** Die neuen Tests in `core` (`page-editor`, `page-draft-backup`,
+`cooking-timers`, `cooking-history`) und `ui` (`photo-viewer`) liefen zuerst rot (Funktionen bzw.
+Seiten fehlten), dann grün. `pnpm format:check && pnpm check && pnpm build:web` grün. Am eigenen
+Dev-Server durchgeklickt (Handy 390 × 844, Desktop 1440 × 900): „+ Link“ speichert und bleibt im
+Lesemodus; als der lokale Server gerade nicht erreichbar war, öffnete sich der Bearbeitungsmodus mit
+dem Link und „Hat nicht geklappt“ (AC-004); Entwurf nach Browser-Zurück angeboten und
+„Weitermachen“ füllt das Titelfeld; „Fertig“-Frage, Escape bleibt im Kochmodus, mit Eintrag heute
+keine Frage; Vollbild mit zwei untergeschobenen Videos (nur im Browser-Kontext): Foto → Video 1 →
+Video 2 → zurück, aus der Kachel „Video 2“ öffnet Seite 3 und lädt. Die e2e-Datei läuft beim
+Koordinator. Nicht geprüft: echter Ton und echte Vibration auf einem Gerät, iPhone-Simulator.
