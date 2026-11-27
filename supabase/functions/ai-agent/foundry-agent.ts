@@ -35,6 +35,8 @@ export interface Foundry {
   /** All items, oldest first, at most `pages` pages of 100. */
   items(id: string, order: 'asc' | 'desc', pages: number): Promise<unknown[]>;
   appendItems(id: string, items: unknown[]): Promise<void>;
+  /** One item of a conversation (an edited message and what followed it). */
+  deleteItem(id: string, itemId: string): Promise<void>;
   deleteConversation(id: string): Promise<void>;
   /** The conversation id of a response, undefined when it is gone. */
   responseConversation(id: string): Promise<string | null | undefined>;
@@ -126,6 +128,10 @@ export function foundryClient(deps: Pick<Deps, 'fetch'>, config: AgentConfig): F
     },
     async appendItems(id, items) {
       await call('append_items', 'POST', `/conversations/${id}/items`, { items });
+    },
+    async deleteItem(id, itemId) {
+      if (!/^[A-Za-z0-9_-]{1,200}$/.test(itemId)) failed('delete_item');
+      await call('delete_item', 'DELETE', `/conversations/${id}/items/${itemId}`, undefined, true);
     },
     async deleteConversation(id) {
       await call('delete_conversation', 'DELETE', `/conversations/${id}`, undefined, true);

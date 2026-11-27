@@ -1,0 +1,282 @@
+// Spec 0067, step B (REQ-009 – REQ-011): the agent's tools that propose instead of writing.
+// `propose_actions` and `make_image` only become a card in the app (nothing runs here, nothing is
+// written: applying is the app's, through its own commands); `show_images` asks Serper for Google
+// images; `draft_recipe` runs the draft pipeline of ai-recipe-draft (same schema, same catalog,
+// same link readers with their rules) and reads only, under the person's RLS. Every argument of
+// the model is checked in core agent-proposals.ts first.
+import {
+  AGENT_PROPOSAL_LIMITS,
+  deleteWished,
+  parseDraftArgs,
+  parseEntitiesArgs,
+  parseImageArgs,
+  parseProposalArgs,
+} from '../_shared/agent-proposals.gen.ts';
+import {
+  draftOutput,
+  entitiesOutput,
+  imagesOutput,
+  proposalStep,
+  type AgentExtra,
+  type AgentImageHit,
+  type AgentSendRequest,
+  type AgentStep,
+} from '../_shared/ai-agent.gen.ts';
+import {
+  RECIPE_DRAFT_LIMITS,
+  RecipeDraftReplySchema,
+  RecipeDraftRequestSchema,
+  RecipeDraftSchema,
+  type RecipeDraftReply,
+} from '../_shared/contract.gen.ts';
+import type { Deps, UserClient } from '../_shared/deps.ts';
+import { HttpError } from '../_shared/errors.ts';
+import { draftRecipe, readLinks } from '../_shared/recipe-draft.ts';
+import { configuredProviders } from '../_shared/web-search.ts';
+
+/** The tools that end with their card: no model run follows for them. */
+export const CARD_TOOLS = new Set([
+  'propose_actions',
+  'make_image',
+  'show_images',
+  'show_entities',
+]);
+
+const ENTITY_TABLE = {
+  recipe: 'recipes',
+  collection: 'recipes',
+  restaurant: 'restaurants',
+  activity: 'activities',
+} as const;
+
+/**
+ * show_entities (preview 28.11.): the household's own entries as cards. Only ids the chat's
+ * household has (read as the person, RLS, `household_id` from the chat) are shown; the app draws
+ * the cards from its own data.
+ */
+export async function runEntitiesTool(
+  client: UserClient,
+  householdId: string,
+  call: { callId: string; args: string },
+  emit: (extra: AgentExtra) => void,
+): Promise<string> {
+  const { title, items } = parseEntitiesArgs(call.args);
+  const found = new Set<string>();
+  for (const table of new Set(items.map((item) => ENTITY_TABLE[item.kind]))) {
+    const ids = items.filter((item) => ENTITY_TABLE[item.kind] === table).map((item) => item.id);
+    const { data, error } = await client
+      .from(table)
+      .select('id')
+      .eq('household_id', householdId)
+      .in('id', ids)
+      .limit(AGENT_PROPOSAL_LIMITS.entities);
+    if (error) {
+      console.error('ai_agent_entities_failed');
+      continue;
+    }
+    for (const row of Array.isArray(data) ? data : []) {
+      const id = (row as { id?: unknown }).id;
+      if (typeof id === 'string') found.add(id);
+    }
+  }
+  const shown = items.filter((item) => found.has(item.id));
+  if (shown.length > 0)
+    emit({ kind: 'entities', id: call.callId, ...(title ? { title } : {}), items: shown });
+  return entitiesOutput(title, shown, items.length - shown.length);
+}
+
+export interface CardContext {
+  /** The person's own message of this turn: only it can ask for a delete (AC-020). */
+  message: string;
+  emit: (extra: AgentExtra) => void;
+  /** One AI photo and one image row per answer (REQ-011, decision 8). */
+  made: { image: boolean; images: boolean };
+}
+
+const json = (value: unknown) => JSON.stringify(value);
+
+/** propose_actions and make_image: the card in the app and what the model hears back. */
+export function runCardTool(
+  call: { name: string; callId: string; args: string },
+  context: CardContext,
+): string {
+  if (call.name === 'propose_actions') {
+    const { proposal, dropped, deletesDropped } = parseProposalArgs(call.args, {
+      id: call.callId,
+      deletesAllowed: deleteWished(context.message),
+    });
+    if (proposal.actions.length > 0) context.emit({ kind: 'proposal', proposal });
+    return json({
+      shown: proposal.actions.length > 0,
+      entries: proposal.actions.length,
+      ...(dropped > 0 ? { invalid: dropped } : {}),
+      ...(deletesDropped > 0
+        ? {
+            deletes_refused: deletesDropped,
+            hint: 'Löschen schlägst du nur vor, wenn die Person es selbst in ihrer Nachricht wünscht.',
+          }
+        : {}),
+      note: 'Nichts ist geändert: die Person übernimmt die Einträge selbst in der Karte.',
+    });
+  }
+  // make_image
+  const image = parseImageArgs(call.args, AGENT_PROPOSAL_LIMITS.prompt);
+  if (!image) return json({ error: 'invalid_arguments' });
+  if (context.made.image) return json({ error: 'one_image_per_answer' });
+  context.made.image = true;
+  context.emit({
+    kind: 'image',
+    id: call.callId,
+    prompt: image.text,
+    for: image.for,
+    ...(image.name ? { name: image.name } : {}),
+  });
+  return json({ shown: true, note: 'Die App erzeugt genau ein Foto; nichts ist gespeichert.' });
+}
+
+const hostOf = (url: string) =>
+  (/^https:\/\/(?:[^/?#@]*@)?([^/?#:]+)/i.exec(url)?.[1] ?? '').toLowerCase().replace(/^www\./, '');
+
+/** show_images: Google images through Serper (REQ-011); shown only, never stored. */
+export async function runImagesTool(
+  deps: Deps,
+  call: { callId: string; args: string },
+  context: CardContext,
+  stepId: string,
+): Promise<{ output: string; step: AgentStep }> {
+  const query = parseImageArgs(call.args, AGENT_PROPOSAL_LIMITS.query);
+  const failed = (error: string, detail: string) => ({
+    output: json({ error }),
+    step: {
+      id: stepId,
+      kind: 'tool' as const,
+      label: 'Sucht Bilder',
+      detail,
+      details: [],
+      status: 'done' as const,
+    },
+  });
+  if (!query) return failed('invalid_arguments', 'Anfrage ungültig');
+  if (context.made.images) return failed('one_row_per_answer', 'übersprungen');
+  context.made.images = true;
+  const serper = configuredProviders(deps).find((provider) => provider.name === 'serper');
+  let images: AgentImageHit[] = [];
+  try {
+    images = ((await serper?.images?.(query.text)) ?? [])
+      .slice(0, AGENT_PROPOSAL_LIMITS.images)
+      .map((hit) => ({
+        imageUrl: hit.imageUrl,
+        ...(hit.thumbnailUrl ? { thumbnailUrl: hit.thumbnailUrl } : {}),
+        pageUrl: hit.pageUrl,
+        host: hostOf(hit.pageUrl).slice(0, 200),
+        ...(hit.title ? { title: hit.title } : {}),
+      }));
+  } catch {
+    console.error('ai_agent_images_failed');
+    return failed('images_unavailable', 'gerade nicht erreichbar');
+  }
+  if (images.length > 0)
+    context.emit({
+      kind: 'images',
+      id: call.callId,
+      query: query.text,
+      images,
+      for: query.for,
+      ...(query.name ? { name: query.name } : {}),
+    });
+  const output = imagesOutput(images);
+  return { output, step: proposalStep('show_images', call.args, output, stepId)! };
+}
+
+/** The newest draft of this chat, for `refine`: one made in this answer, else the conversation's. */
+export function lastDraft(items: readonly unknown[]): RecipeDraftReply | undefined {
+  for (const raw of items) {
+    const item = raw as { type?: unknown; output?: unknown };
+    if (item.type !== 'function_call_output' || typeof item.output !== 'string') continue;
+    if (!item.output.includes('"draft"')) continue;
+    try {
+      const value = JSON.parse(item.output) as Record<string, unknown>;
+      const reply = RecipeDraftReplySchema.safeParse({
+        draft: value.draft,
+        sources: value.sources,
+        ...(value.webPhotoUrl ? { webPhotoUrl: value.webPhotoUrl } : {}),
+      });
+      if (reply.success) return reply.data;
+    } catch {
+      // Not ours.
+    }
+  }
+  return undefined;
+}
+
+const UNREADABLE_HINT =
+  'Lies die Seite mit deiner Websuche und ruf draft_recipe noch einmal mit dem Rezepttext als page_text und page_url auf. Geht das auch nicht, sag es ehrlich und bitte um den Text oder Screenshots – erfinde keine Mengen.';
+
+/**
+ * draft_recipe (REQ-010): the draft pipeline of ai-recipe-draft. A link that cannot be read gives
+ * no draft but the honest way on (AC-022): the agent reads the page itself or asks for text.
+ */
+export async function runDraftTool(
+  deps: Deps,
+  client: UserClient,
+  input: AgentSendRequest,
+  call: { callId: string; args: string },
+  context: {
+    emit: (extra: AgentExtra) => void;
+    previous: () => Promise<RecipeDraftReply | undefined>;
+  },
+  stepId: string,
+): Promise<{ output: string; step: AgentStep; reply?: RecipeDraftReply }> {
+  const args = parseDraftArgs(call.args);
+  const done = (output: string, reply?: RecipeDraftReply) => ({
+    output,
+    step: proposalStep('draft_recipe', call.args, output, stepId)!,
+    ...(reply ? { reply } : {}),
+  });
+  if (!args) return done(json({ error: 'invalid_arguments' }));
+  const current = args.refine ? await context.previous() : undefined;
+  if (args.refine && !current) return done(json({ error: 'no_draft_to_change' }));
+  // A page the agent read itself stands in for the same link (one source, not two).
+  const links = args.links.filter((link) => link !== args.page?.url);
+  const read = await readLinks(links, deps);
+  const photos = args.usePhotos
+    ? input.attachments
+        .flatMap((attachment) => (attachment.kind === 'image' ? [attachment.dataUrl] : []))
+        .slice(0, RECIPE_DRAFT_LIMITS.photos)
+    : [];
+  const unread = read.filter((link) => !link.source.read);
+  if (unread.length > 0 && unread.length === read.length && !args.page && photos.length === 0)
+    return done(
+      json({
+        error: 'link_unreadable',
+        urls: unread.map((link) => link.source.url),
+        hint: UNREADABLE_HINT,
+      }),
+    );
+  const request = RecipeDraftRequestSchema.safeParse({
+    householdId: input.householdId,
+    text: args.wish.slice(0, RECIPE_DRAFT_LIMITS.text),
+    links: links.slice(0, RECIPE_DRAFT_LIMITS.links - (args.page ? 1 : 0)),
+    photos,
+    imagePrompt: true,
+    ...(current ? { current: RecipeDraftSchema.parse(current.draft) } : {}),
+  });
+  if (!request.success) return done(json({ error: 'invalid_arguments' }));
+  try {
+    const made = await draftRecipe(deps, client, request.data, {
+      read: read.slice(0, request.data.links.length),
+      ...(args.page ? { pages: [args.page] } : {}),
+    });
+    const reply = RecipeDraftReplySchema.parse({
+      draft: made.draft,
+      // A refined draft keeps the links of the one it changes.
+      sources: made.sources.length > 0 ? made.sources : (current?.sources ?? []),
+      ...(made.webPhotoUrl ? { webPhotoUrl: made.webPhotoUrl } : {}),
+    });
+    context.emit({ kind: 'recipe_draft', id: call.callId, reply });
+    return done(draftOutput(reply), reply);
+  } catch (error) {
+    if (!(error instanceof HttpError)) console.error('ai_agent_draft_failed');
+    return done(json({ error: 'draft_failed' }));
+  }
+}

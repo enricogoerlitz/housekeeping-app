@@ -2,6 +2,7 @@ import {
   createActivity,
   createRestaurant,
   loadPhotoFromAddress,
+  savePhotoFromAddress,
   useActivities,
   useActivityKinds,
   useRestaurants,
@@ -89,17 +90,32 @@ export function PlaceCard(props: { card: AgentCard; testID: string }) {
   const photo = useCardPhoto(card.imageUrl);
   const saved = savedPlaceOf(card, restaurants, activities);
 
+  // Preview 28.11.: the card's Google photo comes along through the usual photo path; when it
+  // cannot be loaded the entry is saved without one and the notice says so calmly.
   const save = () => {
+    let id: string;
     try {
-      if (card.kind === 'restaurant') createRestaurant(restaurantDraftOfCard(card));
-      else createActivity(activityDraftOfCard(card, kinds));
-      toast.show({
-        message: `${card.name} ist gespeichert`,
-        duration: 2500,
-      });
+      id =
+        card.kind === 'restaurant'
+          ? createRestaurant(restaurantDraftOfCard(card))
+          : createActivity(activityDraftOfCard(card, kinds));
     } catch (error) {
       toast.show({ message: errorMessage(error) });
+      return;
     }
+    const imageUrl = card.imageUrl;
+    if (!imageUrl) {
+      toast.show({ message: `${card.name} ist gespeichert`, duration: 2500 });
+      return;
+    }
+    void savePhotoFromAddress({ kind: card.kind, id }, imageUrl).then((withPhoto) =>
+      toast.show({
+        message: withPhoto
+          ? `${card.name} ist gespeichert, mit Foto`
+          : `${card.name} ist gespeichert – das Foto ließ sich nicht übernehmen`,
+        duration: 3000,
+      }),
+    );
   };
   const openSaved = () => {
     if (!saved) return;
@@ -168,8 +184,8 @@ export function PlaceCard(props: { card: AgentCard; testID: string }) {
           <View style={{ flex: 1 }}>
             {saved ? (
               <Button
-                label="Gespeichert"
-                icon="check"
+                label="Öffnen"
+                icon="arrow-right"
                 variant="secondary"
                 size="sm"
                 full

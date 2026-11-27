@@ -159,6 +159,11 @@ export interface ScreenProps {
   maxWidth?: number;
   /** Extra space at the end so the last row can scroll clear of the floating assistant button. */
   clearFab?: boolean;
+  /**
+   * Phones: the header stays the narrow bar, as if scrolled — the agent while typing, so the chat
+   * keeps its room above the keyboard (spec 0067, UI review 27.11.).
+   */
+  compactHeader?: boolean;
   style?: StyleProp<ViewStyle>;
   testID?: string;
 }
@@ -188,7 +193,8 @@ export function Screen(props: ScreenProps) {
   // shrink and the toolbar slide away without moving the content.
   const overlay = isPhone && hasChrome;
 
-  const [collapsed, setCollapsed] = useState(false);
+  const [scrolledNarrow, setCollapsed] = useState(false);
+  const collapsed = scrolledNarrow || (overlay && props.compactHeader === true);
   // A page that mounts anew after a tab swipe starts in the frame of the one it replaces.
   const [arrived] = useState(arrivingChrome);
   const [chrome, setChrome] = useState<{ expanded?: number; narrow?: number; now: number }>(() =>
@@ -721,8 +727,11 @@ export interface NavItem {
   label: string;
   icon: IconName;
   tone?: Tone;
-  /** In the tab bar only the icon; the label stays its accessible name (spec 0067, AC-001). */
-  iconOnly?: boolean;
+  /**
+   * Spec 0067, decision 23: the agent's tab in "KI zuerst" — icon and label in its own tone
+   * (`tone`), chosen a bolder label and a slightly bigger icon, never the pill of the others.
+   */
+  featured?: boolean;
 }
 
 export interface TabBarProps {
@@ -755,10 +764,12 @@ export function TabBar(props: TabBarProps) {
     >
       {props.items.map((item) => {
         const active = item.key === props.activeKey;
+        const featured = item.featured === true;
         // "Frisch" marks the active tab with an ink pill, never with an area colour (D4).
-        const pill = active && theme.shape.tabActive === 'pill';
+        const pill = active && !featured && theme.shape.tabActive === 'pill';
         const Glyph = icons[item.icon];
-        const tint = pill ? c.onAccent : active ? c.accent : c.textMuted;
+        const own = featured ? c.tones[item.tone ?? 'ki'].fg : undefined;
+        const tint = own ?? (pill ? c.onAccent : active ? c.accent : c.textMuted);
         return (
           <Pressable
             key={item.key}
@@ -790,16 +801,22 @@ export function TabBar(props: TabBarProps) {
                 backgroundColor: pill ? c.accent : 'transparent',
               }}
             >
-              <Glyph size={24} color={tint} strokeWidth={theme.shape.stroke} />
+              <Glyph
+                size={featured && active ? 27 : 24}
+                color={tint}
+                strokeWidth={featured && active ? theme.shape.stroke + 0.5 : theme.shape.stroke}
+              />
             </View>
-            {item.iconOnly ? null : (
-              <Text
-                variant="tab"
-                style={{ color: active ? (pill ? c.text : c.accent) : c.textMuted }}
-              >
-                {item.label}
-              </Text>
-            )}
+            <Text
+              variant="tab"
+              style={
+                own
+                  ? { color: own, fontWeight: active ? '800' : '600' }
+                  : { color: active ? (pill ? c.text : c.accent) : c.textMuted }
+              }
+            >
+              {item.label}
+            </Text>
           </Pressable>
         );
       })}
@@ -1048,9 +1065,15 @@ export function Fab(props: FabProps) {
 }
 
 /** A bar fixed above the tab bar that holds an input, e.g. "Artikel hinzufügen". */
-export function ComposerBar(props: { children?: ReactNode; testID?: string }) {
+export function ComposerBar(props: {
+  children?: ReactNode;
+  /** Spec 0067: the agent's slim bar, so the chat stays in view while typing. */
+  dense?: boolean;
+  testID?: string;
+}) {
   const theme = useTheme();
   const { isPhone } = useBreakpoint();
+  const padding = props.dense ? 6 : 10;
   return (
     <View
       testID={props.testID}
@@ -1059,12 +1082,19 @@ export function ComposerBar(props: { children?: ReactNode; testID?: string }) {
         borderTopWidth: 1,
         borderTopColor: theme.colors.border,
         paddingHorizontal: isPhone ? theme.shape.gutter : WIDE_GUTTER,
-        paddingTop: 10,
-        paddingBottom: 10,
+        paddingTop: padding,
+        paddingBottom: padding,
         gap: 8,
       }}
     >
-      <View style={{ width: '100%', maxWidth: CONTENT_MAX_WIDTH, alignSelf: 'center', gap: 8 }}>
+      <View
+        style={{
+          width: '100%',
+          maxWidth: CONTENT_MAX_WIDTH,
+          alignSelf: 'center',
+          gap: props.dense ? 6 : 8,
+        }}
+      >
         {props.children}
       </View>
     </View>

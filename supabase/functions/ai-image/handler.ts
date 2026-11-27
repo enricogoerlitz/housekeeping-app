@@ -101,9 +101,10 @@ async function variants(deps: Deps, input: AiImageInput): Promise<AiImageReply> 
   // AC-007: the 30 s of AC-012 (spec 0040) count from the request, the enhancement included.
   const started = Date.now();
   const image = input.image?.slice(input.image.indexOf(',') + 1);
-  const calls = (await prompts(deps, input)).map((prompt) =>
-    callFlux(deps, image === undefined ? { prompt } : { prompt, image }),
-  );
+  const count = input.count ?? IMAGE_VARIANTS;
+  const calls = (await prompts(deps, input))
+    .slice(0, count)
+    .map((prompt) => callFlux(deps, image === undefined ? { prompt } : { prompt, image }));
   const settled = await settledOrEnough(calls, started);
   const images = settled.flatMap((result) =>
     result?.status === 'fulfilled' ? [result.value] : [],
@@ -116,7 +117,7 @@ async function variants(deps: Deps, input: AiImageInput): Promise<AiImageReply> 
     if (config?.status === 'rejected') throw config.reason;
     throw new HttpError('ai_unavailable');
   }
-  return { images, failed: IMAGE_VARIANTS - images.length };
+  return { images, failed: count - images.length };
 }
 
 export function handler(request: Request, deps: Deps): Promise<Response> {

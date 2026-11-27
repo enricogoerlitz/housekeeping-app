@@ -74,6 +74,10 @@ export function withSpring<T>(value: T, _config?: unknown, done?: Done): T {
   return value;
 }
 export function cancelAnimation(): void {}
+/** A repeat ends where its animation ends: the mock jumps there. */
+export function withRepeat<T>(value: T): T {
+  return value;
+}
 export function useReducedMotion(): boolean {
   return reducedMotion.value;
 }

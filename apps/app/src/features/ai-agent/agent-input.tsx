@@ -7,19 +7,26 @@ import {
   takeSlash,
   type AgentBadgeSlug,
 } from '@housekeeping/core';
-import { Chip, IconButton, List, ListRow, pickImageFile, Surface, Text } from '@housekeeping/ui';
+import { Chip, IconButton, pickImageFile, Surface, Text, useTheme } from '@housekeeping/ui';
 import { useState, type ComponentRef, type ReactNode, type RefObject } from 'react';
-import { View, type TextInput } from 'react-native';
+import { Pressable, View, type TextInput } from 'react-native';
 
 import { DictationField } from '@/features/shell/dictation-field';
 import type { PromptDictation } from '@/lib/use-prompt-dictation';
 
-import { ATTACHMENT_ACCEPT, type PickedAttachment } from './agent-attachments';
+import {
+  ATTACHMENT_ACCEPT,
+  previewOf,
+  type AttachmentPreview,
+  type PickedAttachment,
+} from './agent-attachments';
 
 // Spec 0067, REQ-004/REQ-005: the agent's input. Badges and attachments stand inside the field
 // above the text, as chips with ✕ — never as free text; backspace right behind the badges removes
 // the last one whole (AC-007). "/" opens the badges above the field, typing filters them (AC-006).
 // The field grows to 4.5 lines and then scrolls (AC-009); "+" opens the picker for photos and PDF.
+// UI review 27.11. (Enrico): one slim rounded bar like the phone chat apps — "+" left, the text,
+// mic and send right; badges, files and the place are small chips inside it, no rows of their own.
 
 export interface AgentInputProps {
   text: string;
@@ -28,6 +35,8 @@ export interface AgentInputProps {
   onBadges: (badges: AgentBadgeSlug[]) => void;
   attachments: readonly PickedAttachment[];
   onRemoveAttachment: (key: string) => void;
+  /** Preview feedback 28.11.: a tap on a file's chip shows it; its ✕ removes it. */
+  onPreview: (preview: AttachmentPreview) => void;
   onPickFile: (file: File) => void;
   /** A photo being prepared: "+" waits. */
   preparing: boolean;
@@ -38,9 +47,15 @@ export interface AgentInputProps {
   trailing: ReactNode;
   /** The input, so the start page and the slash menu put the cursor back into it. */
   inputRef: RefObject<ComponentRef<typeof TextInput> | null>;
+  /**
+   * The place as a small chip in the field, only where it counts (spec 0067 decision 17: with
+   * "Ausgehen" or a chosen place); otherwise there is no row for it (UI review 27.11.).
+   */
+  place?: { label: string; accessibilityLabel: string; onPress: () => void };
 }
 
 export function AgentInput(props: AgentInputProps) {
+  const theme = useTheme();
   const [selection, setSelection] = useState({ start: props.text.length, end: props.text.length });
   const caret = selection.start === selection.end ? Math.min(selection.end, props.text.length) : -1;
   const slash = caret >= 0 ? slashQuery(props.text, caret) : undefined;
@@ -57,13 +72,25 @@ export function AgentInput(props: AgentInputProps) {
   };
 
   const chips =
-    props.badges.length > 0 || props.attachments.length > 0 ? (
+    props.badges.length > 0 || props.attachments.length > 0 || props.place ? (
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }} testID="agent-input-chips">
+        {props.place ? (
+          <Chip
+            label={props.place.label}
+            icon="map-pin"
+            size="sm"
+            disabled={!props.editable}
+            accessibilityLabel={props.place.accessibilityLabel}
+            onPress={props.place.onPress}
+            testID="agent-place-chip"
+          />
+        ) : null}
         {props.badges.map((slug) => (
           <Chip
             key={slug}
             label={badgeLabel(slug)}
             tone="ki"
+            size="sm"
             removable
             disabled={!props.editable}
             accessibilityLabel={`${badgeLabel(slug)} entfernen`}
@@ -76,10 +103,12 @@ export function AgentInput(props: AgentInputProps) {
             key={entry.key}
             label={entry.label}
             icon={entry.attachment.kind === 'image' ? 'image' : 'file-text'}
-            removable
+            size="sm"
             disabled={!props.editable}
-            accessibilityLabel={`${entry.label} entfernen`}
-            onPress={() => props.onRemoveAttachment(entry.key)}
+            accessibilityLabel={`${entry.label} ansehen`}
+            onPress={() => props.onPreview(previewOf(entry))}
+            onRemove={() => props.onRemoveAttachment(entry.key)}
+            removeLabel={`${entry.label} entfernen`}
             testID={`agent-attachment-${entry.key}`}
           />
         ))}
@@ -87,23 +116,33 @@ export function AgentInput(props: AgentInputProps) {
     ) : null;
 
   return (
-    <View style={{ gap: 8 }}>
+    <View style={{ gap: 6 }}>
       {menu ? (
-        <Surface testID="agent-slash-menu" style={{ padding: 4, gap: 2 }}>
-          <Text variant="caption" color="muted" style={{ paddingHorizontal: 10, paddingTop: 6 }}>
-            Bereich wählen
-          </Text>
-          <List>
-            {matches.map((badge) => (
-              <ListRow
-                key={badge.slug}
-                title={`/${badge.label}`}
-                subtitle={badge.line}
-                onPress={() => choose(badge.slug)}
-                testID={`agent-slash-${badge.slug}`}
-              />
-            ))}
-          </List>
+        // UI review 27.11.: one line per area, no heading, so the menu stays small over the keyboard.
+        <Surface testID="agent-slash-menu" padding={4} style={{ gap: 0 }}>
+          {matches.map((badge) => (
+            <Pressable
+              key={badge.slug}
+              accessibilityRole="button"
+              accessibilityLabel={`/${badge.label}: ${badge.line}`}
+              onPress={() => choose(badge.slug)}
+              testID={`agent-slash-${badge.slug}`}
+              style={({ pressed }) => ({
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 8,
+                minHeight: 44,
+                paddingHorizontal: 10,
+                borderRadius: theme.shape.radius.control,
+                backgroundColor: pressed ? theme.colors.surfaceSunken : 'transparent',
+              })}
+            >
+              <Text variant="bodyStrong">/{badge.label}</Text>
+              <Text variant="small" color="muted" numberOfLines={1} style={{ flex: 1 }}>
+                {badge.line}
+              </Text>
+            </Pressable>
+          ))}
         </Surface>
       ) : null}
       <DictationField

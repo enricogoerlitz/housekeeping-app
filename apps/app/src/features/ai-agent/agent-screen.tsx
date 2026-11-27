@@ -3,13 +3,14 @@ import {
   addBadge,
   AGENT_LIMITS,
   placeChipLabel,
+  placeToSend,
   rememberPlace,
+  withoutSlash,
   type AgentBadgeSlug,
   type AgentPlace,
 } from '@housekeeping/core';
 import {
   Button,
-  Chip,
   ComposerBar,
   focusAfterChange,
   IconButton,
@@ -20,6 +21,7 @@ import {
   Text,
   useBottomInset,
   useBreakpoint,
+  useDragDismissKeyboard,
   useKeyboard,
   WIDE_GUTTER,
 } from '@housekeeping/ui';
@@ -33,11 +35,14 @@ import { useOriginBack, usePageParams } from '@/lib/url-state';
 import {
   ATTACHMENT_TOO_LARGE,
   prepareAttachment,
+  previewOf,
   type PickedAttachment,
 } from './agent-attachments';
+import { clearDraftPhoto } from './agent-draft-photo';
 import { AgentInput } from './agent-input';
 import { AgentMessages } from './agent-messages';
 import { AgentStart } from './agent-start';
+import { useAttachmentPreview } from './attachment-preview';
 import {
   deviceLocation,
   deviceLocationIfAllowed,
@@ -80,6 +85,8 @@ export function AgentScreen() {
   const [text, setText] = useState('');
   const [badges, setBadges] = useState<AgentBadgeSlug[]>([]);
   const [attachments, setAttachments] = useState<PickedAttachment[]>([]);
+  // Preview feedback 28.11.: the turn of the person's message being edited (ChatGPT's way).
+  const [editing, setEditing] = useState<number | undefined>();
   const [preparing, setPreparing] = useState(false);
   const [attachError, setAttachError] = useState<string | undefined>();
   const [place, setPlace] = useState<AgentPlace>(DEVICE_PLACE);
@@ -104,10 +111,20 @@ export function AgentScreen() {
 
   const turns = chat.turns;
   const lastTurn = turns[turns.length - 1];
-  // The newest message and its answer stay in view while it streams.
+  // The newest message and its answer stay in view while it streams, and when the keyboard opens
+  // (UI review 27.11.): the chat's end stands right above the input, the header narrows.
   useEffect(() => {
     revealInScrollParent(end.current, { align: 'nearest' });
-  }, [turns.length, lastTurn?.text.length, lastTurn?.cards.length, lastTurn?.steps.length]);
+  }, [
+    turns.length,
+    lastTurn?.text.length,
+    lastTurn?.cards.length,
+    lastTurn?.steps.length,
+    lastTurn?.extras.length,
+    keyboard.open,
+  ]);
+  // A photo taken for a draft lives only while the page is open.
+  useEffect(() => clearDraftPhoto, []);
 
   const choosePlace = (next: AgentPlace) => {
     setPlace(next);
@@ -123,30 +140,35 @@ export function AgentScreen() {
     setBadges([]);
     setAttachments([]);
     setAttachError(undefined);
+    setEditing(undefined);
   };
 
   const send = (message: string) => {
     const trimmed = message.trim();
     if ((!trimmed && attachments.length === 0) || chat.busy || locating || preparing) return;
     if (online.disabled) return;
-    const extras = { badges, attachments: attachments.map((entry) => entry.attachment) };
+    const extras = {
+      badges,
+      attachments: attachments.map((entry) => entry.attachment),
+      previews: attachments.map(previewOf),
+      ...(editing !== undefined ? { editTurn: editing } : {}),
+    };
     if (place.source !== 'device') {
       chat.send(trimmed, place, extras);
       clearInput();
       return;
     }
     setLocating(true);
-    // REQ-003 of spec 0066 for "Ausgehen": the location now, else the place window and the text
-    // waits. Other questions take the location only when the browser already allows it.
+    // Preview 28.11. (changes spec 0066 REQ-003): the location never blocks sending. "Ausgehen"
+    // asks the browser for it (at most 3 s, a fix of the last minutes counts); other questions
+    // take it only when the browser already allows it. Without one the message goes anyway, the
+    // place chip says so, and the place window opens only from the chip.
     const outing = badges.includes('ausgehen');
     void (outing ? deviceLocation() : deviceLocationIfAllowed()).then((location) => {
       setLocating(false);
-      if (!location && outing) {
-        setPlaceHint(NO_LOCATION_HINT);
-        address.open({ fenster: 'ort' });
-        return;
-      }
-      chat.send(trimmed, location ? { ...place, location } : place, extras);
+      const sent = placeToSend(place, location, outing);
+      setPlaceHint(sent.hint ? NO_LOCATION_HINT : undefined);
+      chat.send(trimmed, sent.place, extras);
       clearInput();
     });
   };
@@ -157,10 +179,14 @@ export function AgentScreen() {
     onSend: () => send(text),
   });
 
-  // AC-005: the badge and the cursor behind it in one tap, so iOS opens the keyboard too.
+  // AC-005: the badge and the cursor behind it in one tap, so iOS opens the keyboard too. A "/re"
+  // typed meanwhile goes as in the slash menu (AC-006, click-through of step A).
   const pickBadge = (slug: AgentBadgeSlug) =>
     focusAfterChange(
-      () => setBadges((current) => addBadge(current, slug)),
+      () => {
+        setBadges((current) => addBadge(current, slug));
+        setText((current) => withoutSlash(current, current.length).text);
+      },
       () => input.current,
     );
 
@@ -191,6 +217,7 @@ export function AgentScreen() {
   const newChat = () => {
     chat.reset();
     clearInput();
+    clearDraftPhoto();
     address.replace({ chat: undefined });
   };
   const right = (
@@ -249,32 +276,43 @@ export function AgentScreen() {
     />
   );
 
+  // Long-press on a message of the person, or ✎ under the last one: back into the input; sending
+  // replaces it and what followed (preview feedback 28.11.).
+  const startEdit = (index: number) => {
+    const turn = turns[index];
+    if (!turn || turn.role !== 'user' || chat.busy) return;
+    focusAfterChange(
+      () => {
+        setEditing(index);
+        setText(turn.text);
+        setBadges(turn.badges ?? []);
+        setAttachments([]);
+      },
+      () => input.current,
+    );
+  };
+  const attachmentPreview = useAttachmentPreview();
+  const dragDismiss = useDragDismissKeyboard(keyboard.open);
+
   const disabled = online.disabled;
   const atLimit =
     (chats.find((entry) => entry.id === chat.chatId)?.responseIds.length ?? 0) >=
     AGENT_LIMITS.turns;
-  const editable = !disabled && !chat.busy && !atLimit;
+  // Preview feedback 28.11.: typing goes on while the agent answers; sending waits for its end
+  // (the button is "Antwort anhalten" until then), as in ChatGPT and Gemini.
+  const editable = !disabled && !atLimit;
   const ready = text.trim() !== '' || attachments.length > 0 || dictation.pending;
   const composer = (
-    <ComposerBar testID="agent-composer">
+    <ComposerBar testID="agent-composer" dense>
       <View
         style={{
           width: '100%',
           maxWidth: CHAT_WIDTH - 2 * WIDE_GUTTER,
           alignSelf: 'center',
-          paddingBottom: keyboard.open ? 0 : Math.max(0, bottom - 10),
-          gap: 8,
+          paddingBottom: keyboard.open ? 0 : Math.max(0, bottom - 6),
+          gap: 6,
         }}
       >
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <Chip
-            icon="map-pin"
-            label={placeChipLabel(place)}
-            onPress={() => address.open({ fenster: 'ort' })}
-            accessibilityLabel={`In der Nähe von: ${placeChipLabel(place)}`}
-            testID="agent-place-chip"
-          />
-        </View>
         {disabled ? (
           <Text variant="small" color="warn" testID="agent-offline-hint">
             {online.hint?.startsWith('Offline') === false ? online.hint : OFFLINE_AGENT_HINT}
@@ -284,6 +322,21 @@ export function AgentScreen() {
           <Text variant="small" color="muted" testID="agent-limit-hint">
             Dieser Chat ist lang geworden – starte einen neuen.
           </Text>
+        ) : null}
+        {editing !== undefined ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Text variant="small" color="muted" style={{ flex: 1 }} testID="agent-editing">
+              Nachricht bearbeiten – was danach kam, ersetzt die neue Antwort
+            </Text>
+            <Button
+              label="Abbrechen"
+              variant="link"
+              quiet
+              size="sm"
+              onPress={clearInput}
+              testID="agent-edit-cancel"
+            />
+          </View>
         ) : null}
         {attachError ? (
           <Text variant="small" color="warn" testID="agent-attach-error">
@@ -302,6 +355,7 @@ export function AgentScreen() {
           onRemoveAttachment={(key) =>
             setAttachments((current) => current.filter((entry) => entry.key !== key))
           }
+          onPreview={attachmentPreview.open}
           onPickFile={addFile}
           preparing={preparing}
           dictation={dictation}
@@ -309,6 +363,15 @@ export function AgentScreen() {
           placeholder={inChat ? 'Nachfragen …' : 'Nachricht'}
           onSubmit={dictation.send}
           inputRef={input}
+          place={
+            badges.includes('ausgehen') || place.source !== 'device' || placeHint
+              ? {
+                  label: placeHint && place.source === 'device' ? placeHint : placeChipLabel(place),
+                  accessibilityLabel: `In der Nähe von: ${placeChipLabel(place)}`,
+                  onPress: () => address.open({ fenster: 'ort' }),
+                }
+              : undefined
+          }
           trailing={
             chat.busy ? (
               <IconButton
@@ -342,25 +405,32 @@ export function AgentScreen() {
       header={header}
       footer={composer}
       clearFab={false}
+      compactHeader={keyboard.open}
       maxWidth={CHAT_WIDTH}
     >
-      {!inChat && chat.load.status === 'idle' ? (
-        <AgentStart onPick={pickBadge} disabled={!editable} />
-      ) : null}
-      {chat.load.status === 'loading' ? (
-        <LoadingLines label="Der Chat wird geladen …" testID="agent-loading" />
-      ) : null}
-      {chat.load.status === 'error' ? (
-        <Text color="warn" testID="agent-load-error">
-          {online.disabled ? 'Offline – den Chat lädst du mit Netz.' : chat.load.message}
-        </Text>
-      ) : null}
-      <AgentMessages
-        turns={turns}
-        onFollowUp={send}
-        followUpsEnabled={!disabled && !chat.busy && !atLimit}
-      />
-      <View ref={end} style={{ height: 1 }} />
+      {/* Preview feedback 28.11.: dragging the chat down to read sends the keyboard away. */}
+      <View {...dragDismiss}>
+        {!inChat && chat.load.status === 'idle' ? (
+          <AgentStart onPick={pickBadge} disabled={!editable} />
+        ) : null}
+        {chat.load.status === 'loading' ? (
+          <LoadingLines label="Der Chat wird geladen …" testID="agent-loading" />
+        ) : null}
+        {chat.load.status === 'error' ? (
+          <Text color="warn" testID="agent-load-error">
+            {online.disabled ? 'Offline – den Chat lädst du mit Netz.' : chat.load.message}
+          </Text>
+        ) : null}
+        <AgentMessages
+          turns={turns}
+          onFollowUp={send}
+          followUpsEnabled={!disabled && !chat.busy && !atLimit}
+          onOpenAttachment={attachmentPreview.open}
+          onEdit={!disabled && !chat.busy && !atLimit ? startEdit : undefined}
+        />
+        {attachmentPreview.viewer}
+        <View ref={end} style={{ height: 1 }} />
+      </View>
       {params.fenster === 'ort' ? (
         <PlaceSheet
           place={place}

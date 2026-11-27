@@ -187,6 +187,20 @@ describe('IconButton', () => {
     expect(onPress).toHaveBeenCalledTimes(1);
   });
 
+  it('spec 0067: "live" (a running dictation) is outlined, never filled like "Senden"', () => {
+    render(
+      <>
+        <IconButton icon="mic" label="Diktat beenden" variant="live" testID="mic" />
+        <IconButton icon="send" label="Senden" variant="filled" testID="send" />
+      </>,
+    );
+    const mic = screen.getByTestId('mic');
+    const send = screen.getByTestId('send');
+    expect(mic.style.borderTopWidth || mic.style.borderWidth).toBe('2px');
+    expect(mic.style.backgroundColor).not.toBe(send.style.backgroundColor);
+    expect(mic.getAttribute('aria-pressed')).toBe('true');
+  });
+
   it('disabled: says so and does not press', () => {
     const onPress = vi.fn();
     render(
@@ -321,6 +335,38 @@ describe('Chip', () => {
     expect(description(chip)).toBe('Offline');
     fireEvent.click(chip);
     expect(onPress).not.toHaveBeenCalled();
+  });
+
+  it('spec 0067: with onRemove the chip opens on a tap and has its own ✕ to remove it', () => {
+    const onPress = vi.fn();
+    const onRemove = vi.fn();
+    render(
+      <Chip
+        label="Rezept.pdf"
+        onPress={onPress}
+        onRemove={onRemove}
+        removeLabel="Rezept.pdf entfernen"
+        accessibilityLabel="Rezept.pdf ansehen"
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Rezept.pdf ansehen' }));
+    expect(onPress).toHaveBeenCalledTimes(1);
+    expect(onRemove).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Rezept.pdf entfernen' }));
+    expect(onRemove).toHaveBeenCalledTimes(1);
+    expect(onPress).toHaveBeenCalledTimes(1);
+  });
+
+  it('spec 0067: a small chip in a slim field is lower than the default one', () => {
+    render(
+      <>
+        <Chip label="Rezepte" size="sm" onPress={() => undefined} testID="small" />
+        <Chip label="Rezepte" onPress={() => undefined} testID="normal" />
+      </>,
+    );
+    const height = (id: string) => parseFloat(screen.getByTestId(id).style.minHeight);
+    expect(height('small')).toBe(30);
+    expect(height('normal')).toBe(36);
   });
 
   it('a fine pointer hovering an unselected chip shades it', () => {
@@ -636,6 +682,31 @@ describe('TextField', () => {
       expect(input.style.height).toBe('68px');
       fireEvent.change(input, { target: { value: '' } });
       expect(input.style.height).toBe('46px');
+    });
+
+    it('spec 0067 (preview 28.11.): words of a dictation grow the field and keep its end in view', () => {
+      const field = (value: string) => (
+        <TextField
+          accessibilityLabel="Nachricht"
+          value={value}
+          onChangeText={() => undefined}
+          multiline
+          grow
+          growLines={4.5}
+          followEnd
+          editable={false}
+          testID="dictated"
+        />
+      );
+      const { rerender } = render(field('Milch'));
+      Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
+        configurable: true,
+        get: () => 90,
+      });
+      rerender(field('Milch und Eier und Brot und noch viel mehr, was gerade gesagt wird'));
+      const input = screen.getByTestId('dictated') as HTMLTextAreaElement;
+      expect(input.style.height).toBe('90px');
+      expect(input.scrollTop).toBe(90);
     });
   });
 

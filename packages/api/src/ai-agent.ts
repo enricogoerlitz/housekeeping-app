@@ -76,6 +76,8 @@ export async function sendAgentMessage(
     badges?: readonly AgentBadgeSlug[];
     /** Spec 0067: photos (JPEG) and PDF files, prepared by the app. */
     attachments?: readonly AgentAttachment[];
+    /** Preview feedback 28.11.: the person's n-th message is edited; it and the rest go. */
+    editFrom?: number;
   },
   onEvent: (event: AgentStreamEvent) => void,
   signal: AbortSignal,
@@ -96,6 +98,7 @@ export async function sendAgentMessage(
             timeZone: deviceTimeZone(),
             badges: [...(input.badges ?? [])],
             attachments: [...(input.attachments ?? [])],
+            ...(input.editFrom !== undefined ? { editFrom: input.editFrom } : {}),
           },
           signal,
         );

@@ -590,6 +590,12 @@ const RECIPE_SORTS: Record<string, Sort> = {
   created: createdSort,
 };
 
+const RECIPE_KINDS = ['recipe', 'collection', 'all'] as const;
+
+/** Recipes by default; collections or both on request. */
+const kindMatches = (row: ToolRow, args: Args) =>
+  args.kind === 'all' || (args.kind === 'collection') === (row.kind === 'collection');
+
 const listRecipes: ListTool = {
   label: 'Liest eure Rezepte',
   params: {
@@ -615,7 +621,11 @@ const listRecipes: ListTool = {
     },
     favorite: { type: 'boolean', description: 'Favorit von mindestens einem Mitglied' },
     unfinished: { type: 'boolean', description: 'unfertig: ohne Zutaten und ohne Schritte' },
-    include_collections: { type: 'boolean', description: 'auch Sammlungen' },
+    kind: {
+      type: 'enum',
+      values: RECIPE_KINDS,
+      description: 'recipe (Standard), collection = Sammlungen, all = beides',
+    },
   },
   fields: RECIPE_FIELDS,
   defaultFields: ['id', 'title', 'course', 'diet', 'total_minutes', 'last_cooked_on'],
@@ -641,7 +651,7 @@ const listRecipes: ListTool = {
     const names = new Map(articles.map((row) => [String(row.id), String(row.name ?? '')]));
     const history = cookingHistory(data);
     return (data.rows.recipes ?? [])
-      .filter((row) => args.include_collections === true || row.kind !== 'collection')
+      .filter((row) => kindMatches(row, args))
       .map((row) => {
         const recipeId = String(row.id);
         const cooked = history.get(recipeId);
@@ -683,7 +693,8 @@ const listRecipes: ListTool = {
         };
       });
   },
-  all: (data) => (data.rows.recipes ?? []).filter((row) => row.kind !== 'collection').length,
+  // The same set as the items (preview 28.11.: "26 von 24" counted collections in the page only).
+  all: (data, everything) => everything.length,
   matches: (item, args) =>
     (strings(args.course).length === 0 ||
       strings(args.course).includes(String(item.course_code))) &&
@@ -706,6 +717,14 @@ const listRecipes: ListTool = {
     str(item.description),
   ],
   labels: (args) => [
+    ...(args.kind === 'collection' || args.kind === 'all'
+      ? [
+          {
+            short: args.kind === 'all' ? 'Rezepte und Sammlungen' : 'Sammlungen',
+            long: args.kind === 'all' ? 'Rezepte und Sammlungen' : 'nur Sammlungen',
+          },
+        ]
+      : []),
     ...(strings(args.course).length > 0
       ? [
           {
@@ -1680,6 +1699,25 @@ export function parseToolCall(name: string, rawArgs: string): ParsedToolCall {
   if (name === 'household_values' && typeof args.column !== 'string')
     return { ok: false, name, error: 'invalid_arguments' };
   return { ok: true, name, args };
+}
+
+/**
+ * Preview 28.11.: the same tool with the same arguments (in any order, nulls left out) has one
+ * key, so an answer reads it once and the second call gets the first result.
+ */
+export function agentCallKey(name: string, rawArgs: string): string | undefined {
+  let json: unknown;
+  try {
+    json = JSON.parse(rawArgs || '{}');
+  } catch {
+    return undefined;
+  }
+  const args = record(json);
+  const entries = Object.keys(args)
+    .sort()
+    .filter((key) => args[key] !== null && args[key] !== undefined && args[key] !== '')
+    .map((key) => [key, args[key]]);
+  return `${name}:${JSON.stringify(entries)}`;
 }
 
 /** The fixed reads of a call; values only from checked arguments (the calendar's days). */

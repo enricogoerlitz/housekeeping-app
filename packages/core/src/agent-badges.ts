@@ -97,6 +97,15 @@ export function takeSlash(text: string, slash: SlashQuery): { text: string; curs
   return { text: joined.replace(/^\s+/, ''), cursor: head.replace(/^\s+/, '').length };
 }
 
+/**
+ * A badge chosen outside the slash menu (the start page's "Ich kann") while "/re" is typed: the
+ * "/…" goes as in the menu; any other text stays as it is.
+ */
+export function withoutSlash(text: string, cursor: number): { text: string; cursor: number } {
+  const slash = slashQuery(text, cursor);
+  return slash ? takeSlash(text, slash) : { text, cursor };
+}
+
 export function addBadge(
   badges: readonly AgentBadgeSlug[],
   slug: AgentBadgeSlug,

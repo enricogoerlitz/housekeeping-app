@@ -108,12 +108,28 @@ describe('loading and deleting', () => {
     fx.server.setAi({
       agent: () => answer,
       agentMessages: () => [
-        { role: 'user', text: 'Hallo', cards: [], followUps: [], sources: [], steps: [] },
+        {
+          role: 'user',
+          text: 'Hallo',
+          cards: [],
+          followUps: [],
+          sources: [],
+          steps: [],
+          extras: [],
+        },
       ],
     });
     await sendAgentMessage({ message: 'x', place }, () => undefined, new AbortController().signal);
     await expect(loadAgentChat(CHAT)).resolves.toEqual([
-      { role: 'user', text: 'Hallo', cards: [], followUps: [], sources: [], steps: [] },
+      {
+        role: 'user',
+        text: 'Hallo',
+        cards: [],
+        followUps: [],
+        sources: [],
+        steps: [],
+        extras: [],
+      },
     ]);
     await deleteAgentChat(CHAT);
     expect(getData().aiChats).toEqual([]);

@@ -37,13 +37,13 @@ const NAV: NavItem[] = [
 ];
 
 /**
- * Spec 0067, REQ-001: "KI zuerst" puts the agent in the middle, only its icon in the tab bar
+ * Spec 0067, REQ-001 (decision 23): "KI zuerst" puts the agent in the middle, "AI Agent" in its own tone
  * (AC-001); "Haushalt" moves to the top of ⊞ (manageGroups).
  */
 const NAV_AI_FIRST: NavItem[] = [
   NAV[0]!,
   NAV[1]!,
-  { key: 'agent', label: 'Agent', icon: 'sparkles', tone: 'ki', iconOnly: true },
+  { key: 'agent', label: 'AI Agent', icon: 'sparkles', tone: 'ki', featured: true },
   NAV[2]!,
   NAV[3]!,
 ];

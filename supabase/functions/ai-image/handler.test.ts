@@ -99,6 +99,18 @@ describe('ai-image (spec 0040, REQ-004)', () => {
     expect(first?.input_image).toBeUndefined();
   });
 
+  it('spec 0067, REQ-011: "Mach ein Foto dazu" asks for exactly one image, one FLUX call', async () => {
+    const { deps, bodies } = setup([() => fluxReply('/9j/AAA1')]);
+    const response = await handler(
+      post({ householdId: HOUSEHOLD_ID, prompt: 'Linsen-Dal', count: 1 }),
+      deps,
+    );
+    expect(await json(response)).toEqual({ images: ['/9j/AAA1'], failed: 0 });
+    expect(bodies()).toHaveLength(1);
+    const invalid = await handler(post({ householdId: HOUSEHOLD_ID, prompt: 'x', count: 4 }), deps);
+    expect(invalid.status).toBe(400);
+  });
+
   it('AC-014: two of three succeed: the two and how many failed', async () => {
     const { deps } = setup([
       () => fluxReply('/9j/AAA1'),

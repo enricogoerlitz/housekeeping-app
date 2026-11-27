@@ -1,12 +1,27 @@
 // Generated from packages/core/src/ai-agent.ts by `pnpm gen:edge` — do not edit.
 import { z } from 'zod';
 
+import {
+  AGENT_IMAGE_SUBJECTS,
+  AGENT_PROPOSAL_LIMITS,
+  AgentEntityRefSchema,
+  AgentProposalSchema,
+  deleteWished,
+  isProposalTool,
+  parseDraftArgs,
+  parseImageArgs,
+  parseProposalArgs,
+} from './agent-proposals.gen.ts';
+import { RecipeDraftReplySchema } from './contract.gen.ts';
+
 // Spec 0066 "KI-Agent" (step 1): the contract between the app and the edge function `ai-agent`,
 // and the pure logic both sides share — the context block of a message, the stream filter for
 // citation tokens, the SSE framing, the cards of `show_suggestions` with their enrichment from
 // Google (Serper), and the messages of a Foundry conversation. Copied into the edge functions by
-// `pnpm gen:edge`, so it imports nothing but zod. Spec 0067 (one household agent): badges and the
-// household's day in the context block, photos and PDF files as attachments.
+// `pnpm gen:edge`, so it imports nothing but zod and two other copies (agent-proposals.ts,
+// ai-contract.ts). Spec 0067 (one household agent): badges and the household's day in the context
+// block, photos and PDF files as attachments; step B: proposals, recipe drafts and images as
+// "extras" of an answer.
 
 export const AGENT_LIMITS = {
   /** Characters of one message (AC-006). */
@@ -284,8 +299,14 @@ export const AgentSendRequestSchema = z
       .refine((badges) => new Set(badges).size === badges.length)
       .default([]),
     attachments: z.array(AgentAttachmentSchema).max(AGENT_LIMITS.attachments).default([]),
+    /**
+     * Preview feedback 28.11. (like ChatGPT): the person edited her n-th message of this chat
+     * (0 = the first); it and everything after it go before this one is sent.
+     */
+    editFrom: z.int().min(0).max(200).optional(),
   })
   .refine((request) => request.message !== '' || request.attachments.length > 0)
+  .refine((request) => request.editFrom === undefined || request.chatId !== undefined)
   .refine(
     (request) =>
       request.attachments.reduce((sum, attachment) => sum + attachment.dataUrl.length, 0) <=
@@ -428,11 +449,14 @@ export interface PlaceHitLike {
   ratingCount?: number;
   mapsUrl?: string;
   imageUrl?: string;
+  /** Spec 0067: the place's own website from Google, the only one a card keeps after tools ran. */
+  websiteUrl?: string;
 }
 
 export const PlaceEnrichmentSchema = z.object({
   index: z.number().int().min(0).max(50),
   mapsUrl: HttpsUrl.optional().catch(undefined),
+  websiteUrl: HttpsUrl.optional().catch(undefined),
   rating: z.number().min(0).max(5).optional().catch(undefined),
   ratingCount: z.number().int().min(0).optional().catch(undefined),
   imageUrl: HttpsUrl.optional().catch(undefined),
@@ -477,6 +501,7 @@ export function enrichmentFromHits(
   const enrichment = PlaceEnrichmentSchema.parse({
     index: card.index,
     mapsUrl: hit.mapsUrl,
+    websiteUrl: hit.websiteUrl,
     rating: hit.rating,
     ratingCount: hit.ratingCount,
     imageUrl: hit.imageUrl,
@@ -664,6 +689,213 @@ export function stepLine(step: AgentStep): string {
   return parts.join(' · ');
 }
 
+// ---------- Extras: proposals, recipe drafts, images (spec 0067, step B) ----------
+
+export const AgentImageHitSchema = z.strictObject({
+  /** The Google image itself; shown through fetch-image, never stored as it is (REQ-011). */
+  imageUrl: HttpsUrl,
+  thumbnailUrl: HttpsUrl.optional(),
+  /** The page it is on: the source that stays with the photo. */
+  pageUrl: HttpsUrl,
+  host: z.string().max(200),
+  title: z.string().max(200).optional(),
+});
+export type AgentImageHit = z.infer<typeof AgentImageHitSchema>;
+
+const ImageForSchema = {
+  for: z.enum(AGENT_IMAGE_SUBJECTS),
+  name: z.string().max(200).optional(),
+};
+
+/** What an answer shows besides its text and place cards. */
+export const AgentExtraSchema = z.discriminatedUnion('kind', [
+  /** REQ-009: a collect card; nothing changes before the person applies it. */
+  z.strictObject({ kind: z.literal('proposal'), proposal: AgentProposalSchema }),
+  /** REQ-010: a draft of the draft pipeline, opened in the recipe editor on "Prüfen und anlegen". */
+  z.strictObject({
+    kind: z.literal('recipe_draft'),
+    id: z.string().min(1).max(200),
+    reply: RecipeDraftReplySchema,
+  }),
+  /** REQ-011: exactly one AI photo, made by the app through ai-image (FLUX). */
+  z.strictObject({
+    kind: z.literal('image'),
+    id: z.string().min(1).max(200),
+    prompt: z.string().min(1).max(AGENT_PROPOSAL_LIMITS.prompt),
+    ...ImageForSchema,
+  }),
+  /** Preview 28.11.: the household's own entries as cards (checked by the function, shown from the cache). */
+  z.strictObject({
+    kind: z.literal('entities'),
+    id: z.string().min(1).max(200),
+    title: z.string().max(60).optional(),
+    items: z.array(AgentEntityRefSchema).min(1).max(AGENT_PROPOSAL_LIMITS.entities),
+  }),
+  /** REQ-011: Google images to pick one from. */
+  z.strictObject({
+    kind: z.literal('images'),
+    id: z.string().min(1).max(200),
+    query: z.string().min(1).max(AGENT_PROPOSAL_LIMITS.query),
+    images: z.array(AgentImageHitSchema).max(AGENT_PROPOSAL_LIMITS.images),
+    ...ImageForSchema,
+  }),
+]);
+export type AgentExtra = z.infer<typeof AgentExtraSchema>;
+
+/** Extras of one answer. */
+const MAX_EXTRAS = 10;
+
+/** The output of `draft_recipe` in the conversation: the draft, for a chat opened later too. */
+export function draftOutput(reply: z.infer<typeof RecipeDraftReplySchema>): string {
+  return JSON.stringify({ shown: true, ...reply });
+}
+
+/** The output of `show_entities`: the entries the household has, for a chat opened later. */
+export function entitiesOutput(
+  title: string | undefined,
+  items: readonly z.infer<typeof AgentEntityRefSchema>[],
+  dropped: number,
+): string {
+  return JSON.stringify({
+    shown: items.length > 0,
+    ...(title ? { title } : {}),
+    items,
+    ...(dropped > 0 ? { not_found: dropped } : {}),
+  });
+}
+
+/** The output of `show_images`: the images, so a chat opened later shows the same row. */
+export function imagesOutput(images: readonly AgentImageHit[]): string {
+  return JSON.stringify({ shown: true, count: images.length, images });
+}
+
+function jsonOf(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The extra of a proposal tool's call from its arguments and output, as a chat opened later
+ * shows it; `message` is the person's message of that turn (a delete needs her wish, AC-020).
+ */
+export function extraOfCall(
+  name: string,
+  callId: string,
+  args: string,
+  output: string,
+  message: string,
+): AgentExtra | undefined {
+  if (name === 'propose_actions') {
+    const { proposal } = parseProposalArgs(args, {
+      id: callId,
+      deletesAllowed: deleteWished(message),
+    });
+    return proposal.actions.length > 0 ? { kind: 'proposal', proposal } : undefined;
+  }
+  if (name === 'make_image') {
+    const image = parseImageArgs(args, AGENT_PROPOSAL_LIMITS.prompt);
+    return image
+      ? {
+          kind: 'image',
+          id: callId,
+          prompt: image.text,
+          for: image.for,
+          ...(image.name ? { name: image.name } : {}),
+        }
+      : undefined;
+  }
+  const result = record(jsonOf(output)) ?? {};
+  if (name === 'show_entities') {
+    const items = z
+      .array(AgentEntityRefSchema)
+      .min(1)
+      .max(AGENT_PROPOSAL_LIMITS.entities)
+      .safeParse(result.items);
+    const title = typeof result.title === 'string' ? result.title.slice(0, 60) : '';
+    return items.success
+      ? { kind: 'entities', id: callId, ...(title ? { title } : {}), items: items.data }
+      : undefined;
+  }
+  if (name === 'draft_recipe') {
+    const reply = RecipeDraftReplySchema.safeParse({
+      draft: result.draft,
+      sources: result.sources,
+      ...(result.webPhotoUrl ? { webPhotoUrl: result.webPhotoUrl } : {}),
+    });
+    return reply.success ? { kind: 'recipe_draft', id: callId, reply: reply.data } : undefined;
+  }
+  if (name === 'show_images') {
+    const query = parseImageArgs(args, AGENT_PROPOSAL_LIMITS.query);
+    const images = z
+      .array(AgentImageHitSchema)
+      .max(AGENT_PROPOSAL_LIMITS.images)
+      .safeParse(result.images);
+    return query && images.success && images.data.length > 0
+      ? {
+          kind: 'images',
+          id: callId,
+          query: query.text,
+          images: images.data,
+          for: query.for,
+          ...(query.name ? { name: query.name } : {}),
+        }
+      : undefined;
+  }
+  return undefined;
+}
+
+/** The step row of `draft_recipe` and `show_images` (REQ-008); the others show as their card. */
+export function proposalStep(
+  name: string,
+  args: string,
+  output: string,
+  id: string,
+): AgentStep | undefined {
+  const result = record(jsonOf(output)) ?? {};
+  if (name === 'draft_recipe') {
+    const draft = parseDraftArgs(args);
+    const hosts = (draft?.links ?? []).map(
+      (link) => /^https:\/\/(?:www\.)?([^/?#:]+)/i.exec(link)?.[1] ?? '',
+    );
+    const from = draft?.refine
+      ? 'ändert den Entwurf'
+      : hosts.length > 0
+        ? hosts.join(', ')
+        : draft?.usePhotos
+          ? 'aus den Fotos'
+          : draft?.page
+            ? 'aus der Websuche'
+            : 'aus deinem Wunsch';
+    const unread = result.error === 'link_unreadable' ? 'Link nicht lesbar' : undefined;
+    return {
+      id,
+      kind: 'tool',
+      label: 'Schreibt einen Rezeptentwurf',
+      detail: unread ?? from,
+      details: [],
+      status: 'done',
+    };
+  }
+  if (name === 'show_images') {
+    const query = parseImageArgs(args, AGENT_PROPOSAL_LIMITS.query);
+    const count = typeof result.count === 'number' ? result.count : 0;
+    return {
+      id,
+      kind: 'tool',
+      label: 'Sucht Bilder',
+      ...(query ? { detail: `„${query.text}“` } : {}),
+      details: [],
+      count,
+      countLabel: 'Bilder',
+      status: 'done',
+    };
+  }
+  return undefined;
+}
+
 // ---------- Stream ----------
 
 export const AGENT_STREAM_ERRORS = [
@@ -691,6 +923,8 @@ export const AgentStreamEventSchema = z.discriminatedUnion('type', [
     followUps: z.array(z.string().max(120)).max(AGENT_LIMITS.followUps),
   }),
   z.strictObject({ type: z.literal('sources'), sources: z.array(AgentSourceSchema).max(12) }),
+  /** Spec 0067, step B: a proposal, a recipe draft or images. */
+  z.strictObject({ type: z.literal('extra'), extra: AgentExtraSchema }),
   z.strictObject({ type: z.literal('done') }),
   z.strictObject({ type: z.literal('error'), error: z.enum(AGENT_STREAM_ERRORS) }),
 ]);
@@ -745,6 +979,8 @@ export const AgentMessageSchema = z.strictObject({
   followUps: z.array(z.string().max(120)).max(AGENT_LIMITS.followUps),
   sources: z.array(AgentSourceSchema).max(12),
   steps: z.array(AgentStepSchema).max(AGENT_LIMITS.steps),
+  /** Spec 0067, step B. */
+  extras: z.array(AgentExtraSchema).max(MAX_EXTRAS),
 });
 export type AgentMessage = z.infer<typeof AgentMessageSchema>;
 
@@ -763,7 +999,15 @@ const list = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
 const str = (value: unknown): string | undefined => (typeof value === 'string' ? value : undefined);
 
 function emptyAnswer(): AgentMessage {
-  return { role: 'assistant', text: '', cards: [], followUps: [], sources: [], steps: [] };
+  return {
+    role: 'assistant',
+    text: '',
+    cards: [],
+    followUps: [],
+    sources: [],
+    steps: [],
+    extras: [],
+  };
 }
 
 /**
@@ -782,6 +1026,12 @@ export function messagesFromItems(
   let answer: AgentMessage | undefined;
   const callOf = new Map<string, AgentMessage>();
   const toolCalls = new Map<string, { message: AgentMessage; name: string; args: string }>();
+  // Spec 0067, step B: calls of the proposal tools, with the person's message of their turn.
+  const proposalCalls = new Map<
+    string,
+    { message: AgentMessage; name: string; args: string; asked: string }
+  >();
+  let asked = '';
   const answerNow = () => {
     if (!answer) {
       answer = emptyAnswer();
@@ -805,6 +1055,7 @@ export function messagesFromItems(
         parts.filter((part) => part?.type === 'input_image' || part?.type === 'input_file').length,
       );
       if (!text && attachments === 0) continue;
+      asked = text;
       messages.push({
         ...emptyAnswer(),
         role: 'user',
@@ -853,6 +1104,15 @@ export function messagesFromItems(
       if (parsed.title) current.cardsTitle = parsed.title;
       const callId = str(item.call_id);
       if (callId) callOf.set(callId, current);
+    } else if (type === 'function_call' && isProposalTool(str(item.name) ?? '')) {
+      const callId = str(item.call_id);
+      if (callId)
+        proposalCalls.set(callId, {
+          message: answerNow(),
+          name: str(item.name) ?? '',
+          args: str(item.arguments) ?? '',
+          asked,
+        });
     } else if (type === 'function_call' && options.toolStep) {
       const callId = str(item.call_id);
       if (callId)
@@ -866,6 +1126,24 @@ export function messagesFromItems(
       const target = callOf.get(callId);
       if (target)
         target.cards = mergeCards(target.cards, parseFunctionOutput(str(item.output) ?? ''));
+      const proposal = proposalCalls.get(callId);
+      if (proposal) {
+        const output = str(item.output) ?? '';
+        const step = proposalStep(
+          proposal.name,
+          proposal.args,
+          output,
+          `t${proposal.message.steps.length + 1}`,
+        );
+        if (step && proposal.message.steps.length < AGENT_LIMITS.steps) {
+          const web = proposal.message.steps.findIndex((entry) => entry.id === 'web');
+          if (web < 0) proposal.message.steps.push(step);
+          else proposal.message.steps.splice(web, 0, step);
+        }
+        const extra = extraOfCall(proposal.name, callId, proposal.args, output, proposal.asked);
+        if (extra && proposal.message.extras.length < MAX_EXTRAS)
+          proposal.message.extras.push(extra);
+      }
       const call = toolCalls.get(callId);
       if (call && options.toolStep && call.message.steps.length < AGENT_LIMITS.steps) {
         const step = options.toolStep(
@@ -882,6 +1160,7 @@ export function messagesFromItems(
     }
   }
   return messages.filter(
-    (message) => message.role === 'user' || message.text || message.cards.length,
+    (message) =>
+      message.role === 'user' || message.text || message.cards.length || message.extras.length,
   );
 }
