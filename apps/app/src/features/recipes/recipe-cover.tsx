@@ -6,17 +6,25 @@ import {
   mainIngredientNames,
   recipeImageContext,
   type Recipe,
-  type RecipeVideo,
 } from '@housekeeping/core';
-import { MediaGallery, Photo, PhotoCollage, Stack, type PhotoProps } from '@housekeeping/ui';
+import {
+  MediaGallery,
+  Photo,
+  PhotoCollage,
+  PhotoViewer,
+  Stack,
+  ViewerPhoto,
+  type PhotoProps,
+} from '@housekeeping/ui';
 import { useEffect, useMemo, useState } from 'react';
+import { Pressable, View } from 'react-native';
 
 import { useOnlineOnly } from '@/features/shell/offline';
-import { PhotoActionRow, ZoomablePhoto } from '@/features/shell/own-photo';
+import { PhotoActionRow } from '@/features/shell/own-photo';
 import { PhotoWindow } from '@/features/shell/photo-window';
 
 import { RecipePhotoStatus, type RecipePhotoState } from './recipe-actions';
-import { VideoPlayer, VideoTile } from './recipe-video';
+import { VideoPage, VideoTile } from './recipe-video';
 
 /** The frame of the page's photo; the videos' posters stand in the same one (spec 0046). */
 const PHOTO_ASPECT = 4 / 3;
@@ -90,7 +98,9 @@ function useBlobUri(blob: Blob | undefined): string | undefined {
  * shows it on the whole screen, "Foto ändern" right under it opens the window "Foto" (spec 0036,
  * REQ-008, REQ-009; spec 0039, REQ-001), which the ⋯ menu opens too; under a sample photo too.
  * The recipe's videos follow the photo in a gallery (spec 0046, REQ-003); without a photo it
- * starts with the first video; a video plays only on the whole screen (REQ-004).
+ * starts with the first video; a video plays only on the whole screen (REQ-004). On the whole
+ * screen photo and videos swipe like the gallery (spec 0056, REQ-003). `compact` (phones and
+ * tablets): without photo and video only the row "Foto hinzufügen", no placeholder (REQ-005).
  */
 export function RecipePhoto(props: {
   recipe: Recipe;
@@ -100,6 +110,8 @@ export function RecipePhoto(props: {
   onShare?: () => void;
   /** The photo "Speichern" will set: a chosen AI suggestion (spec 0040, AC-010). */
   pending?: Blob;
+  /** Without photo and video no placeholder frame (spec 0056, REQ-005). */
+  compact?: boolean;
 }) {
   const online = useOnlineOnly();
   const articlesById = useArticlesById();
@@ -113,50 +125,94 @@ export function RecipePhoto(props: {
       : image
         ? [image]
         : [];
-  const [playing, setPlaying] = useState<RecipeVideo>();
-  const photo = (
-    <ZoomablePhoto key="photo" sources={sources} name={props.recipe.title} testID="recipe-photo">
-      {pendingUri ? (
-        <Photo
-          source={{ uri: pendingUri }}
-          aspectRatio={PHOTO_ASPECT}
-          alt={props.recipe.title}
-          testID="recipe-photo-pending"
-        />
-      ) : (
-        <RecipeCover
-          recipe={props.recipe}
-          aspectRatio={PHOTO_ASPECT}
-          alt={props.recipe.title}
-          testID="recipe-photo"
-        />
-      )}
-    </ZoomablePhoto>
+  const items = galleryItems(props.recipe, sources.length > 0);
+  // The page the full-screen viewer shows; `play` when a video's tile opened it (AC-013).
+  const [viewer, setViewer] = useState<{ index: number; play: boolean }>();
+  const [shown, setShown] = useState(0);
+  const openViewer = (index: number, play: boolean) => {
+    setShown(index);
+    setViewer({ index, play });
+  };
+  const cover = pendingUri ? (
+    <Photo
+      source={{ uri: pendingUri }}
+      aspectRatio={PHOTO_ASPECT}
+      alt={props.recipe.title}
+      testID="recipe-photo-pending"
+    />
+  ) : (
+    <RecipeCover
+      recipe={props.recipe}
+      aspectRatio={PHOTO_ASPECT}
+      alt={props.recipe.title}
+      testID="recipe-photo"
+    />
   );
+  // A placeholder only shows; a photo opens the viewer.
+  const photo =
+    sources.length === 0 ? (
+      <View key="photo">{cover}</View>
+    ) : (
+      <Pressable
+        key="photo"
+        accessibilityRole="button"
+        accessibilityLabel={`Foto von ${props.recipe.title} groß anzeigen`}
+        onPress={() => openViewer(0, false)}
+        testID="recipe-photo-zoom"
+        style={(state) => ({ opacity: state.pressed ? 0.85 : 1 })}
+      >
+        {cover}
+      </Pressable>
+    );
+  const bare = props.compact === true && sources.length === 0 && props.recipe.videos.length === 0;
   return (
     <Stack gap={4} style={props.style}>
-      <MediaGallery aspectRatio={PHOTO_ASPECT} labels={GALLERY_LABELS} testID="recipe-gallery">
-        {galleryItems(props.recipe, sources.length > 0).map((item) =>
-          item.kind === 'photo' ? (
-            photo
-          ) : (
-            <VideoTile
-              key={item.key}
-              recipe={props.recipe}
-              video={item.video}
-              index={item.index}
-              aspectRatio={PHOTO_ASPECT}
-              onPlay={() => setPlaying(item.video)}
-              testID={`recipe-video-${item.index}`}
-            />
-          ),
-        )}
-      </MediaGallery>
-      {playing ? (
-        <VideoPlayer
-          video={playing}
-          title={props.recipe.title}
-          onClose={() => setPlaying(undefined)}
+      {bare ? null : (
+        <MediaGallery aspectRatio={PHOTO_ASPECT} labels={GALLERY_LABELS} testID="recipe-gallery">
+          {items.map((item, at) =>
+            item.kind === 'photo' ? (
+              photo
+            ) : (
+              <VideoTile
+                key={item.key}
+                recipe={props.recipe}
+                video={item.video}
+                index={item.index}
+                aspectRatio={PHOTO_ASPECT}
+                onPlay={() => openViewer(at, true)}
+                testID={`recipe-video-${item.index}`}
+              />
+            ),
+          )}
+        </MediaGallery>
+      )}
+      {viewer ? (
+        <PhotoViewer
+          sources={sources}
+          alt={props.recipe.title}
+          closeLabel="Schließen"
+          onClose={() => setViewer(undefined)}
+          pages={{
+            content: items.map((item, at) =>
+              item.kind === 'photo' ? (
+                <ViewerPhoto key="photo" sources={sources} alt={props.recipe.title} />
+              ) : (
+                <VideoPage
+                  key={item.key}
+                  recipe={props.recipe}
+                  video={item.video}
+                  index={item.index}
+                  active={shown === at}
+                  autoplay={viewer.play && viewer.index === at}
+                  testID={`recipe-viewer-video-${item.index}`}
+                />
+              ),
+            ),
+            initialIndex: viewer.index,
+            labels: GALLERY_LABELS,
+            onIndexChange: setShown,
+          }}
+          testID="recipe-photo-viewer"
         />
       ) : null}
       <PhotoActionRow

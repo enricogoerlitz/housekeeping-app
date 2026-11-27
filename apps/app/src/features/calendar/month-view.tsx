@@ -60,7 +60,6 @@ export interface MonthViewProps {
   onOpenDay: (date: ISODate) => void;
   /** Every day cell registers here, e.g. to get the focus back when the day window closes. */
   registerDay: (date: ISODate, node: HostInstance | null) => void;
-  showHousehold: boolean;
   wide: boolean;
   /** Desktop (from 1100 px): the weekday heads are written out (spec 0030, AC-004). */
   longWeekdays?: boolean;
@@ -222,8 +221,8 @@ function MonthPhone(props: MonthViewProps) {
   const month = props.monthStart.slice(0, 7);
   const first = weeks[0]?.[0] ?? props.monthStart;
   const last = weeks[weeks.length - 1]?.[6] ?? props.monthStart;
-  // With the household row a day with chores carries the dot "Aufgabe" (spec 0021, REQ-017).
-  const chores = props.showHousehold ? data.householdRow(first, last) : {};
+  // A day with chores carries the dot "Aufgabe" (spec 0021, REQ-017; always, spec 0054).
+  const chores = data.householdRow(first, last);
 
   return (
     <View style={{ marginBottom: 22 }} testID="month-phone">
@@ -300,7 +299,7 @@ function MonthGridDesktop(props: MonthViewProps) {
   const month = props.monthStart.slice(0, 7);
   const first = weeks[0]?.[0] ?? props.monthStart;
   const last = weeks[weeks.length - 1]?.[6] ?? props.monthStart;
-  const chores = props.showHousehold ? data.householdRow(first, last) : {};
+  const chores = data.householdRow(first, last);
   const presetSlot = addPresetSlot(data.slots);
   // The day under the mouse: its tile lightens and shows "+".
   const [hovered, setHovered] = useState<ISODate | null>(null);

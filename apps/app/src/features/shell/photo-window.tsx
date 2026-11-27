@@ -63,7 +63,7 @@ export const pasteKeys = () =>
     : 'Strg+V';
 
 /** „Foto entfernen?“ · „Entfernen“ / „Abbrechen“ before a photo goes (spec 0036, AC-019). */
-export function confirmPhotoRemoval(remove: () => void): void {
+function confirmPhotoRemoval(remove: () => void): void {
   confirmFirst({
     title: 'Foto entfernen?',
     confirmLabel: 'Entfernen',

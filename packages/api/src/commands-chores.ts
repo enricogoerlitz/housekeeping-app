@@ -59,6 +59,11 @@ export interface ChoreInput {
    */
   remindAtDueTime?: boolean;
   /**
+   * „Vorwarnung“ in days (spec 0059, REQ-004). Editing without it keeps the chore's; null or 0
+   * removes it. Only a rhythm with a fixed Termin keeps one (AC-023).
+   */
+  noticeDaysBefore?: number | null;
+  /**
    * „Nächstes Mal“ (spec 0026, REQ-002): today or later. Creating without one takes
    * core.firstDueOn; editing without one keeps the date unless the rhythm changed.
    */
@@ -182,7 +187,14 @@ function newChore(input: ChoreInput, today: ISODate): Chore {
     remindAtDueTime: remindAtDueTimeFor(input.dueTime ?? undefined, input.remindAtDueTime ?? true)
       ? undefined
       : false,
+    noticeDaysBefore: noticeFor(input.recurrence, input.noticeDaysBefore),
   };
+}
+
+/** The Vorwarnung kept for the rhythm: none for "Flexibel" and "Bei Bedarf", none for 0 (AC-023). */
+function noticeFor(recurrence: Recurrence, days: number | null | undefined): number | undefined {
+  if (recurrence.type === 'flexible' || recurrence.type === 'asNeeded') return undefined;
+  return days ? days : undefined;
 }
 
 /**
@@ -420,6 +432,10 @@ export function updateChore(choreId: Id, input: ChoreInput): void {
           )
             ? undefined
             : false,
+          noticeDaysBefore: noticeFor(
+            input.recurrence,
+            input.noticeDaysBefore === undefined ? chore.noticeDaysBefore : input.noticeDaysBefore,
+          ),
           nextDueOn:
             input.recurrence.type === 'asNeeded'
               ? undefined

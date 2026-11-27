@@ -42,11 +42,11 @@ function ingredientRows(scope: Locator): Locator {
   );
 }
 
-/** "+" → `option` of the "Neu" menu on "Essen" (spec 0008, AC-003; spec 0009, AC-001). */
+/** "+" on "Essen" opens "Neu"; a collection is chosen there (spec 0054, REQ-002; spec 0009). */
 async function newFromMenu(page: Page, option: 'recipe' | 'collection'): Promise<void> {
   await tid(page, 'recipe-new').click();
-  await tid(page, `recipe-new-${option}`).click();
   await expect(tid(page, 'new-recipe-sheet')).toBeVisible();
+  if (option === 'collection') await tid(page, 'new-recipe-kind-collection').click();
 }
 
 /** A new recipe from "Essen"; lands on its page. */
@@ -132,13 +132,9 @@ test('AC-021 (0001) / AC-003 (0008) / AC-060 (0006): "Neu" → "Rezept" creates 
   await expect(count).toHaveText(/^\d+ Rezepte · \d+ Sammlungen$/);
   const before = Number((await count.innerText()).match(/\d+/)?.[0]);
 
+  // Spec 0054, AC-005: "+" opens "Neu" at once, with "Rezept" chosen and "Sammlung" beside it.
   await tid(page, 'recipe-new').click();
-  // Spec 0023, AC-045: exactly "Rezept", "Sammlung", "Restaurant".
-  for (const option of ['recipe', 'collection', 'restaurant']) {
-    await expect(tid(page, `recipe-new-${option}`), option).toBeVisible();
-  }
-  await expect(tid(page, 'recipe-new-starter')).toHaveCount(0);
-  await tid(page, 'recipe-new-recipe').click();
+  await expect(tid(page, 'new-recipe-kind-collection')).toBeVisible();
   await expect(tid(page, 'new-recipe-kind-recipe')).toHaveAttribute('aria-checked', 'true');
   await tid(page, 'new-recipe-title').fill('Linsen-Dal');
   await tid(page, 'new-recipe-save').click();
@@ -294,7 +290,8 @@ test('AC-020 / AC-028 (0008): the phone recipe page has its buttons under the he
     await expect(tid(page, id), id).toBeVisible();
   }
   await tid(page, 'recipe-more').click();
-  await expect(tid(page, 'recipe-more-photo')).toBeVisible();
+  // Spec 0054, AC-008: "Foto ändern" stands under the photo, not in ⋯.
+  await expect(tid(page, 'recipe-more-photo')).toHaveCount(0);
   await expect(tid(page, 'recipe-more-delete')).toBeVisible();
   await page.keyboard.press('Escape');
 

@@ -18,13 +18,13 @@ import {
   toggleRestaurantFavorites,
   quickViewOrigin,
   type Id,
-  type RecipeKind,
   type Restaurant,
   type RestaurantListSort,
 } from '@housekeeping/core';
 import {
   Button,
   Chip,
+  CreateButton,
   EmptyState,
   FieldClearButton,
   FilterBar,
@@ -48,11 +48,8 @@ import { useRouter } from 'expo-router';
 import { type ComponentRef, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, View, type TextInput } from 'react-native';
 
-import { useOpenRecipe } from '@/features/recipes/navigation';
 import { rememberBrowseOrder } from '@/lib/browse-order';
 import { afterWindowClosed, useOriginBack, usePageParams } from '@/lib/url-state';
-import { NewRecipeSheet } from '@/features/recipes/new-recipe-sheet';
-import { FoodNewMenu, type FoodNewKind } from '@/features/recipes/new-menu';
 import { StartPageActions } from '@/features/shell/profile-button';
 import { useOnlineOnly } from '@/features/shell/offline';
 import { OwnPhoto } from '@/features/shell/own-photo';
@@ -99,7 +96,6 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
   const today = useToday();
   const me = useCurrentMember();
   const list = useRestaurantListState();
-  const openRecipe = useOpenRecipe();
   // "Kacheln" open the restaurant's page, "Liste" beside the list on wide screens (spec 0038).
   const listView = useListView('restaurants');
 
@@ -108,10 +104,6 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
   const [focus, setFocus] = useState<SheetRequest['focus']>('name');
   // "+" starts with the one field (spec 0062, REQ-008); the empty state's steps go to the form.
   const [start, setStart] = useState(true);
-  const [newRecipe, setNewRecipe] = useState<{ open: boolean; kind: RecipeKind }>({
-    open: false,
-    kind: 'recipe',
-  });
 
   // On wide screens the chosen restaurant stands in the address and replaces the entry (spec 0019,
   // REQ-014, AC-043); on phones the same address opens its page, with the list underneath (AC-044).
@@ -185,12 +177,7 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
     open(restaurantId);
   };
 
-  const onNew = (kind: FoodNewKind) => {
-    if (kind === 'recipe' || kind === 'collection') setNewRecipe({ open: true, kind });
-    else setSheet({ focus: 'name', start: true });
-  };
-
-  // The same "+" as on "Essen → Rezepte" (spec 0008, AC-003): one header for both views.
+  // On "Restaurants" the "+" creates a restaurant at once (spec 0054, REQ-002).
   const header = (
     <ScreenHeader
       title="Essen"
@@ -198,7 +185,13 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
       onBack={fromOther ? origin.back : undefined}
       right={
         <>
-          <FoodNewMenu onNew={onNew} />
+          <CreateButton
+            label="Restaurant anlegen"
+            disabled={online.disabled}
+            hint={online.hint}
+            onPress={() => setSheet({ focus: 'name', start: true })}
+            testID="restaurant-new"
+          />
           <StartPageActions />
         </>
       }
@@ -210,25 +203,15 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
     </Text>
   ) : null;
 
-  const sheets = (
-    <>
-      {sheetRequest ? (
-        <AddRestaurantSheet
-          key={`${sheetRequest.initialText ?? ''}|${sheetRequest.initialName ?? ''}`}
-          {...sheetRequest}
-          onClose={closeSheet}
-          onCreated={openFromSheet}
-          onOpenExisting={openFromSheet}
-        />
-      ) : null}
-      <NewRecipeSheet
-        visible={newRecipe.open}
-        kind={newRecipe.kind}
-        onClose={() => setNewRecipe({ ...newRecipe, open: false })}
-        onCreated={openRecipe}
-      />
-    </>
-  );
+  const sheets = sheetRequest ? (
+    <AddRestaurantSheet
+      key={`${sheetRequest.initialText ?? ''}|${sheetRequest.initialName ?? ''}`}
+      {...sheetRequest}
+      onClose={closeSheet}
+      onCreated={openFromSheet}
+      onOpenExisting={openFromSheet}
+    />
+  ) : null;
 
   // Nothing created yet: no search and no filter row, only the first step (AC-018).
   if (restaurants.length === 0) {

@@ -40,6 +40,7 @@ export function NewChoreSheet(props: { visible: boolean; onClose: () => void }) 
         ...choreFieldsOf(draft, members),
         dueTime: time.value,
         remindAtDueTime: time.remind,
+        noticeDaysBefore: time.notice,
       });
     } catch (error) {
       setErrors({ title: errorMessage(error, FAILED_MESSAGE) });

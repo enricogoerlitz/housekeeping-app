@@ -10,6 +10,7 @@ import {
   pageDraftChanged,
   pageEditorReducer,
   pageSections,
+  readViewSave,
   revertPageDraft,
   validatePageDraft,
   withNewContents,
@@ -17,7 +18,12 @@ import {
   type PageDraft,
   type PageEditorState,
 } from './page-editor';
-import { newIngredientRow, sectionPatch, type SectionPatchContext } from './recipe-editor';
+import {
+  addPastedRows,
+  newIngredientRow,
+  sectionPatch,
+  type SectionPatchContext,
+} from './recipe-editor';
 import {
   articles,
   grillabend,
@@ -560,6 +566,56 @@ describe('"Aus Rezept übernehmen" (spec 0037, REQ-003)', () => {
         (row) => row.article?.kind === 'article' && row.article.articleId === 'art-haehnchen',
       ),
     ).toBe(false);
+  });
+});
+
+describe('"+ Zutat" and "Mehrere einfügen" in the read view save at once (spec 0056)', () => {
+  const stored = pageDraft(apfelkuchen, []).ingredients;
+  const household = [
+    ...articles,
+    { ...articles[0]!, id: 'art-mehl', name: 'Mehl', synonyms: [] },
+    { ...articles[0]!, id: 'art-zimt', name: 'Zimt', synonyms: [] },
+  ];
+  const moehren = {
+    ...newIngredientRow('neu-moehren'),
+    amountText: '2',
+    article: { kind: 'article' as const, articleId: 'art-moehren' },
+  };
+  const paniermehl = { ...newIngredientRow('neu-paniermehl'), amountText: '1', name: 'Paniermehl' };
+
+  it('AC-007: rows with an article are all saved, none stays open', () => {
+    const next = addPastedRows(stored, [moehren, zimtRow]);
+    const { section, open } = readViewSave(next, household);
+    expect(section.rows.map((row) => row.key)).toEqual(['i-mehl', 'neu-moehren', 'neu-zimt']);
+    expect(open).toEqual([]);
+    expect(validatePageDraft(withSection(pageDraft(apfelkuchen, []), section))).toEqual([]);
+  });
+
+  it('AC-008: a row without article stays out of the save and opens the edit mode', () => {
+    const next = addPastedRows(stored, [moehren, paniermehl]);
+    const { section, open } = readViewSave(next, household);
+    expect(section.rows.map((row) => row.key)).toEqual(['i-mehl', 'neu-moehren']);
+    expect(open.map((row) => row.key)).toEqual(['neu-paniermehl']);
+  });
+
+  it('AC-008: a pasted duplicate waits for a decision in the edit mode', () => {
+    const again = {
+      ...newIngredientRow('neu-mehl'),
+      amountText: '50 g',
+      article: { kind: 'article' as const, articleId: 'art-mehl' },
+    };
+    const { section, open } = readViewSave(addPastedRows(stored, [again]), household);
+    expect(section.rows.map((row) => row.key)).toEqual(['i-mehl']);
+    expect(open.map((row) => [row.key, row.duplicate])).toEqual([['neu-mehl', true]]);
+  });
+
+  it('AC-001: a single new row from "Neue Zutat" is saved', () => {
+    const { section, open } = readViewSave(
+      { ...stored, rows: [...stored.rows, zimtRow] },
+      household,
+    );
+    expect(section.rows).toHaveLength(2);
+    expect(open).toEqual([]);
   });
 });
 

@@ -60,3 +60,18 @@ export function withCookingHistory(
     };
   });
 }
+
+/**
+ * Whether the calendar counts `recipeId` as cooked today (spec 0056, REQ-008): the rule of
+ * "Zuletzt gekocht" (cookingHistory) for today's entries only, so "Fertig" in the cooking mode
+ * asks "Heute gekocht eintragen?" exactly when "Zuletzt gekocht" would not say today.
+ */
+export function cookedToday(
+  entries: readonly MealPlanEntry[],
+  collectionRecipes: readonly CollectionRecipe[],
+  recipeId: Id,
+  today: ISODate,
+): boolean {
+  const todays = entries.filter((entry) => entry.date === today);
+  return cookingHistory(todays, collectionRecipes, today)[recipeId] !== undefined;
+}

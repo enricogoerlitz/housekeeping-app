@@ -1,5 +1,5 @@
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
-import { useWindowDimensions } from 'react-native';
+import { Platform, useWindowDimensions, type ViewStyle } from 'react-native';
 
 import { PHONE_MAX_WIDTH } from './sheet-size';
 import { getTheme, type ColorMode, type Theme, type ThemeId, type Tone } from './themes';
@@ -40,6 +40,35 @@ export function useAreaColors(): { fill: string; onFill: string; line: string } 
   return theme.mode === 'dark'
     ? { fill: fg, onFill: bg, line: fg }
     : { fill: bg, onFill: fg, line: fg };
+}
+
+/**
+ * The fill of a page: `bg`, and on the web a theme's sky over it (spec 0058, REQ-003). The sky
+ * has the size of the window and hangs from its top, so a view lying over the page (the header on
+ * phones) shows exactly the piece behind it; `top` = where the view starts below the page's top.
+ */
+export function pageFill(theme: Theme, height: number, top = 0): ViewStyle {
+  const fill: ViewStyle = { backgroundColor: theme.colors.bg };
+  if (theme.backdrop === undefined || Platform.OS !== 'web') return fill;
+  return {
+    ...fill,
+    backgroundImage: theme.backdrop,
+    backgroundSize: `100% ${height}px`,
+    backgroundPosition: `0px ${-top}px`,
+    backgroundRepeat: 'no-repeat',
+  };
+}
+
+/** The corners of an icon bubble (spec 0058, REQ-004); undefined when the theme draws circles. */
+export function bubbleCorners(theme: Theme): ViewStyle | undefined {
+  const bubble = theme.shape.bubble;
+  if (!bubble) return undefined;
+  return {
+    borderTopLeftRadius: bubble.topLeft,
+    borderTopRightRadius: bubble.topRight,
+    borderBottomRightRadius: bubble.bottomRight,
+    borderBottomLeftRadius: bubble.bottomLeft,
+  };
 }
 
 export type Breakpoint = 'phone' | 'tablet' | 'desktop';

@@ -157,20 +157,17 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
       testID="activity-edit"
     />
   );
+  // "Teilen" stands at the photo, so ⋯ holds only "Löschen" (spec 0054, REQ-003).
   const more = (
-    <Menu<'share' | 'delete'>
+    <Menu<'delete'>
       trigger="icon"
       icon="ellipsis"
       label="Mehr"
       accessibilityLabel={`Mehr zu ${activity.name}`}
       options={[
-        { value: 'share', label: 'Teilen' },
         { value: 'delete', label: 'Löschen', disabled: online.disabled, hint: online.hint },
       ]}
-      onChange={(action) => {
-        if (action === 'delete') remove();
-        else share();
-      }}
+      onChange={() => remove()}
       testID="activity-more"
     />
   );

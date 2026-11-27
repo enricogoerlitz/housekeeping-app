@@ -1,4 +1,5 @@
 import { Button, IconButton, Notice, Row } from '@housekeeping/ui';
+import { View } from 'react-native';
 
 import { useOnlineOnly } from '@/features/shell/offline';
 
@@ -53,4 +54,35 @@ export function EditError(props: { editor: PageEditor }) {
   const { error } = props.editor;
   if (!error) return null;
   return <Notice icon="circle-alert" text={error} testID="recipe-edit-error" />;
+}
+
+/**
+ * A kept draft from before (spec 0056, REQ-006): "Ungespeicherte Änderungen von 17:42" with
+ * "Weitermachen" (opens the edit mode with it) and "Verwerfen".
+ */
+export function DraftBackupNotice(props: { editor: PageEditor }) {
+  const { backup } = props.editor;
+  if (!backup) return null;
+  // The actions under the notice: beside it the time would wrap on a phone.
+  return (
+    <View style={{ gap: 2 }} testID="recipe-draft-backup">
+      <Notice icon="history" text={backup.notice} />
+      <Row gap={16}>
+        <Button
+          label="Weitermachen"
+          variant="link"
+          size="sm"
+          onPress={backup.resume}
+          testID="recipe-draft-resume"
+        />
+        <Button
+          label="Verwerfen"
+          variant="link"
+          size="sm"
+          onPress={backup.discard}
+          testID="recipe-draft-discard"
+        />
+      </Row>
+    </View>
+  );
 }
