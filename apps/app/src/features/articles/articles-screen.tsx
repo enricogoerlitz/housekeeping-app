@@ -1,4 +1,10 @@
-import { useAreas, useArticles, useRecipes, useShoppingItems } from '@housekeeping/api';
+import {
+  useAreas,
+  useArticles,
+  useRecipes,
+  useRecurringItems,
+  useShoppingItems,
+} from '@housekeeping/api';
 import {
   articleFilterCounts,
   articlesInArea,
@@ -120,7 +126,12 @@ export function ArticlesScreen() {
   // "Ähnliche Namen" compares every name with every other: once per data state.
   const similar = useMemo(() => similarArticleNames(articles), [articles]);
   // "Unbenutzt": in no recipe and not open on the list (AC-046).
-  const usedIds = useMemo(() => usedArticleIds(recipes, items), [recipes, items]);
+  // Spec 0060, AC-011: an article with a Dauerposten is not "Unbenutzt".
+  const recurringItems = useRecurringItems();
+  const usedIds = useMemo(
+    () => usedArticleIds(recipes, items, recurringItems),
+    [recipes, items, recurringItems],
+  );
   const context = useMemo(() => ({ similar, areas, usedIds }), [similar, areas, usedIds]);
   const counts = useMemo(() => articleFilterCounts(articles, context), [articles, context]);
   const areaNames = useMemo(() => new Map(areas.map((area) => [area.id, area.name])), [areas]);

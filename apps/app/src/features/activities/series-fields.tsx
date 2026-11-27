@@ -69,6 +69,10 @@ export function RepeatFields(props: {
   today: ISODate;
   /** "Serie bearbeiten": a series stays a series. */
   withoutOnce?: boolean;
+  /** Only these kinds (a Dauerposten: weekly and monthly, spec 0060). */
+  kinds?: readonly RepeatKind[];
+  /** No "Ende" and no summary: a Dauerposten is paused instead (spec 0060). */
+  withoutEnd?: boolean;
   disabled?: boolean;
 }) {
   const { value, onChange } = props;
@@ -77,9 +81,11 @@ export function RepeatFields(props: {
   const problem = rule
     ? seriesDraftProblem({ rule, startsOn: props.startsOn, endsOn: value.until })
     : undefined;
-  const options = props.withoutOnce
-    ? REPEAT_OPTIONS.filter((option) => option.value !== 'none')
-    : REPEAT_OPTIONS;
+  const options = REPEAT_OPTIONS.filter(
+    (option) =>
+      !(props.withoutOnce && option.value === 'none') &&
+      (props.kinds === undefined || props.kinds.includes(option.value)),
+  );
   const end: EndChoice = value.until === undefined ? 'forever' : 'until';
 
   return (
@@ -147,12 +153,12 @@ export function RepeatFields(props: {
           testID="repeat-month-day"
         />
       ) : null}
-      {rule ? (
+      {rule && !props.withoutEnd ? (
         <Text variant="small" color="muted" testID="repeat-summary">
           {`${seriesRuleLabel(rule, props.startsOn)}, ab ${formatPickerDate(props.startsOn)}`}
         </Text>
       ) : null}
-      {value.kind !== 'none' ? (
+      {value.kind !== 'none' && !props.withoutEnd ? (
         <Stack gap={8}>
           <Text variant="smallStrong">Ende</Text>
           <ChoiceChips<EndChoice>

@@ -5,10 +5,12 @@ import {
   useAreas,
   useArticles,
   useRecipes,
+  useRecurringItems,
   useShoppingItems,
 } from '@housekeeping/api';
 import {
   articleUsage,
+  seriesRuleLabel,
   mergeTargets,
   validateArticleDraft,
   type Article,
@@ -40,6 +42,7 @@ import { View } from 'react-native';
 import { useOpenRecipe } from '@/features/recipes/navigation';
 import { confirmFirst } from '@/features/shell/confirm-dialog';
 import { useOnlineOnly } from '@/features/shell/offline';
+import { RecurringStep } from '@/features/recurring/recurring-form';
 import { AreaPicker } from '@/features/stores/area-picker';
 
 import { DIET_OPTIONS, RULE_OPTIONS, type RuleChoice } from './labels';
@@ -57,7 +60,7 @@ export interface ArticleEditorProps {
   onMerge: (targetId: Id) => void;
 }
 
-type Step = 'main' | 'area' | 'merge';
+type Step = 'main' | 'area' | 'merge' | 'recurring';
 
 /** A label above a field that is not a TextField. */
 function FieldLabel(props: { children: string }) {
@@ -125,9 +128,12 @@ export function useArticleEditor(props: ArticleEditorProps): {
   const areas = useAreas();
   const recipes = useRecipes();
   const items = useShoppingItems();
+  const recurringItems = useRecurringItems();
   const online = useOnlineOnly();
   const openRecipe = useOpenRecipe();
   const article = articles.find((candidate) => candidate.id === props.articleId);
+  // Spec 0060, REQ-002: at most one Dauerposten per article.
+  const recurring = recurringItems.find((item) => item.articleId === props.articleId);
 
   const [step, setStep] = useState<Step>('main');
   const [name, setName] = useState(article?.name ?? '');
@@ -187,6 +193,8 @@ export function useArticleEditor(props: ArticleEditorProps): {
   const remove = () =>
     confirmFirst({
       title: `„${article.name}“ löschen?`,
+      // Spec 0060, AC-012: its Dauerposten goes with it.
+      message: recurring ? 'Der Dauerposten wird mit gelöscht.' : undefined,
       confirmLabel: 'Löschen',
       onConfirm: () => {
         if (!write(() => deleteArticle(article.id))) return;
@@ -221,6 +229,21 @@ export function useArticleEditor(props: ArticleEditorProps): {
           testID="article-step-back"
         />
       ),
+    };
+  }
+  if (step === 'recurring') {
+    return {
+      title: recurring ? 'Dauerposten bearbeiten' : 'Regelmäßig kaufen',
+      body: (
+        <RecurringStep
+          recurringId={recurring?.id}
+          articleId={article.id}
+          onBack={() => setStep('main')}
+          onDone={() => setStep('main')}
+          onOpen={() => setStep('recurring')}
+        />
+      ),
+      footer: null,
     };
   }
   if (step === 'merge') {
@@ -377,6 +400,35 @@ export function useArticleEditor(props: ArticleEditorProps): {
           onValueChange={(isPantry) => write(() => updateArticle(article.id, { isPantry }))}
           testID="article-pantry"
         />
+        {/* Spec 0060, REQ-002: "Regelmäßig kaufen ›" or the rhythm of its Dauerposten. */}
+        <List>
+          <ListRow
+            title={recurring ? 'Regelmäßig' : 'Regelmäßig kaufen'}
+            trailing={
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1 }}>
+                {recurring ? (
+                  <Text color="muted" numberOfLines={1} testID="article-recurring-rule">
+                    {recurring.paused
+                      ? 'pausiert'
+                      : seriesRuleLabel(recurring.rule, recurring.startsOn)}
+                  </Text>
+                ) : null}
+                <Icon name="chevron-right" size={18} color="muted" />
+              </View>
+            }
+            accessibilityLabel={
+              recurring
+                ? `Regelmäßig: ${
+                    recurring.paused
+                      ? 'pausiert'
+                      : seriesRuleLabel(recurring.rule, recurring.startsOn)
+                  }`
+                : 'Regelmäßig kaufen'
+            }
+            onPress={() => setStep('recurring')}
+            testID="article-recurring"
+          />
+        </List>
       </View>
 
       <View style={offlineGrey} pointerEvents={online.disabled ? 'none' : 'auto'}>

@@ -245,7 +245,11 @@ export function listPickerDayLabel(day: Pick<ListPickerDay, 'date' | 'isToday'>)
 }
 
 /** The button of step 1: "Weiter: 3 Gerichte", "Weiter: 1 Gericht", "Weiter" when none is chosen. */
-export function listPickerContinueLabel(dishes: number): string {
-  if (dishes <= 0) return 'Weiter';
-  return `Weiter: ${dishes} ${dishes === 1 ? 'Gericht' : 'Gerichte'}`;
+export function listPickerContinueLabel(dishes: number, recurring = 0): string {
+  const parts = [
+    dishes > 0 ? `${dishes} ${dishes === 1 ? 'Gericht' : 'Gerichte'}` : '',
+    // Spec 0060, AC-024: Dauerposten chosen under "Regelmäßig".
+    recurring > 0 ? `${recurring} Dauerposten` : '',
+  ].filter(Boolean);
+  return parts.length === 0 ? 'Weiter' : `Weiter: ${parts.join(' · ')}`;
 }

@@ -411,7 +411,7 @@ describe('sectionOfStartPath', () => {
 });
 
 describe('pages under "Verwalten" (spec 0031, REQ-036)', () => {
-  it.each(['reisen', 'maerkte', 'mitglieder', 'feedback', 'reisetaschen'] as const)(
+  it.each(['reisen', 'maerkte', 'mitglieder', 'feedback', 'reisetaschen', 'dauerposten'] as const)(
     'AC-081: %s reads its origin from `von`, so "Zurück" names it',
     (page) => {
       expect(readPageParams(page, { von: 'kalender' })).toEqual({

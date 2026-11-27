@@ -6,6 +6,7 @@ import type {
   Article,
   ContributionSource,
   Id,
+  ISODate,
   MealPlanEntry,
   Recipe,
   ShoppingContribution,
@@ -33,6 +34,8 @@ export interface PlannedContribution {
    * "500 ml"): the pantry check shows it beside the count (spec 0037, AC-020).
    */
   recipeAmount?: { qty: number; unit: string };
+  /** Spec 0060: a Dauerposten chosen in "Aus Kalender …" for its day (recipeId, entryId empty). */
+  recurring?: { recurringItemId: Id; on: ISODate };
 }
 /**
  * What a planned recipe needs from the shop: one contribution per ingredient, not merged.
@@ -124,9 +127,12 @@ function formatSum(qty: number, unit: string): string {
     : formatAmount(qty, unit);
 }
 
-/** The Herkunft of one contribution: the stored recipe label or "von Hand". */
+/** The Herkunft of one contribution: the stored recipe label, "von Hand" or "regelmäßig". */
 export function originLabel(source: ContributionSource): string {
-  return source.kind === 'manual' ? 'von Hand' : source.label;
+  if (source.kind === 'manual') return 'von Hand';
+  // Spec 0060: RECURRING_LABEL in recurring-items.ts (which imports this module).
+  if (source.kind === 'recurring') return 'regelmäßig';
+  return source.label;
 }
 
 function distinct(values: string[]): string[] {

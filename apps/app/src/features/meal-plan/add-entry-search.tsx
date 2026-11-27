@@ -1,4 +1,5 @@
 import {
+  defaultEaterIds,
   useActivities,
   useActivitiesById,
   useArticlesById,
@@ -34,6 +35,7 @@ import {
   type RecipeBook,
   type RecipeKind,
   type Restaurant,
+  type PlanSuggestion,
 } from '@housekeeping/core';
 import {
   Button,
@@ -48,9 +50,12 @@ import {
   ViewTabs,
   useFinePointer,
 } from '@housekeeping/ui';
+import { useMemo } from 'react';
 import { View } from 'react-native';
 
 import { activityPlaceLine } from '@/features/activities/labels';
+
+import { SlotSuggestionsBlock } from './plan-suggestions';
 
 // Step one of "+ Hinzufügen" (spec 0010, REQ-007): the search "Was steht an?", the tabs, the
 // hits of every kind, "Neu" and "Reste" (spec 0021, REQ-011, REQ-012).
@@ -183,6 +188,9 @@ export function AddEntrySearch(props: {
   onCreate: (kind: AddEntryCreating) => void;
   onTab: (tab: AddEntryTab) => void;
   onToggleOlder: () => void;
+  /** Spec 0063, REQ-006: "+" of a Planvorschlag; greyed out with `planHint`. */
+  onPlanSuggestion: (suggestion: PlanSuggestion) => void;
+  planHint?: string;
 }) {
   const { state, slots, offline, onChoose, onCreate, onTab } = props;
   const { tab, query } = state;
@@ -197,6 +205,31 @@ export function AddEntrySearch(props: {
   const entries = usePlanEntries();
   const trimmed = query.trim();
   const slotOrder = slots.map((slot) => slot.id);
+  // Spec 0063, REQ-005: the Planvorschläge of the day's Tageszeit while nothing is typed.
+  const suggestDate = state.target.date;
+  const suggestSlot = state.target.slotId;
+  const suggestTarget = useMemo(
+    () =>
+      suggestDate === null
+        ? undefined
+        : { date: suggestDate, slotId: suggestSlot, eaterIds: defaultEaterIds() },
+    [suggestDate, suggestSlot],
+  );
+  const suggestions =
+    suggestTarget && !trimmed && (tab === 'all' || tab === 'recipes') ? (
+      <SlotSuggestionsBlock
+        target={suggestTarget}
+        planDisabled={offline}
+        planHint={props.planHint}
+        onOpen={(suggestion) =>
+          onChoose({
+            kind: 'recipe',
+            recipe: recipesById[suggestion.recipe.id] ?? suggestion.recipe,
+          })
+        }
+        onPlan={props.onPlanSuggestion}
+      />
+    ) : null;
 
   const recipeKind = TAB_KINDS[tab];
   const recipeHits = recipeKind
@@ -309,6 +342,7 @@ export function AddEntrySearch(props: {
 
   return (
     <Stack gap={4}>
+      {suggestions}
       {tab === 'all' && leftovers.length > 0 ? (
         <>
           <GroupLabel testID="add-entry-leftovers-group">Reste</GroupLabel>

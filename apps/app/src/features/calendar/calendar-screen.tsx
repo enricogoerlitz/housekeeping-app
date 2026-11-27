@@ -70,6 +70,7 @@ import { DayPanel } from './day-panel';
 import { MonthView } from './month-view';
 import { useEntryTitle, useMoveEntry } from './move-entry';
 import { PlannedLaterStrip } from './planned-later-strip';
+import { WeekMenuLine, WeekMenuSheet } from './week-menu';
 import { WeekView } from './week-view';
 import { YearView } from './year-view';
 
@@ -144,6 +145,9 @@ export function CalendarScreen() {
   useHideAssistantButton(selected !== undefined && focused && panelPlacement(width) === 'bottom');
   // The add window keeps its target here until spec 0021 gives it times instead of slots.
   const [adding, setAdding] = useState<AddTarget | undefined>();
+  // "Was kochen wir?" (spec 0063): the Wochenkarte, and what it just planned in which week.
+  const [weekMenuOpen, setWeekMenuOpen] = useState(false);
+  const [menuPlanned, setMenuPlanned] = useState<{ weekStart: ISODate; ids: Id[] }>();
   // The screen reader's way to move: the entry window with "Verschieben" first.
   const [moveFirst, setMoveFirst] = useState(false);
   // Removed on another device while open: the window just closes; an unknown id in the address
@@ -520,7 +524,22 @@ export function CalendarScreen() {
           // A desktop calendar that fills the window ends at the page's edge (REQ-001).
           clearFab={bp !== 'desktop'}
           header={<ScreenHeader title="Kalender" right={actions} />}
-          tabs={tabs}
+          // Spec 0063, REQ-008: "Was kochen wir?" stays in sight under the week's navigation.
+          tabs={
+            view === 'week' ? (
+              <View>
+                {tabs}
+                <WeekMenuLine
+                  weekStart={start}
+                  planned={menuPlanned?.weekStart === start ? menuPlanned.ids : []}
+                  onOpen={() => setWeekMenuOpen(true)}
+                  onToList={() => openWindow('aus-kalender')}
+                />
+              </View>
+            ) : (
+              tabs
+            )
+          }
           // Phones: a swipe outside the grid changes the view Woche ↔ Monat ↔ Jahr like the tabs;
           // in the grid it pages (CalendarSwipe takes it first; spec 0034, REQ-006).
           // The neighbour view stands beside the content while the finger moves it (spec 0034,
@@ -662,6 +681,13 @@ export function CalendarScreen() {
             </ParkedTarget>
           ) : null}
           {adding ? <AddEntrySheet target={adding} onClose={() => setAdding(undefined)} /> : null}
+          {weekMenuOpen && view === 'week' ? (
+            <WeekMenuSheet
+              weekStart={start}
+              onClose={() => setWeekMenuOpen(false)}
+              onPlanned={(ids) => setMenuPlanned({ weekStart: start, ids })}
+            />
+          ) : null}
           {/* A window stays in the address while a page opened from it is on top (AC-016). */}
           {openEntry && focused ? (
             <EntrySheet

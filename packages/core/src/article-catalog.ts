@@ -7,7 +7,17 @@ import {
   type SearchOrCreateResult,
 } from './search-or-create';
 import { normalizeText } from './text';
-import type { Amount, Area, Article, Diet, Id, Recipe, ShoppingItem, ShoppingRule } from './types';
+import type {
+  Amount,
+  Area,
+  Article,
+  Diet,
+  Id,
+  Recipe,
+  RecurringItem,
+  ShoppingItem,
+  ShoppingRule,
+} from './types';
 
 // Rules of the article catalog (spec 0007): what "Suchen oder anlegen" finds for an ingredient,
 // how ingredients get their article without a human choice, and the rules of the page "Artikel".
@@ -531,14 +541,16 @@ export interface ArticleFilterContext<T extends Article> {
 }
 
 /**
- * Articles in a recipe or open on the list (spec 0025, AC-046): the others are "Unbenutzt" and
- * can be deleted; a checked item goes with the article (M-02).
+ * Articles in a recipe, open on the list or with a Dauerposten (spec 0025, AC-046; spec 0060,
+ * AC-011): the others are "Unbenutzt" and can be deleted; a checked item goes with the article
+ * (M-02).
  */
 export function usedArticleIds(
   recipes: readonly Recipe[],
   items: readonly ShoppingItem[],
+  recurringItems: readonly Pick<RecurringItem, 'articleId'>[] = [],
 ): Set<Id> {
-  const ids = new Set<Id>();
+  const ids = new Set<Id>(recurringItems.map((recurring) => recurring.articleId));
   for (const recipe of recipes) {
     for (const ingredient of recipe.ingredients) ids.add(ingredient.articleId);
   }
