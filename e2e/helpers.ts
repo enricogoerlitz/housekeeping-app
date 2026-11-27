@@ -9,6 +9,7 @@ import {
   test as base,
   type Browser,
   type BrowserContext,
+  type CDPSession,
   type Locator,
   type Page,
   type Route,
@@ -163,6 +164,7 @@ export const PLAN_ENTRY = [
     'done',
     'move',
     'note',
+    'people-',
     'open-',
     'remind',
     'remove',
@@ -413,6 +415,43 @@ async function setSimulatedOffline(page: Page, offline: boolean): Promise<void> 
   if (offline) await expect(input).toBeChecked();
   else await expect(input).not.toBeChecked();
   if (phone) await back(page);
+}
+
+/** Pages told once (an init script) that the screen stands upright. */
+const uprightPages = new WeakSet<Page>();
+
+/**
+ * A CDP session whose touch events reach the page as a finger on an upright phone. Headless
+ * Chromium reports its screen as landscape: once touch is on (no fine pointer), the app would show
+ * "Bitte Handy hochkant halten" over everything (spec 0034, REQ-009), so the page is told the
+ * screen stands upright (also after a reload). Chromium's own orientation override does not last:
+ * the viewport emulation sets it back during a test.
+ */
+export async function uprightTouch(page: Page): Promise<CDPSession> {
+  const upright = () => {
+    Object.defineProperty(screen.orientation, 'type', {
+      configurable: true,
+      get: () => 'portrait-primary',
+    });
+    screen.orientation.dispatchEvent(new Event('change'));
+  };
+  if (!uprightPages.has(page)) {
+    uprightPages.add(page);
+    await page.addInitScript(upright);
+  }
+  await page.evaluate(upright);
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 2 });
+  await expect(page.getByTestId('portrait-hint')).toHaveCount(0);
+  return cdp;
+}
+
+/**
+ * The row of a trip on "Reisen" (`trip-<id>`, a button; the trip window holds "Reise löschen",
+ * so the row has no bin and no `-open` part since spec 0054, REQ-006).
+ */
+export function tripRow(page: Page, text: string): Locator {
+  return page.locator(`[data-testid^="trip-"][role="button"]${ACTIVE}`).filter({ hasText: text });
 }
 
 /** Simulated offline (dev switch); kept as the old name for the walk-throughs. */

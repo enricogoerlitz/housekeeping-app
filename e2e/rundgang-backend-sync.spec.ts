@@ -118,15 +118,21 @@ async function serverItems(
   }));
 }
 
-/** Records every toast text shown from now on (to prove that none appeared). */
+/**
+ * Records every toast text shown from now on (to prove that none appeared). A toast still showing
+ * from before (e.g. „Milch steht auf der Liste“ of an earlier step) is not one of them.
+ */
 async function recordToasts(page: Page): Promise<() => Promise<string[]>> {
   await page.evaluate(() => {
     const seen: string[] = [];
     (window as unknown as { e2eToasts: string[] }).e2eToasts = seen;
+    const textNow = () =>
+      document.querySelector('[data-testid="toast-message"]')?.textContent ?? '';
+    let last = textNow();
     new MutationObserver(() => {
-      const toast = document.querySelector('[data-testid="toast-message"]');
-      const text = toast?.textContent ?? '';
-      if (text && seen.at(-1) !== text) seen.push(text);
+      const text = textNow();
+      if (text && last !== text) seen.push(text);
+      last = text;
     }).observe(document.body, { subtree: true, childList: true, characterData: true });
   });
   return () =>

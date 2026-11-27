@@ -103,7 +103,8 @@ test('AC-019 / AC-021: a vorgemerkt dish comes first and "+" moves it to the day
   const last = suggestionRows(page).last();
   const rowId = (await last.getAttribute('data-testid')) ?? '';
   const recipeId = rowId.replace('plan-suggestion-', '');
-  const label = (await tid(page, `plan-suggestion-add-${recipeId}`).getAttribute('aria-label')) ?? '';
+  const label =
+    (await tid(page, `plan-suggestion-add-${recipeId}`).getAttribute('aria-label')) ?? '';
   const title = label.replace(/ einplanen$/, '');
   expect(title).not.toBe('');
   await page.keyboard.press('Escape');

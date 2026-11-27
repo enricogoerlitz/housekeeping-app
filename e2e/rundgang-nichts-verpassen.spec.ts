@@ -18,7 +18,7 @@ test('AC-003 (0059): the trip window offers its Termin as a calendar file and as
 }) => {
   await open(page, '/');
   await openManaged(page, 'trips');
-  await tid(page, `trip-${MALLORCA}-open`).click();
+  await tid(page, `trip-${MALLORCA}`).click();
   await expect(tid(page, 'trip-calendar')).toBeVisible();
   await expect(tid(page, 'trip-calendar')).toContainText('Änderungen in der App kommen nicht mit');
 
@@ -50,11 +50,40 @@ test('AC-010 (0059): offline the file stays, the Google link is greyed out', asy
 }) => {
   await open(page, '/');
   await openManaged(page, 'trips');
-  await tid(page, `trip-${MALLORCA}-open`).click();
+  await tid(page, `trip-${MALLORCA}`).click();
   await setNetwork(context, false);
   await expect(tid(page, 'trip-calendar-google')).toBeDisabled();
   await expect(tid(page, 'trip-calendar-ics')).toBeEnabled();
   await setNetwork(context, true);
+});
+
+test('AC-002 / AC-009 (0059): an entry without a time starts at its Tageszeit, in the file and the Google link', async ({
+  page,
+}) => {
+  // Lasagne today in the „Abend“, the household's 3rd Tageszeit, without a time: 17:00 for an hour
+  // (decision 12, owner 27.11.2026).
+  const date = TODAY.replaceAll('-', '');
+  await open(page, `/kalender?eintrag=${seedIds['plan-2']}`);
+  await expect(tid(page, 'entry-sheet')).toBeVisible();
+  await expect(tid(page, 'entry-calendar')).toBeVisible();
+
+  const download = page.waitForEvent('download');
+  await tid(page, 'entry-calendar-ics').click();
+  const text = await readFile(await (await download).path(), 'utf8');
+  expect(text).toContain(`DTSTART;TZID=Europe/Berlin:${date}T170000`);
+  expect(text).toContain(`DTEND;TZID=Europe/Berlin:${date}T180000`);
+  expect(text).not.toContain('VALUE=DATE');
+
+  await page
+    .context()
+    .route('https://calendar.google.com/**', (route) =>
+      route.fulfill({ status: 200, contentType: 'text/html', body: 'ok' }),
+    );
+  const popup = page.waitForEvent('popup');
+  await tid(page, 'entry-calendar-google').click();
+  const google = new URL((await popup).url());
+  expect(google.searchParams.get('dates')).toBe(`${date}T170000/${date}T180000`);
+  expect(google.searchParams.get('ctz')).toBe('Europe/Berlin');
 });
 
 test('AC-018 / AC-023 (0059): a Vorwarnung at "Kühlschrank auswischen" shows in the chore and the bell', async ({

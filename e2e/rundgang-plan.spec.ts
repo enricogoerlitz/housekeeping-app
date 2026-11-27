@@ -21,6 +21,7 @@ import {
   tid,
   tidPrefix,
   toastMessage,
+  tripRow,
   dayBlock,
 } from './helpers';
 import { seedIds } from './seed-ids';
@@ -249,14 +250,15 @@ test('AC-033 / AC-037 (0010), AC-027 (0030): with Enrico away on Saturday both a
 
   // AC-037 (spec 0036: asks first): deleting a row without a packing list asks, then no undo.
   await open(page, '/reisen');
-  const row = tid(page, 'trips-upcoming')
-    .locator('[data-testid^="trip-"][data-testid$="-open"]')
-    .filter({ hasText: 'Fortbildung Köln' });
-  const rowId = ((await row.getAttribute('data-testid')) ?? '').replace(/-open$/, '');
-  await tid(page, `${rowId}-remove`).click();
+  // "Reise löschen" lives in the ⋯ of the trip window (spec 0054, REQ-006).
+  const row = tripRow(page, 'Fortbildung Köln');
+  await row.click();
+  await tid(page, 'trip-more').click();
+  await tid(page, 'trip-more-delete').click();
   await tid(page, 'confirm-delete-trip-cancel').click();
-  await expect(tid(page, 'trips-upcoming')).toContainText('Fortbildung Köln');
-  await tid(page, `${rowId}-remove`).click();
+  await expect(tid(page, 'trip-window')).toBeVisible();
+  await tid(page, 'trip-more').click();
+  await tid(page, 'trip-more-delete').click();
   await tid(page, 'confirm-delete-trip-confirm').click();
   await expect(toastMessage(page)).toHaveText('Reise gelöscht');
   await expect(tid(page, 'toast-action')).toHaveCount(0);

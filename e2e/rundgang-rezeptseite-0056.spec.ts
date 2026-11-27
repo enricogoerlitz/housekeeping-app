@@ -22,6 +22,9 @@ test('AC-001: "+ Zutat" in the read view saves at once and stays in the read vie
   page,
 }) => {
   await open(page, `/rezept/${LASAGNE}`);
+  // The Béchamel has a pinch already: one row more (amount and name stand in their own columns).
+  const nutmeg = tid(page, 'recipe-ingredients').getByText('Muskatnuss', { exact: true });
+  const before = await nutmeg.count();
   await tid(page, 'recipe-read-add-ingredient').click();
   await tid(page, 'ingredient-article-search-input').fill('Muskat');
   await page.keyboard.press('Enter');
@@ -29,7 +32,7 @@ test('AC-001: "+ Zutat" in the read view saves at once and stays in the read vie
   await tid(page, 'ingredient-save').click();
   await expect(tid(page, 'ingredient-sheet')).toBeHidden();
   await expect(tid(page, 'recipe-edit-save')).toHaveCount(0);
-  await expect(tid(page, 'recipe-ingredients')).toContainText('1 Prise Muskatnuss');
+  await expect(nutmeg).toHaveCount(before + 1);
   await expect(toastMessage(page)).toHaveText('Gespeichert');
 });
 
@@ -53,14 +56,15 @@ test('AC-006 / AC-007 / AC-008: "Mehrere einfügen" saves the sure rows, the ope
   await open(page, `/rezept/${LASAGNE}`);
   await expect(tid(page, 'recipe-read-add-ingredient')).toBeVisible();
   await tid(page, 'recipe-read-paste-ingredients').click();
-  await tid(page, 'ingredients-paste').fill('1 Zwiebel\n1 Paniermehlxy');
+  // „Zwiebeln“ is in the Lasagne already (it would be a duplicate): „Spinat“ is not.
+  await tid(page, 'ingredients-paste').fill('200 g Spinat\n1 Paniermehlxy');
   await tid(page, 'ingredients-paste-save').click();
   await expect(toastMessage(page)).toHaveText('1 Zutat gespeichert · 1 braucht noch einen Artikel');
   await expect(tid(page, 'recipe-edit-save')).toBeVisible();
   await expect(tid(page, 'recipe-ingredients')).toContainText('Paniermehlxy');
   await tid(page, 'recipe-edit-cancel').click();
   await tid(page, 'confirm-discard-confirm').click();
-  await expect(tid(page, 'recipe-ingredients')).toContainText('Zwiebel');
+  await expect(tid(page, 'recipe-ingredients')).toContainText('Spinat');
   await expect(tid(page, 'recipe-ingredients')).not.toContainText('Paniermehlxy');
 });
 

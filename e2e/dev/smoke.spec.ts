@@ -75,6 +75,9 @@ test('dev smoke: every screen renders without a React warning or error', async (
     tid(page, `ingredient-article-search-hit-${seedIds['art-kokosmilch']}`),
   ).toBeVisible();
   await tid(page, 'ingredient-sheet-close').click();
+  // Something typed: closing asks first (spec 0054).
+  await tid(page, 'confirm-discard-confirm').click();
+  await expect(tid(page, 'ingredient-sheet')).toBeHidden();
   await tid(page, 'recipe-paste-ingredients').click();
   await tid(page, 'ingredients-paste').fill('2 Drachenfrüchte');
   await tid(page, 'ingredients-paste-save').click();

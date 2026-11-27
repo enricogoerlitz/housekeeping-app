@@ -18,6 +18,7 @@ import {
 
 import {
   contentReady,
+  uprightTouch,
   SLOT_DINNER,
   SLOT_LUNCH,
   SLOT_MORNING,
@@ -103,8 +104,7 @@ function entry(page: Page, id: string, within?: Locator): Locator {
 async function finger(page: Page) {
   // The first touch right after a load misses the remounting content.
   await contentReady(page);
-  const cdp = await page.context().newCDPSession(page);
-  await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 2 });
+  const cdp = await uprightTouch(page);
   let last: Point = { x: 0, y: 0 };
   const send = (type: 'touchStart' | 'touchMove' | 'touchEnd', points: Point[]) =>
     cdp.send('Input.dispatchTouchEvent', {
@@ -528,6 +528,9 @@ test.describe('desktop', () => {
   });
 
   test('AC-007: in the month the day changes and the Tageszeit stays', async ({ page }) => {
+    // Lasagne is today's third entry: with the day's chores (how many depends on the weekday) a
+    // day of a 900 px window may show it only behind "+n weitere"; a taller window shows it.
+    await page.setViewportSize({ width: 1440, height: 1400 });
     await open(page, '/kalender');
     await tid(page, 'calendar-view-month').click();
     const lasagne = entry(page, LASAGNE, tid(page, 'month-grid'));

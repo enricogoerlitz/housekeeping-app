@@ -74,8 +74,9 @@ in „KI-Rezept“, das die Seite liest (Spec 0049, AC-002). Offline: nur online
   Dann ist die Rezeptseite im Bearbeitungsmodus mit dem Rezept des Treffers, noch nicht gespeichert
 - AC-008: Angenommen „Linsen-Dal“ im Titel · Wenn ich „Anlegen“ drücke · Dann gibt es das Rezept
   „Linsen-Dal“ und seine Seite ist offen
-- AC-009: Angenommen „KI-Rezept“ gewählt, kein Titel · Wenn ich „Anlegen“ drücke · Dann ist
-  „Websuche“ gewählt, am Titel steht „Titel fehlt“, nichts ist gespeichert
+- AC-009: Angenommen „Websuche“ gewählt, kein Titel · Wenn ich „Anlegen“ drücke · Dann steht am
+  Titel „Titel fehlt“, nichts ist gespeichert („KI-Rezept“ hat seit REQ-004 kein „Anlegen“ mehr,
+  nur „Erzeugen“; e2e-Review 27.11.2026)
 - AC-010: Angenommen ich füge „https://www.chefkoch.de/rezepte/1/bolognese.html“ in den Titel ein ·
   Dann ist „KI-Rezept“ gewählt und der Link steht in „Was soll ins Rezept?“
 
@@ -151,6 +152,9 @@ verloren. Offline: nur online („Rückgängig“ offline sagt den Offline-Hinwe
   sie nicht gespeichert
 - AC-025: Angenommen der Vorschlag hat eine Zutat ohne Artikel · Wenn ich „Übernehmen“ drücke ·
   Dann öffnet der Bearbeitungsmodus mit dem Vorschlag und der orangen Zeile, nichts ist gespeichert
+  (entfällt in der Praxis: jede Zeile eines KI-Vorschlags hat einen Artikel, ein unbekannter Name
+  wird beim Speichern neu angelegt, Spec 0055 REQ-009; der Weg in den Bearbeitungsmodus ist AC-026;
+  e2e-Review 27.11.2026)
 - AC-026: Angenommen das Speichern wird abgelehnt · Dann öffnet der Bearbeitungsmodus mit dem
   Vorschlag und der Meldung
 

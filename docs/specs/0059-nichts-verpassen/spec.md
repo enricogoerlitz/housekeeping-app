@@ -68,8 +68,10 @@ offline ist der Knopf grau mit dem Offline-Hinweis).
 
 - AC-008: Angenommen „Pizzeria Roma“ am 28.11. um 19:30 · Wenn ich den Link bilde · Dann hat er die
   Parameter `text=Pizzeria Roma`, `dates=20261128T193000/20261128T213000` und `ctz=Europe/Berlin`
-- AC-009: Angenommen „Lasagne“ am 30.11. ohne Uhrzeit · Wenn ich den Link bilde · Dann hat er
-  `dates=20261130/20261201` und kein `ctz`
+- AC-009: Angenommen „Lasagne“ am 30.11. ohne Uhrzeit am „Abend“ (3. Tageszeit) · Wenn ich den Link
+  bilde · Dann hat er `dates=20261130T170000/20261130T180000` und `ctz=Europe/Berlin`; ohne bekannte
+  Tageszeit `dates=20261130/20261201` und kein `ctz` (wie AC-002 seit Entscheidung 12; e2e-Review
+  27.11.2026)
 - AC-010: Angenommen ich bin offline · Wenn ich ein Eintragsfenster öffne · Dann ist „Als Datei
   (.ics)“ wählbar und „In Google Kalender“ grau
 
@@ -231,8 +233,8 @@ wird nicht ausgeführt.
 - [x] 6. app: Block „In meinen Kalender“ (Eintrag, Termin, Reise, Aufgabe; AC-007, AC-010),
       „Erinnern“ in „Serie bearbeiten“ (AC-015), „Vorwarnung“ im Aufgabenformular (AC-023), Glocke mit
       Packlisten und Serien-Terminen bis heute + 30
-- [x] 7. e2e `e2e/rundgang-nichts-verpassen.spec.ts` (AC-003, AC-010, AC-018, AC-023); läuft beim
-      Mergen mit der Suite (nicht im Bau ausgeführt, BAU-REGELN)
+- [x] 7. e2e `e2e/rundgang-nichts-verpassen.spec.ts` (AC-002, AC-003, AC-009, AC-010, AC-018,
+      AC-023); läuft beim Mergen mit der Suite (nicht im Bau ausgeführt, BAU-REGELN)
 - [x] Nachweis: siehe unten
 
 ### Nachweis

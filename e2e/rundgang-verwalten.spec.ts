@@ -167,7 +167,7 @@ test('AC-035, AC-038: „Erinnern“ comes with a time; off it only shows the ti
   await expect(remind().locator('input')).toBeChecked();
   // The switch carries the test id; its description stands beside it.
   await expect(
-    page.getByText('Erinnert zur Uhrzeit, wer dran ist.', { exact: false }),
+    page.getByText('Erinnert zur Uhrzeit in den Mitteilungen, wer dran ist.', { exact: false }),
   ).toBeVisible();
   await remind().locator('input').click();
   await expect(remind().locator('input')).not.toBeChecked();
