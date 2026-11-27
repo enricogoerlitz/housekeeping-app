@@ -119,6 +119,14 @@ function groups(before: PageDraft, after: PageDraft, context: Context) {
 
 const show = { course: (value: string) => courseLabel(value as Course) };
 
+/**
+ * Spec 0049, AC-047: the page's photo is proposed with "Ersetzen", and with "Ergänzen" only for a
+ * recipe without a photo — "Ergänzen" never changes what is there.
+ */
+export function proposesPagePhoto(options: { hasPhoto: boolean; replace: boolean }): boolean {
+  return options.replace || !options.hasPhoto;
+}
+
 /** What the proposal changes on the page, for the Änderungsansicht. */
 export function recipeProposal(
   before: PageDraft,

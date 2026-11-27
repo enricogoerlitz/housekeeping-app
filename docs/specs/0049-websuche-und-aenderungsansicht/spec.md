@@ -131,6 +131,13 @@ Bearbeitungsmodus bzw. das Formular, „Speichern“ speichert es (Entscheidung 
 - AC-044: Angenommen „Lasagne“ mit Zutaten und Schritten · Wenn ich einen Vorschlag mit
   „Ergänzen“ übernehme · Dann kommen nur Zutaten dazu, deren Artikel (je Variante) noch fehlt, und
   Schritte nur für einen Teil ohne Schritte (z. B. eine neue Variante) · Und nichts steht doppelt
+- AC-046: Angenommen „Omas Kuchen“ mit 2 Portionen, Zutaten, Beschreibung und Notiz, ohne Küche ·
+  Wenn ich einen Vorschlag für 8 Portionen mit „Ergänzen“ übernehme · Dann bleiben Titel, 2
+  Portionen, Gerichtart, Beschreibung und Notiz, und nur die Küche wird gefüllt · Und mit
+  „Ersetzen“ gelten alle Werte des Vorschlags
+- AC-047: Angenommen ein Rezept mit Foto · Wenn ich die Websuche mit „Original“ und „Ergänzen“
+  übernehme · Dann schlägt die Änderungsansicht kein Foto vor · Und mit „Ersetzen“ steht „Foto
+  geändert“ darin
 
 ### Server
 
@@ -287,14 +294,21 @@ blob:`); das Foto einer Karte wird bei „Übernehmen“ zum Foto des Eintrags.
     Artikel für dieselbe Variante noch nicht da ist (wie „Doppelt“ beim Einfügen, Spec 0023); Schritte
     nur für einen Teil ohne Schritte (gemeinsam oder je Variante, z. B. eine neue Variante) — die
     Zubereitung wird nie ein zweites Mal angehängt. Wer die Schritte der Quelle will, nimmt
-    „Ersetzen“ und behält in der Änderungsansicht mit „↺ behalten“, was bleiben soll. Titel,
-    Portionen, Zeit und Notizen verhalten sich wie bisher (in der Änderungsansicht mit ↺
-    zurückzunehmen).
+    „Ersetzen“ und behält in der Änderungsansicht mit „↺ behalten“, was bleiben soll. Felder:
+    Entscheidung 18.
 17. Agent, 27.11. (KI-Testlauf Teil 2): Nach „Übernehmen“ stand „Art“ der neuen Aktivität in der
     Auswahl (alle Arten, „Abbrechen“): das Feld merkte sich nur beim Öffnen, ob eine Art gewählt
     war. Eine von außen gesetzte Art zeigt es jetzt kompakt (AC-043). Schließende Fenster geben
     ihre Fotos (`blob:`) erst nach dem Schließen frei (`revokeLater`), sonst meldete die Konsole
     `net::ERR_FILE_NOT_FOUND`.
+18. Koordinator, 27.11. (Empfehlung aus dem KI-Testlauf Teil 2): **„Ergänzen“ ändert nie einen
+    vorhandenen Wert**, es füllt nur leere Felder: Titel, Beschreibung, Portionen, Zeit, Vorlauf,
+    Küche, Notizen (AC-046) — vor allem die Portionen, weil die vorhandenen Mengen zu ihnen gehören.
+    Die Gerichtart hat ein Rezept immer; „Ergänzen“ setzt sie wie die Portionen nur, solange das
+    Rezept keine Zutaten hat (dann stammen beide noch vom Anlegen, z. B. ein Rezept nur mit Namen,
+    bei dem die Wahl „Ergänzen oder ersetzen?“ gar nicht erscheint). Das Seitenfoto schlägt
+    „Ergänzen“ nur einem Rezept ohne Foto vor (AC-047, `proposesPagePhoto`). „Ersetzen“ bleibt, wie
+    es war. Präzisiert Spec 0045 Entscheidung 2.
 
 ## Daten
 
@@ -371,3 +385,7 @@ gespeichert, bevor die Person „Speichern“ tippt.
       „KI“, „Neu erzeugen“, „Aus diesem Foto“; Ziehen, ⌘V und Bildadresse; Chefkoch-Link ohne „Foto
       generieren“ → Seitenfoto; „Art“ kompakt (:8081 vorher rot); „Trattoria Da Enzo“ → Engelskirchen
       statt Rom. Ergebnisse `tmp/review-0003/ki-test/ERGEBNIS.md` (Teil 2).
+- [x] Nachweis Entscheidung 18 (27.11.): Tests rot → grün: core `page-editor` (AC-046),
+      `recipe-proposal` (`proposesPagePhoto`, AC-047); angepasst: `recipe-draft` (Einordnung),
+      `recipe-proposal` (Gerichtart nur mit „Ersetzen“). `pnpm format:check && pnpm check && pnpm
+build:web` grün; Rauchtest im Browser siehe PR.

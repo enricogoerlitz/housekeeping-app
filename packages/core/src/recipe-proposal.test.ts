@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { fillPageDraft, pageDraft, type PageDraft } from './page-editor';
 import { proposalSummary, proposalSummaryText } from './proposal-diff';
 import { newIngredientRow, type IngredientRow } from './recipe-editor';
-import { applyRecipeProposal, recipeProposal } from './recipe-proposal';
+import { applyRecipeProposal, proposesPagePhoto, recipeProposal } from './recipe-proposal';
 import { articlesById, bolognese } from './test-fixtures';
 
 // Spec 0049, REQ-005: the Änderungsansicht of a recipe. "Spaghetti Bolognese" has 4 portions and
@@ -144,15 +144,20 @@ describe('recipeProposal (REQ-005)', () => {
     });
   });
 
-  it('"Ergänzen" removes nothing and shows the course as its name', () => {
+  it('"Ergänzen" removes nothing and keeps the course (spec 0049, AC-046); "Ersetzen" shows it as its name', () => {
     const before = pageDraft(bolognese, []);
-    const after = fillPageDraft(
+    const input = { course: 'side' as const, ingredients: [row('Parmesan', '50 g')] };
+    const added = recipeProposal(before, fillPageDraft(before, input, newId), { articleName });
+    expect(added.fields).toEqual([]);
+    expect(proposalSummary(added, new Set())).toEqual({ added: 1, changed: 0, removed: 0 });
+    const replaced = recipeProposal(
       before,
-      { course: 'side', ingredients: [row('Parmesan', '50 g')] },
-      newId,
+      fillPageDraft(before, input, newId, { replace: true }),
+      {
+        articleName,
+      },
     );
-    const proposal = recipeProposal(before, after, { articleName });
-    expect(proposal.fields).toEqual([
+    expect(replaced.fields).toEqual([
       expect.objectContaining({
         id: 'course',
         before: 'main',
@@ -161,8 +166,7 @@ describe('recipeProposal (REQ-005)', () => {
         afterLabel: 'Beilage',
       }),
     ]);
-    expect(proposalSummary(proposal, new Set())).toEqual({ added: 1, changed: 1, removed: 0 });
-    expect(applyRecipeProposal(proposal, new Set()).classification?.course).toBe('side');
+    expect(applyRecipeProposal(replaced, new Set()).classification?.course).toBe('side');
   });
 
   it('a new variant (spec 0045) is "neu"; × drops it with its rows and steps', () => {
@@ -192,5 +196,13 @@ describe('recipeProposal (REQ-005)', () => {
     expect(dropped.ingredients.variants).toEqual([]);
     expect(rowsOf(dropped)).toEqual(['Hackfleisch', 'Spaghetti', 'Möhren']);
     expect(dropped.steps?.steps.map((step) => step.text)).toEqual(['Abschmecken.']);
+  });
+});
+
+describe('proposesPagePhoto (spec 0049, AC-047)', () => {
+  it('AC-047: "Ergänzen" offers the page photo only to a recipe without one; "Ersetzen" always', () => {
+    expect(proposesPagePhoto({ hasPhoto: false, replace: false })).toBe(true);
+    expect(proposesPagePhoto({ hasPhoto: true, replace: false })).toBe(false);
+    expect(proposesPagePhoto({ hasPhoto: true, replace: true })).toBe(true);
   });
 });

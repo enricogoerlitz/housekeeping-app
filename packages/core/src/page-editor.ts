@@ -170,7 +170,10 @@ export function withNewContents(
  */
 export interface PageDraftInput {
   title?: string;
-  /** Fills an empty description; "Ersetzen" replaces one (spec 0045, AC-002). */
+  /**
+   * Title, description, portions, time, Vorlauf, cuisine and notes fill only empty fields;
+   * "Ersetzen" replaces them, the course too (spec 0045, AC-002; spec 0049, AC-046).
+   */
   description?: string;
   servings?: number;
   totalMinutes?: number;
@@ -189,7 +192,7 @@ export interface PageDraftInput {
   ingredients?: readonly IngredientRow[];
   /** Added after the steps there are, only to a part without steps (recipes only, AC-044). */
   steps?: readonly PageDraftStep[];
-  /** Replaces the notes. */
+  /** Fills empty notes; "Ersetzen" replaces them (AC-046). */
   notes?: string;
   /** Added; an address that is there already is left out. */
   links?: readonly RecipeLink[];
@@ -240,18 +243,31 @@ export function fillPageDraft(
 ): PageDraft {
   let next = page;
   const replace = options.replace === true;
+  // "Ergänzen" fills only empty fields and never changes a value there is (spec 0049, AC-046):
+  // the amounts there are belong to the portions there are. "Ersetzen" takes every value.
+  const fills = (current: string) => replace || current.trim() === '';
+  // Without ingredients no amount belongs to the portions, and portions and course are still
+  // what the recipe was created with: they count as empty.
+  const unset = replace || page.ingredients.rows.length === 0;
   const head = { ...page.head };
-  if (input.title !== undefined) head.title = input.title;
-  if (input.description !== undefined && (replace || head.description.trim() === '')) {
+  if (input.title !== undefined && fills(head.title)) head.title = input.title;
+  if (input.description !== undefined && fills(head.description)) {
     head.description = input.description;
   }
-  if (input.servings !== undefined) head.servings = String(input.servings);
-  if (input.totalMinutes !== undefined) head.totalMinutes = String(input.totalMinutes);
+  if (input.servings !== undefined && (unset || fills(head.servings))) {
+    head.servings = String(input.servings);
+  }
+  if (input.totalMinutes !== undefined && fills(head.totalMinutes)) {
+    head.totalMinutes = String(input.totalMinutes);
+  }
   next = withSection(next, head);
   if (next.classification) {
     const classification = { ...next.classification };
-    if (input.course !== undefined) classification.course = input.course;
-    if (input.cuisine !== undefined) classification.cuisine = input.cuisine;
+    // A recipe always has a course: "Ergänzen" sets it only while there are no ingredients.
+    if (input.course !== undefined && unset) classification.course = input.course;
+    if (input.cuisine !== undefined && fills(classification.cuisine)) {
+      classification.cuisine = input.cuisine;
+    }
     if (input.tags) {
       const tags = [...classification.tags];
       for (const tag of input.tags) {
@@ -306,7 +322,9 @@ export function fillPageDraft(
     }
     next = withSection(next, steps);
   }
-  if (input.notes !== undefined) next = withSection(next, { ...next.notes, notes: input.notes });
+  if (input.notes !== undefined && fills(next.notes.notes)) {
+    next = withSection(next, { ...next.notes, notes: input.notes });
+  }
   if (input.links && input.links.length > 0) {
     const links = [...next.links.links];
     for (const link of input.links) {

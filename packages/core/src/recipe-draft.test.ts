@@ -242,13 +242,16 @@ describe('fillPageDraft with a draft from the AI', () => {
     expect(filled.steps?.steps.map((step) => step.text)).toEqual(['Streusel kneten', 'Backen']);
   });
 
-  it('fills the Einordnung: course, cuisine, tags without doubles', () => {
+  it('fills the Einordnung: cuisine when empty, tags without doubles; the course only with "Ersetzen" (AC-046)', () => {
     const page = pageDraft({ ...recipe, tags: ['Backen'] }, []);
-    const filled = fillPageDraft(page, input, newKey);
-    expect(filled.classification).toMatchObject({
-      course: 'dessert',
+    expect(fillPageDraft(page, input, newKey).classification).toMatchObject({
+      course: 'main',
       cuisine: 'deutsch',
       tags: ['Backen', 'kuchen'],
+    });
+    expect(fillPageDraft(page, input, newKey, { replace: true }).classification).toMatchObject({
+      course: 'dessert',
+      cuisine: 'deutsch',
     });
   });
 
