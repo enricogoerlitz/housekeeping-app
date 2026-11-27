@@ -320,6 +320,15 @@ describe('resolveAddressedId', () => {
   });
 });
 
+describe('kochen (spec 0057, AC-015)', () => {
+  it('carries the origin of the recipe', () => {
+    expect(readPageParams('kochen', { id: LASAGNE, von: 'uebersicht' }).values).toEqual({
+      id: LASAGNE,
+      von: 'uebersicht',
+    });
+  });
+});
+
 describe('sectionOfOrigin', () => {
   it('AC-018: an unknown origin gives the own section', () => {
     expect(sectionOfOrigin('quatsch', 'essen')).toBe('essen');
@@ -402,7 +411,7 @@ describe('sectionOfStartPath', () => {
 });
 
 describe('pages under "Verwalten" (spec 0031, REQ-036)', () => {
-  it.each(['reisen', 'maerkte', 'mitglieder', 'feedback', 'reisetaschen'] as const)(
+  it.each(['reisen', 'maerkte', 'mitglieder', 'feedback', 'reisetaschen', 'dauerposten'] as const)(
     'AC-081: %s reads its origin from `von`, so "Zurück" names it',
     (page) => {
       expect(readPageParams(page, { von: 'kalender' })).toEqual({

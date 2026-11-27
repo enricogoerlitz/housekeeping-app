@@ -67,6 +67,8 @@ import {
   type PackingItem,
   type PackingListBag,
   type Recipe,
+  type RecurringItem,
+  type RecurringRule,
   type Trip,
   type Restaurant,
   type Row,
@@ -426,6 +428,9 @@ const activitySeriesRow = (householdId: string, series: ActivitySeries) =>
     note: series.note ?? null,
     eater_ids: series.eaterIds,
     guests: series.guests,
+    reminder_day_offset: series.reminder?.offsetDays ?? null,
+    reminder_at: series.reminder ? toDbTime(series.reminder.at) : null,
+    reminder_text: series.reminder?.text ?? null,
   }));
 
 const seriesExceptionRow = (householdId: string, exception: ActivitySeriesException) =>
@@ -437,6 +442,23 @@ const seriesExceptionRow = (householdId: string, exception: ActivitySeriesExcept
     moved_to: exception.movedTo ?? null,
     slot_id: exception.slotId ?? null,
     starts_at: exception.startsAt === undefined ? null : toDbTime(exception.startsAt),
+  }));
+
+const recurringItemRow = (householdId: string, item: RecurringItem) =>
+  single('recurring_items', householdId, item, () => ({
+    id: item.id,
+    household_id: householdId,
+    article_id: item.articleId,
+    count: item.count ?? null,
+    qty: item.qty ?? null,
+    unit: item.unit ?? null,
+    note: item.note ?? null,
+    rule: json(item.rule),
+    starts_on: item.startsOn,
+    paused: item.paused,
+    // The server's (spec 0060, Decision 7): never sent, it is not a writable column.
+    last_added_on: item.lastAddedOn ?? null,
+    ...(item.createdAt ? { created_at: item.createdAt } : {}),
   }));
 
 const collectionRecipeRow = (householdId: string, row: CollectionRecipe) =>
@@ -465,6 +487,7 @@ const choreRow = (householdId: string, chore: Chore) =>
     active_months: chore.activeMonths ?? null,
     due_time: chore.dueTime === undefined ? null : toDbTime(chore.dueTime),
     remind_at_due_time: chore.remindAtDueTime !== false,
+    notice_days_before: chore.noticeDaysBefore ?? null,
   }));
 
 /** The row of one chore as an insert of `apply_changes` takes it (spec 0011: new chores, undo). */
@@ -609,6 +632,7 @@ export function householdToRows(data: HouseholdData): HouseholdRows {
     ...data.activitySeriesExceptions.map((exception) => seriesExceptionRow(householdId, exception)),
     ...data.planEntries.map((entry) => planRow(householdId, entry)),
     ...data.items.map((item) => itemRows(householdId, item)),
+    ...data.recurringItems.map((item) => recurringItemRow(householdId, item)),
     ...data.chores.map((chore) => choreRow(householdId, chore)),
     ...data.choreEvents.map((event) => choreEventRow(householdId, event)),
     ...data.trips.map((trip) => tripRows(householdId, trip)),
@@ -643,6 +667,8 @@ export function householdToRows(data: HouseholdData): HouseholdRows {
     meal_plan_entries: [],
     shopping_items: [],
     shopping_contributions: [],
+    // After articles (foreign key), spec 0060.
+    recurring_items: [],
     chores: [],
     chore_events: [],
     trips: [],
@@ -865,6 +891,28 @@ function toActivitySeries(row: Row): ActivitySeries | undefined {
     note: opt(r.note),
     eaterIds: r.eater_ids ?? [],
     guests: r.guests ?? 0,
+    reminder: toReminder(r),
+  };
+}
+
+/** Spec 0060: a rule the database would refuse (or "jährlich") makes the Dauerposten unreadable. */
+function toRecurringItem(row: Row): RecurringItem | undefined {
+  const r = row as Cached<'recurring_items'>;
+  const rule = SeriesRuleSchema.safeParse(r.rule);
+  if (!rule.success || rule.data.type === 'yearly' || !r.article_id || !r.starts_on)
+    return undefined;
+  return {
+    id: r.id,
+    articleId: r.article_id,
+    count: opt(r.count),
+    qty: opt(r.qty),
+    unit: opt(r.unit),
+    note: opt(r.note),
+    rule: rule.data satisfies RecurringRule,
+    startsOn: r.starts_on,
+    paused: r.paused ?? false,
+    lastAddedOn: opt(r.last_added_on),
+    createdAt: r.created_at ?? '',
   };
 }
 
@@ -985,7 +1033,12 @@ function toPlanEntry(row: Row): MealPlanEntry {
 }
 
 /** The three reminder columns; incomplete ones (the database refuses them) are no reminder. */
-function toReminder(r: Cached<'meal_plan_entries'>): MealPlanEntry['reminder'] {
+function toReminder(
+  r: Pick<
+    Cached<'meal_plan_entries'> | Cached<'activity_series'>,
+    'reminder_at' | 'reminder_day_offset' | 'reminder_text'
+  >,
+): MealPlanEntry['reminder'] {
   const at = fromDbTime(r.reminder_at);
   if (at === undefined || r.reminder_day_offset == null) return undefined;
   return {
@@ -1011,6 +1064,7 @@ function toChore(row: Row): Chore {
     dueTime: fromDbTime(r.due_time),
     // Undefined is on, the default (spec 0027, REQ-009).
     remindAtDueTime: r.remind_at_due_time === false ? false : undefined,
+    noticeDaysBefore: opt(r.notice_days_before),
   };
 }
 
@@ -1267,6 +1321,12 @@ export function rowsToHousehold(
       plain(tables, 'meal_plan_entries', 'created', toPlanEntry),
     ),
     items: reuse(previous?.items, items),
+    recurringItems: reuse(
+      previous?.recurringItems,
+      rowsOfTable(tables, 'recurring_items', 'created').flatMap(
+        (row) => cached(row, [], () => toRecurringItem(row)) ?? [],
+      ),
+    ),
     chores: reuse(previous?.chores, plain(tables, 'chores', 'created', toChore)),
     choreEvents: reuse(
       previous?.choreEvents,

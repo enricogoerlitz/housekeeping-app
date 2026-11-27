@@ -1,4 +1,10 @@
-import { useAreas, useArticles, useRecipes, useShoppingItems } from '@housekeeping/api';
+import {
+  useAreas,
+  useArticles,
+  useRecipes,
+  useRecurringItems,
+  useShoppingItems,
+} from '@housekeeping/api';
 import {
   articleFilterCounts,
   articlesInArea,
@@ -15,10 +21,10 @@ import {
 import {
   Badge,
   Button,
+  CreateButton,
   Chip,
   EmptyState,
   Icon,
-  IconButton,
   InfiniteList,
   List,
   ListDetail,
@@ -120,7 +126,12 @@ export function ArticlesScreen() {
   // "Ähnliche Namen" compares every name with every other: once per data state.
   const similar = useMemo(() => similarArticleNames(articles), [articles]);
   // "Unbenutzt": in no recipe and not open on the list (AC-046).
-  const usedIds = useMemo(() => usedArticleIds(recipes, items), [recipes, items]);
+  // Spec 0060, AC-011: an article with a Dauerposten is not "Unbenutzt".
+  const recurringItems = useRecurringItems();
+  const usedIds = useMemo(
+    () => usedArticleIds(recipes, items, recurringItems),
+    [recipes, items, recurringItems],
+  );
   const context = useMemo(() => ({ similar, areas, usedIds }), [similar, areas, usedIds]);
   const counts = useMemo(() => articleFilterCounts(articles, context), [articles, context]);
   const areaNames = useMemo(() => new Map(areas.map((area) => [area.id, area.name])), [areas]);
@@ -146,21 +157,9 @@ export function ArticlesScreen() {
   };
   const sortLabel = SORT_OPTIONS.find((option) => option.value === sort)?.label ?? '';
 
-  const addButton = isPhone ? (
-    <IconButton
-      icon="plus"
-      label="Neuer Artikel"
-      variant="soft"
-      disabled={online.disabled}
-      hint={online.hint}
-      onPress={() => startCreating()}
-      testID="articles-new"
-    />
-  ) : (
-    <Button
-      label="Neu"
-      icon="plus"
-      size="sm"
+  const addButton = (
+    <CreateButton
+      label="Artikel anlegen"
       disabled={online.disabled}
       hint={online.hint}
       onPress={() => startCreating()}

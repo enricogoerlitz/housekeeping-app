@@ -28,9 +28,22 @@ function bootBg(id, mode) {
   return (mode === 'light' ? match[1] : match[2]).toUpperCase();
 }
 
-for (const id of ['markthalle', 'klar', 'frisch']) {
+const THEMES = [
+  'markthalle',
+  'klar',
+  'frisch',
+  'wolke',
+  'mitternacht',
+  'zitrus',
+  'salbei',
+  'lavendel',
+  'espresso',
+];
+
+// Spec 0058, AC-011: the six new themes too.
+for (const id of THEMES) {
   for (const mode of ['light', 'dark']) {
-    test(`AC-025: theme-boot.js has the ${mode} background of ${id}`, () => {
+    test(`AC-025, AC-011 (0058): theme-boot.js has the ${mode} background of ${id}`, () => {
       assert.equal(bootBg(id, mode), themeBg(id, mode));
     });
   }

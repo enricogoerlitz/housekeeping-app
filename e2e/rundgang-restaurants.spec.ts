@@ -43,10 +43,9 @@ async function toTestHousehold(page: Page): Promise<void> {
   await switchHousehold(page, seedIds['hh-test']);
 }
 
-/** "Neu" → "Restaurant" (spec 0008: one "Neu" menu on recipes and restaurants). */
+/** "+" on "Restaurants" creates a restaurant at once (spec 0054, AC-007). */
 async function newRestaurant(page: Page): Promise<void> {
-  await tid(page, 'recipe-new').click();
-  await tid(page, 'recipe-new-restaurant').click();
+  await tid(page, 'restaurant-new').click();
   await expect(tid(page, 'restaurant-sheet')).toBeVisible();
 }
 
@@ -310,9 +309,7 @@ test('0002 offline: restaurants stay readable, editing is greyed out, the route 
   await open(page, '/rezepte?ansicht=restaurants');
   await goOffline(page);
   await expect(tid(page, 'restaurant-offline-hint')).toBeVisible();
-  await tid(page, 'recipe-new').click();
-  await expect(tid(page, 'recipe-new-restaurant')).toHaveAttribute('aria-disabled', 'true');
-  await page.keyboard.press('Escape');
+  await expect(tid(page, 'restaurant-new')).toHaveAttribute('aria-disabled', 'true');
   await tid(page, PHO).click();
   await expect(tid(page, 'restaurant-title')).toHaveText('Pho Saigon');
   await expect(tid(page, 'restaurant-favorite')).toHaveAttribute('aria-disabled', 'true');

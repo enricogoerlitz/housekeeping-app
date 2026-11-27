@@ -10,6 +10,7 @@ import Animated, { useAnimatedScrollHandler, useSharedValue } from 'react-native
 
 import { FOCUS_RING_ROOM } from './controls';
 import { columnsFor, gridRows, type GridRow } from './grid-columns';
+import { scrollableNode, useTopScroller } from './scroll-top';
 import { PageScrollContext } from './shell';
 import { TabPreviewContext } from './tab-preview';
 
@@ -61,6 +62,14 @@ export function InfiniteList<T>(props: InfiniteListProps<T>) {
   const target = useSharedValue(saved);
   const attempts = useRef(0);
   const pageScroll = page?.onScroll;
+  // A list that scrolls the page goes to the top on a second tap on the active tab (spec 0057).
+  useTopScroller(
+    {
+      node: () => scrollableNode(list.current),
+      toTop: (animated) => list.current?.scrollToOffset({ offset: 0, animated }),
+    },
+    page !== undefined && !preview,
+  );
   const onScroll = useAnimatedScrollHandler({
     onScroll: (event) => {
       offset.set(event.contentOffset.y);

@@ -1,23 +1,36 @@
 import {
+  Button,
   Icon,
   Text,
   keyboardFocusRing,
+  pickerFamilies,
   ThemeProvider,
-  themeFamilies,
   useTheme,
+  useThemeFonts,
   type ColorMode,
   type ThemeFamily,
 } from '@housekeeping/ui';
+import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { useSettings } from '@/lib/settings';
 
-/** One card per theme with a small live preview; choosing applies it at once (AC-046). */
+/**
+ * One card per theme with a small live preview; choosing applies it at once (AC-046). Spec 0058,
+ * REQ-007: three cards, the chosen theme first, the rest behind „Mehr anzeigen“. The order is set
+ * when the picker opens or collapses, so a card never jumps away under the finger (Entscheidung 4).
+ */
 export function ThemePicker() {
   const settings = useSettings();
+  const [expanded, setExpanded] = useState(false);
+  const [first, setFirst] = useState(settings.themeId);
+  const toggle = () => {
+    if (expanded) setFirst(settings.themeId);
+    setExpanded(!expanded);
+  };
   return (
     <View testID="theme-picker" style={{ gap: 10 }}>
-      {themeFamilies.map((family) => (
+      {pickerFamilies(first, expanded).map((family) => (
         <ThemeCard
           key={family.id}
           family={family}
@@ -26,6 +39,13 @@ export function ThemePicker() {
           onSelect={() => settings.update({ themeId: family.id })}
         />
       ))}
+      <Button
+        variant="secondary"
+        icon={expanded ? 'chevron-up' : 'chevron-down'}
+        label={expanded ? 'Weniger anzeigen' : 'Mehr anzeigen'}
+        onPress={toggle}
+        testID="theme-picker-more"
+      />
     </View>
   );
 }
@@ -38,6 +58,8 @@ function ThemeCard(props: {
 }) {
   const theme = useTheme();
   const c = theme.colors;
+  // The preview needs the theme's fonts: they load once the card shows (spec 0058, REQ-006).
+  useThemeFonts(props.family.light.fonts);
   return (
     <Pressable
       testID={`theme-${props.family.id}`}

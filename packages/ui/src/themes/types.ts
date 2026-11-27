@@ -1,6 +1,15 @@
 // Theme contract. Pure data: no React Native imports, so themes can be tested in Node.
 
-export type ThemeId = 'markthalle' | 'klar' | 'frisch';
+export type ThemeId =
+  | 'markthalle'
+  | 'klar'
+  | 'frisch'
+  | 'wolke'
+  | 'mitternacht'
+  | 'zitrus'
+  | 'salbei'
+  | 'lavendel'
+  | 'espresso';
 export type ColorMode = 'light' | 'dark';
 /** Colour worlds of the app areas. Only the theme "Frisch" shows them (see `areaTone`). */
 export type Tone = 'essen' | 'plan' | 'liste' | 'haushalt' | 'ki';
@@ -115,13 +124,28 @@ export interface ThemeShape {
   /** Cards and inputs get a hairline border. */
   cardBorder: boolean;
   checkBorderWidth: number;
-  /** Active tab: tinted icon and label, or an ink pill behind the icon. */
-  tabActive: 'tint' | 'pill';
+  /**
+   * Active tab: tinted icon and label, an ink pill behind the icon, or the icon on a soft bubble
+   * (`bubble`, spec 0058).
+   */
+  tabActive: 'tint' | 'pill' | 'bubble';
   /**
    * One area colour per screen (spec 0005, D4): the area of the screen colours its primary
    * button, its header's filled icon button and the line under the active view tab. Off = accent.
    */
   areaTone: boolean;
+  /**
+   * Spec 0058 ("Wolke"): icon buttons and the active tab sit on an organic bubble instead of a
+   * circle. Each corner is a CSS elliptic radius ("48% 55%"). Undefined = circles, as before.
+   */
+  bubble?: BubbleShape;
+}
+
+export interface BubbleShape {
+  topLeft: string;
+  topRight: string;
+  bottomRight: string;
+  bottomLeft: string;
 }
 
 export interface Theme {
@@ -136,6 +160,12 @@ export interface Theme {
   shape: ThemeShape;
   /** Keys of the font files this theme needs (see fonts.ts). Empty = system font only. */
   fonts: string[];
+  /**
+   * Spec 0058: a CSS background image behind the pages, over `bg` (web only; native shows `bg`).
+   * It starts in `bg` at the top, and every colour in it keeps the text pairs of `bg`.
+   * Undefined = the plain colour.
+   */
+  backdrop?: string;
 }
 
 export interface ThemeFamily {

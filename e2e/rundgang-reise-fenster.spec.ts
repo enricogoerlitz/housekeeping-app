@@ -25,7 +25,7 @@ freshSeed();
 async function openFromTrips(page: Page, tripId: string): Promise<void> {
   await open(page, '/');
   await openManaged(page, 'trips');
-  await tid(page, `trip-${tripId}-open`).click();
+  await tid(page, `trip-${tripId}`).click();
   await expect(tid(page, 'trip-window')).toBeVisible();
 }
 

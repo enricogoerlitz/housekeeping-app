@@ -181,6 +181,8 @@ export const PAGE_PARAMS = {
   },
   kochen: {
     id: one(Uuid),
+    // The recipe's origin, so the highlight stays there while cooking (spec 0057, AC-015).
+    von: Von,
     schritt: one(PositiveInt),
     variante: one(Uuid),
     portionen: one(PositiveInt),
@@ -264,6 +266,8 @@ export const PAGE_PARAMS = {
     von: Von,
   },
   verwalten: {},
+  // Spec 0060: "Dauerposten" under "Verwalten", also from the list's ⋯.
+  dauerposten: { von: Von },
   einstellungen: {
     abschnitt: one(oneOf(['profil', 'darstellung', 'ki'])),
     fenster: one(oneOf(['profil'])),

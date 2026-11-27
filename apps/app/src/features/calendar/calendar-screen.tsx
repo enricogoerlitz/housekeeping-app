@@ -27,7 +27,6 @@ import {
   Button,
   DragProvider,
   IconButton,
-  Menu,
   Screen,
   ScreenHeader,
   Section,
@@ -40,7 +39,6 @@ import {
   tabSwipe,
   useBreakpoint,
   useTheme,
-  type MenuOption,
 } from '@housekeeping/ui';
 import { useIsFocused, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -57,7 +55,6 @@ import { StartPageActions } from '@/features/shell/profile-button';
 import { useOnlineOnly } from '@/features/shell/offline';
 import { useAddressedId, useHandedHousehold, useMissingObject } from '@/lib/addressed';
 import { useHideAssistantButton } from '@/lib/assistant';
-import { useSettings } from '@/lib/settings';
 import { PagePreview, usePageParams } from '@/lib/url-state';
 
 import { EntryLine } from './calendar-parts';
@@ -83,8 +80,6 @@ const VIEWS: { value: CalendarView; label: string }[] = [
   { value: 'year', label: 'Jahr' },
 ];
 
-type MoreAction = 'household-row' | 'trips-new' | 'trips';
-
 /** "Vorgemerkt" in the desktop week: columns of equal width, each at least this wide (REQ-001). */
 const PARKED_COLUMN = 220;
 const PARKED_GAP = 6;
@@ -95,8 +90,8 @@ function defaultSelected(monthStart: ISODate, today: ISODate): ISODate {
 }
 
 /**
- * "Kalender" (spec 0010): week, month and year with ‹ › and "Heute", ▲ Aktivitäten, ⊔ Auf die
- * Einkaufsliste and ⋯. View, chosen day (which gives the period), the day window, the entry window
+ * "Kalender" (spec 0010): week, month and year with ‹ › and "Heute", ▲ Aktivitäten and ⊔ Auf die
+ * Einkaufsliste; the household row always shows (spec 0054, REQ-004). View, chosen day (which gives the period), the day window, the entry window
  * and the windows "Reise eintragen" and "Auf die Einkaufsliste" stand in the address (spec 0019,
  * REQ-012): paging and choosing a day replace the entry, opening a window adds one. Every jump
  * into the calendar uses the same address (`/kalender?tag=…` from the "Übersicht", AC-038); an
@@ -104,7 +99,6 @@ function defaultSelected(monthStart: ISODate, today: ISODate): ISODate {
  */
 export function CalendarScreen() {
   const data = useCalendarData();
-  const settings = useSettings();
   const router = useRouter();
   const tripWindow = useTripWindow('kalender');
   const online = useOnlineOnly();
@@ -346,71 +340,22 @@ export function CalendarScreen() {
       ? undefined
       : (direction: -1 | 1) => page(direction);
 
-  const householdOn =
-    view === 'week'
-      ? settings.householdRow.week
-      : view === 'month'
-        ? settings.householdRow.month
-        : false;
   const shownWeek = weekDates(
     view === 'month' ? (selected ?? defaultSelected(start, today)) : start,
   );
 
-  const moreOptions: MenuOption<MoreAction>[] = [
-    // The year always shows the dot of a chore, so it has no switch (spec 0021, REQ-017).
-    ...(view === 'year'
-      ? []
-      : [
-          {
-            value: 'household-row' as const,
-            label: householdOn ? 'Haushalt-Zeile ausblenden' : 'Haushalt-Zeile einblenden',
-          },
-        ]),
-    {
-      value: 'trips-new',
-      label: 'Reise eintragen',
-      disabled: online.disabled,
-      hint: online.hint,
-    },
-    { value: 'trips', label: 'Reisen' },
-  ];
-  const onMore = (action: MoreAction) => {
-    if (action === 'household-row') {
-      if (view === 'year') return;
-      settings.update({
-        householdRow: { ...settings.householdRow, [view]: !householdOn },
-      });
-    } else if (action === 'trips-new') {
-      if (!online.disabled) openWindow('neu-reise');
-    } else {
-      // "‹ Kalender" on "Reisen" (spec 0031, REQ-036).
-      router.navigate({ pathname: '/reisen', params: { von: 'kalender' } });
-    }
-  };
-
-  // Four buttons share the phone's header with the title, so the calendar's own two sit closer.
+  // No ⋯ (spec 0054, REQ-004): trips are drawn over the days or entered on "Reisen".
   const actions = (
     <>
-      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        <IconButton
-          icon="shopping-basket"
-          label="Auf die Einkaufsliste"
-          size={36}
-          disabled={online.disabled}
-          hint={online.hint}
-          onPress={() => openWindow('aus-kalender')}
-          testID="plan-to-list"
-        />
-        <Menu<MoreAction>
-          trigger="icon"
-          icon="ellipsis"
-          label="Mehr"
-          accessibilityLabel="Mehr zum Kalender"
-          options={moreOptions}
-          onChange={onMore}
-          testID="calendar-more"
-        />
-      </View>
+      <IconButton
+        icon="shopping-basket"
+        label="Auf die Einkaufsliste"
+        size={36}
+        disabled={online.disabled}
+        hint={online.hint}
+        onPress={() => openWindow('aus-kalender')}
+        testID="plan-to-list"
+      />
       <StartPageActions />
     </>
   );
@@ -634,7 +579,6 @@ export function CalendarScreen() {
               <WeekView
                 data={data}
                 weekStart={start}
-                showHousehold={householdOn}
                 // The grid of seven columns only from 1100 px, else the list (REQ-032).
                 wide={bp === 'desktop'}
                 height={gridHeight}
@@ -653,7 +597,6 @@ export function CalendarScreen() {
                 selected={selected}
                 onOpenDay={openDay}
                 registerDay={registerDay}
-                showHousehold={householdOn}
                 wide={isWide}
                 longWeekdays={bp === 'desktop'}
                 height={gridHeight}

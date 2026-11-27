@@ -257,6 +257,9 @@ export type Database = {
           household_id: string;
           id: string;
           note: string | null;
+          reminder_at: string | null;
+          reminder_day_offset: number | null;
+          reminder_text: string | null;
           rule: NonNullable<Json>;
           slot_id: string;
           starts_at: string | null;
@@ -273,6 +276,9 @@ export type Database = {
           household_id: string;
           id?: string;
           note?: string | null;
+          reminder_at?: string | null;
+          reminder_day_offset?: number | null;
+          reminder_text?: string | null;
           rule: NonNullable<Json>;
           slot_id: string;
           starts_at?: string | null;
@@ -288,6 +294,9 @@ export type Database = {
           household_id?: string;
           id?: string;
           note?: string | null;
+          reminder_at?: string | null;
+          reminder_day_offset?: number | null;
+          reminder_text?: string | null;
           rule?: NonNullable<Json>;
           slot_id?: string;
           starts_at?: string | null;
@@ -553,6 +562,7 @@ export type Database = {
           last_done_on: string | null;
           next_assignee_id: string | null;
           next_due_on: string | null;
+          notice_days_before: number | null;
           recurrence: NonNullable<Json>;
           remind_at_due_time: boolean;
           room: string | null;
@@ -571,6 +581,7 @@ export type Database = {
           last_done_on?: string | null;
           next_assignee_id?: string | null;
           next_due_on?: string | null;
+          notice_days_before?: number | null;
           recurrence: NonNullable<Json>;
           remind_at_due_time?: boolean;
           room?: string | null;
@@ -588,6 +599,7 @@ export type Database = {
           last_done_on?: string | null;
           next_assignee_id?: string | null;
           next_due_on?: string | null;
+          notice_days_before?: number | null;
           recurrence?: NonNullable<Json>;
           remind_at_due_time?: boolean;
           room?: string | null;
@@ -1549,6 +1561,70 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: 'recipes_household_id_fkey';
+            columns: ['household_id'];
+            isOneToOne: false;
+            referencedRelation: 'households';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      recurring_items: {
+        Row: {
+          article_id: string;
+          count: number | null;
+          created_at: string;
+          household_id: string;
+          id: string;
+          last_added_on: string | null;
+          note: string | null;
+          paused: boolean;
+          qty: number | null;
+          rule: NonNullable<Json>;
+          starts_on: string;
+          unit: string | null;
+          updated_at: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          article_id: string;
+          count?: number | null;
+          created_at?: string;
+          household_id: string;
+          id?: string;
+          last_added_on?: string | null;
+          note?: string | null;
+          paused?: boolean;
+          qty?: number | null;
+          rule: NonNullable<Json>;
+          starts_on: string;
+          unit?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          article_id?: string;
+          count?: number | null;
+          created_at?: string;
+          household_id?: string;
+          id?: string;
+          last_added_on?: string | null;
+          note?: string | null;
+          paused?: boolean;
+          qty?: number | null;
+          rule?: NonNullable<Json>;
+          starts_on?: string;
+          unit?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'recurring_items_article_fkey';
+            columns: ['household_id', 'article_id'];
+            isOneToOne: true;
+            referencedRelation: 'articles';
+            referencedColumns: ['household_id', 'id'];
+          },
+          {
+            foreignKeyName: 'recurring_items_household_id_fkey';
             columns: ['household_id'];
             isOneToOne: false;
             referencedRelation: 'households';

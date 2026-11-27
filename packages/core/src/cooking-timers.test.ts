@@ -7,6 +7,7 @@ import {
   resetStepTimer,
   startStepTimer,
   stepTimerLabel,
+  timersToRing,
   type StepTimers,
 } from './cooking-timers';
 
@@ -62,5 +63,31 @@ describe('cookingKeyStep', () => {
     expect(cookingKeyStep('ArrowLeft', 0, 5)).toBeUndefined();
     expect(cookingKeyStep('ArrowRight', 4, 5)).toBeUndefined();
     expect(cookingKeyStep('Enter', 1, 5)).toBeUndefined();
+  });
+});
+
+describe('a run-out timer rings once (spec 0056, REQ-007)', () => {
+  const two = startStepTimer({}, { stepId: 's2', stepNumber: 2, minutes: 1 }, 0);
+
+  it('AC-026: the timer of another step rings when it runs out', () => {
+    const before = timersToRing(new Set(), two, 59_000);
+    expect(before.ring).toEqual([]);
+    const after = timersToRing(before.finished, two, 60_000);
+    expect(after.ring).toEqual(['s2']);
+  });
+
+  it('AC-027: it rings once; after "Zurücksetzen" and a new run-out again', () => {
+    const first = timersToRing(new Set(), two, 60_000);
+    expect(timersToRing(first.finished, two, 75_000).ring).toEqual([]);
+    const reset = resetStepTimer(two, 's2');
+    const cleared = timersToRing(first.finished, reset, 80_000);
+    expect(cleared.ring).toEqual([]);
+    const again = startStepTimer(reset, { stepId: 's2', stepNumber: 2, minutes: 1 }, 80_000);
+    expect(timersToRing(cleared.finished, again, 140_000).ring).toEqual(['s2']);
+  });
+
+  it('AC-028: a paused timer does not ring', () => {
+    const paused = pauseStepTimer(two, 's2', 30_000);
+    expect(timersToRing(new Set(), paused, 10 * MINUTE).ring).toEqual([]);
   });
 });

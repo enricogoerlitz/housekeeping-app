@@ -2,11 +2,11 @@
 
 > Gilt für alle Bildschirme. Umsetzung: `packages/ui` (Tokens und Bausteine), Entscheidung:
 > [ADR-0010](../adr/0010-styling-und-themes.md). Entstanden aus den drei Design-Richtungen von
-> Spec 0001; Enrico hat alle drei als wählbare Themes übernommen.
+> Spec 0001; Enrico hat alle drei als wählbare Themes übernommen, Spec 0058 brachte sechs weitere.
 
 ## 1. Grundsätze
 
-1. **Eine App, drei Gesichter.** Inhalt, Abläufe und Bausteine sind in allen Themes gleich. Ein
+1. **Eine App, viele Gesichter.** Inhalt, Abläufe und Bausteine sind in allen Themes gleich. Ein
    Theme ändert Farben, Schriften, Rundungen und die Rahmung von Abschnitten und Listen, nie die
    Bedienung.
 2. **Zuerst fürs Handy, aber jede Breite ist gestaltet.** Handy (< 700 px): Tab-Leiste unten,
@@ -23,14 +23,22 @@
 
 ## 2. Themes
 
-| Theme                         | Charakter                                  | Schrift                                                     | Rahmung                                                           | Standard |
-| ----------------------------- | ------------------------------------------ | ----------------------------------------------------------- | ----------------------------------------------------------------- | -------- |
-| **Markthalle** (`markthalle`) | warm, appetitlich, wie ein gutes Kochbuch  | Fraunces (Titel, Rezeptnamen) · Instrument Sans (Bedienung) | feine Linien, Fotos oben auf Karten, Abschnitte ohne Rahmen       | ja       |
-| **Klar** (`klar`)             | ruhig, vertraut, wie die Apps des Geräts   | Systemschrift (SF Pro / Roboto / Segoe)                     | gruppierte weiße Karten, Abschnittstitel als graue Großbuchstaben | —        |
-| **Frisch** (`frisch`)         | frisch, ruhig, eine Bereichsfarbe je Seite | Bricolage Grotesque (Titel) · DM Sans (Bedienung)           | weiße Kacheln auf warmem Grund, eine Kachel je Listenzeile        | —        |
+| Theme                           | Charakter                                                         | Schrift                                                     | Rahmung                                                                                       | Standard |
+| ------------------------------- | ----------------------------------------------------------------- | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------- | -------- |
+| **Markthalle** (`markthalle`)   | warm, appetitlich, wie ein gutes Kochbuch                         | Fraunces (Titel, Rezeptnamen) · Instrument Sans (Bedienung) | feine Linien, Fotos oben auf Karten, Abschnitte ohne Rahmen                                   | ja       |
+| **Klar** (`klar`)               | ruhig, vertraut, wie die Apps des Geräts                          | Systemschrift (SF Pro / Roboto / Segoe)                     | gruppierte weiße Karten, Abschnittstitel als graue Großbuchstaben                             | —        |
+| **Frisch** (`frisch`)           | frisch, ruhig, eine Bereichsfarbe je Seite                        | Bricolage Grotesque (Titel) · DM Sans (Bedienung)           | weiße Kacheln auf warmem Grund, eine Kachel je Listenzeile                                    | —        |
+| **Wolke** (`wolke`)             | rosa Wolkenhimmel, weich und verspielt; dunkel „Mondnacht“        | Nunito (Titel 800, Bedienung)                               | sehr rund (Karte 24, Pille), Icon-Knöpfe und aktiver Tab auf „Blasen“, Himmel als Seitengrund | —        |
+| **Mitternacht** (`mitternacht`) | Tiefblau mit Messing, für den Abend; dunkel ist der Hauptmodus    | DM Serif Display (Titel) · Inter (Bedienung)                | eher kantig (Karte 12), Fotos als Bild neben dem Text                                         | —        |
+| **Zitrus** (`zitrus`)           | sommerlich: Kobalt auf Creme, Zitrone, Mandarine                  | Outfit                                                      | rund (Karte 20), gruppierte Karten ohne Rand                                                  | —        |
+| **Salbei** (`salbei`)           | ruhig und natürlich, Leinen und Salbeigrün                        | Lora (Titel) · Work Sans (Bedienung)                        | feine Linien, eckige Abhakfelder                                                              | —        |
+| **Lavendel** (`lavendel`)       | luftig und still, Violett auf hellem Flieder                      | Lexend                                                      | rund (Karte 20), gruppierte Karten ohne Rand                                                  | —        |
+| **Espresso** (`espresso`)       | dunkel geröstet mit Crema und Karamell; dunkel ist der Hauptmodus | Space Grotesk (Titel) · Manrope (Bedienung)                 | kantig (Karte 8, Knopf 6), eckige Abhakfelder                                                 | —        |
 
 Jedes Theme gibt es hell und dunkel. Auswahl unter **Einstellungen → Darstellung**; gespeichert wird
-nur auf dem Gerät. Ein unbekannter gespeicherter Wert fällt auf „Markthalle“ zurück.
+nur auf dem Gerät. Ein unbekannter gespeicherter Wert fällt auf „Markthalle“ zurück. Die Auswahl
+zeigt drei Themes, das gewählte zuoberst, den Rest hinter „Mehr anzeigen“ (Spec 0058); die
+Reihenfolge wird beim Öffnen festgelegt, damit keine Karte unter dem Finger wegspringt.
 
 ## 3. Farben
 
@@ -56,11 +64,28 @@ Rollen statt Farbnamen. Alle Paare erfüllen WCAG AA (Text ≥ 4,5:1), geprüft 
 | `tones.{essen,plan,liste,haushalt,ki}`                | Bereichsfarben; nur „Frisch“ nutzt sie, siehe unten                                                            |
 | `kinds.{recipe,collection,restaurant,activity,chore}` | Arten im Kalender (Spec 0010, D19): nur als 3-px-Kante oder Punkt, nie als Fläche; ≥ 3:1 gegen Seite und Karte |
 
-| Theme      | Hell: Hintergrund · Akzent                   | Dunkel: Hintergrund · Akzent |
-| ---------- | -------------------------------------------- | ---------------------------- |
-| Markthalle | `#FAF6EE` · `#B4411F` Terrakotta             | `#1B1613` · `#EC8A66`        |
-| Klar       | `#F2F2F7` · `#0B7A63` Grün                   | `#000000` · `#30C9A0`        |
-| Frisch     | `#FAF8F5` · `#15151B` Tinte, Bereiche farbig | `#111116` · `#F6F5F2`        |
+| Theme       | Hell: Hintergrund · Akzent                   | Dunkel: Hintergrund · Akzent   |
+| ----------- | -------------------------------------------- | ------------------------------ |
+| Markthalle  | `#FAF6EE` · `#B4411F` Terrakotta             | `#1B1613` · `#EC8A66`          |
+| Klar        | `#F2F2F7` · `#0B7A63` Grün                   | `#000000` · `#30C9A0`          |
+| Frisch      | `#FAF8F5` · `#15151B` Tinte, Bereiche farbig | `#111116` · `#F6F5F2`          |
+| Wolke       | `#F2D3DB` (Himmel) · `#5B3B41` Mauve         | `#241A1D` · `#F4B6C4` Rosé     |
+| Mitternacht | `#F4F2EC` · `#1F3A68` Marine                 | `#0E1322` · `#E2B866` Messing  |
+| Zitrus      | `#FFF8EC` · `#2C4BD6` Kobalt                 | `#12131C` · `#93A6FF`          |
+| Salbei      | `#F2F3EC` · `#3D6A4D` Salbei                 | `#131A15` · `#93C7A2`          |
+| Lavendel    | `#F4F1F9` · `#5B3FA0` Violett                | `#17131F` · `#C4AEF5`          |
+| Espresso    | `#EEEAE6` · `#3B2418` Espresso               | `#120D0A` · `#D9A46A` Karamell |
+
+**Seitengrund mit Verlauf (`backdrop`, Spec 0058):** Ein Theme kann hinter den Seiten ein
+CSS-Hintergrundbild aus Verläufen zeigen, nur im Web; nur „Wolke“ tut es (hell rosa Himmel mit
+weißen Wolken, dunkel ein Mondschimmer oben rechts). Der Verlauf beginnt oben in `bg`, so sind
+Statusleiste und Seitenanfang eine Farbe, und jede Farbe darin hält die Textpaare von `bg` (Test).
+Er hat die Größe des Fensters und hängt an dessen Oberkante: Die Kopfzeile, die auf dem Handy über
+dem Inhalt liegt, zeigt genau das Stück dahinter. Karten, Leisten und Sheets bleiben deckend.
+
+**Blasen (`shape.bubble`, Spec 0058):** In „Wolke“ sitzen alle Icon-Knöpfe auf einer organischen
+Blase in `surfaceSunken` (nicht ganz rund, wie die Symbole auf einem Handy-Startbildschirm) und der
+aktive Tab auf einer Blase in `accentSoft` (`tabActive: 'bubble'`). Alle anderen Themes zeigen Kreise.
 
 **Frisch ruhiger (Spec 0005, D4):** Je Bildschirm färbt nur die Bereichsfarbe des Bereichs, zu dem
 er gehört (`Screen tone`), die Linie unter dem aktiven Ansichts-Tab, den Akzent der Kopfzeile und
@@ -87,16 +112,20 @@ Zeilenabstand, z. B. der Schritt im Kochmodus (Spec 0023, REQ-010).
 
 - Bedienelemente, Beschriftungen und Daten nutzen immer die Bedienschrift, nie die Titelschrift.
 - Zahlen in Mengen und Fortschritt mit gleich breiten Ziffern, wo möglich.
-- Schriften liegen im App-Paket (`@expo-google-fonts/*`) und werden einmal beim Start geladen
-  (die Theme-Vorschau in den Einstellungen braucht alle). Keine Anfrage an Google Fonts oder andere
+- Schriften liegen im App-Paket (`@expo-google-fonts/*`, Abhängigkeit von `packages/ui`). Beim
+  Start lädt die App nur die Schriften des gewählten Themes und wartet einmal darauf; die eines
+  anderen Themes lädt erst die Karte der Theme-Auswahl, die es zeigt (`useThemeFonts`, Spec 0058).
+  Ein Theme-Wechsel baut die App nicht neu auf; fehlt eine Schrift, gilt die Systemschrift. Der
+  Service Worker hält alle Schriftdateien für offline. Keine Anfrage an Google Fonts oder andere
   fremde Server.
 
 ## 5. Form und Abstand
 
 - **Abstände:** Skala `space` = 2 · 4 · 8 · 12 · 16 · 20 · 24 · 32. Seitenrand auf dem Handy 16–20
   (Theme), ab Tablet 36.
-- **Rundungen** je Theme: Karte 14 / 14 / 22, Knopf 10 / 12 / Pille, Abhakfeld Kreis / Kreis /
-  abgerundetes Quadrat.
+- **Rundungen** je Theme (`shape.radius`): Markthalle / Klar / Frisch Karte 14 / 14 / 22, Knopf
+  10 / 12 / Pille, Abhakfeld Kreis / Kreis / abgerundetes Quadrat; die Themes aus Spec 0058 reichen
+  von Wolke (Karte 24, Pille) bis Espresso (Karte 8, Knopf 6, eckiges Abhakfeld).
 - **Tippflächen** mindestens 44 × 44 pt; Listenzeilen mindestens 56 pt hoch.
 - **Tiefe:** Schatten nur am Assistent-Knopf, an Sheets und an dem, was beim Ziehen schwebt
   (`shadowRaised`); sonst Flächen und Linien.
@@ -125,7 +154,7 @@ allen Themes.
 | `ListDetail`                                                                            | Liste und Detail ab Tablet: Liste links (höchstens 400 px), Gewähltes rechts, beide scrollen für sich; ohne Wahl ein Platzhalter; auf dem Handy nur die Liste. Gewählte Zeile: `ListRow selected` (Spec 0007; Haushalt „Alle“ und „Verlauf“, Spec 0011)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `GhostRow`, `ProposalCard`                                                              | Vorschläge des Assistenten (gestrichelte Zeile, Diff-Karte)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `MediaCard`, `Photo`, `PhotoCollage`                                                    | Rezepte, Sammlungen und Gerichte; Foto oben oder als Vorschaubild. `PhotoCollage` (Spec 0009, E14) macht aus bis zu vier Fotos ein Bild: 1 ganz, 2 nebeneinander, 3 mit dem ersten links über die volle Höhe und zwei rechts übereinander, 4 im 2×2-Raster; dazwischen eine 2-px-Fuge in `surface`; ohne Foto der Platzhalter mit Stapel-Symbol (`KIND_ICONS.collection`, `layers`). `MediaCard images` zeigt die Collage an Stelle von `image`. Welche Fotos es sind, entscheidet die App (`coverPhotos` in `core`: eigenes Foto, sonst die ersten enthaltenen Rezepte mit Foto)                                                                                                                                                                                                                                                                             |
-| `Button`, `IconButton`, `Chip`, `SwitchRow`, `Checkbox`, `TextField`                    | Bedienelemente mit sichtbarem Tastatur-Fokus; `Chip` mehrfach wählbar zum Filtern, mit `detail` eine zweite Zeile (Tages-Chips „Mi“ über „25.11.“, auch als `detail` einer `ChoiceChips`-Option, Spec 0023); `openExternalLink` öffnet eine geprüfte Web-Adresse im neuen Tab mit `noopener` und `noreferrer` (Links am Rezept, Symbol `external-link`); `SwitchRow` mit `onDetail` öffnet Einstellungen hinter „›“ (siehe „Schalter mit Detail“)                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `Button`, `IconButton`, `Chip`, `SwitchRow`, `Checkbox`, `TextField`                    | Bedienelemente mit sichtbarem Tastatur-Fokus; `Button variant="link" quiet` ist ein Text-Knopf in Tinte statt im Akzent, für Verlassen, Entfernen und Löschen (Spec 0054); `CreateButton` ist der Anlegen-Knopf der Kopfzeile (siehe „Bedienmuster“); `Chip` mehrfach wählbar zum Filtern, mit `detail` eine zweite Zeile (Tages-Chips „Mi“ über „25.11.“, auch als `detail` einer `ChoiceChips`-Option, Spec 0023); `openExternalLink` öffnet eine geprüfte Web-Adresse im neuen Tab mit `noopener` und `noreferrer` (Links am Rezept, Symbol `external-link`); `SwitchRow` mit `onDetail` öffnet Einstellungen hinter „›“ (siehe „Schalter mit Detail“)                                                                                                                                                                                                     |
 | `TimeField`                                                                             | Uhrzeit aus „Stunde“ und „Minute“ in 5-Minuten-Schritten, optional mit ✕ (Spec 0027); siehe „Uhrzeit-Feld“ unten                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `Stars`                                                                                 | Bewertung in halben Sternen, 0,5 bis 5 (Spec 0011, REQ-004): linke Hälfte eines Sterns = halber Stern. Maus füllt beim Darüberfahren vor, Klick setzt, Verlassen zeigt wieder den gespeicherten Wert; Finger tippt oder zieht, Loslassen setzt; Tastatur und Screenreader in 0,5-Schritten („4,5 von 5 Sternen“). Ohne `onChange` nur Anzeige, `disabled` + `hint` ausgegraut (offline). Test-IDs: `<id>-<n>` voller, `<id>-<n>-half` halber Stern. Auf Rezept- und Restaurantseite zeigt `MemberRatings` (App, `features/shell`) „Du“ zum Setzen und daneben die anderen Mitglieder nur zur Anzeige (Spec 0008, E15)                                                                                                                                                                                                                                         |
 | `Avatar`, `AvatarStack`, `Badge`, `ProgressBar`, `DueBar`                               | Personen, Kennzeichen, Fortschritt                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
@@ -178,6 +207,19 @@ Ein Muster je Aufgabe (Spec 0005, D1): Ansichten wechseln mit `ViewTabs`, ein We
 Segment-Balken gibt es nicht mehr. Fenstergrößen: `s` für Bestätigen und eine Wahl aus wenigen,
 `m` für Formulare, `l` für Suchen und Auswählen mit Tabs; ein kleines Fenster darf beim Aufklappen
 einmal auf `l` wachsen.
+
+### Bedienmuster (Spec 0054)
+
+Eine Handlung sieht überall gleich aus und steht an derselben Stelle.
+
+| Handlung    | Muster                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Anlegen     | `CreateButton` rechts in der Kopfzeile: am Handy „+“ ohne Kreis, ab Tablet ein kleiner gefüllter Knopf „+ ‹Ding› anlegen“ („Reise eintragen“). Eine Art je Seite oder Tab, kein Menü „+ Neu ▾“. Der leere Zustand behält seinen eigenen ersten Schritt; sonst kein zweiter Anlegen-Knopf auf der Seite.                                                                                                                            |
+| Bearbeiten  | Auf einer Detailseite der Stift in der Kopfzeile. Kein zweiter Weg zum selben Formular als Link („Notiz bearbeiten“); ein Link nur als erster Schritt in einem leeren Abschnitt („Notiz hinzufügen“). Abschnitte, die für sich bearbeitet werden, nutzen `EditableSection`.                                                                                                                                                        |
+| Löschen     | Nie als Mülleimer direkt in einer Listenzeile. Detailseite: letzter Eintrag im ⋯. Fenster eines Eintrags: letzter Knopf im Fenster. Liste: Wischen nach links und das ⋯ der Zeile. Gefragt wird wie bisher vorher (Spec 0036, Entscheidung 1).                                                                                                                                                                                     |
+| ⋯-Menü      | Nur, was nicht schon sichtbar auf der Seite steht; „Löschen“ zuletzt. Ohne Eintrag entfällt das ⋯. Ein ⋯ mit nur „Löschen“ bleibt (kein Lösch-Knopf frei in der Kopfzeile). Keine Links zu Seiten unter „Verwalten“ neu hinzufügen.                                                                                                                                                                                                |
+| Fensterkopf | Wer etwas bestätigt (Formular oder Rückfrage), bekommt `actions`: am Handy oben „Abbrechen · Titel · benannter Hauptknopf“ („Speichern“, „Löschen“, „10 übernehmen“), ab Tablet beide unten. Ohne Abbrechen (Änderungen bleiben) heißt der Knopf „Fertig“. Nur Auswählen oder Ansehen: Titel und ✕. Jedes Fenster hat ein sichtbares Schließen. Eine Rückfrage mit mehr als zwei Antworten stellt ihre Knöpfe untereinander unten. |
+| Akzent      | Nur die Hauptaktion des Bildschirms und der aktive Tab. Verlassen, Entfernen, Zurückziehen und Löschen sind nie im Akzent: als Text-Knopf `quiet`, als Knopf `ghost` oder `secondary`.                                                                                                                                                                                                                                             |
 
 ## 7. Bewegung
 

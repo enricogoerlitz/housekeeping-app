@@ -343,6 +343,11 @@ export interface ActivitySeries {
   /** "Wer ist dabei?" (REQ-005). */
   eaterIds: Id[];
   guests: number;
+  /**
+   * Spec 0059, REQ-003: "Erinnern" for every Termin, counted from its day (0–30 days before);
+   * each computed Termin carries it as its own reminder.
+   */
+  reminder?: EntryReminder;
 }
 
 /** One "Termin" of a series "abgesagt" (no movedTo) or "verschoben" (spec 0041, REQ-003). */
@@ -360,7 +365,10 @@ export interface ActivitySeriesException {
 // ---------- Shopping ----------
 
 export type ContributionSource =
-  { kind: 'manual' } | { kind: 'recipe'; recipeId: Id; entryId?: Id; label: string };
+  | { kind: 'manual' }
+  | { kind: 'recipe'; recipeId: Id; entryId?: Id; label: string }
+  /** Spec 0060: a Dauerposten on its day `on` (by the server, or early from "Aus Kalender"). */
+  | { kind: 'recurring'; recurringItemId: Id; on: ISODate };
 
 export interface ShoppingContribution {
   id: Id;
@@ -388,6 +396,27 @@ export interface ShoppingItem {
   checkedOnList?: boolean;
   /** Changed offline and not yet confirmed by the server (shown as a small dot). */
   pendingSync?: boolean;
+  createdAt: string;
+}
+
+/** The rhythm of a Dauerposten (spec 0060, Decision 4): the series rules without "jährlich". */
+export type RecurringRule = Exclude<SeriesRule, { type: 'yearly' }>;
+
+/** "Dauerposten" (spec 0060): an article that comes onto the list by itself on its days. */
+export interface RecurringItem {
+  id: Id;
+  articleId: Id;
+  count?: number;
+  qty?: number;
+  unit?: string;
+  /** "Zusatz", like on the list. */
+  note?: string;
+  rule: RecurringRule;
+  /** Counts "alle N Wochen" from this week; nothing is due before it. */
+  startsOn: ISODate;
+  paused: boolean;
+  /** The last day it came onto the list; written only by the server. */
+  lastAddedOn?: ISODate;
   createdAt: string;
 }
 
@@ -428,6 +457,11 @@ export interface Chore {
    * a time. Undefined = on, the default.
    */
   remindAtDueTime?: boolean;
+  /**
+   * „Vorwarnung“ (spec 0059, REQ-004): from this many days (1–60) before the Termin it stands in
+   * the bell; undefined = none.
+   */
+  noticeDaysBefore?: number;
 }
 
 export interface ChoreEvent {

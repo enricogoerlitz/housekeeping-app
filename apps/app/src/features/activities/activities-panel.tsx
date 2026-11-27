@@ -20,6 +20,7 @@ import {
 } from '@housekeeping/core';
 import {
   Button,
+  CreateButton,
   Chip,
   columnsFor,
   EmptyState,
@@ -173,21 +174,9 @@ export function ActivitiesScreen() {
     setCreating(true);
   };
   const empty = activities.length === 0;
-  const addButton = empty ? null : isPhone ? (
-    <IconButton
-      icon="plus"
+  const addButton = empty ? null : (
+    <CreateButton
       label="Aktivität anlegen"
-      variant="soft"
-      disabled={online.disabled}
-      hint={online.hint}
-      onPress={startCreating}
-      testID="activity-add"
-    />
-  ) : (
-    <Button
-      label="Aktivität anlegen"
-      icon="plus"
-      size="sm"
       disabled={online.disabled}
       hint={online.hint}
       onPress={startCreating}

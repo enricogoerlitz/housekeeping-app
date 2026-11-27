@@ -54,7 +54,8 @@ mit dessen Angaben (Spec 0007). Gepflegt wird er auf der Seite „Artikel“ unt
 
 Markierung an einem Artikel, der für eine Zutat ohne Wahl eines Menschen neu entstanden ist, weil
 kein Artikel des Haushalts und kein Eintrag des Starter-Katalogs zum Namen passte: bei Vorschlägen
-des Assistenten und in den Beispieldaten (Spec 0007, E1; es gibt keine Migration). Starter-Rezepte
+des Assistenten, in den Beispieldaten und für Zutaten eines KI-Entwurfs, denen die KI Bereich und
+Ernährung vorschlägt (Spec 0007, E1; Spec 0055, REQ-009; es gibt keine Migration). Starter-Rezepte
 gibt es nicht mehr (Spec 0023, REQ-011). Die Seite „Artikel“ zeigt diese zum Prüfen und
 Zusammenführen. Die Markierung fällt weg, sobald jemand den Artikel speichert, bestätigt („Passt
 so“), zusammenführt oder löscht (Spec 0007, Offene Frage 1).
@@ -400,10 +401,11 @@ Ein Artikel auf der Einkaufsliste, eine Zeile je Artikel. Setzt sich aus **Beitr
 Woher ein Beitrag eines Einkaufspostens kommt, wie es beim Antippen steht: „Lasagne (Fr): 1× · von
 Hand: 1×“. Ein Beitrag aus dem Kalender trägt den Wochentag in Klammern, einer direkt von der
 Rezeptseite oder über „Rezept wählen …“ steht ohne Tag („Mango-Curry“); aus einer Sammlung
-„Grillabend“ bzw. „Grillabend · Kartoffelsalat“ (Spec 0006, Spec 0009).
+„Grillabend“ bzw. „Grillabend · Kartoffelsalat“ (Spec 0006, Spec 0009); ein Beitrag eines
+[Dauerpostens](#dauerposten) heißt „regelmäßig“ (Spec 0060).
 
 - **Im Code:** `ShoppingContribution.source` (`ContributionSource`: `manual` · `recipe` mit
-  `label`; `recurring` entfällt, Spec 0025)
+  `label` · `recurring` mit `recurringItemId` und dem Tag `on`, Spec 0060)
 - **Nicht verwenden:** Quelle (in der Oberfläche), Ursprung
 
 ### Zusatz
@@ -599,10 +601,13 @@ dem Tag, an dem man spätestens anfangen muss (nicht mehr nur am Vortag).
 
 ### Dauerposten
 
-Ein Artikel, der nach einem eigenen Rhythmus von selbst auf die Einkaufsliste kommt, z. B. „Milch
-montags“. **Nicht gebaut** (Spec 0025: Keine Dauerposten; die Herkunft `recurring` entfällt).
+Ein Artikel mit Menge, Zusatz und Rhythmus (wöchentlich an Wochentagen, alle N Wochen, oder
+monatlich am Tag X), der am fälligen Tag von selbst auf die Einkaufsliste kommt, z. B. „Cola 2×,
+wöchentlich Sa“ — als Beitrag mit der Herkunft „regelmäßig“, höchstens einmal je Tag und nicht,
+solange er noch offen draufsteht. Pausiert kommt er nicht. Höchstens einer je Artikel; gehört zum
+Haushalt (Spec 0060, ändert Spec 0025).
 
-- **Im Code:** keiner; der frühere Entwurf `RecurringItem`, `recurring_items` besteht nicht
+- **Im Code:** `RecurringItem`, `recurring_items`; der Zeitplaner `private.add_due_recurring_items`
 - **Nicht verwenden:** Abo, Standardposten
 
 ### Sammlung
@@ -774,6 +779,8 @@ eine [Mitteilung](#mitteilung) an der Glocke (Spec 0051).
 
 - **Im Code:** Spalten `reminder_day_offset`, `reminder_at`, `reminder_text` an `meal_plan_entries`;
   core `reminder.ts`; als Mitteilung Art `entryReminder`
+- **An Serien (Spec 0059):** „Erinnern“ in „Serie bearbeiten“ gilt für jeden Termin der Serie (am
+  Tag, 1, 3 oder 7 Tage vorher); dieselben Spalten an `activity_series`, `ActivitySeries.reminder`
 - **Abgrenzung:** Eine eigene _Reservierungs-Erinnerung_ („Erinnern 2 h vorher“, Spec 0013) gibt es
   seit Spec 0021 nicht mehr; sie geht in diese Erinnerung auf (Uhrzeit am Eintrag setzen schaltet sie
   ein, 2 Stunden vorher).
@@ -1014,13 +1021,35 @@ und Packstücke sofort beim Tipp (Spec 0006; Spec 0012, Offene Frage 3), Aufgabe
 
 Was für die angemeldete Person gerade ansteht, an der Glocke oben gezählt (roter Kreis mit Zahl,
 ab 10 „9+“) und im Fenster „Mitteilungen“ gelistet (Spec 0051): fällige Erinnerungen an Einträgen,
-Aufgaben mit Uhrzeit ab der Uhrzeit für wer dran ist, heutiger Vorlauf, „Du kochst“ heute und
-Aktivitäten ab 19 Uhr am Vortag. Entsteht auf dem Gerät aus dem lokalen Speicher; während einer
-eigenen Reise gibt es keine. Ein Tipp öffnet den Eintrag oder die Aufgabe.
+Aufgaben mit Uhrzeit ab der Uhrzeit für wer dran ist, heutiger Vorlauf, „Du kochst“ heute,
+Aktivitäten ab 19 Uhr am Vortag, die [Vorwarnung](#vorwarnung) an Aufgaben und am Vorabend einer
+Reise ab 18 Uhr „Morgen geht's los · 12 von 30 gepackt“ (Spec 0059). Entsteht auf dem Gerät aus dem
+lokalen Speicher; während einer eigenen Reise gibt es keine. Ein Tipp öffnet den Eintrag, die
+Aufgabe oder die Reise.
 
 - **Im Code:** `Notice`, `dueNotices` (core `notices.ts`), Arten `NoticeKind`; Glocke `NoticeBell`
   (`features/notices`), Zähler `WithBadge`
 - **Nicht verwenden:** Benachrichtigung, Push, Notification (in der Oberfläche)
+
+### Vorwarnung
+
+Wie viele Tage vor dem Termin einer Aufgabe sie schon in der Glocke steht („Keine“, „3 Tage“,
+„1 Woche“, „2 Wochen“, „1 Monat“), z. B. „Handyvertrag kündigen · fällig in 18 Tagen“; nur bei
+festem Termin (nicht „Flexibel“, nicht „Bei Bedarf“), bis einschließlich des Termins (Spec 0059).
+
+- **Im Code:** `chores.notice_days_before`, `Chore.noticeDaysBefore`; Mitteilungsart `deadline`
+- **Abgrenzung:** Nicht der [Vorlauf](#vorlauf) eines Rezepts und nicht die
+  [Erinnerung](#erinnerung) an einem Planeintrag.
+- **Nicht verwenden:** Frist (als Feldname), Deadline (in der Oberfläche)
+
+### In meinen Kalender
+
+Ein Termin der App (Planeintrag mit Tag, Termin einer Serie, Reise, Aufgabe mit Termin) als Kopie
+im eigenen Kalender: „Als Datei (.ics)“ für iPhone, Mac und Outlook oder „In Google Kalender“ als
+Link (Spec 0059). Änderungen in der App kommen nicht mit; ein Abo gibt es nicht.
+
+- **Im Code:** core `calendar-export.ts` (`toICalendar`, `googleCalendarUrl`), App `AddToCalendar`
+- **Nicht verwenden:** Export, Sync, Abo, Kalender-Feed
 
 ### Bestätigen (Mitteilung)
 
@@ -1235,6 +1264,16 @@ gespeichert, bevor die Person „Speichern“ tippt.
 - **Im Code:** `webSearchAsync`, `web-search` (Edge Function), `WebResult`
 - **Nicht verwenden:** Google-Suche, Internetsuche, KI-Suche (das ist die Suche in den eigenen
   Rezepten, Spec 0003)
+
+### Prompt (Reiter)
+
+Der Reiter von „Mit KI ausfüllen“ neben „Websuche“ (früher „Eigene Angaben“, Spec 0055): ein Wunsch
+in eigenen Worten, Links und Fotos; beim Bearbeiten geht das Rezept mit, auf Wunsch mit einer
+Websuche als Hintergrund. Unter der Änderungsansicht bessert „Was soll noch anders sein?“ den
+Vorschlag nach.
+
+- **Im Code:** `AiFillTab` `'prompt'`, `AiFillFields`, `RecipeDraftRequest.current`, `webQuery`
+- **Nicht verwenden:** Eigene Angaben, Chat
 
 ### Änderungsansicht
 

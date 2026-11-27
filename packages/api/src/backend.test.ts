@@ -394,8 +394,8 @@ describe('a new cache version (AC-018)', () => {
     return itemId;
   }
 
-  it('spec 0051: version 23 for notification_settings.acknowledged_notices (after 0046: 22)', () => {
-    expect(CACHE_VERSION).toBe(23);
+  it('spec 0060: version 25 for recurring_items (after 0051: 23; spec 0059 takes 24)', () => {
+    expect(CACHE_VERSION).toBe(25);
   });
 
   it('spec 0012: a queued pack entry survives the version bump and is sent', async () => {

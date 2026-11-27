@@ -184,23 +184,11 @@ const JpegDataUrl = z
       value.startsWith(JPEG_DATA_PREFIX) && Base64.test(value.slice(JPEG_DATA_PREFIX.length)),
   );
 
-export const RecipeDraftRequestSchema = z
-  .strictObject({
-    householdId: Id,
-    /** Free text, typed or dictated; the links found in it travel in `links`. */
-    text: z.string().trim().max(RECIPE_DRAFT_LIMITS.text).default(''),
-    links: z.array(HttpsUrl).max(RECIPE_DRAFT_LIMITS.links).default([]),
-    photos: z.array(JpegDataUrl).max(RECIPE_DRAFT_LIMITS.photos).default([]),
-    /** "Foto generieren" (REQ-003): the draft brings a prompt for the image model. */
-    imagePrompt: z.boolean().default(true),
-  })
-  .refine(
-    (request) => request.text !== '' || request.links.length > 0 || request.photos.length > 0,
-  );
-export type RecipeDraftRequest = z.input<typeof RecipeDraftRequestSchema>;
-
 /** Name of a variant of the draft, e.g. "Vegetarisch"; ingredients and steps point at it by name. */
 const VariantName = z.string().trim().min(1).max(60);
+
+/** What the AI may say a new article contains (spec 0055, REQ-009); never "kein Lebensmittel". */
+export const DRAFT_DIETS = ['vegan', 'vegetarian', 'fish', 'meat', 'unknown'] as const;
 
 export const DraftIngredientSchema = z.strictObject({
   /** The household's article name when one fits (name or synonym), else a short German name. */
@@ -213,6 +201,12 @@ export const DraftIngredientSchema = z.strictObject({
   group: z.string().trim().max(60).optional(),
   /** Only for one variant (spec 0045, REQ-003); without it the row is shared by every variant. */
   variant: VariantName.optional(),
+  /**
+   * Spec 0055, REQ-009: for an ingredient without a household article, one of the household's
+   * area names and what it contains; ignored when an article or starter entry fits.
+   */
+  area: z.string().trim().min(1).max(80).optional(),
+  diet: z.enum(DRAFT_DIETS).optional(),
 });
 export type DraftIngredient = z.infer<typeof DraftIngredientSchema>;
 
@@ -263,6 +257,33 @@ export const RecipeDraftSchema = z.strictObject({
 });
 export type RecipeDraft = z.infer<typeof RecipeDraftSchema>;
 
+/** Spec 0055, REQ-007: what the web search of "Prompt" looks for (title and wish). */
+export const PROMPT_WEB_QUERY_MAX = 200;
+
+export const RecipeDraftRequestSchema = z
+  .strictObject({
+    householdId: Id,
+    /** Free text, typed or dictated; the links found in it travel in `links`. */
+    text: z.string().trim().max(RECIPE_DRAFT_LIMITS.text).default(''),
+    links: z.array(HttpsUrl).max(RECIPE_DRAFT_LIMITS.links).default([]),
+    photos: z.array(JpegDataUrl).max(RECIPE_DRAFT_LIMITS.photos).default([]),
+    /** "Foto generieren" (REQ-003): the draft brings a prompt for the image model. */
+    imagePrompt: z.boolean().default(true),
+    /**
+     * Spec 0055, REQ-006, REQ-008: the recipe to change — the one of the edit mode, or the AI's
+     * last proposal; the text says what to change. A stored recipe may have no description.
+     */
+    current: RecipeDraftSchema.extend({
+      description: z.string().trim().max(600),
+    }).optional(),
+    /** Spec 0055, REQ-007: with it the function searches the web once for context. */
+    webQuery: z.string().trim().min(1).max(PROMPT_WEB_QUERY_MAX).optional(),
+  })
+  .refine(
+    (request) => request.text !== '' || request.links.length > 0 || request.photos.length > 0,
+  );
+export type RecipeDraftRequest = z.input<typeof RecipeDraftRequestSchema>;
+
 export const RecipeDraftSourceSchema = z.strictObject({
   /** The link as sent. */
   url: HttpsUrl,
@@ -281,6 +302,8 @@ export type RecipeDraftSource = z.infer<typeof RecipeDraftSourceSchema>;
 export const RecipeDraftReplySchema = z.strictObject({
   draft: RecipeDraftSchema,
   sources: z.array(RecipeDraftSourceSchema).max(RECIPE_DRAFT_LIMITS.links),
+  /** Spec 0055, REQ-007: only when the web search was asked for. */
+  webContext: z.enum(['used', 'unavailable']).optional(),
 });
 export type RecipeDraftReply = z.infer<typeof RecipeDraftReplySchema>;
 

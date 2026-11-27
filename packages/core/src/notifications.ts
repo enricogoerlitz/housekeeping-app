@@ -43,7 +43,9 @@ export type NotificationTarget =
   /** A chore on the page "Haushalt". */
   | { screen: 'chore'; choreId: Id }
   /** A day in the calendar, with the entry's window if one. */
-  | { screen: 'calendar'; day: ISODate; entryId?: Id };
+  | { screen: 'calendar'; day: ISODate; entryId?: Id }
+  /** The trip window over "Reisen" (spec 0059, REQ-005). */
+  | { screen: 'trip'; tripId: Id };
 
 /** The address of the target's screen (spec 0051, AC-017). */
 export function notificationTargetHref(target: NotificationTarget): string {
@@ -54,5 +56,7 @@ export function notificationTargetHref(target: NotificationTarget): string {
       return target.entryId === undefined
         ? `/kalender?tag=${target.day}`
         : `/kalender?tag=${target.day}&eintrag=${target.entryId}`;
+    case 'trip':
+      return `/reisen?reise=${target.tripId}`;
   }
 }

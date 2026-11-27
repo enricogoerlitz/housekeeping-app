@@ -90,11 +90,6 @@ async function showMonth(page: Page): Promise<void> {
   await expect(tid(page, `month-day-${TODAY}`)).toBeVisible();
 }
 
-async function householdRowInMonth(page: Page): Promise<void> {
-  await tid(page, 'calendar-more').click();
-  await tid(page, 'calendar-more-household-row').click();
-}
-
 /** A finger on the page through CDP touch events, so the browser sends touch pointer events. */
 async function finger(page: Page) {
   // The first touch right after a load misses the remounting content.
@@ -305,14 +300,12 @@ test.describe('desktop', () => {
     await expect(box).toHaveCount(0, { timeout: 6000 });
   });
 
-  test('AC-044: with the household row the month shows the day’s chores as lines under the entries', async ({
+  test('AC-044 / AC-012 (0054): the month always shows the day’s chores as lines under the entries', async ({
     page,
   }) => {
     // Tall enough that today's three entries and two chores fit (six week rows, REQ-001).
     await page.setViewportSize({ width: 1440, height: 1700 });
     await showMonth(page);
-    await expect(tid(page, `month-chores-${TODAY}`)).toHaveCount(0);
-    await householdRowInMonth(page);
     await expect(tid(page, `month-chores-${TODAY}`)).toContainText('Bad putzen');
     await expect(tid(page, `month-cell-${TODAY}`)).toContainText('Lasagne');
   });

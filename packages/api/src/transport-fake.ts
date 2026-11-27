@@ -231,6 +231,8 @@ const CASCADES: Record<string, { table: string; column: string }[]> = {
     { table: 'activity_series', column: 'activity_id' },
   ],
   feedback: [{ table: 'feedback_votes', column: 'feedback_id' }],
+  // Spec 0060: a Dauerposten goes with its article (delete_article).
+  articles: [{ table: 'recurring_items', column: 'article_id' }],
   // Spec 0012: the same table as the diff uses (db/tables.ts).
   ...Object.fromEntries(
     Object.entries(CASCADE_CHILDREN).map(([table, children]) => [table, [...(children ?? [])]]),
@@ -279,6 +281,7 @@ const REFERENCES: {
     onDelete: 'set null',
   },
   { table: 'shopping_items', column: 'article_id', target: 'articles', onDelete: 'restrict' },
+  { table: 'recurring_items', column: 'article_id', target: 'articles', onDelete: 'cascade' },
   { table: 'chore_events', column: 'chore_id', target: 'chores', onDelete: 'set null' },
   { table: 'articles', column: 'area_id', target: 'areas', onDelete: 'set null' },
   { table: 'packing_bag_items', column: 'bag_id', target: 'packing_bags', onDelete: 'cascade' },
@@ -778,7 +781,14 @@ function checkNotificationColumns(table: string, row: Row): void {
     if (row.starts_at != null && row.kind !== 'restaurant' && row.kind !== 'activity') {
       throw violated();
     }
-    checkReminderColumns(row);
+    checkReminderColumns(row, 366);
+    if (row.reminder_at != null && row.date == null) throw violated();
+  }
+  // Spec 0059: activity_series_reminder_* (0–30 days) and chores_notice_days_before_valid.
+  if (table === 'activity_series') checkReminderColumns(row, 30);
+  if (table === 'chores' && row.notice_days_before != null) {
+    const days = Number(row.notice_days_before);
+    if (!Number.isInteger(days) || days < 1 || days > 60) throw violated();
   }
 }
 
@@ -789,13 +799,16 @@ const CONTROL_CHARACTER =
 
 /**
  * Spec 0017: meal_plan_entries_reminder_day_offset_valid, _reminder_text_valid,
- * _reminder_complete, _reminder_text_needs_time and _reminder_needs_date.
+ * _reminder_complete and _reminder_text_needs_time; the same at activity_series (spec 0059).
  */
-function checkReminderColumns(row: Row): void {
+function checkReminderColumns(row: Row, maxOffset: number): void {
   const violated = () => new TransportError('permanent', '23514', 400);
   const offset = row.reminder_day_offset;
   const text = row.reminder_text;
-  if (offset != null && !(Number.isInteger(offset) && Number(offset) >= 0 && Number(offset) <= 366))
+  if (
+    offset != null &&
+    !(Number.isInteger(offset) && Number(offset) >= 0 && Number(offset) <= maxOffset)
+  )
     throw violated();
   if (
     text != null &&
@@ -808,7 +821,6 @@ function checkReminderColumns(row: Row): void {
     throw violated();
   if ((offset == null) !== (row.reminder_at == null)) throw violated();
   if (text != null && row.reminder_at == null) throw violated();
-  if (row.reminder_at != null && row.date == null) throw violated();
 }
 
 /**
@@ -903,6 +915,17 @@ function checkRow(householdId: string, table: string, row: Row, tables: TableRow
     const clash = Object.values(tables.activity_series_exceptions ?? {}).some(
       (other) =>
         other.id !== row.id && other.series_id === row.series_id && other.on_date === row.on_date,
+    );
+    if (clash) throw new TransportError('permanent', '23505', 409);
+  }
+  // recurring_items_rule_valid, recurring_items_one_per_article (spec 0060).
+  if (table === 'recurring_items') {
+    const rule = SeriesRuleSchema.safeParse(row.rule);
+    if (!rule.success || rule.data.type === 'yearly') {
+      throw new TransportError('permanent', '23514', 400);
+    }
+    const clash = Object.values(tables.recurring_items ?? {}).some(
+      (other) => other.id !== row.id && other.article_id === row.article_id,
     );
     if (clash) throw new TransportError('permanent', '23505', 409);
   }
@@ -1554,6 +1577,24 @@ export function createFakeServer(): FakeServer {
     if (columns.some((column) => !allowed.has(column))) throw reject('invalid_change');
   }
 
+  /**
+   * The trigger recurring_contribution_marks_day (spec 0060, Decision 7): a contribution
+   * "regelmäßig" marks its day on its Dauerposten of the same household. The fake skips the bound
+   * of the day (yesterday to eight days ahead); pgTAP covers it.
+   */
+  function markRecurringDay(tables: TableRows, source: unknown): TableRows {
+    if (typeof source !== 'object' || source === null) return tables;
+    const { kind, recurringItemId, on } = source as Record<string, unknown>;
+    if (kind !== 'recurring' || typeof recurringItemId !== 'string' || typeof on !== 'string') {
+      return tables;
+    }
+    const recurring = tables.recurring_items?.[recurringItemId];
+    if (!recurring) return tables;
+    const last = recurring.last_added_on;
+    if (typeof last === 'string' && last >= on) return tables;
+    return withRow(tables, 'recurring_items', { ...recurring, last_added_on: on });
+  }
+
   function addContributions(
     tables: TableRows,
     householdId: string,
@@ -1590,6 +1631,7 @@ export function createFakeServer(): FakeServer {
           const row = next.shopping_contributions?.[contribution.id];
           if (row)
             next = withRow(next, 'shopping_contributions', { ...row, source: contribution.source });
+          next = markRecurringDay(next, contribution.source);
         }
         // Reopening a checked item is a change of `checked`: count it like the server does.
         for (const [id, item] of Object.entries(next.shopping_items ?? {})) {
@@ -3151,6 +3193,18 @@ export function createFakeServer(): FakeServer {
               tables = withoutRows(tables, 'shopping_items', [sourceItem.id]);
               replaced = { from: sourceItem.id, to: targetItem.id };
               items = 1;
+            }
+            // 2b. The Dauerposten of the source to the target when it has none (spec 0060, AC-012).
+            const recurringOf = (articleId: string) =>
+              Object.values(tables.recurring_items ?? {}).find(
+                (row) => row.article_id === articleId,
+              );
+            const sourceRecurring = recurringOf(sourceId);
+            if (sourceRecurring && !recurringOf(targetId)) {
+              tables = withRow(tables, 'recurring_items', {
+                ...sourceRecurring,
+                article_id: targetId,
+              });
             }
             // 6. Names of the source as synonyms of the target, without duplicate keys.
             const synonyms: string[] = [];
