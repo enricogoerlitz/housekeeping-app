@@ -14,8 +14,8 @@ import {
 } from '@housekeeping/core';
 import {
   Button,
+  CreateButton,
   EmptyState,
-  IconButton,
   InfiniteList,
   List,
   ListDetail,
@@ -296,28 +296,13 @@ export function ChoresScreen() {
           title="Haushalt"
           right={
             <>
-              {isPhone ? (
-                // Like "+" on Essen and the other icons of the header: no tinted circle (I-17).
-                <IconButton
-                  icon="plus"
-                  label="Neue Aufgabe"
-                  onPress={startCreating}
-                  disabled={online.disabled}
-                  hint={online.hint}
-                  testID="chore-new"
-                />
-              ) : (
-                // Wide screens name the action, like "Aktivität anlegen" (review 0003).
-                <Button
-                  label="Aufgabe anlegen"
-                  icon="plus"
-                  size="sm"
-                  onPress={startCreating}
-                  disabled={online.disabled}
-                  hint={online.hint}
-                  testID="chore-new"
-                />
-              )}
+              <CreateButton
+                label="Aufgabe anlegen"
+                onPress={startCreating}
+                disabled={online.disabled}
+                hint={online.hint}
+                testID="chore-new"
+              />
               <StartPageActions />
             </>
           }

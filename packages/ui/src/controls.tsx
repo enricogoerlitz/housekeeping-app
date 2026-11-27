@@ -98,6 +98,11 @@ export interface ButtonProps {
   hint?: string;
   /** Accessible name when it says more than the label (spec 0027, AC-039). */
   accessibilityLabel?: string;
+  /**
+   * A text button in ink instead of the accent: for leaving, removing or deleting, so only the
+   * main action carries the accent (spec 0054, REQ-008). Only with `variant="link"`.
+   */
+  quiet?: boolean;
 }
 
 export function Button(props: ButtonProps) {
@@ -111,7 +116,7 @@ export function Button(props: ButtonProps) {
     ? 'text'
     : variant === 'primary'
       ? 'onAccent'
-      : variant === 'link'
+      : variant === 'link' && !props.quiet
         ? 'accent'
         : 'text';
   const c = theme.colors;

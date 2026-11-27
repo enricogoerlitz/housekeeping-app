@@ -5,6 +5,7 @@ import {
   Badge,
   Button,
   CheckRow,
+  CreateButton,
   Checkbox,
   Chip,
   ChoiceChips,
@@ -330,6 +331,8 @@ function ButtonBlock() {
         <Button label="Sekundär" variant="secondary" />
         <Button label="Umriss" variant="ghost" />
         <Button label="Link" variant="link" />
+        <Button label="Verlassen" variant="link" quiet />
+        <CreateButton label="Rezept anlegen" />
       </Row>
       <Row wrap gap={10}>
         <Button label="Klein" size="sm" />

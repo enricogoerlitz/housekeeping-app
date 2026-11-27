@@ -46,7 +46,7 @@ type PlaceReading = Extract<LinkReading, { status: 'place' }>;
 
 const message = (error: unknown) => errorMessage(error, FAILED_MESSAGE);
 
-/** Which field gets the keyboard first; "notes" from "Notiz bearbeiten" (spec 0024, REQ-002). */
+/** Which field gets the keyboard first; "notes" from "Notiz hinzufügen" (spec 0024, REQ-002). */
 export type RestaurantFormFocus = 'link' | 'name' | 'notes';
 
 /**

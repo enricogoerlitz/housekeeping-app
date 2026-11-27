@@ -1,5 +1,5 @@
 import { clearListQuestion } from '@housekeeping/core';
-import { Button, List, ListRow, Row, Sheet, Text } from '@housekeeping/ui';
+import { List, ListRow, Sheet, Text } from '@housekeeping/ui';
 
 /**
  * "Einkaufsliste leeren?" (spec 0006, AC-035; spec 0025, AC-019): the small confirmation before
@@ -18,17 +18,11 @@ export function ClearListSheet(props: {
       title="Einkaufsliste leeren?"
       onClose={props.onClose}
       testID="clear-list-sheet"
-      footer={
-        <Row gap={10} style={{ justifyContent: 'flex-end' }}>
-          <Button
-            label="Abbrechen"
-            variant="secondary"
-            onPress={props.onClose}
-            testID="clear-list-cancel"
-          />
-          <Button label="Liste leeren" onPress={props.onConfirm} testID="clear-list-confirm" />
-        </Row>
-      }
+      // "Abbrechen" · question · named button, like every window that decides (spec 0054).
+      actions={{
+        cancel: { label: 'Abbrechen', onPress: props.onClose, testID: 'clear-list-cancel' },
+        primary: { label: 'Liste leeren', onPress: props.onConfirm, testID: 'clear-list-confirm' },
+      }}
     >
       <Text testID="clear-list-text">{clearListQuestion(props.open, props.done)}</Text>
     </Sheet>

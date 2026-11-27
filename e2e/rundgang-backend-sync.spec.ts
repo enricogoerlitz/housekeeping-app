@@ -203,7 +203,6 @@ test('AC-013: Enrico creates "Linsen-Dal Test"; it appears at Nadja without a re
   await enrico.bringToFront();
   await nav(enrico, 'rezepte');
   await tid(enrico, 'recipe-new').click();
-  await tid(enrico, 'recipe-new-recipe').click();
   await tid(enrico, 'new-recipe-title').fill(title);
   await tid(enrico, 'new-recipe-save').click();
   await expect(tid(enrico, 'recipe-title')).toHaveText(title);
@@ -576,7 +575,6 @@ test('AC-001 (0018): a new recipe keeps its pasted ingredients, also after a rel
   const title = `Dal mit Zutaten ${unique()}`;
   await nav(page, 'rezepte');
   await tid(page, 'recipe-new').click();
-  await tid(page, 'recipe-new-recipe').click();
   await tid(page, 'new-recipe-title').fill(title);
   await tid(page, 'new-recipe-open-ingredients').click();
   await tid(page, 'new-recipe-ingredients').fill('200 g rote Linsen\n1 Dose Kokosmilch');

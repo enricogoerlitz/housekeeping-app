@@ -50,17 +50,21 @@ test('AC-001, AC-003: "Bearbeiten" changes the cuisine; without a name the windo
   await expect(tid(page, 'restaurant-meta')).toContainText('Griechisch');
 });
 
-test('AC-006, AC-007: the note is read only, "Notiz bearbeiten" opens the window in "Notiz"', async ({
+test('AC-006, AC-007 / AC-014, AC-015 (0054): the note is read only; the pencil edits it, "Notiz hinzufügen" opens the window in "Notiz"', async ({
   page,
 }) => {
   await open(page, `/restaurant/${ENZO}`);
   await expect(tid(page, 'restaurant-notes-text')).toContainText('Trüffelpasta!');
-  await tid(page, 'restaurant-notes-edit').click();
-  await expect(tid(page, 'restaurant-notes')).toBeFocused();
+  // Spec 0054, AC-014: an existing note has no second way to the form.
+  await expect(tid(page, 'restaurant-notes-edit')).toHaveCount(0);
+  await tid(page, 'restaurant-edit').click();
+  await expect(tid(page, 'restaurant-edit-sheet')).toBeVisible();
   await page.keyboard.press('Escape');
   await open(page, `/restaurant/${PHO}`);
   await expect(tid(page, 'restaurant-notes-text')).toHaveText('Noch keine Notiz');
   await expect(tid(page, 'restaurant-notes-edit')).toHaveText('Notiz hinzufügen');
+  await tid(page, 'restaurant-notes-edit').click();
+  await expect(tid(page, 'restaurant-notes')).toBeFocused();
 });
 
 test('AC-008, AC-009: the website gets "https://"; other schemes and no host are refused', async ({
