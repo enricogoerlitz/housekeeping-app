@@ -480,8 +480,16 @@ test('AC-023: Enrico (offline) and Nadja both add "Brot": one item with both con
     .poll(() => serverItems(householdId, 'Brot'), SYNC)
     .toEqual([{ checked: false, contributions: 2 }]);
   // One row with 2× on both devices (the offline row took the server's item id).
-  const count = async (device: Page) =>
-    tid(device, `item-${await itemIdOf(itemRows(device, 'Brot'))}-count`).innerText();
+  // The id is read anew on every try: the row changes it while the sync merges, and a read of the
+  // old row must not hold the poll up.
+  const count = async (device: Page) => {
+    try {
+      const id = await itemIdOf(itemRows(device, 'Brot'));
+      return await tid(device, `item-${id}-count`).innerText({ timeout: 1_000 });
+    } catch {
+      return '';
+    }
+  };
   await expect.poll(() => count(enrico), SYNC).toBe('2×');
   await expect(itemRows(enrico, 'Brot')).toHaveCount(1);
   await nadja.bringToFront();
