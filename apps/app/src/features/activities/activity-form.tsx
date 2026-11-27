@@ -47,6 +47,7 @@ import {
 import { ActivityIconField, ActivityKindField } from './activity-kind-field';
 import { ACTIVITY_ICON } from './activity-photo';
 import { errorMessage, FAILED_MESSAGE } from '@/features/shell/error-message';
+import { usePlaceStart } from '@/features/web-search/place-start';
 import { usePlaceWebFill, type WebPlace } from '@/features/web-search/place-web-fill';
 
 /** activities_name_length. */
@@ -425,6 +426,8 @@ export function ActivityFormSheet(props: {
   /** Called with the activity's id after saving. */
   onSaved?: (activityId: Id) => void;
   onOpenExisting: (activityId: Id) => void;
+  /** A new one starts with the one field "Name" (spec 0062, REQ-008). */
+  start?: boolean;
 }) {
   const online = useOnlineOnly();
   const form = useActivityForm(props.activity);
@@ -474,24 +477,36 @@ export function ActivityFormSheet(props: {
     onLink: form.changeLink,
     testID: 'activity-web',
   });
-  return (
-    <Sheet
-      visible
-      onClose={props.onClose}
-      title={editing ? 'Aktivität bearbeiten' : 'Aktivität anlegen'}
-      testID="activity-sheet"
-      size="m"
-      actions={{
+  // Spec 0062, REQ-008: a new one starts with the one field "Name".
+  const start = usePlaceStart({
+    kind: 'activity',
+    active: props.start === true && !editing,
+    onName: form.setName,
+    onLink: form.changeLink,
+    onTake: web.take,
+    testID: 'activity-start',
+  });
+  const actions = start.open
+    ? start.actions
+    : {
         primary: {
           label: 'Speichern',
-          icon: 'check',
+          icon: 'check' as const,
           disabled: online.disabled || !!form.duplicate || form.saving || form.preparing,
           hint:
             online.hint ?? (form.duplicate ? `Gibt es schon: ${form.duplicate.name}` : undefined),
           onPress: () => void save(),
           testID: 'activity-save',
         },
-      }}
+      };
+  return (
+    <Sheet
+      visible
+      onClose={props.onClose}
+      title={editing ? 'Aktivität bearbeiten' : 'Aktivität anlegen'}
+      testID="activity-sheet"
+      size={start.grown ? 'l' : 'm'}
+      {...(actions ? { actions } : {})}
     >
       <Stack gap={16}>
         {online.hint ? (
@@ -499,17 +514,23 @@ export function ActivityFormSheet(props: {
             {online.hint}
           </Text>
         ) : null}
-        {/* Spec 0055, REQ-010: a new one searches from the name; an existing one keeps the link. */}
-        {editing ? web.link : null}
-        <ActivityFormFields
-          form={form}
-          autoFocus
-          {...(editing ? {} : { nameAction: web.nameButton })}
-          onOpenExisting={(existing) => {
-            props.onClose();
-            props.onOpenExisting(existing.id);
-          }}
-        />
+        {start.open ? (
+          start.body
+        ) : (
+          <>
+            {/* Spec 0055, REQ-010: a new one searches from the name; an existing one keeps the link. */}
+            {editing ? web.link : null}
+            <ActivityFormFields
+              form={form}
+              autoFocus
+              {...(editing ? {} : { nameAction: web.nameButton })}
+              onOpenExisting={(existing) => {
+                props.onClose();
+                props.onOpenExisting(existing.id);
+              }}
+            />
+          </>
+        )}
         {web.windows}
       </Stack>
     </Sheet>

@@ -204,8 +204,8 @@ function ReviewSheet(props: {
 }
 
 /**
- * "Im Web suchen" of a form: the link, the magnifier beside "Name" (spec 0055, REQ-010) and the
- * windows. `current` are the form's values when it edits an existing place (then the
+ * "Im Web suchen" of a form: the link, the globe beside "Name" (spec 0055, REQ-010; spec 0062)
+ * and the windows. `current` are the form's values when it edits an existing place (then the
  * Änderungsansicht comes first); without it the form is filled at once. Nothing without the
  * AI switch.
  */
@@ -218,14 +218,20 @@ export function usePlaceWebFill(props: {
   /** A map link pasted into the search field goes to the form's link. */
   onLink: (link: string) => void;
   testID: string;
-}): { link: ReactNode; nameButton: ReactNode; windows: ReactNode } {
+}): {
+  link: ReactNode;
+  nameButton: ReactNode;
+  windows: ReactNode;
+  /** "Übernehmen" of a card found elsewhere, e.g. the first step of a new one (spec 0062). */
+  take: (taken: WebTake) => void;
+} {
   const online = useOnlineOnly();
   const [open, setOpen] = useState(false);
   const [typing, setTyping] = useState(false);
   const [review, setReview] = useState<Review>();
   const search = useWebSearch(props.kind);
   const { suggestions, suggest, chosen, choose } = usePhotoSuggestions();
-  if (!features.aiRecipes) return { link: null, nameButton: null, windows: null };
+  if (!features.aiRecipes) return { link: null, nameButton: null, windows: null, take: () => {} };
   const { testID } = props;
   // Without a name there is nothing to search for yet: the field takes the cursor and the
   // keyboard comes with the tap (I-20; spec 0033, REQ-006). With one, the link fills the field.
@@ -236,7 +242,7 @@ export function usePlaceWebFill(props: {
     setTyping(!props.name.trim());
     setOpen(true);
   };
-  // AC-034, AC-035 (spec 0055): the magnifier searches the name at once.
+  // AC-034, AC-035 (spec 0055): the globe searches the name at once.
   const searchName = () => {
     const name = props.name.trim();
     if (!name) {
@@ -308,7 +314,7 @@ export function usePlaceWebFill(props: {
     <View style={{ alignItems: 'flex-start' }}>
       <Button
         label="Im Web suchen"
-        icon="search"
+        icon="globe"
         variant="link"
         size="sm"
         disabled={online.disabled}
@@ -320,7 +326,7 @@ export function usePlaceWebFill(props: {
   );
   const nameButton = (
     <IconButton
-      icon="search"
+      icon="globe"
       label="Im Web suchen"
       size={40}
       disabled={online.disabled}
@@ -383,5 +389,5 @@ export function usePlaceWebFill(props: {
       ) : null}
     </>
   );
-  return { link, nameButton, windows };
+  return { link, nameButton, windows, take };
 }

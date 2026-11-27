@@ -5,6 +5,7 @@ export * from './text';
 export * from './amounts';
 export * from './articles';
 export * from './search-or-create';
+export * from './create-path';
 export * from './article-catalog';
 export * from './ingredient-drafts';
 export * from './ingredient-typing';

@@ -3,6 +3,7 @@ import type { Id, Restaurant } from '@housekeeping/core';
 import { Sheet, Stack, Text, toast } from '@housekeeping/ui';
 
 import { useOnlineOnly } from '@/features/shell/offline';
+import { usePlaceStart } from '@/features/web-search/place-start';
 import { usePlaceWebFill } from '@/features/web-search/place-web-fill';
 
 import {
@@ -25,6 +26,8 @@ export interface AddRestaurantSheetProps {
   initialName?: string;
   /** Which field gets the keyboard first. */
   focus?: 'link' | 'name';
+  /** First the one field with "Anlegen" and "Websuche" (spec 0062, REQ-008). */
+  start?: boolean;
 }
 
 /**
@@ -55,6 +58,7 @@ export function AddRestaurantSheet(props: AddRestaurantSheetProps) {
       title="Restaurant hinzufügen"
       form={form}
       focus={props.focus}
+      start={props.start}
       onSave={() => void save()}
       onClose={props.onClose}
       onOpenExisting={props.onOpenExisting}
@@ -120,6 +124,7 @@ function RestaurantFormSheet(props: {
   title: string;
   form: RestaurantForm;
   focus?: RestaurantFormFocus;
+  start?: boolean;
   onSave: () => void;
   onClose: () => void;
   onOpenExisting: (restaurantId: Id) => void;
@@ -137,24 +142,36 @@ function RestaurantFormSheet(props: {
     onLink: form.changeLink,
     testID: 'restaurant-web',
   });
-  return (
-    <Sheet
-      visible
-      onClose={props.onClose}
-      title={props.title}
-      testID={props.testID ?? 'restaurant-sheet'}
-      size="m"
-      actions={{
+  // Spec 0062, REQ-008: a new one starts with the one field "Name oder Link".
+  const start = usePlaceStart({
+    kind: 'restaurant',
+    active: props.start === true && !form.restaurant,
+    onName: form.setName,
+    onLink: form.changeLink,
+    onTake: web.take,
+    testID: 'restaurant-start',
+  });
+  const actions = start.open
+    ? start.actions
+    : {
         primary: {
           label: 'Speichern',
-          icon: 'check',
+          icon: 'check' as const,
           disabled: online.disabled || !!form.duplicate || form.saving,
           hint:
             online.hint ?? (form.duplicate ? `Gibt es schon: ${form.duplicate.name}` : undefined),
           onPress: props.onSave,
           testID: 'restaurant-save',
         },
-      }}
+      };
+  return (
+    <Sheet
+      visible
+      onClose={props.onClose}
+      title={props.title}
+      testID={props.testID ?? 'restaurant-sheet'}
+      size={start.grown ? 'l' : 'm'}
+      {...(actions ? { actions } : {})}
     >
       <Stack gap={16}>
         {online.hint ? (
@@ -162,17 +179,23 @@ function RestaurantFormSheet(props: {
             {online.hint}
           </Text>
         ) : null}
-        {/* Spec 0055, REQ-010: a new one searches from the name; an existing one keeps the link. */}
-        {form.restaurant ? web.link : null}
-        <RestaurantFormFields
-          form={form}
-          {...(form.restaurant ? {} : { nameAction: web.nameButton })}
-          focus={props.focus}
-          onOpenExisting={(existing) => {
-            props.onClose();
-            props.onOpenExisting(existing.id);
-          }}
-        />
+        {start.open ? (
+          start.body
+        ) : (
+          <>
+            {/* Spec 0055, REQ-010: a new one searches from the name; an existing one keeps the link. */}
+            {form.restaurant ? web.link : null}
+            <RestaurantFormFields
+              form={form}
+              {...(form.restaurant ? {} : { nameAction: web.nameButton })}
+              focus={props.focus}
+              onOpenExisting={(existing) => {
+                props.onClose();
+                props.onOpenExisting(existing.id);
+              }}
+            />
+          </>
+        )}
         {web.windows}
       </Stack>
     </Sheet>

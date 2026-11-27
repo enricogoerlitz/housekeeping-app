@@ -235,7 +235,12 @@ export function ActivitiesScreen() {
   ) : null;
 
   const sheet = creating ? (
-    <ActivityFormSheet onClose={() => setCreating(false)} onSaved={open} onOpenExisting={open} />
+    <ActivityFormSheet
+      start
+      onClose={() => setCreating(false)}
+      onSaved={open}
+      onOpenExisting={open}
+    />
   ) : kindsOpen ? (
     <ActivityKindsSheet onClose={() => address.close({ fenster: undefined })} />
   ) : null;

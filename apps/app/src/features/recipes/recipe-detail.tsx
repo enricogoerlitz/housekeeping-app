@@ -31,7 +31,7 @@ import { useBrowseSwipe } from '@/lib/browse-order';
 
 import { AddToCollectionSheet } from './add-to-collection-sheet';
 import { unsavedRecipe } from './ai-draft';
-import { AiPageTools } from './ai-page-tools';
+import { AiChangeButton, AiPageTools } from './ai-page-tools';
 import { CollectionDetailBody } from './collection-detail';
 import { RecipeActions, RecipeMoreMenu, useRecipePhoto } from './recipe-actions';
 import { ClassificationSection } from './sections/classification-section';
@@ -171,6 +171,8 @@ function RecipeDetailBody(props: {
   const photo = useRecipePhoto(recipe);
   const editor = usePageEditor(recipe, { unsaved: props.unsaved, onDiscard: props.onBack });
   const editing = editor.draft !== undefined;
+  // ✨ "Mit KI ändern" is open (spec 0062, REQ-009).
+  const [changing, setChanging] = useState(false);
   // While the page is edited nothing leads away without asking (AC-005).
   const swipe = editing ? undefined : browse;
   const back = () => editor.guard(props.onBack);
@@ -221,6 +223,8 @@ function RecipeDetailBody(props: {
         onPress={() => toggleFavorite(recipe.id)}
       />
       {desktop ? actions : null}
+      {/* Spec 0062, REQ-009: ✨ beside the pen. */}
+      <AiChangeButton recipe={recipe} onPress={() => setChanging(true)} />
       <EditControls editor={editor} />
       <RecipeMoreMenu
         recipe={recipe}
@@ -290,7 +294,12 @@ function RecipeDetailBody(props: {
     >
       <View testID="recipe-detail" style={{ gap: isPhone ? 24 : 32, paddingTop: 8 }}>
         <EditError editor={editor} />
-        <AiPageTools recipe={recipe} editor={editor} />
+        <AiPageTools
+          recipe={recipe}
+          editor={editor}
+          changing={changing}
+          onChangeClose={() => setChanging(false)}
+        />
         {desktop ? (
           <>
             <Row gap={32} align="flex-start">

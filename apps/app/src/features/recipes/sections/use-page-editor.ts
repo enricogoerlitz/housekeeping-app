@@ -13,6 +13,7 @@ import {
   fillPageDraft,
   pageDraft,
   pageDraftChanged,
+  revertPageDraft,
   pageEditorReducer,
   validatePageDraft,
   withSection,
@@ -38,7 +39,7 @@ import { BackHandler, Platform } from 'react-native';
 
 import { confirmFirst } from '@/features/shell/confirm-dialog';
 import { errorMessage, FAILED_MESSAGE } from '@/features/shell/error-message';
-import { OFFLINE_EDIT_HINT } from '@/features/shell/offline';
+import { OFFLINE_EDIT_HINT, undoAction } from '@/features/shell/offline';
 
 import {
   dismissPhotoSuggestions,
@@ -99,6 +100,14 @@ export interface PageEditor {
   filled: (input: PageDraftInput, options?: { replace?: boolean; change?: boolean }) => PageDraft;
   /** The Änderungsansicht's result (spec 0049, REQ-005): the edit mode opens with it, unsaved. */
   adopt: (draft: PageDraft) => void;
+  /** The page as it stands: the edit mode's draft, else as stored (spec 0062). */
+  page: () => PageDraft;
+  /**
+   * "Übernehmen" of "Mit KI ändern" (spec 0062, REQ-010): saves `draft` from the reading page at
+   * once, then "Rezept geändert" with "Rückgängig". A draft with problems, offline or a refusal
+   * opens the edit mode with it and the reason instead (AC-033, AC-034); nothing is lost.
+   */
+  apply: (draft: PageDraft, photo?: Blob) => void;
   /** The photo "Speichern" will set (a chosen AI suggestion, spec 0040 AC-010); none = keep. */
   chosenPhoto: Blob | undefined;
   choosePhoto: (photo: Blob | undefined) => void;
@@ -302,6 +311,66 @@ export function usePageEditor(
     );
   };
 
+  // "Rückgängig" (decision 6): the page as stored now, with the values from before.
+  const undo = (before: PageDraft) => {
+    const now = latest.current;
+    const result = saveRecipePage(revertPageDraft(before, pageDraft(now.recipe, now.contents)));
+    if (!result) return;
+    result.confirmed.then(
+      () => toast.show({ message: 'Änderung zurückgenommen' }),
+      () => {},
+    );
+  };
+
+  const apply = (draft: PageDraft, newPhoto?: Blob) => {
+    if (state.draft || state.saving) return;
+    const before = pageDraft(recipe, contents);
+    const editInstead = (error?: string) => {
+      if (newPhoto) choosePhoto(newPhoto);
+      dispatch({ type: 'open', draft });
+      dispatch(error ? { type: 'failed', error } : { type: 'invalid' });
+    };
+    if (validatePageDraft(draft).length > 0) {
+      editInstead();
+      return;
+    }
+    let result: ReturnType<typeof saveRecipePage>;
+    try {
+      result = saveRecipePage(draft);
+    } catch (error) {
+      editInstead(
+        error instanceof OfflineError ? OFFLINE_EDIT_HINT : errorMessage(error, FAILED_MESSAGE),
+      );
+      return;
+    }
+    if (!result) return;
+    const { open } = result;
+    result.confirmed.then(
+      ({ changedMeanwhile }) => {
+        if (newPhoto) void setRecipePhoto(recipeId, newPhoto).catch(() => {});
+        if (!mounted.current) return;
+        if (open.length > 0) {
+          // An article deleted meanwhile: the rest is saved, these rows stay open.
+          const now = latest.current;
+          const next = pageDraft(now.recipe, now.contents);
+          dispatch({
+            type: 'open',
+            draft: withSection(next, addIngredientRows(next.ingredients, open)),
+          });
+          return;
+        }
+        toast.show({
+          message: changedMeanwhile ? CHANGED_MEANWHILE_NOTICE : 'Rezept geändert',
+          actionLabel: 'Rückgängig',
+          onAction: undoAction(() => undo(before)),
+        });
+      },
+      () => {
+        if (mounted.current) editInstead(WRITE_REJECTED_MESSAGE);
+      },
+    );
+  };
+
   // "Neues Rezept" with orange rows: the edit mode opens with them. Taken after the commit, so a
   // render thrown away during the navigation cannot use them up (spec 0018, E-01).
   const openHandedOverRows = useEffectEvent(() => {
@@ -397,6 +466,8 @@ export function usePageEditor(
         change: fillOptions?.change === true,
       }),
     adopt: (draft) => dispatch({ type: 'open', draft }),
+    page: () => state.draft ?? pageDraft(recipe, contents),
+    apply,
     chosenPhoto,
     choosePhoto,
     unsaved,

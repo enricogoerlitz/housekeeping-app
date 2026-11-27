@@ -10,6 +10,7 @@ import {
   pageDraftChanged,
   pageEditorReducer,
   pageSections,
+  revertPageDraft,
   validatePageDraft,
   withNewContents,
   withSection,
@@ -18,6 +19,7 @@ import {
 } from './page-editor';
 import { newIngredientRow, sectionPatch, type SectionPatchContext } from './recipe-editor';
 import {
+  articles,
   grillabend,
   grillabendRecipes,
   grillRecipesById,
@@ -558,5 +560,85 @@ describe('"Aus Rezept übernehmen" (spec 0037, REQ-003)', () => {
         (row) => row.article?.kind === 'article' && row.article.articleId === 'art-haehnchen',
       ),
     ).toBe(false);
+  });
+});
+
+describe('"Rückgängig" after "Mit KI ändern" (spec 0062, REQ-010)', () => {
+  const chili = makeRecipe({
+    id: 'rec-chili',
+    title: 'Chili con Carne',
+    updatedAt: '2026-11-27T08:00:00Z',
+    tags: ['scharf'],
+    ingredients: [
+      {
+        id: 'i-hack',
+        articleId: 'art-hack',
+        amount: { text: '500 g', qty: 500, unit: 'g' },
+        shoppingRule: 'recipeAmount',
+      },
+      { id: 'i-bohnen', articleId: 'art-spaghetti', shoppingRule: 'count' },
+    ],
+    steps: [{ id: 's-1', text: 'Hack anbraten' }],
+  });
+  // As saved after the AI's proposal: a variant, one row changed, one gone, one new, a new title.
+  const changed = makeRecipe({
+    ...chili,
+    title: 'Chili sin Carne',
+    updatedAt: '2026-11-27T08:05:00Z',
+    tags: ['scharf', 'vegan'],
+    variants: [{ id: 'v-vegan', name: 'Vegan', isDefault: false }],
+    ingredients: [
+      {
+        id: 'i-hack',
+        articleId: 'art-hack',
+        amount: { text: '400 g', qty: 400, unit: 'g' },
+        shoppingRule: 'recipeAmount',
+      },
+      { id: 'i-tofu', articleId: 'art-tofu', variantId: 'v-vegan', shoppingRule: 'count' },
+    ],
+    steps: [
+      { id: 's-1', text: 'Hack anbraten' },
+      { id: 's-2', text: 'Tofu zerbröseln', variantId: 'v-vegan' },
+    ],
+  });
+
+  it('AC-031: the page as saved now, with every value from before', () => {
+    const revert = revertPageDraft(pageDraft(chili, []), pageDraft(changed, []));
+    expect(revert.seenUpdatedAt).toBe('2026-11-27T08:05:00Z');
+    expect(revert.head.title).toBe('Chili con Carne');
+    expect(revert.head.base.title).toBe('Chili sin Carne');
+    expect(revert.classification?.tags).toEqual(['scharf']);
+    expect(revert.steps?.steps).toEqual(chili.steps);
+    expect(revert.ingredients.variants).toEqual([]);
+    expect(revert.ingredients.base.ingredients).toEqual(changed.ingredients);
+    const rows = revert.ingredients.rows;
+    expect(rows.map((row) => row.amountText)).toEqual(['500 g', '']);
+    // A row that is still stored edits it; one that is gone comes back as a new row.
+    expect(rows[0]?.ingredientId).toBe('i-hack');
+    expect(rows[1]?.ingredientId).toBeUndefined();
+    expect(rows[1]?.article).toEqual({ kind: 'article', articleId: 'art-spaghetti' });
+    expect(new Set(rows.map((row) => row.key)).size).toBe(2);
+    expect(
+      changedSections(revert)
+        .map((draft) => draft.section)
+        .sort(),
+    ).toEqual(['classification', 'head', 'ingredients', 'steps']);
+  });
+
+  it('AC-031: saving it gives the ingredients and variants from before', () => {
+    const revert = revertPageDraft(pageDraft(chili, []), pageDraft(changed, []));
+    const patch = sectionPatch(changed, revert.ingredients, { ...context(), articles }).recipe;
+    expect(patch.variants).toEqual([]);
+    expect(
+      patch.ingredients?.map((ingredient) => [ingredient.articleId, ingredient.amount?.text]),
+    ).toEqual([
+      ['art-hack', '500 g'],
+      ['art-spaghetti', undefined],
+    ]);
+  });
+
+  it('changes nothing when nothing was changed', () => {
+    const revert = revertPageDraft(pageDraft(chili, []), pageDraft(chili, []));
+    expect(pageDraftChanged(revert)).toBe(false);
   });
 });

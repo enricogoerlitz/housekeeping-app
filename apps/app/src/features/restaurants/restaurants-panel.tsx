@@ -70,7 +70,10 @@ const CARD_MIN_WIDTH = 320;
 /** The list column next to an open restaurant on wide screens ("Liste und Detail"). */
 const LIST_COLUMN_WIDTH = 380;
 
-type SheetRequest = Pick<AddRestaurantSheetProps, 'initialText' | 'initialName' | 'focus'>;
+type SheetRequest = Pick<
+  AddRestaurantSheetProps,
+  'initialText' | 'initialName' | 'focus' | 'start'
+>;
 
 /** "↕ Zuletzt ▾": the short text for "Zuletzt besucht", else the menu text (T2, decision 6). */
 function sortShortLabel(sort: RestaurantListSort): string {
@@ -103,6 +106,8 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
   // Where "Restaurant hinzufügen" puts the cursor: a new restaurant starts with its name; only
   // "Link einfügen" in the empty state starts with the link. The window stands in the address.
   const [focus, setFocus] = useState<SheetRequest['focus']>('name');
+  // "+" starts with the one field (spec 0062, REQ-008); the empty state's steps go to the form.
+  const [start, setStart] = useState(true);
   const [newRecipe, setNewRecipe] = useState<{ open: boolean; kind: RecipeKind }>({
     open: false,
     kind: 'recipe',
@@ -129,11 +134,17 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
   const shared = params.link !== undefined || params.name !== undefined;
   const sheetRequest: SheetRequest | undefined =
     params.fenster === 'neu-restaurant'
-      ? { initialText: params.link, initialName: params.name, focus: shared ? 'name' : focus }
+      ? {
+          initialText: params.link,
+          initialName: params.name,
+          focus: shared ? 'name' : focus,
+          start: start && !shared,
+        }
       : undefined;
-  const setSheet = (request: { focus: SheetRequest['focus'] }) => {
+  const setSheet = (request: { focus: SheetRequest['focus']; start?: boolean }) => {
     openKeyboardNow();
     setFocus(request.focus);
+    setStart(request.start === true);
     address.open({ fenster: 'neu-restaurant' });
   };
 
@@ -176,7 +187,7 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
 
   const onNew = (kind: FoodNewKind) => {
     if (kind === 'recipe' || kind === 'collection') setNewRecipe({ open: true, kind });
-    else setSheet({ focus: 'name' });
+    else setSheet({ focus: 'name', start: true });
   };
 
   // The same "+" as on "Essen → Rezepte" (spec 0008, AC-003): one header for both views.

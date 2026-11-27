@@ -1,6 +1,5 @@
 import {
   createCollection,
-  createRecipe,
   createRecipeWithIngredients,
   preparePhoto,
   setRecipePhoto,
@@ -11,11 +10,14 @@ import {
 import {
   draftImageContext,
   NEW_ENTRY_KINDS,
-  newEntryTakesIngredients,
   newEntryTitleProblem,
   newRecipe,
+  RECIPE_CREATE_PATHS,
+  RECIPE_DRAFT_LIMITS,
   searchRecipes,
   sortRecipes,
+  suggestedCreatePath,
+  type CreatePath,
   type Id,
   type LinePicks,
   type RecipeKind,
@@ -24,6 +26,7 @@ import {
   Button,
   ChoiceChips,
   List,
+  LoadingLines,
   Row,
   SelectRow,
   Sheet,
@@ -34,6 +37,7 @@ import {
   ViewTabs,
   focusAfterChange,
   toast,
+  type SheetActions,
 } from '@housekeeping/ui';
 import { useState } from 'react';
 import { View } from 'react-native';
@@ -41,6 +45,7 @@ import { View } from 'react-native';
 import { discardFirst } from '@/features/shell/confirm-dialog';
 import { errorMessage, FAILED_MESSAGE } from '@/features/shell/error-message';
 import { useOnlineOnly } from '@/features/shell/offline';
+import { OneFieldCreate } from '@/features/web-search/one-field-create';
 import { useWebSearch } from '@/features/web-search/use-web-search';
 import {
   webSearchPrimary,
@@ -65,31 +70,34 @@ import { handOverIngredientRows, rowsFromText } from './sections/ingredient-hand
 
 export interface NewRecipeSheetProps {
   visible: boolean;
-  /** The kind chosen in "+", preselected each time the window opens (spec 0009, AC-001). */
+  /** "Sammlung" preselected (spec 0009, AC-001); "+" opens "Neues Rezept" (spec 0062). */
   kind?: RecipeKind;
   onClose: () => void;
   /** Called with the new recipe's or collection's id after it was saved. */
   onCreated: (recipeId: Id) => void;
 }
 
-/** What the window "Neu" has opened besides the title (spec 0037, REQ-002; "ai": spec 0040). */
-type Extra = 'photo' | 'ingredients' | 'recipes' | 'ai';
+/** What the window has opened besides the field (spec 0037, REQ-002). */
+type Extra = 'photo' | 'ingredients' | 'recipes';
 
 /**
- * The window "Neu" (spec 0009, E16): the choice chips "Rezept · Sammlung" and a title are enough
- * (AC-001 to AC-003; spec 0037, AC-008). Opened on demand (spec 0037, REQ-002): a photo, for a
- * recipe "Zutaten einfügen" (spec 0008, AC-021, AC-022: the pasted lines with an article are saved
- * with the new recipe, spec 0018, REQ-001; its page opens the edit mode with the rest orange) and
- * for a collection "Rezepte wählen" (AC-009, saved with it in one step). "Mit KI ausfüllen" (spec
- * 0040, AC-001) turns the primary action into "Ausfüllen": the recipe page opens in the edit mode
- * with the AI's draft, and nothing is saved before its "Speichern".
+ * "Neues Rezept" (spec 0062, REQ-001 – REQ-007): one field "Gericht, Wunsch oder Link" with the
+ * ways "Anlegen" (saves at once with the text as title), "Websuche" (cards in the same window,
+ * spec 0049) and "KI-Rezept" (the AI writes the draft, spec 0040); the one the text suggests is
+ * highlighted and taken by Return. "Mehr" opens the full "Mit KI ausfüllen" (spec 0055) in the
+ * same window; "Sammlung" turns it into "Neue Sammlung" with title and "Rezepte wählen" (spec
+ * 0009, spec 0037). "Foto" and "Zutaten" come along with "Anlegen" (spec 0018, E-01). A draft
+ * opens the recipe page in the edit mode; nothing of it is saved before its "Speichern".
  */
 export function NewRecipeSheet(props: NewRecipeSheetProps) {
   const online = useOnlineOnly();
   const articles = useArticles();
   const preset = props.kind ?? 'recipe';
   const [kind, setKind] = useState<RecipeKind>(preset);
+  // The one field of a recipe; the title field of a collection.
+  const [text, setText] = useState('');
   const [title, setTitle] = useState('');
+  const [more, setMore] = useState(false);
   const [ingredients, setIngredients] = useState('');
   const [picks, setPicks] = useState<LinePicks>(() => new Map());
   const [recipeIds, setRecipeIds] = useState<Id[]>([]);
@@ -98,12 +106,11 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
   const [error, setError] = useState<string | undefined>(undefined);
   const fill = useAiFill();
   const draftInput = useDraftInput();
-  // Spec 0049, REQ-001: "Websuche" first, prefilled with the title when the AI opens (AC-001);
-  // spec 0055, REQ-001: the tab's field takes the cursor within the tap, the keyboard stays.
   const search = useWebSearch('recipe');
   const tabs = useAiFillTabs('web', search);
   const aiTab = tabs.tab;
-  // Every opening starts with the kind chosen in "+" (state adjusted while rendering).
+  const paths: readonly CreatePath[] = features.aiRecipes ? RECIPE_CREATE_PATHS : ['create'];
+  // Every opening starts with the kind chosen (state adjusted while rendering).
   const [shown, setShown] = useState(props.visible);
   if (props.visible !== shown) {
     setShown(props.visible);
@@ -111,7 +118,9 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
   }
 
   const close = () => {
+    setText('');
     setTitle('');
+    setMore(false);
     setIngredients('');
     setPicks(new Map());
     setRecipeIds([]);
@@ -124,47 +133,59 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
     props.onClose();
   };
 
-  // Escape, a tap outside or "Abbrechen" ask before typed text goes (review 0003, like the
-  // recipe page's edit mode); an empty window just closes.
+  // Escape, a tap outside or ✕ ask before typed text goes (review 0003); an empty window just
+  // closes.
   const dirty =
-    title.trim() !== '' || ingredients.trim() !== '' || recipeIds.length > 0 || photo !== undefined;
+    text.trim() !== '' ||
+    title.trim() !== '' ||
+    fill.text.trim() !== '' ||
+    ingredients.trim() !== '' ||
+    recipeIds.length > 0 ||
+    photo !== undefined;
   const dismiss = () => discardFirst(dirty, close, 'confirm-discard-new');
+  const open = (extra: Extra) => setExtras((current) => new Set(current).add(extra));
 
-  const takesIngredients = newEntryTakesIngredients(kind);
-  const open = (extra: Extra) => {
-    if (extra !== 'ai') {
-      setExtras((current) => new Set(current).add(extra));
-      return;
-    }
-    // AC-001 (spec 0055): "Im Web suchen" has the cursor with the title, the keyboard stays.
+  // REQ-007: "Sammlung" keeps what was typed as the title; "Rezept" goes back to the one field.
+  const chooseKind = (next: RecipeKind) => {
+    setError(undefined);
+    if (next === 'collection' && title.trim() === '') setTitle(text);
+    if (next === 'recipe' && text.trim() === '') setText(title);
+    setKind(next);
+  };
+
+  // REQ-006: the full window with the text in the search field and the prompt; the tab of the
+  // way the text suggests has the cursor.
+  const openMore = () => {
+    const next = suggestedCreatePath(text, paths) === 'ai' ? 'prompt' : 'web';
     focusAfterChange(
       () => {
-        if (search.query.trim() === '') search.setQuery(title.trim());
-        setExtras((current) => new Set(current).add(extra));
+        if (fill.text.trim() === '') fill.setText(text);
+        if (search.query.trim() === '') search.setQuery(text.trim());
+        tabs.setTab(next);
+        setMore(true);
       },
-      () => tabs.webField.current,
+      () =>
+        next === 'prompt'
+          ? tabs.promptField.current
+          : search.state.status === 'results'
+            ? null
+            : tabs.webField.current,
     );
   };
-  const withAi = features.aiRecipes && kind === 'recipe' && extras.has('ai');
 
-  // AC-001: the draft opens on the recipe page in the edit mode; the recipe exists only there
-  // until "Speichern". A typed title, pasted ingredients and a chosen photo go along.
-  const fillWithAi = () => {
-    if (fill.busy || (!fill.ready && title.trim() === '')) return;
-    const typed = [
-      title.trim() ? `Titel: ${title.trim()}` : '',
-      ingredients.trim() ? `Zutaten:\n${ingredients.trim()}` : '',
-    ]
-      .filter(Boolean)
-      .join('\n');
+  // REQ-005 (AC-001 of spec 0040): the draft opens on the recipe page in the edit mode; the
+  // recipe exists only there until "Speichern". Pasted ingredients and a chosen photo go along.
+  const writeWithAi = (wish?: string) => {
+    if (fill.busy) return;
+    if (wish === undefined && !fill.ready) return;
+    const prefix = ingredients.trim() ? `Zutaten:\n${ingredients.trim()}` : '';
     const chosenPhoto = photo;
     const generatePhoto = fill.generatePhoto;
-    void fill.run({ prefix: typed, title: title.trim() }).then(async (reply) => {
+    void fill.run({ prefix, ...(wish === undefined ? {} : { text: wish }) }).then(async (reply) => {
       if (!reply) return;
       // AC-042 (spec 0049): without "Foto generieren" the linked page's photo, unless one was chosen.
       const pagePhoto = chosenPhoto ? undefined : await draftPagePhoto(reply, generatePhoto);
       const input = draftInput(reply);
-      if (title.trim()) input.title = title.trim();
       const recipe = newRecipe({
         id: crypto.randomUUID(),
         kind: 'recipe',
@@ -198,8 +219,8 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
       servings: reply.draft.servings,
       createdAt: new Date().toISOString(),
     });
-    // REQ-010: the photo chosen in the preview — the page's, three made by the AI (with the wish
-    // or the title), or none (a photo chosen in "Neu" stays then).
+    // REQ-010 (spec 0049): the photo chosen in the preview — the page's, three made by the AI
+    // (with the wish or the title), or none (a photo chosen here stays then).
     const pagePhoto = taken.photoChoice === 'source' ? taken.photo : photo;
     handOverNewRecipe(recipe, input, taken.photoChoice === 'ai' ? undefined : pagePhoto);
     if (taken.photoChoice === 'ai') {
@@ -212,27 +233,26 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
     close();
     props.onCreated(recipe.id);
   };
-  const save = () => {
-    const problem = newEntryTitleProblem(title);
+  // REQ-003: "Anlegen" saves at once; a collection with its chosen recipes (spec 0037, AC-009).
+  const save = (name: string) => {
+    const problem = newEntryTitleProblem(name);
     if (problem) {
       setError(problem);
       return;
     }
     let recipeId: Id;
     try {
-      if (takesIngredients) {
+      if (kind === 'collection') {
+        recipeId = createCollection({ title: name, recipeIds });
+      } else {
         // E-01 (spec 0018): the rows with an article are saved with the recipe; only the orange
         // ones wait for its page.
         const created = createRecipeWithIngredients(
-          { title },
+          { title: name },
           rowsFromText(ingredients, articles, picks),
         );
         recipeId = created.recipeId;
         handOverIngredientRows(recipeId, created.open);
-      } else if (kind === 'collection') {
-        recipeId = createCollection({ title, recipeIds });
-      } else {
-        recipeId = createRecipe({ title, kind });
       }
     } catch (cause) {
       setError(errorMessage(cause, FAILED_MESSAGE));
@@ -248,57 +268,127 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
     props.onCreated(recipeId);
   };
 
+  const collection = kind === 'collection';
+  // Decision 2: the one field has its ways as the actions; a preview, "Mehr" and a collection
+  // confirm with the window's actions again.
+  const actions: SheetActions | undefined = collection
+    ? {
+        primary: {
+          label: 'Anlegen',
+          icon: 'check',
+          onPress: () => save(title),
+          disabled: online.disabled,
+          hint: online.hint,
+          testID: 'new-recipe-save',
+        },
+      }
+    : more
+      ? {
+          primary:
+            aiTab === 'web'
+              ? webSearchPrimary(search, online, takeFromWeb, 'new-recipe-web')
+              : {
+                  label: fill.busy ? 'Wird ausgefüllt …' : 'Ausfüllen',
+                  icon: 'sparkles',
+                  onPress: () => writeWithAi(),
+                  disabled: online.disabled || fill.busy || !fill.ready,
+                  hint: online.hint,
+                  testID: 'new-recipe-ai-submit',
+                },
+        }
+      : search.preview
+        ? { primary: webSearchPrimary(search, online, takeFromWeb, 'new-recipe-quick-web') }
+        : undefined;
+  const grown = more || search.state.status !== 'idle' || search.preview !== undefined;
+
+  const links = (
+    <Row gap={16} wrap align="center">
+      {extras.has('photo') || !CAN_PICK_PHOTO ? null : (
+        <Button
+          label="Foto"
+          icon="camera"
+          variant="link"
+          onPress={() => open('photo')}
+          testID="new-recipe-open-photo"
+        />
+      )}
+      {!collection && !extras.has('ingredients') ? (
+        <Button
+          label="Zutaten"
+          icon="clipboard-list"
+          variant="link"
+          onPress={() => open('ingredients')}
+          testID="new-recipe-open-ingredients"
+        />
+      ) : null}
+      {collection && !extras.has('recipes') ? (
+        <Button
+          label="Rezepte wählen"
+          icon="plus"
+          variant="link"
+          onPress={() => open('recipes')}
+          testID="new-recipe-open-recipes"
+        />
+      ) : null}
+      {collection ? null : (
+        <Button
+          label="Sammlung"
+          icon="layers"
+          variant="link"
+          onPress={() => chooseKind('collection')}
+          testID="new-recipe-open-collection"
+        />
+      )}
+      {!collection && !more && features.aiRecipes ? (
+        <View style={{ flex: 1, alignItems: 'flex-end' }}>
+          <Button
+            label="Mehr ›"
+            accessibilityLabel="Mehr: Links, Fotos und Prompt"
+            variant="link"
+            disabled={online.disabled || fill.busy}
+            hint={online.hint}
+            onPress={openMore}
+            testID="new-recipe-more"
+          />
+        </View>
+      ) : null}
+    </Row>
+  );
+
   return (
     <Sheet
       visible={props.visible}
       onClose={dismiss}
-      title="Neu"
+      title={collection ? 'Neue Sammlung' : 'Neues Rezept'}
       testID="new-recipe-sheet"
-      size="m"
-      actions={{
-        primary: withAi
-          ? aiTab === 'web'
-            ? webSearchPrimary(search, online, takeFromWeb, 'new-recipe-web')
-            : {
-                label: fill.busy ? 'Wird ausgefüllt …' : 'Ausfüllen',
-                icon: 'sparkles',
-                onPress: fillWithAi,
-                disabled: online.disabled || fill.busy || (!fill.ready && title.trim() === ''),
-                hint: online.hint,
-                testID: 'new-recipe-ai-submit',
-              }
-          : {
-              label: 'Anlegen',
-              icon: 'check',
-              onPress: save,
-              disabled: online.disabled,
-              hint: online.hint,
-              testID: 'new-recipe-save',
-            },
-      }}
+      size={grown ? 'l' : 'm'}
+      {...(actions ? { actions } : {})}
     >
       <Stack gap={16}>
-        <ChoiceChips
-          label="Art"
-          options={[...NEW_ENTRY_KINDS]}
-          value={kind}
-          onChange={setKind}
-          disabled={online.disabled}
-          hint={online.hint}
-          testID="new-recipe-kind"
-        />
-        <NewRecipeFields
-          title={title}
-          kind={kind}
-          onChangeTitle={(text) => {
-            setTitle(text);
-            if (error) setError(undefined);
-          }}
-          error={error}
-          onSubmit={withAi ? (aiTab === 'web' ? () => search.search() : fillWithAi) : save}
-          autoFocus
-        />
-        {withAi ? (
+        {collection ? (
+          <>
+            <ChoiceChips
+              label="Art"
+              options={[...NEW_ENTRY_KINDS]}
+              value={kind}
+              onChange={chooseKind}
+              disabled={online.disabled}
+              hint={online.hint}
+              testID="new-recipe-kind"
+            />
+            <NewRecipeFields
+              title={title}
+              kind={kind}
+              onChangeTitle={(next) => {
+                setTitle(next);
+                if (error) setError(undefined);
+              }}
+              error={error}
+              onSubmit={() => save(title)}
+              autoFocus
+            />
+          </>
+        ) : more ? (
           <Stack gap={12}>
             <ViewTabs
               label="Mit KI ausfüllen"
@@ -307,7 +397,7 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
               onChange={(next) => tabs.choose(next)}
               testID="new-recipe-ai-tab"
             />
-            {/* Spec 0055, REQ-002: only the AI part swipes, not the kind and the title. */}
+            {/* Spec 0055, REQ-002: the tabs swipe. */}
             <TabSwipeContent swipe={tabs.swipe} testID="new-recipe-ai-swipe">
               {aiTab === 'web' ? (
                 <WebSearchPanel
@@ -325,9 +415,42 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
               )}
             </TabSwipeContent>
           </Stack>
-        ) : null}
+        ) : (
+          <Stack gap={12}>
+            <OneFieldCreate
+              text={text}
+              onChangeText={(next) => {
+                setText(next);
+                if (error) setError(undefined);
+              }}
+              paths={paths}
+              onPath={(path) => (path === 'ai' ? writeWithAi(text) : save(text))}
+              search={search}
+              label="Gericht, Wunsch oder Link"
+              placeholder="Gericht, Wunsch oder Link"
+              busy={fill.busy}
+              error={error}
+              recipeRows={draftInput}
+              maxLength={RECIPE_DRAFT_LIMITS.text}
+              testID="new-recipe-quick"
+            />
+            {/* REQ-005: placeholders that breathe while the AI writes (spec 0055, REQ-003). */}
+            {fill.busy ? (
+              <LoadingLines
+                label="Die KI schreibt das Rezept … das dauert bis zu einer halben Minute."
+                lines={4}
+                testID="new-recipe-quick-busy"
+              />
+            ) : null}
+            {fill.error ? (
+              <Text variant="small" color="warn" testID="new-recipe-quick-error">
+                {fill.error}
+              </Text>
+            ) : null}
+          </Stack>
+        )}
         {extras.has('photo') ? <NewPhotoSlot photo={photo} onChange={setPhoto} /> : null}
-        {takesIngredients && extras.has('ingredients') ? (
+        {!collection && extras.has('ingredients') ? (
           <IngredientLinesField
             label="Zutaten einfügen"
             placeholder={'200 ml Kokosmilch\n1 Mango'}
@@ -340,49 +463,10 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
             testID="new-recipe-ingredients"
           />
         ) : null}
-        {kind === 'collection' && extras.has('recipes') ? (
+        {collection && extras.has('recipes') ? (
           <PickRecipes value={recipeIds} onChange={setRecipeIds} />
         ) : null}
-        <Row gap={16} wrap>
-          {features.aiRecipes && kind === 'recipe' && !extras.has('ai') ? (
-            <Button
-              label="Mit KI ausfüllen"
-              icon="sparkles"
-              variant="link"
-              disabled={online.disabled}
-              hint={online.hint}
-              onPress={() => open('ai')}
-              testID="new-recipe-open-ai"
-            />
-          ) : null}
-          {extras.has('photo') || !CAN_PICK_PHOTO ? null : (
-            <Button
-              label="Foto"
-              icon="camera"
-              variant="link"
-              onPress={() => open('photo')}
-              testID="new-recipe-open-photo"
-            />
-          )}
-          {takesIngredients && !extras.has('ingredients') ? (
-            <Button
-              label="Zutaten einfügen"
-              icon="clipboard-list"
-              variant="link"
-              onPress={() => open('ingredients')}
-              testID="new-recipe-open-ingredients"
-            />
-          ) : null}
-          {kind === 'collection' && !extras.has('recipes') ? (
-            <Button
-              label="Rezepte wählen"
-              icon="plus"
-              variant="link"
-              onPress={() => open('recipes')}
-              testID="new-recipe-open-recipes"
-            />
-          ) : null}
-        </Row>
+        {links}
       </Stack>
     </Sheet>
   );
