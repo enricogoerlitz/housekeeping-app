@@ -39,13 +39,20 @@ export function OneFieldCreate(props: {
   recipeRows?: RecipeRows;
   inputRef?: Ref<ComponentRef<typeof TextInput>>;
   maxLength?: number;
+  /** Test IDs the window had before (e.g. "new-recipe-title", "new-recipe-save"). */
+  testIDs?: Partial<Record<CreatePath | 'field', string>>;
+  /** Places: "Anlegen" without a name shows the empty form (spec 0062, REQ-008). */
+  createWhenEmpty?: boolean;
   testID: string;
 }) {
   const online = useOnlineOnly();
   const { search, testID } = props;
   const suggested = suggestedCreatePath(props.text, props.paths);
+  const empty = props.text.trim() === '';
+  const ready = (path: CreatePath) =>
+    !empty || (path === 'create' && props.createWhenEmpty === true);
   const take = (path: CreatePath) => {
-    if (props.text.trim() === '' || online.disabled || props.busy) return;
+    if (online.disabled || props.busy || !ready(path)) return;
     if (path !== 'web') {
       props.onPath(path);
       return;
@@ -72,14 +79,18 @@ export function OneFieldCreate(props: {
         editable={!online.disabled && !props.busy}
         maxLength={props.maxLength}
         error={props.error}
-        testID={`${testID}-text`}
+        testID={props.testIDs?.field ?? `${testID}-text`}
       />
       <PathButtons
-        options={props.paths.map((path) => LABELS[path])}
+        options={props.paths.map((path) => ({
+          ...LABELS[path],
+          disabled: !ready(path),
+          testID: props.testIDs?.[path],
+        }))}
         highlighted={suggested}
         highlightHint={SUGGESTED_HINT}
         onPress={take}
-        disabled={online.disabled || props.busy || props.text.trim() === ''}
+        disabled={online.disabled || props.busy}
         hint={online.hint}
         testID={`${testID}-path`}
       />

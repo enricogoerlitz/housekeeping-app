@@ -7,6 +7,10 @@ export interface PathButtonOption<T extends string> {
   value: T;
   label: string;
   icon: IconName;
+  /** Greyed out on its own, e.g. a way that needs text. */
+  disabled?: boolean;
+  /** Instead of `<testID>-<value>`. */
+  testID?: string;
 }
 
 export interface PathButtonsProps<T extends string> {
@@ -31,7 +35,8 @@ export function PathButtons<T extends string>(props: PathButtonsProps<T>) {
   return (
     <View style={{ flexDirection: 'row', gap: 8 }}>
       {props.options.map((option) => {
-        const highlighted = !props.disabled && option.value === props.highlighted;
+        const highlighted =
+          !props.disabled && !option.disabled && option.value === props.highlighted;
         return (
           <View key={option.value} style={{ flex: 1, minWidth: 0 }}>
             <Button
@@ -39,10 +44,12 @@ export function PathButtons<T extends string>(props: PathButtonsProps<T>) {
               icon={option.icon}
               variant={highlighted ? 'primary' : 'secondary'}
               full
-              disabled={props.disabled}
+              disabled={props.disabled === true || option.disabled === true}
               hint={props.hint ?? (highlighted ? props.highlightHint : undefined)}
               onPress={() => props.onPress(option.value)}
-              testID={props.testID ? `${props.testID}-${option.value}` : undefined}
+              testID={
+                option.testID ?? (props.testID ? `${props.testID}-${option.value}` : undefined)
+              }
             />
           </View>
         );

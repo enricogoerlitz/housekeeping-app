@@ -61,6 +61,7 @@ export function usePlaceStart(props: {
         text={text}
         onChangeText={setText}
         paths={PLACE_CREATE_PATHS}
+        createWhenEmpty
         onPath={toForm}
         search={search}
         label={LABELS[props.kind]}

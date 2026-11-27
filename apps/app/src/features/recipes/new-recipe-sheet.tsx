@@ -432,6 +432,7 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
               error={error}
               recipeRows={draftInput}
               maxLength={RECIPE_DRAFT_LIMITS.text}
+              testIDs={{ field: 'new-recipe-title', create: 'new-recipe-save' }}
               testID="new-recipe-quick"
             />
             {/* REQ-005: placeholders that breathe while the AI writes (spec 0055, REQ-003). */}

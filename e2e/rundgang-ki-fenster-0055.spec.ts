@@ -54,14 +54,13 @@ async function stubDraft(
   return bodies;
 }
 
-/** "+" → "Rezept", a title, "Mit KI ausfüllen". */
+/** "+", a title in the one field, "Mehr" (spec 0062, REQ-006: the full "Mit KI ausfüllen"). */
 async function newRecipeWithAi(page: Page, title: string): Promise<void> {
   await open(page, '/rezepte');
   await tid(page, 'recipe-new').click();
-  await tid(page, 'recipe-new-recipe').click();
   await expect(tid(page, 'new-recipe-sheet')).toBeVisible();
   await tid(page, 'new-recipe-title').fill(title);
-  await tid(page, 'new-recipe-open-ai').click();
+  await tid(page, 'new-recipe-more').click();
 }
 
 /** The edit mode of the Bolognese and "Mit KI ausfüllen". */
@@ -114,8 +113,9 @@ test.describe('REQ-001, REQ-004: the tabs and the cursor', () => {
     await expect(tid(page, 'recipe-ai-fill-tab-prompt')).toHaveAttribute('aria-selected', 'true');
     await expect(tid(page, 'recipe-ai-fill-field-text')).toBeFocused();
     await expect(tid(page, 'recipe-ai-fill-mode')).toHaveCount(0);
+    // Spec 0062, REQ-011: the question moved into the proposal of the web search.
     await tid(page, 'recipe-ai-fill-tab-web').click();
-    await expect(tid(page, 'recipe-ai-fill-mode')).toBeVisible();
+    await expect(tid(page, 'recipe-ai-fill-mode')).toHaveCount(0);
   });
 });
 
@@ -257,9 +257,10 @@ test.describe('REQ-010: the magnifier beside „Name“', () => {
       queries.push((route.request().postDataJSON() as { query: string }).query);
       await route.fulfill({ json: { ...searchReply, query: 'Coccodrillo', results: [] } });
     });
-    await open(page, '/rezepte');
-    await tid(page, 'recipe-new').click();
-    await tid(page, 'recipe-new-restaurant').click();
+    await open(page, '/rezepte?ansicht=restaurants');
+    await tid(page, 'restaurant-new').click();
+    // Spec 0062, REQ-008: "Anlegen" in the first step leads to the form.
+    await tid(page, 'restaurant-start-path-create').click();
     await tid(page, 'restaurant-name').fill('Coccodrillo');
     await expect(tid(page, 'restaurant-web-open')).toHaveCount(0);
     await tid(page, 'restaurant-web-name-search').click();
@@ -278,6 +279,7 @@ test.describe('REQ-010: the magnifier beside „Name“', () => {
     });
     await open(page, '/aktivitaeten');
     await tid(page, 'activity-add').click();
+    await tid(page, 'activity-start-path-create').click();
     await tid(page, 'activity-web-name-search').click();
     await expect(tid(page, 'activity-web-sheet')).toBeVisible();
     await expect(tid(page, 'activity-web-query')).toHaveValue('');
