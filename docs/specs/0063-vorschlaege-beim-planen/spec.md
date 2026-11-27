@@ -1,5 +1,5 @@
 ---
-status: freigegeben # entwurf | freigegeben | umgesetzt | verworfen
+status: umgesetzt # entwurf | freigegeben | umgesetzt | verworfen
 datum: 2026-11-27
 ---
 

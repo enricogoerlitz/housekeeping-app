@@ -60,6 +60,16 @@ Ablauf und Regeln: siehe `AGENTS.md`, Abschnitt „Workflow per feature“.
 | [0051](0051-mitteilungen-in-der-app-statt-push/spec.md)     | Mitteilungen in der App statt Push                                     | freigegeben |
 | [0052](0052-bildprompt-aufbereitung/spec.md)                | Bild-Prompt aufbereiten: aus einem kurzen Wunsch drei gute Bilder      | freigegeben |
 | [0053](0053-aufraeumen-batch-3/spec.md)                     | Aufräumen nach Batch 3                                                 | freigegeben |
+| [0054](0054-einheitliche-bedienmuster/spec.md)              | Einheitliche Bedienmuster                                              | umgesetzt   |
+| [0055](0055-ki-fenster-v3/spec.md)                          | KI-Fenster v3: Tastatur, Wischen, Prompt mit Websuche, Nachbessern     | umgesetzt   |
+| [0056](0056-rezeptseite-und-kochmodus/spec.md)              | Rezeptseite und Kochmodus                                              | umgesetzt   |
+| [0057](0057-uebersicht-und-navigation/spec.md)              | Übersicht und Feinschliff der Navigation                               | umgesetzt   |
+| [0058](0058-neue-themes/spec.md)                            | Neue Themes                                                            | umgesetzt   |
+| [0059](0059-nichts-verpassen/spec.md)                       | Nichts verpassen: .ics, Vorwarnung, Packen am Vorabend                 | umgesetzt   |
+| [0060](0060-dauerposten/spec.md)                            | Dauerposten                                                            | umgesetzt   |
+| [0061](0061-unfertige-rezepte-ausarbeiten/spec.md)          | Unfertige Rezepte nacheinander ausarbeiten                             | umgesetzt   |
+| [0062](0062-rezept-anlegen-und-ki-aendern/spec.md)          | Rezept anlegen und mit KI ändern                                       | umgesetzt   |
+| [0063](0063-vorschlaege-beim-planen/spec.md)                | Vorschläge beim Planen                                                 | umgesetzt   |
 
 ## Welle 2 (0019–0028): Bau-Reihenfolge und Regeln
 

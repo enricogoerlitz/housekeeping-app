@@ -1,5 +1,5 @@
 ---
-status: freigegeben
+status: umgesetzt
 datum: 2026-11-27
 ---
 
