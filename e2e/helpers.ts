@@ -507,6 +507,7 @@ export async function fulfilError(route: Route, code: ErrorCode): Promise<void> 
     quota_exceeded: 429,
     ai_unavailable: 503,
     search_unavailable: 503,
+    chat_too_long: 409,
     internal: 500,
   };
   await fulfilFunction(route, status[code], ErrorReplySchema.parse({ error: code }));
@@ -593,7 +594,7 @@ async function stubEdgeFunctions(context: BrowserContext): Promise<void> {
   // needs one answers it with its own `page.route`, which goes first. Anything else gets "KI nicht
   // erreichbar" (and its console error fails the test unless the test expects it).
   if (process.env.E2E_LIVE_AI) return;
-  for (const name of ['ai-image', 'ai-recipe-draft', 'web-search']) {
+  for (const name of ['ai-image', 'ai-recipe-draft', 'web-search', 'ai-agent']) {
     await context.route(`**/functions/v1/${name}*`, (route) =>
       fulfilError(route, 'ai_unavailable'),
     );
@@ -841,6 +842,31 @@ insert into auth.identities (id, user_id, provider_id, provider, identity_data, 
 values (${literal(id)}, ${literal(id)}, ${literal(id)}, 'email', ${literal(identity)}, now(), now(), now());
 `);
   return id;
+}
+
+/**
+ * A KI-Agent chat reference of a household as ai-agent would write it (spec 0066); the content
+ * lives in Foundry, which a test answers with `page.route`. Returns the chat id.
+ */
+export function insertAiChat(input: {
+  householdId: string;
+  title: string;
+  placeLabel?: string;
+  createdBy?: string;
+}): string {
+  const id = randomUUID();
+  sql(`
+insert into public.ai_chats (id, household_id, conversation_id, title, place_label, created_by, response_ids)
+values (${literal(id)}, ${literal(input.householdId)}, ${literal(`conv_e2e${id.replaceAll('-', '')}`)},
+        ${literal(input.title)}, ${input.placeLabel ? literal(input.placeLabel) : 'null'},
+        ${input.createdBy ? literal(input.createdBy) : 'null'}, '{resp_e2e}');
+`);
+  return id;
+}
+
+/** Deletes a chat reference as postgres, as ai-agent's delete would (with its tombstone). */
+export function deleteAiChatRow(id: string): void {
+  sql(`delete from public.ai_chats where id = ${literal(id)};`);
 }
 
 /** Deletes an account as postgres (profile and memberships go with it). */

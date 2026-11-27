@@ -206,13 +206,21 @@ Foundry. Quelle: PoC Offene Frage 3. Offline: offline lesend.
   löschen außer über `create_ai_chat`, `record_ai_chat_turn`, `delete_ai_chat` · Und `anon` kann nichts
 - AC-041: Angenommen eine zweite Zeile mit derselben `conversation_id` · Dann lehnt die Datenbank sie ab
 
-**REQ-014 — Agent als Infrastruktur.** Die Definition des Agents `places-agent` (Modell `gpt-6.1-terra`, reasoning
-`low`, Web-Suche, Funktion `show_suggestions` strict) und ein idempotentes Anlege-Skript liegen in `infra/foundry/`;
-die Function nutzt die gepinnte Version aus `FOUNDRY_PLACES_AGENT` / `FOUNDRY_PLACES_AGENT_VERSION`. Quelle: PoC
-„Agent-Versionen pinnen“. Offline: —.
+**REQ-014 — Agent als Code je Umgebung (ADR-0019).** Der Agent `places-agent` (Modell `gpt-6.1-terra`, reasoning
+`low`, Web-Suche, Funktion `show_suggestions` strict) steht in `foundry/agents/places-agent.yaml` (Instruktion in
+`places-agent.md`) und wird je Umgebung als `places-agent-local`, `-preview`, `-prod` angelegt: lokal mit
+`pnpm foundry:agents:local`, in `preview.yml` und `release.yml` vor dem Deploy der Functions. Die Pipeline pinnt die
+genannte Version als `FOUNDRY_PLACES_AGENT_VERSION`; fehlt ihre Konfiguration, bricht sie mit deutscher Meldung ab.
+Quelle: Enrico, 27.11.2026. Offline: —.
 
-- AC-042: Angenommen die Definition ist unverändert · Wenn das Skript erneut läuft · Dann legt es keine neue Version
-  an und nennt die vorhandene
+- AC-042: Angenommen die Definition ist unverändert · Wenn der Upsert erneut läuft · Dann legt er keine neue Version
+  an und nennt „places-agent-local Version 1 (unverändert)“
+- AC-043: Angenommen die Instruktion ändert sich · Wenn `preview.yml` läuft · Dann entsteht eine neue Version von
+  `places-agent-preview` vor „Functions“, und „Secrets der Functions“ setzt genau diese Nummer
+- AC-044: Angenommen `FOUNDRY_AZURE_CLIENT_ID` fehlt in der Umgebung `production` · Wenn `release.yml` läuft · Dann
+  bricht „Foundry-Konfiguration vorhanden“ mit „Variable FOUNDRY_AZURE_CLIENT_ID der Umgebung production fehlt …“ ab
+- AC-045: Angenommen die Anmeldung scheitert mit 401 · Dann nennt der Upsert nur „HTTP 401“ und die Rolle „Foundry
+  User“, nie das Token
 
 ## Entscheidungen
 
@@ -231,7 +239,8 @@ Entschieden von Enrico am 27.11.2026:
    Text plus Karussell (Variante A), ein Foto aus Serper über `fetch-image`, Sterne und `cid`-Link nur aus der
    Anreicherung. „Speichern“ über den normalen Schreibweg. Folgefragen nur, wenn der Agent sie liefert.
 7. Verlauf gehört dem Haushalt; Löschen löscht Conversation, Antworten und Zeile.
-8. Online-Seite als Ausnahme (ADR-0018); Agent-Definition ist Infrastruktur (`infra/foundry/`, gepinnte Version).
+8. Online-Seite als Ausnahme (ADR-0018); Agent-Definition ist Infrastruktur, je Umgebung mit Suffix und gepinnter
+   Version (ADR-0019, Entscheidung 17).
 
 Beim Bauen entschieden:
 
@@ -270,6 +279,25 @@ Beim Bauen entschieden:
 16. Kein Hinweis auf Web IQ in der Seite in Schritt 1 außer der Unterzeile „mit Websuche“; die Datenschutz-Einordnung
     (Suchanfragen verlassen die Azure-Grenze) steht in ADR-0018. OFFEN: Soll ein ausdrücklicher Hinweis „Suche läuft
     über Microsoft Web IQ“ in die Seite?
+17. **Foundry-Agenten als Code je Umgebung (Enrico, 27.11.2026; ADR-0019):** YAML in `foundry/agents/` (Schlüssel wie
+    Foundrys YAML einer Agent-Version, Instruktion als Markdown daneben), Suffix `-local`/`-preview`/`-prod`, Upsert
+    lokal per `pnpm foundry:agents:local`, in Vorschau und Veröffentlichung vor „Functions“. **Version gepinnt:** Die
+    Pipeline setzt die Nummer ihres eigenen Upserts als Secret (Foundry nimmt `agent_reference` mit `version`); lokal
+    ist sie leer = neueste. **REST statt SDK:** `@azure/ai-projects` 2.11.0 kann Agent-Versionen, zieht aber ~60
+    Pakete in den Job mit dem Agent-Token; Spec 0014, Entscheidung 3 verbietet Paket-Code dort. Deshalb baut der Job
+    ohne Umgebung ein Bündel aus eigenem Code (`@housekeeping/foundry`, nur Node-Importe, Test prüft das), der
+    Umgebungs-Job führt es nach `azure/login` (OIDC) aus; das Token kommt von `az account get-access-token`.
+    **Identität:** eigene App-Registrierung im Foundry-Tenant (die SWA-Identität liegt in einem anderen Tenant), Rolle
+    „Foundry User“ auf dem Projekt; Einrichtung in `docs/architecture/betrieb.md`. **Ändert Spec 0014, AC-045 und
+    Entscheidung 8:** Die Pipeline setzt neben `ALLOWED_ORIGINS` auch `FOUNDRY_PROJECT_ENDPOINT`,
+    `FOUNDRY_PLACES_AGENT`, `FOUNDRY_PLACES_AGENT_VERSION` (keine Schlüssel; `FOUNDRY_API_KEY`, `SERPER_API_KEY` bleiben
+    Enricos).
+18. **Ein zentraler Agent statt Spezialisten (Enrico, 27.11.2026):** Foundry „connected agents“/A2A wurden abgewogen
+    (fokussierte Instruktionen, eigene Versionen gegen einen Modelllauf mehr je Spezialist, mehr Latenz und Kosten,
+    schwereres Debugging; ADR-0019, Option F). Vorerst ein Agent mit Werkzeugen; `places-agent` bleibt eigenständig
+    (eigene YAML, Instruktion, Version), damit er später ohne Umbau Spezialist eines zentralen Agents werden kann
+    (Spec 0067). Den Wechsel schlagen wir vor, wenn der zentrale Agent aufbläht (≈ 15–20+ Werkzeuge, sich störende
+    Instruktionen, messbar schlechtere Antworten).
 
 ## Daten
 
@@ -308,7 +336,8 @@ Beim Bauen entschieden:
 - [ ] 4. api: Tabelle registrieren, Cache 26, `sendAgentMessage`/`loadAgentChat`/`deleteAgentChat`, Haushalt
       löschen (AC-031)
 - [ ] 5. Edge Function `ai-agent` mit Tests (AC-028–030, 033–038)
-- [ ] 6. `infra/foundry/` Definition + Skript, `betrieb.md` (AC-042)
+- [ ] 6. `foundry/agents/places-agent.yaml`, Paket `@housekeeping/foundry` (Upsert, Tests), Schritte in `preview.yml`
+      und `release.yml` mit `workflows.test.mjs`, `betrieb.md` (AC-042 bis AC-045)
 - [ ] 7. App: ✨, Seite, Eingabe, Ort-Fenster, Karten, Verlauf, Offline (AC-001–006, 008, 014, 015, 020–024, 027, 039)
 - [ ] 8. e2e `rundgang-ki-agent.spec.ts` (Function per `page.route` nachgebildet)
 - [ ] 9. Screenshots (Desktop, Handy), iPhone-Simulator, `/security-check`, höchstens 5 echte Foundry-Läufe

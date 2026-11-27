@@ -103,7 +103,7 @@ export async function loadAgentChat(chatId: Id): Promise<AgentMessage[]> {
   return reply.messages;
 }
 
-export const AGENT_DELETE_FAILED_MESSAGE = 'Löschen hat nicht geklappt – bitte noch einmal.';
+const AGENT_DELETE_FAILED_MESSAGE = 'Löschen hat nicht geklappt – bitte noch einmal.';
 
 /** AC-028, AC-029: the chat in Foundry and its row, for every device of the household. */
 export async function deleteAgentChat(chatId: Id): Promise<void> {

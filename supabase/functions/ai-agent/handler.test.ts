@@ -14,7 +14,7 @@ import { handler } from './handler.ts';
 const PROJECT = 'https://foundry.example.test/api/projects/p';
 const ENV = {
   FOUNDRY_PROJECT_ENDPOINT: PROJECT,
-  FOUNDRY_PLACES_AGENT: 'places-agent',
+  FOUNDRY_PLACES_AGENT: 'places-agent-local',
   FOUNDRY_PLACES_AGENT_VERSION: '3',
   SERPER_API_KEY: 'test-serper-SECRET',
 };
@@ -301,11 +301,16 @@ describe('ai-agent: access', () => {
   });
 
   it('a missing agent setting is 500 and names only the variable', async () => {
-    const { deps } = setup({ env: { FOUNDRY_PLACES_AGENT_VERSION: '' } });
+    const { deps } = setup({ env: { FOUNDRY_PLACES_AGENT: '' } });
     expect((await handler(send(), deps)).status).toBe(500);
-    expect(JSON.stringify(vi.mocked(console.error).mock.calls)).toContain(
-      'FOUNDRY_PLACES_AGENT_VERSION',
-    );
+    expect(JSON.stringify(vi.mocked(console.error).mock.calls)).toContain('FOUNDRY_PLACES_AGENT');
+  });
+
+  it('without a pinned version the latest version of the agent answers (local)', async () => {
+    const { deps, state } = setup({ env: { FOUNDRY_PLACES_AGENT_VERSION: '' } });
+    await events(await handler(send({ chatId: CHAT_ID }), deps));
+    const body = calls(state, 'POST', '/responses')[0]?.body as { agent_reference: object };
+    expect(body.agent_reference).toEqual({ type: 'agent_reference', name: 'places-agent-local' });
   });
 
   it('a message over 2000 characters is 400', async () => {
@@ -355,7 +360,7 @@ describe('ai-agent: send', () => {
     const sent = calls(state, 'POST', '/responses')[0]!;
     expect(sent.headers.get('api-key')).toBe('test-foundry-key-SECRET');
     expect(sent.body).toMatchObject({
-      agent_reference: { type: 'agent_reference', name: 'places-agent', version: '3' },
+      agent_reference: { type: 'agent_reference', name: 'places-agent-local', version: '3' },
       conversation: 'conv_new',
       stream: true,
     });

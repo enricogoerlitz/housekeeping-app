@@ -22,7 +22,7 @@ import { useOnlineOnly } from '@/features/shell/offline';
 // place, day and who started them. Opening one needs the network; deleting asks first and removes
 // the conversation in Foundry, its answers and the row.
 
-export const OFFLINE_OPEN_HINT = 'Offline – den Chat lädst du mit Netz.';
+const OFFLINE_OPEN_HINT = 'Offline – den Chat lädst du mit Netz.';
 
 export function HistorySheet(props: {
   activeChatId?: Id;

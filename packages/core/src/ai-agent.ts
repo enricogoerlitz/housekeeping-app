@@ -465,7 +465,9 @@ export function sourcesOf(annotations: readonly unknown[]): AgentSource[] {
     const { type, url, title } = annotation as { type?: unknown; url?: unknown; title?: unknown };
     if (type !== 'url_citation' || typeof url !== 'string' || !HttpsUrl.safeParse(url).success)
       continue;
-    const host = new URL(url).hostname.replace(/^www\./, '');
+    const host = (/^https:\/\/(?:[^/?#@]*@)?([^/?#:]+)/i.exec(url)?.[1] ?? '')
+      .toLowerCase()
+      .replace(/^www\./, '');
     if (seen.has(host)) continue;
     seen.add(host);
     sources.push({

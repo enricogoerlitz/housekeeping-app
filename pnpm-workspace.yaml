@@ -3,6 +3,8 @@ packages:
   - packages/*
   - e2e
   - supabase/functions
+  # Spec 0066: the Foundry agents as code (foundry/agents) and their upsert; never a dependency of the app.
+  - foundry
 
 # Flat node_modules: every workspace package resolves the same single copy of react,
 # react-native and the Expo modules. Avoids duplicate-instance problems in Metro.

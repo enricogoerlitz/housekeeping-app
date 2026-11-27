@@ -1,15 +1,18 @@
 // The Foundry Agents runtime as ai-agent uses it (spec 0066, PoC tmp/ki-chat-poc): conversations,
-// their items, responses of the pinned places agent, all with the resource key (`api-key`). The
-// agent itself is created with Entra by infra/foundry/create-agent.mjs. Answers of Foundry carry
-// the agent's instructions: nothing here is ever handed to the app as it came.
+// their items, responses of the places agent, all with the resource key (`api-key`). The agent is
+// foundry/agents/places-agent.yaml, deployed per environment by @housekeeping/foundry with Entra
+// (ADR-0019). Answers of Foundry carry the agent's instructions: nothing here is ever handed to
+// the app as it came.
 import type { Deps } from '../_shared/deps.ts';
 import { HttpError, requireEnv } from '../_shared/errors.ts';
 
 export interface AgentConfig {
   base: string;
   apiKey: string;
+  /** places-agent-local, -preview or -prod. */
   agent: string;
-  version: string;
+  /** Pinned by the pipeline (the version its upsert named); unset locally means the latest. */
+  version?: string;
 }
 
 export function agentConfig(env: Deps['env']): AgentConfig {
@@ -17,7 +20,9 @@ export function agentConfig(env: Deps['env']): AgentConfig {
     base: `${requireEnv(env, 'FOUNDRY_PROJECT_ENDPOINT').replace(/\/+$/, '')}/openai/v1`,
     apiKey: requireEnv(env, 'FOUNDRY_API_KEY'),
     agent: requireEnv(env, 'FOUNDRY_PLACES_AGENT'),
-    version: requireEnv(env, 'FOUNDRY_PLACES_AGENT_VERSION'),
+    ...(env('FOUNDRY_PLACES_AGENT_VERSION')?.trim()
+      ? { version: env('FOUNDRY_PLACES_AGENT_VERSION')?.trim() }
+      : {}),
   };
 }
 
@@ -151,7 +156,7 @@ export function foundryClient(deps: Pick<Deps, 'fetch'>, config: AgentConfig): F
             agent_reference: {
               type: 'agent_reference',
               name: config.agent,
-              version: config.version,
+              ...(config.version ? { version: config.version } : {}),
             },
             conversation,
             input,
