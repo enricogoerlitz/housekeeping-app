@@ -18,7 +18,6 @@ import {
   EMPTY_RECIPE_LIST_FILTER,
   filterButtonLabel,
   isQuickFilterActive,
-  QUICK_FILTERS,
   RECIPE_SORTS,
   recipeEmptyLabel,
   recipeListCountLabel,
@@ -27,8 +26,11 @@ import {
   FOOD_LIST_CLEARED,
   removeFilterChip,
   searchRecipes,
+  shownQuickFilters,
   sortRecipeList,
   toggleQuickFilter,
+  unfinishedCount,
+  unfinishedListLabel,
   withCookingHistory,
   type Id,
   type ListView,
@@ -47,6 +49,7 @@ import {
   ListDetail,
   Menu,
   Notice,
+  Row,
   Screen,
   ScreenHeader,
   Stack,
@@ -81,6 +84,7 @@ import { RecipeDetail } from './recipe-detail';
 import { RecipeRow, RecipeTile } from './recipe-grid';
 import { useRecipeListState } from './recipe-list-state';
 import { useAiSearch } from './use-ai-search';
+import { useWorkOut } from './work-out';
 
 type FoodView = 'recipes' | 'restaurants';
 
@@ -141,6 +145,7 @@ export function RecipesScreen() {
   const today = useToday();
   const list = useRecipeListState();
   const openRecipe = useOpenRecipe();
+  const workOut = useWorkOut();
   const preview = useTabPreview();
   const { isWide } = useBreakpoint();
   // "Kacheln" or "Liste", chosen on this device (spec 0038, REQ-001).
@@ -176,6 +181,8 @@ export function RecipesScreen() {
   const shuffle = list.shuffleFor(recipes.map((recipe) => recipe.id));
   const cuisines = useMemo(() => cuisineFacets(recipes), [recipes]);
   const tags = useMemo(() => tagFacets(recipes), [recipes]);
+  // "Unfertig (n)" counts the whole household, not the filtered list (spec 0061, REQ-002).
+  const unfinished = useMemo(() => unfinishedCount(recipes), [recipes]);
   const results = useMemo(() => {
     const searched = searchRecipes(query, recipes, articlesById);
     const filtered = applyRecipeListFilter(searched, filter, {
@@ -411,7 +418,7 @@ export function RecipesScreen() {
               testID={`recipe-chip-${chip.kind}-${chip.value}`}
             />
           ))}
-          {QUICK_FILTERS.map((chip) => (
+          {shownQuickFilters(filter, unfinished).map((chip) => (
             <Chip
               key={chip.value}
               label={chip.label}
@@ -430,6 +437,7 @@ export function RecipesScreen() {
           onChange={list.setFilter}
           cuisines={cuisines}
           tags={tags}
+          unfinished={unfinished}
         />
       }
       resetLabel="Zurücksetzen"
@@ -472,11 +480,19 @@ export function RecipesScreen() {
       </View>
     ) : null;
 
+  // Spec 0061, AC-009: with "Unfertig" on and nothing left to work out.
+  const allWorkedOut = filter.unfinished && unfinished === 0;
   const empty = (
     <EmptyState
-      icon={query.trim() ? 'search' : 'list-filter'}
-      title={recipeEmptyLabel(query)}
-      text={query.trim() ? 'Probiere ein anderes Wort.' : undefined}
+      icon={query.trim() ? 'search' : allWorkedOut ? 'circle-check' : 'list-filter'}
+      title={recipeEmptyLabel(query, { allWorkedOut })}
+      text={
+        query.trim()
+          ? 'Probiere ein anderes Wort.'
+          : allWorkedOut
+            ? 'Neue Rezepte mit nur einem Titel erscheinen hier.'
+            : undefined
+      }
       testID="recipes-no-results"
     >
       {filterCount > 0 ? (
@@ -525,6 +541,23 @@ export function RecipesScreen() {
             <Text variant="small" color="muted" testID="recipe-count">
               KI-Suche
             </Text>
+          ) : filter.unfinished && results[0] ? (
+            // Spec 0061, REQ-003: the counter and the way through the list, from its first entry.
+            <Row gap={12} wrap>
+              <Text variant="small" color="muted" testID="recipe-count">
+                {unfinishedListLabel(results.length)}
+              </Text>
+              <Button
+                label="Ausarbeiten"
+                icon="sparkles"
+                size="sm"
+                onPress={() => {
+                  const first = results[0];
+                  if (first) workOut(first.id, { order: results.map((recipe) => recipe.id) });
+                }}
+                testID="recipe-work-out"
+              />
+            </Row>
           ) : results.length > 0 ? (
             <Text variant="small" color="muted" testID="recipe-count">
               {recipeListCountLabel(results)}

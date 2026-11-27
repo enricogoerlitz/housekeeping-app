@@ -151,6 +151,8 @@ export const PAGE_PARAMS = {
     dauer: one(oneOf(['15', '30', '60', '120'])),
     'fuer-alle': one(Flag),
     selten: one(Flag),
+    /** Only unfinished recipes (spec 0061, REQ-002). */
+    unfertig: one(Flag),
     gang: many(oneOf(values(COURSE_SLUGS))),
     kueche: many(Text),
     /** Tag keys, all of them must fit (spec 0037, REQ-006). */
@@ -410,6 +412,7 @@ export function recipeListFromParams(
     favorites: values.favoriten === '1',
     fitsAll: values['fuer-alle'] === '1',
     rare: values.selten === '1',
+    unfinished: values.unfertig === '1',
     courses: (values.gang ?? []).map((slug) => COURSE_OF[slug]),
     cuisines: values.kueche ?? [],
     tags: values.schlagwort ?? [],
@@ -434,6 +437,7 @@ export function recipeListToParams(state: RecipeListAddressState): PageParams<'r
       : undefined,
     'fuer-alle': filter.fitsAll ? '1' : undefined,
     selten: filter.rare ? '1' : undefined,
+    unfertig: filter.unfinished ? '1' : undefined,
     gang: filter.courses.map((course) => COURSE_SLUGS[course]),
     kueche: [...filter.cuisines],
     schlagwort: [...filter.tags],
@@ -510,6 +514,7 @@ export const FOOD_LIST_CLEARED: PageParams<'rezepte'> = {
   dauer: undefined,
   'fuer-alle': undefined,
   selten: undefined,
+  unfertig: undefined,
   gang: undefined,
   kueche: undefined,
   schlagwort: undefined,

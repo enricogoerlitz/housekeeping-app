@@ -53,6 +53,13 @@ export function AiPageTools(props: { recipe: Recipe; editor: PageEditor }) {
   const [refineError, setRefineError] = useState<string>();
   const draftInput = useDraftInput();
   const articlesById = useArticlesById();
+  // Spec 0061, REQ-004: "Ausarbeiten" opens the edit mode with the window searching the title;
+  // the intent stays until the window closes.
+  const workOut = editor.intent?.kind === 'ai';
+  const closeFill = () => {
+    setFilling(false);
+    if (workOut) editor.clearIntent();
+  };
   if (!features.aiRecipes || !editor.draft || recipe.kind !== 'recipe') return null;
   const page = editor.draft;
   const hasIngredients = editor.draft.ingredients.rows.length > 0;
@@ -159,14 +166,15 @@ export function AiPageTools(props: { recipe: Recipe; editor: PageEditor }) {
         />
       </View>
       <PhotoSuggestionsPanel recipe={recipe} editor={editor} />
-      {filling ? (
+      {filling || workOut ? (
         <AiFillSheet
           title={editor.draft.head.title}
           hasIngredients={hasIngredients}
           hasContent={hasContent}
           hasPhoto={hadPhoto || editor.chosenPhoto !== undefined}
           current={() => recipeDraftOf(page, articleName)}
-          onClose={() => setFilling(false)}
+          searchNow={workOut}
+          onClose={closeFill}
           onDraft={propose}
         />
       ) : null}
