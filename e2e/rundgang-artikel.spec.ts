@@ -76,14 +76,6 @@ test.describe('Artikel and Märkte at phone width', () => {
     await tid(page, 'articles-sort-new').click();
     await expect(tid(page, 'articles-sort')).toContainText('Neu');
     await leaveManaged(page);
-
-    // The other way in: "Liste" ⋯ → "Artikel", and back leads to the list.
-    await nav(page, 'liste');
-    await tid(page, 'list-more').click();
-    await tid(page, 'list-more-articles').click();
-    await expect(tid(page, 'articles-screen')).toBeVisible();
-    await back(page);
-    await expect(tid(page, 'screen-title')).toHaveText('Einkaufsliste');
   });
 
   test('AC-026 / AC-031 / AC-033: "+ Neu" creates "Drachenfrucht", a synonym of another article is refused, unused it can be deleted', async ({

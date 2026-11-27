@@ -1,4 +1,4 @@
-import { createRef } from 'react';
+import { createRef, useState } from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { HostInstance } from 'react-native';
@@ -561,6 +561,50 @@ describe('TextField', () => {
     );
     expect(screen.getByRole('textbox', { name: 'Suche' })).toBeTruthy();
     expect(screen.getByRole('textbox', { name: 'Notiz' })).toBeTruthy();
+  });
+
+  describe('grow: the composer field (spec 0062, decision 14)', () => {
+    const scrollHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollHeight');
+    afterEach(() => {
+      if (scrollHeight) Object.defineProperty(HTMLElement.prototype, 'scrollHeight', scrollHeight);
+    });
+
+    function Composer(props: { initial?: string }) {
+      const [value, setValue] = useState(props.initial ?? '');
+      return (
+        <TextField
+          accessibilityLabel="Was soll noch anders sein?"
+          value={value}
+          onChangeText={setValue}
+          multiline
+          grow
+          round
+          testID="wish"
+        />
+      );
+    }
+
+    it('AC-033: starts one line high, not as a tall box', () => {
+      render(<Composer />);
+      const input = screen.getByTestId('wish');
+      expect(input.getAttribute('rows')).toBe('1');
+      expect(input.style.height).toBe('46px');
+    });
+
+    it('AC-033: grows with its text and is one line again when emptied', () => {
+      render(<Composer />);
+      const input = screen.getByTestId('wish');
+      Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
+        configurable: true,
+        get: () => 68,
+      });
+      fireEvent.change(input, {
+        target: { value: 'nimm Räuchertofu statt Bohnen und mehr Chili' },
+      });
+      expect(input.style.height).toBe('68px');
+      fireEvent.change(input, { target: { value: '' } });
+      expect(input.style.height).toBe('46px');
+    });
   });
 
   it('spec 0032, AC-010: no autofill from contacts, except for an e-mail address', () => {

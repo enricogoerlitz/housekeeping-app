@@ -33,10 +33,13 @@ optional „Name für die Suche“ (vorbelegt mit dem Namen des Eintrags), darun
 daneben ein Pin-Knopf, der Google Maps mit der Suche nach Name und Adresse öffnet. Quelle: F-05.
 Offline: offline lesend.
 
-- AC-001: Angenommen „Neues Restaurant“ „Bless“ · Wenn ich den Pin tippe · Dann öffnet Google Maps die
-  Suche „Bless“
-- AC-002: Angenommen der Name für die Suche ist leer und es gibt keinen Namen · Dann ist der Pin
-  deaktiviert
+- ~~AC-001~~ (verworfen 27.11.2026, Entscheidung 14): Angenommen „Neues Restaurant“ „Bless“ · Wenn
+  ich den Pin tippe · Dann öffnet Google Maps die Suche „Bless“
+- ~~AC-002~~ (verworfen 27.11.2026, Entscheidung 14): Angenommen der Name für die Suche ist leer und
+  es gibt keinen Namen · Dann ist der Pin deaktiviert
+- AC-017: Angenommen „Restaurant anlegen“, „Restaurant bearbeiten“, eine Aktivität oder „Markt
+  bearbeiten“ · Dann heißt das Feld „Google Maps Link“, daneben steht kein Pin und darunter kein
+  „Einfügen“ · Und „Das ist kein Karten-Link“ prüft weiter (Entscheidung 14)
 
 **REQ-002 — Märkte mit Karten-Link.** Ein Markt hat einen Karten-Link; „Route“ gibt es dort, wo er
 hinterlegt ist (Regel aus Spec 0036). Quelle: F-06. Offline: offline lesend.
@@ -49,12 +52,12 @@ fragt einmal mit „Einfügen“), erkennt Karten-Link, Webadresse oder Adresse,
 und setzt den Cursor ins nächste leere Feld. Dasselbe gilt beim normalen Einfügen in eines der Felder.
 Quelle: F-04. Offline: offline vollständig (Formular).
 
-- AC-005: Angenommen die Zwischenablage enthält `https://maps.app.goo.gl/abc` · Wenn ich „Einfügen“
-  tippe · Dann steht der Link in „Karten-Link“
+- ~~AC-005~~ (verworfen 27.11.2026, Entscheidung 14): Angenommen die Zwischenablage enthält
+  `https://maps.app.goo.gl/abc` · Wenn ich „Einfügen“ tippe · Dann steht der Link in „Karten-Link“
 - AC-006: Angenommen die Zwischenablage enthält „Oranienburger Str. 45, 10117 Berlin“ · Wenn ich in
   „Karten-Link“ einfüge · Dann steht der Text in „Adresse“, und der Cursor im nächsten leeren Feld
-- AC-007: Angenommen die Zwischenablage ist leer oder ohne erkennbaren Inhalt · Dann sagt die App
-  „Nichts Passendes in der Zwischenablage“
+- ~~AC-007~~ (verworfen 27.11.2026, Entscheidung 14): Angenommen die Zwischenablage ist leer oder
+  ohne erkennbaren Inhalt · Dann sagt die App „Nichts Passendes in der Zwischenablage“
 
 ### Teilen
 
@@ -89,7 +92,7 @@ steht beim Eigentümer „Eigentümer“. Quelle: V-01. Offline: offline lesend.
 
 1. Enrico, 26.11.: Eigentümer wird abgeleitet (frühester Beitritt `household_members.created_at`,
    bei Gleichstand die kleinere Mitglieds-ID); keine neue Spalte, keine Übergabe-Oberfläche.
-2. Enrico, 26.11.: Zwischenablage nur über „Einfügen“ (iOS erlaubt kein Lesen beim Antippen).
+2. **Verworfen am 27.11.2026 (Entscheidung 14).** Enrico, 26.11.: Zwischenablage nur über „Einfügen“ (iOS erlaubt kein Lesen beim Antippen).
 3. Enrico, 26.11.: Teilen = lesbarer Text + App-Link; Foto mit teilen, wenn das Gerät Dateien teilen
    kann (`navigator.canShare({ files })`).
 4. Bau, 26.11.: „Name für die Suche“ ist beim Restaurant und beim Markt nur ein Feld für den Pin
@@ -124,6 +127,15 @@ steht beim Eigentümer „Eigentümer“. Quelle: V-01. Offline: offline lesend.
 13. Browser-Durchklick 27.11., Folge (B-06): Bearbeiten ist auf der Seite und in der
     Schnellansicht eines Restaurants und einer Aktivität der Stift oben rechts zwischen ♥ und ⋯, wie
     beim Rezept (Spec 0037, REQ-001). Der Knopf „Bearbeiten“ neben „Route“ und „Einplanen“ entfällt.
+14. Vorschau-Review 27.11.2026 (Review 0004, Enrico): Neben dem Feld stehen kein Knopf „Einfügen“
+    und kein Pin „In Google Maps suchen“ mehr; das Feld heißt „Google Maps Link“ (AC-017). Feld,
+    Prüfung („Das ist kein Karten-Link“), Kurzlink-Auflösung und das Erkennen beim normalen
+    Einfügen (AC-006, Entscheidung 6) bleiben. Weil das Ortsfeld überall gleich ist (REQ-001), gilt
+    das für Restaurant, Aktivität und Markt. Damit entfällt „Name für die Suche“ bei Restaurant und
+    Markt (es speiste nur den Pin, Entscheidung 4); bei der Aktivität bleibt der gespeicherte
+    Ortsname und heißt „Ortsname“. Die Hinweise sagen „In Google Maps auf „Teilen“ tippen …“ bzw.
+    „Mit dem Google Maps Link zeigt der Markt „Route“.“ Verworfen: AC-001, AC-002, AC-005, AC-007
+    und Entscheidung 2.
 
 ## Daten
 

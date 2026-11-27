@@ -1,38 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  insertedText,
-  mapsSearchUrl,
-  nextEmptyField,
-  recognizePaste,
-  recognizePlaceText,
-} from './place-input';
-
-describe('mapsSearchUrl: the pin opens Google Maps with the search (spec 0042, REQ-001)', () => {
-  it('AC-001: "Bless" searches for Bless', () => {
-    expect(mapsSearchUrl({ name: 'Bless' })).toBe(
-      'https://www.google.com/maps/search/?api=1&query=Bless',
-    );
-  });
-
-  it('AC-001: name and address together, encoded', () => {
-    expect(mapsSearchUrl({ name: ' AMRIT ', address: 'Oranienburger Str. 45, 10117 Berlin' })).toBe(
-      'https://www.google.com/maps/search/?api=1&query=AMRIT%2C%20Oranienburger%20Str.%2045%2C%2010117%20Berlin',
-    );
-  });
-
-  it('AC-002: without a name (and without an address) there is nothing to search: no link', () => {
-    expect(mapsSearchUrl({ name: '  ' })).toBeUndefined();
-    expect(mapsSearchUrl({})).toBeUndefined();
-    expect(mapsSearchUrl({ name: '', address: ' ' })).toBeUndefined();
-  });
-
-  it('REQ-001: an address alone is something to search for', () => {
-    expect(mapsSearchUrl({ address: '10117 Berlin' })).toBe(
-      'https://www.google.com/maps/search/?api=1&query=10117%20Berlin',
-    );
-  });
-});
+import { insertedText, nextEmptyField, recognizePaste, recognizePlaceText } from './place-input';
 
 describe('recognizePlaceText: what the clipboard holds (spec 0042, REQ-003)', () => {
   it('AC-005: a Google short link is a map link', () => {

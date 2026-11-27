@@ -313,7 +313,7 @@ test('AC-006: a Google Maps link fills in the place with coordinates; the name s
   await tid(page, 'activity-link').fill(
     'https://www.google.com/maps/place/Eisstadion+Hohensch%C3%B6nhausen/@52.55,13.5,17z',
   );
-  await expect(tid(page, 'activity-search-name')).toHaveValue('Eisstadion Hohenschönhausen');
+  await expect(tid(page, 'activity-place-name')).toHaveValue('Eisstadion Hohenschönhausen');
   await expect(tid(page, 'activity-link-ok')).toContainText('Koordinaten übernommen');
   await expect(tid(page, 'activity-name')).toHaveValue('');
   await tid(page, 'activity-name').fill(name);

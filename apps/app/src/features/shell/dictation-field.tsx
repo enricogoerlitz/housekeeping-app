@@ -1,6 +1,6 @@
 import { insertAtCursor } from '@housekeeping/core';
 import { IconButton, Text, TextField, type TextFieldProps } from '@housekeeping/ui';
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 
 import { useOnlineOnly } from '@/features/shell/offline';
@@ -18,9 +18,11 @@ export function DictationField(
   props: Omit<TextFieldProps, 'value' | 'onChangeText' | 'right' | 'onSelectionChange'> & {
     value: string;
     onChangeText: (text: string) => void;
+    /** After the microphone inside the field, e.g. the send button of a composer. */
+    trailing?: ReactNode;
   },
 ) {
-  const { value, onChangeText, testID, ...field } = props;
+  const { value, onChangeText, testID, trailing, ...field } = props;
   const online = useOnlineOnly();
   const dictation = useDictation({ onStopWord: () => finish() });
   const selection = useRef<{ start: number; end: number } | undefined>(undefined);
@@ -86,7 +88,16 @@ export function DictationField(
           if (hearing) return;
           selection.current = event.nativeEvent.selection;
         }}
-        right={mic}
+        right={
+          trailing ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+              {mic}
+              {trailing}
+            </View>
+          ) : (
+            mic
+          )
+        }
         testID={testID}
       />
       {dictation.error ? (

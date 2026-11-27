@@ -96,6 +96,9 @@ getippter Titel geht als „Titel: …“ mit und bleibt der Titel. Bis zur Antw
   das Fenster mit dem Wunsch offen und darunter steht der Hinweis der KI-Störung
 - AC-014: Angenommen „KI-Rezept“ ohne Wunsch, Link oder Foto · Dann ist „Erzeugen“
   deaktiviert, und weder „Anlegen“ noch ein zweiter Knopf stehen da
+- AC-031: Angenommen „Neu“ auf „KI-Rezept“ · Dann steht „Foto generieren“ über „Websuche“ · Und
+  mit „Websuche“ an steht die Wahl „Foto: Original · KI-Bild · Keins“ an dieser Stelle über dem
+  Schalter (Entscheidung 13)
 
 **REQ-005 — Sammlung bleibt erreichbar.** „Sammlung“ wechselt das Fenster zur Wahl „Rezept ·
 Sammlung“ mit Titel und „Rezepte wählen“ wie bisher (Spec 0009, Spec 0037). Offline: nur online.
@@ -157,6 +160,11 @@ verloren. Offline: nur online („Rückgängig“ offline sagt den Offline-Hinwe
   e2e-Review 27.11.2026)
 - AC-026: Angenommen das Speichern wird abgelehnt · Dann öffnet der Bearbeitungsmodus mit dem
   Vorschlag und der Meldung
+- AC-032: Angenommen der Vorschlag in „Mit KI ändern“ · Dann ist „Was soll noch anders sein?“ ein
+  rundes Feld mit Mikrofon und dem Senden-Symbol „Anpassen“ darin, ohne Text-Knopf · Und das Symbol
+  ist leer und während die KI anpasst deaktiviert (Entscheidung 14)
+- AC-033: Angenommen das Feld aus AC-032 · Wenn ich mehr als eine Zeile tippe · Dann wächst es bis
+  auf vier Zeilen · Und nach dem Senden ist es wieder eine Zeile hoch (Entscheidung 14)
 
 **REQ-009 — Nur Änderungen; „Ergänzen · Ersetzen“ nur bei der Websuche.** Die Änderungsansicht
 eines Rezepts zeigt nur neue, geänderte und entfernte Zeilen, keine unveränderten. Die Frage
@@ -257,6 +265,19 @@ auf der lesenden Seite; „Übernehmen“ speichert das gewählte Foto sofort (�
     - **Rückgängig:** „Rezept geändert · Rückgängig“ nach „Übernehmen“ steht 10 s statt 5 s. Grund:
       man prüft die übernommene KI-Änderung erst auf der Seite; ein zweiter Weg zum Zurücknehmen wäre
       ein neues Bedienelement für einen seltenen Fall.
+13. Vorschau-Review 27.11.2026 (Review 0004, Enrico): Im Feld von „KI-Rezept“ steht „Foto
+    generieren“ über „Websuche“ (AC-031). Mit „Websuche“ an nimmt die Fotowahl (Spec 0065, REQ-002)
+    den Platz von „Foto generieren“ ein, also ebenfalls über dem Schalter: So bleibt „Websuche“
+    beim Umschalten unter dem Finger stehen. Das Feld ist dasselbe wie im Reiter „Prompt“ von „Mit
+    KI ändern“ und „Mit KI ausfüllen“; die Reihenfolge gilt dort genauso.
+14. Vorschau-Review 27.11.2026 (Review 0004, Enrico: die Zeile wirkte gequetscht): „Was soll noch
+    anders sein?“ (Spec 0055, REQ-008) ist ein Eingabefeld wie beim Assistenten: rund, volle Breite,
+    eine Zeile, die bis vier Zeilen wächst (`TextField grow`), darin rechts das Mikrofon und das
+    Senden-Symbol (`send`, gefüllt, Name „Anpassen“) statt „✨ Anpassen“ als Text-Knopf (AC-032,
+    AC-033). Return sendet, Umschalt+Return am Desktop macht eine neue Zeile. Am Handy und am
+    Desktop gleich. Fortschritt zeigen weiter die Ladezeilen darunter. „Was soll anders sein?“ bei
+    den Fotovorschlägen ist kein solches Feld (optionaler Zusatz zu „Neu generieren“, leer erlaubt)
+    und bleibt; der Assistent hat schon dieses Muster (`TextField round` mit „Senden“).
 
 ## Daten
 

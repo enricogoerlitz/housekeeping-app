@@ -10,10 +10,12 @@ import {
   goOffline,
   itemIdOf,
   itemRows,
+  leaveManaged,
   nav,
   only,
   open,
   openItem,
+  openManaged,
   secondDevice,
   shoppingCheck,
   showDone,
@@ -310,17 +312,24 @@ test('AC-010 (0006): unchecking "Brot" under "Erledigt" opens it again at once',
   await expect(tid(page, 'done-section').locator('[data-testid^="item-"]').first()).toBeVisible();
 });
 
-test('AC-034 (0006): ⋯ offers "Erledigt leeren", "Liste leeren …", "Märkte & Bereiche" and "Artikel"', async ({
+test('AC-058 (0025): ⋯ offers "Erledigt leeren", "Liste leeren …" and "Dauerposten"; "Artikel" and "Märkte & Bereiche" are under "Verwalten"', async ({
   page,
 }) => {
   await open(page, '/liste');
   await tid(page, 'list-more').click();
-  for (const entry of ['clear-done', 'clear-list', 'stores', 'articles']) {
+  for (const entry of ['clear-done', 'clear-list', 'recurring']) {
     await expect(tid(page, `list-more-${entry}`), entry).toBeVisible();
   }
-  await tid(page, 'list-more-stores').click();
+  for (const entry of ['stores', 'articles']) {
+    await expect(tid(page, `list-more-${entry}`), entry).toHaveCount(0);
+  }
+  await page.keyboard.press('Escape');
+  await openManaged(page, 'stores');
   await expect(tid(page, 'stores-screen')).toBeVisible();
-  await back(page);
+  await leaveManaged(page);
+  await openManaged(page, 'articles');
+  await expect(tid(page, 'articles-screen')).toBeVisible();
+  await leaveManaged(page);
   await expect(tid(page, 'screen-title')).toHaveText('Einkaufsliste');
 });
 
@@ -440,8 +449,7 @@ test('AC-034 (0001): moving "Getränke" up at Rewe makes it the first group in "
   await open(page, '/liste');
   await addItem(page, 'Apfelsaft');
   await expect(openItem(page, 'Apfelsaft')).toHaveCount(1);
-  await tid(page, 'list-more').click();
-  await tid(page, 'list-more-stores').click();
+  await openManaged(page, 'stores');
   await tid(page, `store-${REWE}`).click();
   const drinks = tid(page, `area-pos-${area('getraenke')}`);
   const before = Number(await drinks.innerText());
@@ -453,7 +461,7 @@ test('AC-034 (0001): moving "Getränke" up at Rewe makes it the first group in "
     await expect(drinks).toHaveText(String(before - step));
   }
   await back(page);
-  await back(page);
+  await leaveManaged(page);
   await startShopping(page);
   expect((await storeGroups(page))[0]).toBe(`area:${area('getraenke')}`);
 });

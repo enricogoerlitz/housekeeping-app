@@ -363,18 +363,20 @@ export function ActivityFormFields(props: {
         testPrefix="activity"
       />
       {/* The place field of restaurants, activities and stores (spec 0042, REQ-001): the
-          name for the search is the place name ("Eisstadion …"), which also labels "Route". */}
+          activity's place name ("Eisstadion …") also labels "Route". */}
       <PlaceField
         title="Ort (optional)"
         testPrefix="activity"
-        entryName={form.name}
-        searchName={form.placeName}
-        onSearchNameChange={form.setPlaceName}
+        placeName={{
+          value: form.placeName,
+          onChange: form.setPlaceName,
+          placeholder: 'z. B. Eisstadion Wedding',
+        }}
         link={form.link}
         onLinkChange={form.changeLink}
         linkError={form.linkError}
         linkHint={
-          form.reading ? undefined : 'In der Karten-App auf „Teilen“ tippen und den Link kopieren.'
+          form.reading ? undefined : 'In Google Maps auf „Teilen“ tippen und den Link kopieren.'
         }
         address={{ value: form.address, onChange: form.setAddress }}
         onWebsite={form.setWebsite}

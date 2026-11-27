@@ -317,6 +317,14 @@ test.describe('REQ-006 – REQ-008: „Prompt“ on the recipe, the web search, 
     // Durchklick 27.11., D-03: on wide screens the line stands above the window's buttons.
     if (!isPhone(page)) await expect(tid(page, 'recipe-proposal-refine-text')).toBeInViewport();
     await expect(tid(page, 'recipe-proposal-refine-send')).toBeDisabled();
+    // Spec 0062, AC-032: one round field with the mic and the send button „Anpassen“ inside.
+    const send = tid(page, 'recipe-proposal-refine-send');
+    await expect(send).toHaveAccessibleName('Anpassen');
+    await expect(send).toHaveText('');
+    const frame = await tid(page, 'recipe-proposal-refine-text').locator('..').boundingBox();
+    const button = await send.boundingBox();
+    expect(button!.x + button!.width).toBeLessThanOrEqual(frame!.x + frame!.width);
+    expect(button!.y).toBeGreaterThanOrEqual(frame!.y);
     await tid(page, 'recipe-proposal-refine-text').fill('nimm Linsen statt Tofu');
     await tid(page, 'recipe-proposal-refine-send').click();
     await expect(tid(page, 'recipe-proposal-refine-error')).toBeVisible();

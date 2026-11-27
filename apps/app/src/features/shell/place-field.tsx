@@ -1,34 +1,21 @@
-import {
-  mapsSearchUrl,
-  nextEmptyField,
-  recognizePaste,
-  recognizePlaceText,
-  type PlaceText,
-} from '@housekeeping/core';
-import { Button, Icon, IconButton, Row, Stack, Text, TextField, toast } from '@housekeeping/ui';
+import { nextEmptyField, recognizePaste, type PlaceText } from '@housekeeping/core';
+import { Icon, Stack, Text, TextField } from '@housekeeping/ui';
 import { useRef, type ComponentRef, type ReactNode } from 'react';
-import { TextInput, View } from 'react-native';
-
-import { canReadClipboard, readClipboardText } from '@/lib/clipboard';
-import { openLink } from '@/lib/open-link';
+import { TextInput } from 'react-native';
 
 type Field = 'link' | 'address';
 
-const NOTHING_TO_PASTE = 'Nichts Passendes in der Zwischenablage';
-
 /**
- * The place of a restaurant, an activity or a store (spec 0042, REQ-001, REQ-003): "Name für die
- * Suche" (the entry's name when empty), "Karten-Link" with the pin that searches Google Maps for
- * name and address, "Einfügen" from the clipboard, and the address where the entry has one. A map
- * link, a web address or an address pasted into any of the fields, or read by "Einfügen", lands
- * in its own field, and the cursor goes on to the next empty one.
+ * The place of a restaurant, an activity or a store (spec 0042, REQ-001, REQ-003): the field
+ * "Google Maps Link" and the address where the entry has one, for an activity above them its
+ * "Ortsname". A map link, a web address or an address pasted into any of the fields lands in its
+ * own field, and the cursor goes on to the next empty one. Beside the link there is no
+ * "Einfügen" and no Google Maps search (spec 0042, decision 14): pasting into the field is the way.
  */
 export function PlaceField(props: {
   testPrefix: string;
-  /** The entry's name: what the search uses while "Name für die Suche" is empty. */
-  entryName: string;
-  searchName: string;
-  onSearchNameChange: (value: string) => void;
+  /** "Ortsname" of an activity (spec 0042, decision 4), above the link. */
+  placeName?: { value: string; onChange: (value: string) => void; placeholder: string };
   link: string;
   /** The form reads the link (confirmation, short link, "Das ist kein Karten-Link"). */
   onLinkChange: (text: string) => void;
@@ -45,12 +32,8 @@ export function PlaceField(props: {
 }) {
   const linkRef = useRef<ComponentRef<typeof TextInput>>(null);
   const addressRef = useRef<ComponentRef<typeof TextInput>>(null);
-  const { address, onWebsite } = props;
+  const { address, onWebsite, placeName } = props;
   const order: Field[] = address ? ['link', 'address'] : ['link'];
-  const search = mapsSearchUrl({
-    name: props.searchName.trim() || props.entryName,
-    address: address?.value,
-  });
 
   const focusAfter = (filled: Field, values: Partial<Record<Field, string>>) => {
     const next = nextEmptyField(
@@ -81,7 +64,7 @@ export function PlaceField(props: {
   };
 
   /** A paste into `own` that belongs elsewhere moves there; the field keeps its own text. */
-  const pastedElsewhere = (previous: string, next: string, own: Field | 'search'): boolean => {
+  const pastedElsewhere = (previous: string, next: string, own: Field | 'name'): boolean => {
     const text = recognizePaste(previous, next);
     if (text === undefined) return false;
     const target = text.kind === 'maps' ? 'link' : text.kind === 'address' ? 'address' : text.kind;
@@ -89,72 +72,40 @@ export function PlaceField(props: {
     return place(text);
   };
 
-  const paste = async () => {
-    const text = recognizePlaceText((await readClipboardText()) ?? '');
-    if (!place(text)) toast.show({ message: NOTHING_TO_PASTE });
-  };
-
   return (
     <Stack gap={8}>
       {props.title ? <Text variant="smallStrong">{props.title}</Text> : null}
-      <TextField
-        label="Name für die Suche"
-        value={props.searchName}
-        onChangeText={(value) => {
-          if (!pastedElsewhere(props.searchName, value, 'search')) props.onSearchNameChange(value);
-        }}
-        placeholder={props.entryName.trim() || 'z. B. Bless'}
-        testID={`${props.testPrefix}-search-name`}
-      />
-      <Text variant="smallStrong">Karten-Link</Text>
-      <Row gap={8} align="flex-start">
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <TextField
-            accessibilityLabel="Karten-Link"
-            inputRef={linkRef}
-            value={props.link}
-            onChangeText={(value) => {
-              if (pastedElsewhere(props.link, value, 'link')) return;
-              props.onLinkChange(value);
-              if (recognizePaste(props.link, value)?.kind === 'maps') {
-                focusAfter('link', { link: value });
-              }
-            }}
-            placeholder="Link aus Google Maps oder Apple Karten"
-            autoFocus={props.linkAutoFocus}
-            error={props.linkError}
-            hint={props.linkHint}
-            keyboardType="url"
-            left={<Icon name="link" size={18} color="muted" />}
-            testID={`${props.testPrefix}-link`}
-          />
-        </View>
-        <IconButton
-          icon="map-pin"
-          label="In Google Maps suchen"
-          variant="soft"
-          size={44}
-          disabled={!search}
-          hint={search ? undefined : 'Erst einen Namen eingeben'}
-          onPress={() => {
-            if (search) openLink(search);
+      {placeName ? (
+        <TextField
+          label="Ortsname"
+          value={placeName.value}
+          onChangeText={(value) => {
+            if (!pastedElsewhere(placeName.value, value, 'name')) placeName.onChange(value);
           }}
-          testID={`${props.testPrefix}-maps-search`}
+          placeholder={placeName.placeholder}
+          testID={`${props.testPrefix}-place-name`}
         />
-      </Row>
-      {props.linkStatus}
-      {canReadClipboard() ? (
-        <View style={{ alignItems: 'flex-start' }}>
-          <Button
-            label="Einfügen"
-            icon="clipboard-paste"
-            variant="secondary"
-            size="sm"
-            onPress={() => void paste()}
-            testID={`${props.testPrefix}-paste`}
-          />
-        </View>
       ) : null}
+      <TextField
+        label="Google Maps Link"
+        inputRef={linkRef}
+        value={props.link}
+        onChangeText={(value) => {
+          if (pastedElsewhere(props.link, value, 'link')) return;
+          props.onLinkChange(value);
+          if (recognizePaste(props.link, value)?.kind === 'maps') {
+            focusAfter('link', { link: value });
+          }
+        }}
+        placeholder="Link aus Google Maps oder Apple Karten"
+        autoFocus={props.linkAutoFocus}
+        error={props.linkError}
+        hint={props.linkHint}
+        keyboardType="url"
+        left={<Icon name="link" size={18} color="muted" />}
+        testID={`${props.testPrefix}-link`}
+      />
+      {props.linkStatus}
       {address ? (
         <TextField
           label="Adresse"
