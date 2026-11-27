@@ -44,6 +44,7 @@ import { OFFLINE_EDIT_HINT, useOnlineOnly } from '@/features/shell/offline';
 import { revokeLater } from '@/features/shell/revoke-later';
 import { ProposalSheet, type ProposalRefine } from '@/features/web-search/proposal-sheet';
 import { features } from '@/lib/features';
+import { usePromptDictation } from '@/lib/use-prompt-dictation';
 
 import {
   dismissPhotoSuggestions,
@@ -392,6 +393,50 @@ const GENERATING_LABEL = 'Foto wird erzeugt';
 /** Three tiles stay thumbnails on a wide screen; the large photo stands below. */
 const TILE_MAX = 200;
 
+/** "Was soll anders sein?" and "Neu generieren" under the photo suggestions (spec 0068: sent with the last dictated words). */
+function RegenerateLine(props: {
+  loading: boolean;
+  /** Kept by the panel, so the wish stays through the loading state. */
+  extra: string;
+  setExtra: (extra: string) => void;
+  onRegenerate: (extra: string) => void;
+  testID: string;
+}) {
+  const { loading, extra, setExtra, testID: id } = props;
+  const online = useOnlineOnly();
+  const dictation = usePromptDictation({
+    value: extra,
+    onChangeText: setExtra,
+    onSend: () => props.onRegenerate(extra),
+  });
+  return (
+    <Stack gap={8}>
+      <DictationField
+        label="Was soll anders sein?"
+        placeholder="optional, z. B. heller, von oben"
+        value={extra}
+        onChangeText={setExtra}
+        dictation={dictation}
+        maxLength={IMAGE_EXTRA_MAX}
+        editable={!loading && !online.disabled}
+        testID={`${id}-extra`}
+      />
+      <View style={{ alignItems: 'flex-start' }}>
+        <Button
+          label={loading ? 'Wird erzeugt …' : 'Neu generieren'}
+          icon="refresh-cw"
+          variant="secondary"
+          size="sm"
+          disabled={loading || online.disabled}
+          hint={online.hint}
+          onPress={dictation.send}
+          testID={`${id}-regenerate`}
+        />
+      </View>
+    </Stack>
+  );
+}
+
 /**
  * AC-010: three suggestions; "Übernehmen" makes one the draft's photo (saved with "Speichern").
  * Spec 0045: the tiles pulse while the photos are made (REQ-005); "Neu generieren" with an
@@ -437,34 +482,17 @@ function PhotoSuggestionsPanel(props: { recipe: Recipe; editor: PageEditor }) {
   ) : null;
   const id = 'recipe-photo-suggestions';
   const loading = suggestions.status === 'loading';
-  const regenerate = () => {
-    setSelected(0);
-    regeneratePhotoSuggestions(recipe.id, extra);
-  };
   const again = (
-    <Stack gap={8}>
-      <DictationField
-        label="Was soll anders sein?"
-        placeholder="optional, z. B. heller, von oben"
-        value={extra}
-        onChangeText={setExtra}
-        maxLength={IMAGE_EXTRA_MAX}
-        editable={!loading && !online.disabled}
-        testID={`${id}-extra`}
-      />
-      <View style={{ alignItems: 'flex-start' }}>
-        <Button
-          label={loading ? 'Wird erzeugt …' : 'Neu generieren'}
-          icon="refresh-cw"
-          variant="secondary"
-          size="sm"
-          disabled={loading || online.disabled}
-          hint={online.hint}
-          onPress={regenerate}
-          testID={`${id}-regenerate`}
-        />
-      </View>
-    </Stack>
+    <RegenerateLine
+      loading={loading}
+      extra={extra}
+      setExtra={setExtra}
+      onRegenerate={(wish) => {
+        setSelected(0);
+        regeneratePhotoSuggestions(recipe.id, wish);
+      }}
+      testID={id}
+    />
   );
   if (loading) {
     return (

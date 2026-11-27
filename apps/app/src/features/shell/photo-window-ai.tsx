@@ -22,6 +22,7 @@ import { Pressable, View } from 'react-native';
 
 import { DictationField } from '@/features/shell/dictation-field';
 import { OFFLINE_EDIT_HINT, useOnlineOnly } from '@/features/shell/offline';
+import { usePromptDictation } from '@/lib/use-prompt-dictation';
 
 import { revokeLater } from './revoke-later';
 
@@ -132,6 +133,8 @@ export function PhotoWindowAi(props: {
     props.onPick(variant.photo);
   };
 
+  // Spec 0068, AC-013: "Erzeugen" while dictating takes the last words along.
+  const dictation = usePromptDictation({ value: prompt, onChangeText: setPrompt, onSend: create });
   const failure = result ? imageFailureNotice(result.failed) : undefined;
   const disabled = online.disabled || busy;
   // What comes after "Erzeugen" scrolls into view, so it never hides behind the footer.
@@ -143,6 +146,7 @@ export function PhotoWindowAi(props: {
         placeholder={fromPhoto ? 'z. B. Text entfernen, sauberes Food-Foto' : 'z. B. Apfelkuchen'}
         value={prompt}
         onChangeText={setPrompt}
+        dictation={dictation}
         multiline
         maxLength={1000}
         editable={!disabled}
@@ -176,9 +180,9 @@ export function PhotoWindowAi(props: {
           icon={result ? 'refresh-cw' : 'sparkles'}
           variant="secondary"
           size="sm"
-          disabled={disabled || prompt.trim() === ''}
+          disabled={disabled || (prompt.trim() === '' && !dictation.pending)}
           hint={online.hint}
-          onPress={create}
+          onPress={dictation.send}
           testID={`${id}-create`}
         />
       </View>

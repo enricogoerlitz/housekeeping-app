@@ -87,6 +87,7 @@ export async function startSpeech(handlers: SpeechHandlers): Promise<SpeechSessi
   );
 
   let closed = false;
+  let stopping = false;
   const close = () => {
     if (closed) return;
     closed = true;
@@ -94,7 +95,8 @@ export async function startSpeech(handlers: SpeechHandlers): Promise<SpeechSessi
   };
   return {
     stop: () =>
-      new Promise<string>((resolve) =>
+      new Promise<string>((resolve) => {
+        stopping = true;
         recognizer.stopContinuousRecognitionAsync(
           () => {
             close();
@@ -104,10 +106,15 @@ export async function startSpeech(handlers: SpeechHandlers): Promise<SpeechSessi
             close();
             resolve(transcript());
           },
-        ),
-      ),
+        );
+      }),
     cancel: () => {
       if (closed) return;
+      // A stop that waited too long (spec 0068, decision 2) is not asked to stop twice.
+      if (stopping) {
+        close();
+        return;
+      }
       recognizer.stopContinuousRecognitionAsync(close, close);
     },
   };

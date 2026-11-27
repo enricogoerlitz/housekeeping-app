@@ -23,6 +23,7 @@ import { View } from 'react-native';
 import { confirmFirst } from '@/features/shell/confirm-dialog';
 import { DictationField } from '@/features/shell/dictation-field';
 import { useOnlineOnly } from '@/features/shell/offline';
+import { usePromptDictation } from '@/lib/use-prompt-dictation';
 
 // The Änderungsansicht (spec 0049, REQ-005): what a proposal (Websuche or „Prompt“) would
 // change on an item that exists. New and changed fields and rows are tinted yellow and carry
@@ -57,7 +58,10 @@ function RefineLine(props: { refine: ProposalRefine; testID: string }) {
       if (done) setWish('');
     });
   };
-  const disabled = refine.busy || online.disabled || wish.trim() === '';
+  const change = (text: string) => setWish(text.slice(0, REFINE_MAX));
+  // Spec 0068: "Anpassen" while dictating sends the wish with its last words.
+  const dictation = usePromptDictation({ value: wish, onChangeText: change, onSend: send });
+  const disabled = refine.busy || online.disabled || (wish.trim() === '' && !dictation.pending);
   return (
     <Stack gap={8}>
       {/* A composer (spec 0062, decision 14): one round field with the mic and „Anpassen“ inside. */}
@@ -65,13 +69,14 @@ function RefineLine(props: { refine: ProposalRefine; testID: string }) {
         label="Was soll noch anders sein?"
         placeholder="z. B. „Linsen statt Tofu“"
         value={wish}
-        onChangeText={(text) => setWish(text.slice(0, REFINE_MAX))}
+        onChangeText={change}
+        dictation={dictation}
         maxLength={REFINE_MAX}
         editable={!refine.busy && !online.disabled}
         multiline
         grow
         round
-        onSubmitEditing={send}
+        onSubmitEditing={dictation.send}
         blurOnSubmit
         returnKeyType="send"
         testID={`${testID}-text`}
@@ -82,7 +87,7 @@ function RefineLine(props: { refine: ProposalRefine; testID: string }) {
             variant="soft"
             disabled={disabled}
             hint={online.hint}
-            onPress={send}
+            onPress={dictation.send}
             testID={`${testID}-send`}
           />
         }

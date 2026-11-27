@@ -1,8 +1,14 @@
 import { aiErrorMessage } from '@housekeeping/api';
+import { finalizeDictation, type FinalizedDictation, type StartTimer } from '@housekeeping/core';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { startSpeech } from './speech';
 import { SpeechError, type SpeechSession } from './speech-common';
+
+const startTimer: StartTimer = (run, ms) => {
+  const timer = setTimeout(run, ms);
+  return () => clearTimeout(timer);
+};
 
 export type DictationStatus = 'idle' | 'starting' | 'listening' | 'stopping';
 
@@ -13,8 +19,14 @@ export interface Dictation {
   /** Calm German message when dictation could not start or broke off. */
   error: string | undefined;
   start(): void;
-  /** Stops listening and resolves with the transcript ('' when nothing was running). */
-  stop(): Promise<string>;
+  /**
+   * Stops listening and resolves with the final transcript, or after at most 1.5 s with what was
+   * shown (spec 0068, decision 2); `failed` when recognition broke off meanwhile (AC-007).
+   * Resolves with '' when nothing was running.
+   */
+  stop(): Promise<FinalizedDictation>;
+  /** Stops without a result, also while still starting (spec 0068, AC-008, AC-009). */
+  cancel(): void;
   dismissError(): void;
 }
 
@@ -27,6 +39,11 @@ export function useDictation(options?: { onStopWord?: () => void }): Dictation {
   const [transcript, setTranscript] = useState('');
   const [error, setError] = useState<string | undefined>();
   const session = useRef<SpeechSession | undefined>(undefined);
+  // Each start gets a number; a cancel moves it on, so a start still on its way ends itself.
+  const attempt = useRef(0);
+  const heard = useRef('');
+  // Set while stopping: a break-off then ends the wait with what was shown (AC-007).
+  const breakOff = useRef<(() => void) | undefined>(undefined);
   const mounted = useRef(true);
   const onStopWord = useRef(options?.onStopWord);
   useEffect(() => {
@@ -37,6 +54,7 @@ export function useDictation(options?: { onStopWord?: () => void }): Dictation {
     mounted.current = true;
     return () => {
       mounted.current = false;
+      attempt.current += 1;
       session.current?.cancel();
       session.current = undefined;
     };
@@ -44,26 +62,35 @@ export function useDictation(options?: { onStopWord?: () => void }): Dictation {
 
   const start = useCallback(() => {
     if (session.current) return;
+    attempt.current += 1;
+    const mine = attempt.current;
+    const current = () => mounted.current && attempt.current === mine;
     setError(undefined);
     setTranscript('');
+    heard.current = '';
     setStatus('starting');
     startSpeech({
       onTranscript: (text) => {
-        if (mounted.current) setTranscript(text);
+        heard.current = text;
+        if (current()) setTranscript(text);
       },
       onStopWord: () => {
-        if (mounted.current) onStopWord.current?.();
+        if (current()) onStopWord.current?.();
       },
       onError: (message) => {
+        if (breakOff.current) {
+          breakOff.current();
+          return;
+        }
+        if (!current()) return;
         session.current?.cancel();
         session.current = undefined;
-        if (!mounted.current) return;
         setError(message);
         setStatus('idle');
       },
     })
       .then((started) => {
-        if (!mounted.current) {
+        if (!current()) {
           started.cancel();
           return;
         }
@@ -71,23 +98,38 @@ export function useDictation(options?: { onStopWord?: () => void }): Dictation {
         setStatus('listening');
       })
       .catch((caught: unknown) => {
-        if (!mounted.current) return;
+        if (!current()) return;
         setError(caught instanceof SpeechError ? caught.message : aiErrorMessage(caught));
         setStatus('idle');
       });
   }, []);
 
-  const stop = useCallback(async () => {
+  const stop = useCallback(async (): Promise<FinalizedDictation> => {
     const running = session.current;
-    if (!running) return '';
+    if (!running) return { text: '', outcome: 'final' };
     session.current = undefined;
     setStatus('stopping');
-    const text = await running.stop();
+    const final = new Promise<string>((resolve, reject) => {
+      breakOff.current = () => reject(new SpeechError('broke off'));
+      running.stop().then(resolve, reject);
+    });
+    const result = await finalizeDictation(final, () => heard.current, startTimer);
+    breakOff.current = undefined;
+    // A wait that ran out leaves the recogniser to close itself.
+    if (result.outcome !== 'final') running.cancel();
     if (mounted.current) setStatus('idle');
-    return text;
+    return result;
+  }, []);
+
+  const cancel = useCallback(() => {
+    attempt.current += 1;
+    session.current?.cancel();
+    session.current = undefined;
+    breakOff.current = undefined;
+    if (mounted.current) setStatus('idle');
   }, []);
 
   const dismissError = useCallback(() => setError(undefined), []);
 
-  return { status, transcript, error, start, stop, dismissError };
+  return { status, transcript, error, start, stop, cancel, dismissError };
 }
