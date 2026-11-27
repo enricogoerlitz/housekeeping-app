@@ -1,4 +1,9 @@
-import type { DraftIngredient, RecipeDraft, RecipeDraftSource } from './ai-contract';
+import type {
+  DraftIngredient,
+  RecipeDraft,
+  RecipeDraftReply,
+  RecipeDraftSource,
+} from './ai-contract';
 import { exactCatalogHit, type StarterCatalogEntry } from './article-catalog';
 import type { ArticleProposal } from './ingredient-drafts';
 import type { PageDraftInput, PageDraftStep } from './page-editor';
@@ -11,6 +16,7 @@ import {
 import { normalizeText } from './text';
 import type { Area, Article, Id, Recipe, RecipeLink, RecipeVariant } from './types';
 import { linkHost } from './web-link';
+import type { WebPhotoChoice } from './web-preview';
 
 // "Mit KI ausfüllen" (spec 0040, REQ-001 – REQ-006): what the app does with the AI's answer before
 // the person sees it in the edit mode. Nothing here saves; the page editor fills its draft with
@@ -225,6 +231,55 @@ export function draftPagePhotoUrl(
     sources.find((source) => source.imageUrl)?.imageUrl ??
     sources.find((source) => source.coverUrl)?.coverUrl
   );
+}
+
+/**
+ * Spec 0065: how a draft gets its photo — "Foto generieren", and with "Websuche" on the photo
+ * choice of the web search instead (spec 0049, REQ-010).
+ */
+export interface DraftPhotoChoice {
+  generatePhoto: boolean;
+  /** Only while "Websuche" is on. */
+  webPhoto?: WebPhotoChoice;
+}
+
+export interface DraftPhotoPlan {
+  /** The photo to load (fetch-image) for the draft. */
+  pageUrl?: string;
+  /** Three suggestions from the draft's image prompt. */
+  generate: boolean;
+  /** AC-007: „Original“ falls back to the suggestions when its photo cannot be loaded. */
+  generateWhenPageFails: boolean;
+}
+
+/** AC-009: the image prompt is asked for whenever suggestions may follow. */
+export function draftWantsImagePrompt(choice: DraftPhotoChoice): boolean {
+  return choice.webPhoto === undefined ? choice.generatePhoto : choice.webPhoto !== 'none';
+}
+
+/**
+ * REQ-003: „Original“ is the photo of an own link, else the web search's (AC-006), and without
+ * one three suggestions like `effectiveWebPhotoChoice` (AC-007); „KI-Bild“ and „Keins“ as named
+ * (AC-008). Without the web search "Foto generieren" decides as before (AC-010).
+ */
+export function draftPhotoPlan(
+  reply: Pick<RecipeDraftReply, 'sources' | 'webPhotoUrl'>,
+  choice: DraftPhotoChoice,
+): DraftPhotoPlan {
+  if (choice.webPhoto === undefined) {
+    const pageUrl = draftPagePhotoUrl(reply.sources, choice.generatePhoto);
+    return {
+      ...(pageUrl ? { pageUrl } : {}),
+      generate: choice.generatePhoto,
+      generateWhenPageFails: false,
+    };
+  }
+  if (choice.webPhoto !== 'source')
+    return { generate: choice.webPhoto === 'ai', generateWhenPageFails: false };
+  const pageUrl = draftPagePhotoUrl(reply.sources, false) ?? reply.webPhotoUrl;
+  return pageUrl
+    ? { pageUrl, generate: false, generateWhenPageFails: true }
+    : { generate: true, generateWhenPageFails: false };
 }
 
 /** The prefilled prompt of the tab "KI" (REQ-004): the title, for a recipe with main ingredients. */

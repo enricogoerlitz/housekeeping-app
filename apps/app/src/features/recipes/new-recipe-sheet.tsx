@@ -53,7 +53,7 @@ import {
 import { features } from '@/lib/features';
 import { CAN_PICK_PHOTO, pickPhotoFile } from '@/lib/pick-photo';
 
-import { draftPagePhoto, handOverNewRecipe, startPhotoSuggestions } from './ai-draft';
+import { draftPhoto, handOverNewRecipe, startPhotoSuggestions } from './ai-draft';
 import { AiFillFields, toastUnreadLinks, useAiFill, useAiFillTabs, useDraftInput } from './ai-fill';
 import { IngredientLinesField } from './ingredient-lines-field';
 import { NewRecipeFields } from './recipe-form';
@@ -176,11 +176,14 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
       .filter(Boolean)
       .join('\n');
     const chosenPhoto = photo;
-    const generatePhoto = fill.generatePhoto;
+    const photoChoice = fill.photoChoice;
     void fill.run({ prefix: typed, title: title.trim() }).then(async (reply) => {
       if (!reply) return;
-      // AC-042 (spec 0049): without "Foto generieren" the linked page's photo, unless one was chosen.
-      const pagePhoto = chosenPhoto ? undefined : await draftPagePhoto(reply, generatePhoto);
+      // AC-042 (spec 0049): without "Foto generieren" the linked page's photo, unless one was
+      // chosen; spec 0065: with "Websuche" „Original · KI-Bild · Keins“ decides.
+      const { photo: pagePhoto, generate } = await draftPhoto(reply, photoChoice, {
+        keepOwn: chosenPhoto !== undefined,
+      });
       const input = draftInput(reply);
       if (title.trim()) input.title = title.trim();
       const recipe = newRecipe({
@@ -191,7 +194,7 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
         createdAt: new Date().toISOString(),
       });
       handOverNewRecipe(recipe, input, chosenPhoto ?? pagePhoto);
-      if (generatePhoto && reply.draft.imagePrompt) {
+      if (generate && reply.draft.imagePrompt) {
         startPhotoSuggestions(recipe.id, {
           prompt: reply.draft.imagePrompt,
           context: draftImageContext(reply.draft),

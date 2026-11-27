@@ -292,4 +292,19 @@ describe('Spec 0055: the current recipe, the web search and new articles in the 
       RecipeDraftReplySchema.safeParse({ draft, sources: [], webContext: 'maybe' }).success,
     ).toBe(false);
   });
+
+  it('spec 0065 AC-001: the reply may carry the web search photo, https only', () => {
+    const webPhotoUrl = 'https://img.example.de/chili.jpg';
+    expect(
+      RecipeDraftReplySchema.parse({ draft, sources: [], webContext: 'used', webPhotoUrl })
+        .webPhotoUrl,
+    ).toBe(webPhotoUrl);
+    expect(
+      RecipeDraftReplySchema.safeParse({
+        draft,
+        sources: [],
+        webPhotoUrl: 'http://img.example.de/chili.jpg',
+      }).success,
+    ).toBe(false);
+  });
 });

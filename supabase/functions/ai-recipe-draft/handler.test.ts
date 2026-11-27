@@ -781,3 +781,110 @@ describe('ai-recipe-draft: the web search of "Prompt" (spec 0055, REQ-007)', () 
     expect(deps.fetchMock).not.toHaveBeenCalled();
   });
 });
+
+describe('ai-recipe-draft: the photo of the web search (spec 0065, REQ-001)', () => {
+  const PHOTO = 'https://img.rezepte-1.example.de/chili.jpg';
+  const THUMB = 'https://imgs.search.brave.com/chili-thumb.jpg';
+  const braveSearch = (query: string) =>
+    `https://api.search.brave.com/res/v1/web/search?${new URLSearchParams({
+      q: query,
+      country: 'DE',
+      search_lang: 'de',
+      count: '10',
+    })}`;
+  const brave = (thumbnail?: string) =>
+    new Response(
+      JSON.stringify({
+        web: {
+          results: [0, 1].map((index) => ({
+            title: `Veganes Chili ${index}`,
+            url: hitPage(index),
+            description: `Mit Kidneybohnen ${index}`,
+            ...(thumbnail && index === 1 ? { thumbnail: { src: thumbnail } } : {}),
+          })),
+        },
+      }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    );
+
+  it('AC-001: the photo of the first page read that shows one comes back as webPhotoUrl', async () => {
+    const { deps } = setup(
+      {
+        [SERPER_SEARCH]: () => serper(2),
+        [hitPage(0)]: () => html('<html><body><p>Chili ohne Foto</p></body></html>'),
+        [hitPage(1)]: () =>
+          html(
+            `<html><head><meta property="og:image" content="${PHOTO}"></head><body><p>Chili</p></body></html>`,
+          ),
+      },
+      undefined,
+      KEYS,
+    );
+    const response = await handler(
+      post({ householdId: HOUSEHOLD_ID, text: WISH, webQuery: 'Chili vegan' }),
+      deps,
+    );
+    const body = await json(response);
+    expect(body.webPhotoUrl).toBe(PHOTO);
+    expect(body.sources).toEqual([]);
+  });
+
+  it('AC-002: without a page photo the image a recipe hit brings along', async () => {
+    const { deps } = setup(
+      {
+        [braveSearch('Chili vegan')]: () => brave(THUMB),
+        [hitPage(0)]: () => html('<html><body><p>Chili</p></body></html>'),
+        [hitPage(1)]: () => html('<html><body><p>Chili</p></body></html>'),
+      },
+      undefined,
+      { BRAVE_SEARCH_API_KEY: 'brave-SECRET' },
+    );
+    const response = await handler(
+      post({ householdId: HOUSEHOLD_ID, text: WISH, webQuery: 'Chili vegan' }),
+      deps,
+    );
+    expect((await json(response)).webPhotoUrl).toBe(THUMB);
+  });
+
+  it('AC-003: no https photo, no search or no webQuery gives no webPhotoUrl', async () => {
+    const plain = setup(
+      {
+        [SERPER_SEARCH]: () => serper(1),
+        [hitPage(0)]: () =>
+          html(
+            '<html><head><meta property="og:image" content="http://unsicher.example.de/a.jpg"></head><body><p>Chili</p></body></html>',
+          ),
+      },
+      undefined,
+      KEYS,
+    );
+    const insecure = await json(
+      await handler(
+        post({ householdId: HOUSEHOLD_ID, text: WISH, webQuery: 'Chili vegan' }),
+        plain.deps,
+      ),
+    );
+    expect(insecure.webContext).toBe('used');
+    expect(insecure).not.toHaveProperty('webPhotoUrl');
+
+    const failing = setup(
+      { [SERPER_SEARCH]: () => new Response('{}', { status: 500 }) },
+      undefined,
+      KEYS,
+    );
+    const unavailable = await json(
+      await handler(
+        post({ householdId: HOUSEHOLD_ID, text: WISH, webQuery: 'Chili vegan' }),
+        failing.deps,
+      ),
+    );
+    expect(unavailable.webContext).toBe('unavailable');
+    expect(unavailable).not.toHaveProperty('webPhotoUrl');
+
+    const without = setup({}, undefined, KEYS);
+    const none = await json(
+      await handler(post({ householdId: HOUSEHOLD_ID, text: WISH }), without.deps),
+    );
+    expect(none).not.toHaveProperty('webPhotoUrl');
+  });
+});

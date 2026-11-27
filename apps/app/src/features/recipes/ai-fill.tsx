@@ -15,16 +15,19 @@ import {
   RECIPE_DRAFT_LIMITS,
   draftLinks,
   draftToPageInput,
+  draftWantsImagePrompt,
   imageAddress,
   aiFillDefaults,
   linkChipLabel,
   promptWebQuery,
   tagValues,
   type AiFillTab,
+  type DraftPhotoChoice,
   type PageDraftInput,
   type RecipeDraft,
   type RecipeDraftReply,
   type RecipeDraftSource,
+  type WebPhotoChoice,
 } from '@housekeeping/core';
 import {
   Button,
@@ -65,12 +68,13 @@ import { OFFLINE_EDIT_HINT, useOnlineOnly } from '@/features/shell/offline';
 import { pasteKeys } from '@/features/shell/photo-window';
 import { useWebSearch, type WebSearch } from '@/features/web-search/use-web-search';
 import {
+  PhotoChoiceChips,
   webSearchPrimary,
   WebSearchPanel,
   type WebTake,
 } from '@/features/web-search/web-search-panel';
 
-import { draftPagePhoto } from './ai-draft';
+import { draftPhoto } from './ai-draft';
 import { newRowKey } from './sections/ingredient-handover';
 
 // "Mit KI ausfüllen" (spec 0040, REQ-001 – REQ-003, REQ-006): a sentence, up to three links and
@@ -98,6 +102,11 @@ export interface AiFill {
   /** Spec 0055, REQ-007: "Websuche" in "Prompt" — one web search as context, off by default. */
   webSearch: boolean;
   setWebSearch: (on: boolean) => void;
+  /** Spec 0065, REQ-002: „Original · KI-Bild · Keins“ while "Websuche" is on. */
+  webPhoto: WebPhotoChoice;
+  setWebPhoto: (choice: WebPhotoChoice) => void;
+  /** What decides the draft's photo (REQ-003), taken when "Erzeugen" is pressed. */
+  photoChoice: DraftPhotoChoice;
   busy: boolean;
   preparing: boolean;
   error: string | undefined;
@@ -124,10 +133,14 @@ const WEB_CONTEXT_UNAVAILABLE = 'Ohne Websuche ausgefüllt – die Suche war nic
 /** `generatePhoto`: how "Foto generieren" starts (spec 0055, REQ-005; on by default). */
 export function useAiFill(initial: { generatePhoto?: boolean } = {}): AiFill {
   const startsGenerating = initial.generatePhoto ?? true;
+  // Spec 0065, Entscheidung 4: a recipe with a photo keeps it unless asked ("Keins").
+  const startsWebPhoto: WebPhotoChoice = startsGenerating ? 'source' : 'none';
   const [text, setText] = useState('');
   const [photos, setPhotos] = useState<DraftPhoto[]>([]);
   const [generatePhoto, setGeneratePhoto] = useState(startsGenerating);
   const [webSearch, setWebSearch] = useState(false);
+  const [webPhoto, setWebPhoto] = useState<WebPhotoChoice>(startsWebPhoto);
+  const photoChoice: DraftPhotoChoice = webSearch ? { generatePhoto, webPhoto } : { generatePhoto };
   const [busy, setBusy] = useState(false);
   const [preparing, setPreparing] = useState(false);
   const [error, setError] = useState<string>();
@@ -191,7 +204,7 @@ export function useAiFill(initial: { generatePhoto?: boolean } = {}): AiFill {
           .slice(0, RECIPE_DRAFT_LIMITS.text),
         links,
         photos: photos.map((entry) => entry.photo),
-        imagePrompt: generatePhoto,
+        imagePrompt: draftWantsImagePrompt(photoChoice),
         ...(options.current ? { current: options.current } : {}),
         ...(webQuery ? { webQuery } : {}),
       });
@@ -213,6 +226,7 @@ export function useAiFill(initial: { generatePhoto?: boolean } = {}): AiFill {
     setPhotos([]);
     setGeneratePhoto(startsGenerating);
     setWebSearch(false);
+    setWebPhoto(startsWebPhoto);
     setError(undefined);
     setSources([]);
   };
@@ -233,6 +247,9 @@ export function useAiFill(initial: { generatePhoto?: boolean } = {}): AiFill {
     setGeneratePhoto,
     webSearch,
     setWebSearch,
+    webPhoto,
+    setWebPhoto,
+    photoChoice,
     busy,
     preparing,
     error,
@@ -411,17 +428,23 @@ export function AiFillFields(props: {
             accessibilityLabel="Web: vorher im Web suchen"
             testID={`${testID}-web-search`}
           />
-          <Chip
-            label="Bild"
-            icon="image"
-            selected={fill.generatePhoto}
-            onPress={() => fill.setGeneratePhoto(!fill.generatePhoto)}
-            disabled={disabled}
-            hint={online.hint}
-            accessibilityLabel="Bild: drei Fotos vorschlagen"
-            testID={`${testID}-generate-photo`}
-          />
+          {/* Spec 0065, AC-005: with "Web" the photo choice below decides, no second photo chip. */}
+          {fill.webSearch ? null : (
+            <Chip
+              label="Bild"
+              icon="image"
+              selected={fill.generatePhoto}
+              onPress={() => fill.setGeneratePhoto(!fill.generatePhoto)}
+              disabled={disabled}
+              hint={online.hint}
+              accessibilityLabel="Bild: drei Fotos vorschlagen"
+              testID={`${testID}-generate-photo`}
+            />
+          )}
         </Row>
+      ) : null}
+      {props.compact && fill.webSearch ? (
+        <WebPhotoField fill={fill} changes={changes} testID={testID} />
       ) : null}
       {!props.compact && fill.photos.length > 0 ? (
         <Row gap={8} wrap>
@@ -487,14 +510,18 @@ export function AiFillFields(props: {
             disabled={disabled}
             testID={`${testID}-web-search`}
           />
-          <SwitchRow
-            label="Foto generieren"
-            description="Die KI schlägt drei Fotos vor; du wählst eins oder keins."
-            value={fill.generatePhoto}
-            onValueChange={fill.setGeneratePhoto}
-            disabled={disabled}
-            testID={`${testID}-generate-photo`}
-          />
+          {fill.webSearch ? (
+            <WebPhotoField fill={fill} changes={changes} testID={testID} />
+          ) : (
+            <SwitchRow
+              label="Foto generieren"
+              description="Die KI schlägt drei Fotos vor; du wählst eins oder keins."
+              value={fill.generatePhoto}
+              onValueChange={fill.setGeneratePhoto}
+              disabled={disabled}
+              testID={`${testID}-generate-photo`}
+            />
+          )}
         </>
       )}
       {fill.error ? (
@@ -502,6 +529,37 @@ export function AiFillFields(props: {
           {fill.error}
         </Text>
       ) : null}
+    </Stack>
+  );
+}
+
+/**
+ * Spec 0065, REQ-002: with "Websuche" on, the photo choice of the web search's preview (spec 0049,
+ * REQ-010) instead of "Foto generieren", with one line on what the choice does.
+ */
+function WebPhotoField(props: { fill: AiFill; changes: boolean; testID: string }) {
+  const { fill, testID } = props;
+  const online = useOnlineOnly();
+  const note =
+    fill.webPhoto === 'source'
+      ? 'Hat ein Treffer der Websuche ein Foto, bekommt das Rezept es; sonst schlägt die KI drei vor.'
+      : fill.webPhoto === 'ai'
+        ? 'Die KI schlägt drei Fotos vor; du wählst eins oder keins.'
+        : props.changes
+          ? 'Kein neues Foto.'
+          : 'Das Rezept bekommt kein Foto.';
+  return (
+    <Stack gap={6}>
+      <PhotoChoiceChips
+        value={fill.webPhoto}
+        onChange={fill.setWebPhoto}
+        disabled={online.disabled || fill.busy}
+        hint={online.hint}
+        testID={`${testID}-web-photo`}
+      />
+      <Text variant="small" color="muted" testID={`${testID}-web-photo-note`}>
+        {note}
+      </Text>
     </Stack>
   );
 }
@@ -631,20 +689,21 @@ export function AiFillSheet(props: {
   const dismiss = () => discardFirst(fill.text.trim() !== '', props.onClose);
   const submit = () => {
     if (!fill.ready || fill.busy) return;
-    const generatePhoto = fill.generatePhoto;
+    const photoChoice = fill.photoChoice;
     const change = props.hasContent;
     void fill
       .run({ title: props.title, ...(change ? { current: props.current() } : {}) })
       .then(async (reply) => {
         if (!reply) return;
-        // AC-042 (spec 0049): without "Foto generieren" the linked page's photo is proposed.
-        const photo = await draftPagePhoto(reply, generatePhoto);
+        // AC-042 (spec 0049): without "Foto generieren" the linked page's photo is proposed;
+        // spec 0065: with "Websuche" the photo choice decides.
+        const { photo, generate } = await draftPhoto(reply, photoChoice);
         props.onClose();
         props.onDraft({
           reply,
           replace: change,
           ...(change ? { change } : {}),
-          generatePhoto,
+          generatePhoto: generate,
           ...(photo ? { photo } : {}),
         });
       });

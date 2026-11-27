@@ -299,6 +299,27 @@ const PHOTO_OPTIONS: { value: WebPhotoChoice; label: string }[] = [
   { value: 'none', label: 'Keins' },
 ];
 
+/** „Foto: Original · KI-Bild · Keins“ (REQ-010), also beside "Websuche" in "KI-Rezept" (spec 0065). */
+export function PhotoChoiceChips(props: {
+  value: WebPhotoChoice;
+  onChange: (choice: WebPhotoChoice) => void;
+  disabled?: boolean;
+  hint?: string;
+  testID: string;
+}) {
+  return (
+    <ChoiceChips
+      label="Foto"
+      options={PHOTO_OPTIONS}
+      value={props.value}
+      onChange={props.onChange}
+      disabled={props.disabled}
+      hint={props.hint}
+      testID={props.testID}
+    />
+  );
+}
+
 /**
  * REQ-010: which photo the entry gets. With a photo of the hit „Original · KI-Bild · Keins“
  * (AC-034), without one the switch „Foto generieren“ (AC-035).
@@ -321,13 +342,7 @@ function PhotoChoice(props: { search: WebSearch; testID: string }) {
   return (
     <Stack gap={6}>
       {hasPhoto ? (
-        <ChoiceChips
-          label="Foto"
-          options={PHOTO_OPTIONS}
-          value={choice}
-          onChange={search.setPhotoChoice}
-          testID={testID}
-        />
+        <PhotoChoiceChips value={choice} onChange={search.setPhotoChoice} testID={testID} />
       ) : (
         <SwitchRow
           label="Foto generieren"
