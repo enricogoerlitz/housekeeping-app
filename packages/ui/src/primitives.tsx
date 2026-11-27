@@ -1,9 +1,10 @@
-import { useContext, type ReactNode, type Ref } from 'react';
+import { useContext, useState, type ReactNode, type Ref } from 'react';
 import {
   Platform,
   Text as RNText,
   View,
   type HostInstance,
+  type LayoutChangeEvent,
   type StyleProp,
   type TextStyle,
   type ViewStyle,
@@ -12,6 +13,7 @@ import {
 import { icons, type IconName } from './icons';
 import { ToneContext, useTheme } from './theme-context';
 import type { TextVariant, Theme } from './themes';
+import { wordOverflows } from './title-fit';
 
 export type ColorToken =
   | 'text'
@@ -61,14 +63,21 @@ function resolveColor(theme: Theme, toneFg: string | undefined, token: ColorToke
 }
 
 /**
- * Long German words break at a syllable with a hyphen instead of anywhere (spec 0031, REQ-033);
- * the browser hyphenates by `lang="de"`. Native apps break words themselves.
+ * Titles break between words and at real hyphens only, never by the browser's automatic
+ * hyphenation: "Halloumi-|Pfanne", not "Halloumi-Pfan-|ne" (spec 0057, REQ-004; replaces the
+ * automatic hyphenation of spec 0031, REQ-033). Native apps break words themselves.
  */
-export const HYPHENATE: TextStyle | null =
-  Platform.OS === 'web' ? ({ hyphens: 'auto' } as unknown as TextStyle) : null;
+export const TITLE_BREAK: TextStyle | null =
+  Platform.OS === 'web' ? ({ hyphens: 'manual' } as unknown as TextStyle) : null;
 
-/** The title roles hyphenate (REQ-033). */
-const HYPHENATED_VARIANTS = new Set<TextVariant>(['caption', 'rowTitle', 'cardTitle']);
+/** The title roles (REQ-004). */
+const TITLE_VARIANTS = new Set<TextVariant>(['caption', 'rowTitle', 'cardTitle']);
+
+/** A word may overflow, so `wholeWords` can tell (web only). */
+const KEEP_WORDS: TextStyle | null =
+  Platform.OS === 'web'
+    ? ({ overflowWrap: 'normal', wordWrap: 'normal' } as unknown as TextStyle)
+    : null;
 
 export interface TextProps {
   /** The text's element, e.g. to tell whether it is cut off (spec 0035, Tooltip). */
@@ -84,22 +93,30 @@ export interface TextProps {
   /** Marks the text as a heading for screen readers. */
   heading?: boolean;
   selectable?: boolean;
+  /**
+   * For narrow cards (spec 0057, REQ-004): words are never cut inside; when one is wider than the
+   * line, the title goes to one line ending in "…". Web only; native apps break words themselves.
+   */
+  wholeWords?: boolean;
 }
 
 export function Text({ ref, ...props }: TextProps) {
   const theme = useTheme();
   const color = useColor(props.color);
   const variant = theme.type[props.variant ?? 'body'];
+  const fit = useWholeWords(props.wholeWords === true, props.children);
   return (
     <RNText
       ref={ref}
       testID={props.testID}
-      numberOfLines={props.numberOfLines}
+      numberOfLines={fit?.cut ? 1 : props.numberOfLines}
       selectable={props.selectable}
       accessibilityRole={props.heading ? 'header' : undefined}
+      onLayout={fit?.onLayout}
       style={[
         variant,
-        HYPHENATED_VARIANTS.has(props.variant ?? 'body') ? HYPHENATE : null,
+        TITLE_VARIANTS.has(props.variant ?? 'body') ? TITLE_BREAK : null,
+        fit && !fit.cut ? KEEP_WORDS : null,
         { color },
         props.align ? { textAlign: props.align } : null,
         props.strike ? { textDecorationLine: 'line-through' } : null,
@@ -109,6 +126,34 @@ export function Text({ ref, ...props }: TextProps) {
       {props.children}
     </RNText>
   );
+}
+
+/**
+ * `wholeWords`: after each layout the text tells whether a word overflows its box; then it is cut
+ * to one line until its width or its text changes, so the answer never flips back and forth.
+ */
+function useWholeWords(
+  enabled: boolean,
+  children: ReactNode,
+): { cut: boolean; onLayout: (event: LayoutChangeEvent) => void } | undefined {
+  const [cutAt, setCutAt] = useState<{ text: string; width: number }>();
+  if (!enabled || Platform.OS !== 'web') return undefined;
+  const text = typeof children === 'string' || typeof children === 'number' ? String(children) : '';
+  const cut = cutAt !== undefined && cutAt.text === text;
+  return {
+    cut,
+    onLayout: (event) => {
+      const width = event.nativeEvent.layout.width;
+      if (cut) {
+        if (width !== cutAt.width) setCutAt(undefined);
+        return;
+      }
+      // On the web the layout event carries the text's element.
+      const node = (event.nativeEvent as { target?: unknown }).target;
+      if (wordOverflows(node as { scrollWidth?: number; clientWidth?: number } | null))
+        setCutAt({ text, width });
+    },
+  };
 }
 
 export interface IconProps {

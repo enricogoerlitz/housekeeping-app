@@ -213,10 +213,8 @@ test.describe('shell at phone width', () => {
     const color = parseRgb(await banner.evaluate((el) => getComputedStyle(el).backgroundColor));
     const h = hue(color);
     expect(h >= 15 && h <= 50, `banner hue ${h} is orange`).toBe(true);
-    // "Neu" stays open; its entries are greyed out with the hint (spec 0008).
-    await tid(page, 'recipe-new').click();
-    await expect(tid(page, 'recipe-new-recipe')).toHaveAttribute('aria-disabled', 'true');
-    await page.keyboard.press('Escape');
+    // "+" is greyed out with the hint (spec 0008; spec 0054, AC-003).
+    await expect(tid(page, 'recipe-new')).toHaveAttribute('aria-disabled', 'true');
     await expect(tid(page, 'recipe-offline-hint')).toHaveText(
       'Offline – zum Bearbeiten brauchst du Netz',
     );

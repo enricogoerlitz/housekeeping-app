@@ -17,20 +17,44 @@ import type { Chore, ChoreEvent, Id, ISODate, MealPlanEntry, Member, Recipe, Tri
 // The "Übersicht" (spec 0011, REQ-001, REQ-002): one shown day, as if it were today, and the
 // week around it. Nothing here is stored; the shown day lives only while the app runs.
 
-/** "Samstag 21. November", with the year when it is not the year of today. */
-function dayWithMonth(shown: ISODate, today: ISODate): string {
+/** The months of the short title: abbreviated with a dot, short ones written out (Duden). */
+const TITLE_MONTHS_SHORT = [
+  'Jan.',
+  'Feb.',
+  'März',
+  'Apr.',
+  'Mai',
+  'Juni',
+  'Juli',
+  'Aug.',
+  'Sept.',
+  'Okt.',
+  'Nov.',
+  'Dez.',
+];
+
+/** "21. November", "21. Nov." short, with the year when it is not the year of today. */
+function dayWithMonth(shown: ISODate, today: ISODate, short: boolean): string {
   const date = parseISODate(shown);
   const year = shown.slice(0, 4) === today.slice(0, 4) ? '' : ` ${shown.slice(0, 4)}`;
-  return `${date.getDate()}. ${monthName(date.getMonth())}${year}`;
+  const month = short ? (TITLE_MONTHS_SHORT[date.getMonth()] ?? '') : monthName(date.getMonth());
+  return `${date.getDate()}. ${month}${year}`;
 }
 
 /**
  * The title of the shown day: always weekday and date, "Freitag, 20. November", in another year
  * "Freitag, 8. Januar 2027". No "Morgen"/"Gestern" prefix, so the heading keeps one line and does
- * not jump between days (spec 0035, AC-014; replaces spec 0011, Offene Frage 2 c).
+ * not jump between days (spec 0035, AC-014; replaces spec 0011, Offene Frage 2 c). Phones take the
+ * short form "Fr., 20. Nov.", which fits one line beside the header's buttons (spec 0057, REQ-005).
  */
-export function overviewTitle(shown: ISODate, today: ISODate): string {
-  return `${weekdayLong(shown)}, ${dayWithMonth(shown, today)}`;
+export function overviewTitle(
+  shown: ISODate,
+  today: ISODate,
+  form: 'long' | 'short' = 'long',
+): string {
+  const short = form === 'short';
+  const weekday = short ? `${weekdayShort(shown)}.` : weekdayLong(shown);
+  return `${weekday}, ${dayWithMonth(shown, today, short)}`;
 }
 
 // ---------- Seven days from yesterday (spec 0020, REQ-001, REQ-002) ----------

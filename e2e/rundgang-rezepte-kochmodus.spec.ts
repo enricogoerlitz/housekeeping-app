@@ -161,12 +161,14 @@ test('AC-037 / AC-039 / AC-044: the cooking mode shows the step as text and the 
   await expect(tid(page, 'cook-step-index')).toHaveText('Schritt 1 von 6');
 });
 
-test('AC-045 / AC-046: "Neu" offers exactly Rezept, Sammlung, Restaurant on both views', async ({
+test('AC-046 / AC-005, AC-007 (0054): each view has its own "+", without a menu', async ({
   page,
 }) => {
   await open(page, '/rezepte?ansicht=restaurants');
-  await tid(page, 'recipe-new').click();
-  await expect(page.locator('[role="menuitem"]')).toHaveText(['Rezept', 'Sammlung', 'Restaurant']);
+  await expect(tid(page, 'recipe-new')).toHaveCount(0);
+  await tid(page, 'restaurant-new').click();
+  await expect(page.locator('[role="menuitem"]')).toHaveCount(0);
+  await expect(tid(page, 'restaurant-sheet')).toBeVisible();
 });
 
 test('AC-049: deleting asks first and names the planned entries that go (spec 0036: asks first)', async ({

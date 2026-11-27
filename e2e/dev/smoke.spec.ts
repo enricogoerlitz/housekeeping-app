@@ -174,8 +174,9 @@ test('dev smoke: every screen renders without a React warning or error', async (
   await expect(tid(page, 'month-phone')).toBeVisible();
   await tid(page, 'calendar-view-year').click();
   await expect(tid(page, 'year-view')).toBeVisible();
-  await tid(page, 'calendar-more').click();
-  await tid(page, 'calendar-more-trips-new').click();
+  // No ⋯ any more (spec 0054): the day window enters a trip.
+  await tid(page, `year-day-${TODAY}`).click();
+  await tid(page, 'day-panel-trip').click();
   await expect(tid(page, 'trip-sheet')).toBeVisible();
   await tid(page, 'trip-from').click();
   await expect(tid(page, 'range-picker')).toBeVisible();
@@ -209,7 +210,7 @@ test('dev smoke: every screen renders without a React warning or error', async (
   // The bell with the notices (spec 0051).
   await tid(page, 'notices-bell').click();
   await expect(tid(page, 'notices-sheet')).toBeVisible();
-  await tid(page, 'notices-sheet-close').click();
+  await tid(page, 'notices-close').click();
   // "Artikel" (spec 0007): search, "Artikel bearbeiten" with its area step, "+ Neu".
   await openManaged(page, 'articles');
   await expect(tid(page, 'articles-screen')).toBeVisible();
