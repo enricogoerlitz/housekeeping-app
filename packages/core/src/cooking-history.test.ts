@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { cookingHistory, withCookingHistory } from './cooking-history';
+import { cookedToday, cookingHistory, withCookingHistory } from './cooking-history';
 import { applyRecipeListFilter, EMPTY_RECIPE_LIST_FILTER, toggleQuickFilter } from './recipe-list';
 import {
   enrico,
@@ -112,5 +112,25 @@ describe('E10: cooked according to the calendar', () => {
     const history = cookingHistory([saturday], grillabendRecipes.slice(0, 1), '2026-11-21');
     expect(history[kartoffelsalat.id]?.count).toBe(1);
     expect(history[grillgemuese.id]).toBeUndefined();
+  });
+});
+
+describe('"Fertig" asks only without an entry of today (spec 0056, REQ-008)', () => {
+  const today = '2026-11-21';
+  const lasagne = entry({ id: 'plan-lasagne', recipeId: 'rec-lasagne', slotId: 'slot-mittag' });
+
+  it('AC-030: nothing planned today means not cooked today', () => {
+    expect(cookedToday([], [], 'rec-lasagne', today)).toBe(false);
+    expect(cookedToday([{ ...lasagne, date: '2026-11-20' }], [], 'rec-lasagne', today)).toBe(false);
+    expect(cookedToday([{ ...lasagne, date: null }], [], 'rec-lasagne', today)).toBe(false);
+  });
+
+  it('AC-031: an entry of today counts, also through a collection', () => {
+    expect(cookedToday([lasagne], [], 'rec-lasagne', today)).toBe(true);
+    expect(cookedToday([saturday], grillabendRecipes, kartoffelsalat.id, today)).toBe(true);
+  });
+
+  it('AC-032: an entry of today marked "Nicht gemacht" does not count', () => {
+    expect(cookedToday([{ ...lasagne, notDone: true }], [], 'rec-lasagne', today)).toBe(false);
   });
 });

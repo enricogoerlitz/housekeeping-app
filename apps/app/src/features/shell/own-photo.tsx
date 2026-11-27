@@ -205,7 +205,7 @@ export function PhotoActionRow(props: {
  * placeholder) it is only the picture. `<testID>-zoom` is the tap target, `<testID>-viewer` the
  * full-screen view.
  */
-export function ZoomablePhoto(props: {
+function ZoomablePhoto(props: {
   sources: readonly (number | { uri: string })[];
   name: string;
   testID: string;

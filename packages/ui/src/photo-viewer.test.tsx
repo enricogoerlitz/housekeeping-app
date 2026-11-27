@@ -1,7 +1,8 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { PhotoViewer } from './photo-viewer';
+import { PhotoViewer, ViewerPhoto } from './photo-viewer';
+import { Text } from './primitives';
 import { ThemeProvider } from './theme-context';
 import { getTheme } from './themes';
 
@@ -56,5 +57,87 @@ describe('PhotoViewer (spec 0036, REQ-009)', () => {
     // react-native-web's Modal calls onRequestClose on Escape (keyup).
     fireEvent.keyUp(document, { key: 'Escape' });
     expect(onClose).toHaveBeenCalled();
+  });
+});
+
+describe('PhotoViewer with pages: the photo and the videos (spec 0056, REQ-003)', () => {
+  const labels = {
+    previous: 'Vorheriges',
+    next: 'Nächstes',
+    position: (page: number, count: number) => `${page} von ${count}`,
+  };
+  const pages = [
+    <ViewerPhoto key="photo" sources={[{ uri: 'blob:curry' }]} alt="Mango-Curry" />,
+    <Text key="v1">Video 1</Text>,
+    <Text key="v2">Video 2</Text>,
+  ];
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('AC-010: the photo first, three dots; the arrow key turns to "Video 1"', () => {
+    const onIndexChange = vi.fn();
+    render(
+      <PhotoViewer
+        sources={[]}
+        closeLabel="Schließen"
+        onClose={() => {}}
+        pages={{ content: pages, labels, onIndexChange }}
+        testID="viewer"
+      />,
+    );
+    expect(screen.getByLabelText('Mango-Curry')).toBeTruthy();
+    expect(screen.getByLabelText('1 von 3')).toBeTruthy();
+    fireEvent.keyDown(screen.getByTestId('viewer-pages'), { key: 'ArrowRight' });
+    expect(onIndexChange).toHaveBeenLastCalledWith(1);
+    expect(screen.getByLabelText('2 von 3')).toBeTruthy();
+  });
+
+  it('AC-013: it opens on the page it is given', () => {
+    render(
+      <PhotoViewer
+        sources={[]}
+        closeLabel="Schließen"
+        onClose={() => {}}
+        pages={{ content: pages, labels, initialIndex: 2 }}
+        testID="viewer"
+      />,
+    );
+    expect(screen.getByLabelText('3 von 3')).toBeTruthy();
+    expect(screen.getByTestId('viewer-pages-dot-2').getAttribute('data-active')).toBe('true');
+  });
+
+  it('AC-012: with a mouse there is no arrow right on the last page', () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: true }));
+    render(
+      <PhotoViewer
+        sources={[]}
+        closeLabel="Schließen"
+        onClose={() => {}}
+        pages={{ content: pages, labels, initialIndex: 1 }}
+        testID="viewer"
+      />,
+    );
+    // With a mouse ← and → work at once: the pages have the focus.
+    expect(document.activeElement).toBe(screen.getByTestId('viewer-pages'));
+    fireEvent.click(screen.getByRole('button', { name: 'Nächstes' }));
+    expect(screen.getByLabelText('3 von 3')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Nächstes' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Vorheriges' }));
+    expect(screen.getByLabelText('2 von 3')).toBeTruthy();
+  });
+
+  it('AC-015: a single page shows without dots and arrows', () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: true }));
+    render(
+      <PhotoViewer
+        sources={[]}
+        closeLabel="Schließen"
+        onClose={() => {}}
+        pages={{ content: [pages[0]], labels }}
+        testID="viewer"
+      />,
+    );
+    expect(screen.getByLabelText('Mango-Curry')).toBeTruthy();
+    expect(screen.queryByTestId('viewer-pages-dots')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Nächstes' })).toBeNull();
   });
 });

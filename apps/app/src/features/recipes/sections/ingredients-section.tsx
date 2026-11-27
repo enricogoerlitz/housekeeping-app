@@ -16,6 +16,7 @@ import {
   keepDuplicateRow,
   moveIngredientAmong,
   openRows,
+  readViewSave,
   removeIngredient,
   removeVariant,
   renameVariant,
@@ -80,8 +81,8 @@ const ROW_LABELS: ReorderListLabels = {
  * Zutaten (REQ-008) with the portions stepper (display only, AC-028) and the variant choice. Read:
  * the ingredients without group, then each group under its heading (spec 0023, REQ-004); "Ist
  * alle" and ⋯ "Zutat bearbeiten" (opens the edit mode with the row, spec 0037), "Artikel
- * bearbeiten", "Entfernen" per ingredient; "+ Zutat" opens the edit mode with "Neue Zutat"
- * (spec 0037, AC-002). In the edit mode: a flat list of rows with ≡, Menge, Artikel and ⋯,
+ * bearbeiten", "Entfernen" per ingredient; "+ Zutat" and "Mehrere einfügen" save at once (spec
+ * 0056, REQ-001, REQ-002; replaces spec 0037, AC-002). In the edit mode: a flat list of rows with ≡, Menge, Artikel and ⋯,
  * "+ Zutat", "Mehrere einfügen", "Aus Rezept übernehmen" (REQ-003) and "+ Variante" (E9).
  */
 export function IngredientsSection(props: {
@@ -131,8 +132,14 @@ function IngredientsRead(props: {
   editor: PageEditor;
 }) {
   const { recipe, variantId, editor } = props;
+  const articles = useArticles();
   const articlesById = useArticlesById();
   const online = useOnlineOnly();
+  // "+ Zutat" and "Mehrere einfügen" save at once (spec 0056, REQ-001, REQ-002): the window works
+  // on the section as stored when it opened.
+  const [adding, setAdding] = useState<
+    { kind: 'row' | 'paste'; base: IngredientsDraft } | undefined
+  >();
   // ⋯ → "Artikel bearbeiten" (spec 0007, AC-007) and, from there, "Zusammenführen" (REQ-007).
   const [articleFor, setArticleFor] = useState<Id | undefined>();
   const [merging, setMerging] = useState<{ sourceId: Id; targetId: Id } | undefined>();
@@ -140,15 +147,26 @@ function IngredientsRead(props: {
   const factor = props.servings / recipe.servings;
   const nameOf = (ingredient: RecipeIngredient) => articlesById[ingredient.articleId]?.name ?? '';
 
-  // ⋯ → "Zutat bearbeiten" and "+ Zutat" open the edit mode with the window (spec 0037, AC-002);
-  // the window's field gets the keyboard with the tap (spec 0033, REQ-006).
+  // ⋯ → "Zutat bearbeiten" opens the edit mode with the window (spec 0037, AC-002); the window's
+  // field gets the keyboard with the tap (spec 0033, REQ-006).
   const edit = (ingredient: RecipeIngredient) => {
     openKeyboardNow();
     editor.start({ kind: 'ingredient', key: ingredient.id });
   };
-  const add = () => {
+  const add = (kind: 'row' | 'paste') => {
     openKeyboardNow();
-    editor.start({ kind: 'ingredient' });
+    setAdding({ kind, base: editor.stored().ingredients });
+  };
+  // The rows that can be saved go at once; orange ones open the edit mode afterwards (AC-008).
+  // A hint (offline) keeps the window open with what was typed (AC-003).
+  const saveAdded = (next: IngredientsDraft, base: IngredientsDraft) => {
+    const { section, open } = readViewSave(next, articles);
+    const hint = editor.saveNow(section, {
+      open,
+      saved: section.rows.length - base.rows.length,
+    });
+    if (hint) toast.show({ message: hint });
+    else setAdding(undefined);
   };
   // ⋯ → "Entfernen" asks first; "Rückgängig" afterwards is gone (spec 0036, Entscheidung 1).
   const remove = (ingredient: RecipeIngredient) => {
@@ -276,12 +294,12 @@ function IngredientsRead(props: {
           </View>
         ))
       )}
-      <View style={{ flexDirection: 'row', marginTop: 8 }}>
+      <Row gap={16} wrap style={{ marginTop: 8 }}>
         <Button
           label="Zutat"
           icon="plus"
           variant="link"
-          onPress={add}
+          onPress={() => add('row')}
           disabled={online.disabled}
           hint={online.hint}
           testID={
@@ -290,7 +308,31 @@ function IngredientsRead(props: {
               : 'recipe-read-add-ingredient'
           }
         />
-      </View>
+        <Button
+          label="Mehrere einfügen"
+          icon="clipboard-list"
+          variant="link"
+          onPress={() => add('paste')}
+          disabled={online.disabled}
+          hint={online.hint}
+          testID="recipe-read-paste-ingredients"
+        />
+      </Row>
+      {adding?.kind === 'row' ? (
+        <IngredientSheet
+          draft={adding.base}
+          servingsNote={`für ${servingsLabel(recipe.servings)}`}
+          savesAtOnce
+          onApply={(next) => saveAdded(next, adding.base)}
+          onClose={() => setAdding(undefined)}
+        />
+      ) : null}
+      {adding?.kind === 'paste' ? (
+        <IngredientsPasteSheet
+          onPaste={(rows) => saveAdded(addPastedRows(adding.base, rows), adding.base)}
+          onClose={() => setAdding(undefined)}
+        />
+      ) : null}
       {articleFor ? (
         <ArticleSheet
           visible

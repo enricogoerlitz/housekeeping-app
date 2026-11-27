@@ -39,7 +39,7 @@ import { HeadSection } from './sections/head-section';
 import { IngredientsSection } from './sections/ingredients-section';
 import { LinksSection } from './sections/links-section';
 import { NotesSection } from './sections/notes-section';
-import { EditControls, EditError } from './sections/edit-controls';
+import { DraftBackupNotice, EditControls, EditError } from './sections/edit-controls';
 import { StepsSection } from './sections/steps-section';
 import { usePageEditor } from './sections/use-page-editor';
 import { RecipePhoto } from './recipe-cover';
@@ -236,6 +236,8 @@ function RecipeDetailBody(props: {
   const head = (
     <Stack gap={16} style={{ flex: 1, minWidth: 0 }}>
       <HeadSection recipe={recipe} desktop={desktop} editor={editor} />
+      {/* Phones and tablets: right under the title, reachable without scrolling (spec 0056, REQ-004). */}
+      {desktop || editing ? null : actions}
       <ClassificationSection
         recipe={recipe}
         diet={diet}
@@ -253,7 +255,6 @@ function RecipeDetailBody(props: {
           testID="recipe-rating"
         />
       )}
-      {desktop || editing ? null : <View style={{ marginTop: 4 }}>{actions}</View>}
     </Stack>
   );
 
@@ -290,6 +291,7 @@ function RecipeDetailBody(props: {
     >
       <View testID="recipe-detail" style={{ gap: isPhone ? 24 : 32, paddingTop: 8 }}>
         <EditError editor={editor} />
+        <DraftBackupNotice editor={editor} />
         <AiPageTools recipe={recipe} editor={editor} />
         {desktop ? (
           <>
@@ -320,6 +322,7 @@ function RecipeDetailBody(props: {
                 photo={photo}
                 onShare={share}
                 pending={editor.chosenPhoto}
+                compact
               />
             </View>
             {head}

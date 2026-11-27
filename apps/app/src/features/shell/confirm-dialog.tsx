@@ -19,6 +19,8 @@ export function ConfirmDialog(props: {
   needsNetwork?: boolean;
   onConfirm: () => string | undefined | void;
   onCancel: () => void;
+  /** Escape or a tap outside, when it means something else than the cancel button (spec 0056). */
+  onDismiss?: () => void;
   testID: string;
 }) {
   const online = useOnlineOnly();
@@ -30,7 +32,7 @@ export function ConfirmDialog(props: {
       visible
       size="s"
       title={props.title}
-      onClose={props.onCancel}
+      onClose={props.onDismiss ?? props.onCancel}
       testID={props.testID}
       // The head of every window that decides something: "Abbrechen" · question · the named
       // button on phones, both at the bottom on wider screens (spec 0054, REQ-007).

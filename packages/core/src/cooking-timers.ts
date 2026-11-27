@@ -66,6 +66,24 @@ export function isTimerFinished(timer: StepTimer | undefined, now: number): bool
   return timer !== undefined && remaining(timer, now) === 0;
 }
 
+/**
+ * The timers that ring now (spec 0056, REQ-007): run out since the last look (`previous`, the
+ * `finished` of the call before). A run-out timer rings once; after "Zurücksetzen" it is gone
+ * from `finished`, so the next run-out rings again. Paused timers never ring.
+ */
+export function timersToRing(
+  previous: ReadonlySet<Id>,
+  timers: StepTimers,
+  now: number,
+): { ring: Id[]; finished: Set<Id> } {
+  const finished = new Set(
+    Object.values(timers)
+      .filter((timer) => timer.startedAt !== undefined && remaining(timer, now) === 0)
+      .map((timer) => timer.stepId),
+  );
+  return { ring: [...finished].filter((id) => !previous.has(id)), finished };
+}
+
 /** "34:58", "1:30:00": the time left, rounded up to whole seconds. */
 function clock(ms: number): string {
   const seconds = Math.ceil(ms / 1000);
