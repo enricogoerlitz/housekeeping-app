@@ -536,6 +536,15 @@ export function recipeEmptyLabel(query: string, options: { allWorkedOut?: boolea
     : 'Keine Rezepte für diese Filter';
 }
 
+/**
+ * The course on a recipe tile ("Hauptgericht", "Dessert", …; spec 0038, AC-007, AC-008): only in
+ * the tile view, never for a collection, nothing without a course.
+ */
+export function tileCourseLabel(recipe: Pick<Recipe, 'kind' | 'course'>): string | undefined {
+  if (recipe.kind === 'collection' || recipe.course === undefined) return undefined;
+  return courseLabel(recipe.course);
+}
+
 /** The average on a tile: one decimal with a comma, rounded half up; "4,8" for 4.75 (AC-040). */
 export function formatAverage(value: number): string {
   // The small addend keeps averages like 4.45, stored as 4.4499…, from rounding down.

@@ -77,6 +77,24 @@ test('AC-018 (0001): the quick chip "Vegetarisch" keeps Mango-Curry and hides Sp
   await expect(tid(page, card('rec-spaghetti-bolognese'))).toBeHidden();
 });
 
+test('AC-007 / AC-008 (0038): a recipe tile names its course; collections and the list view show none', async ({
+  page,
+}) => {
+  const course = (slug: keyof typeof seedIds) => `recipe-card-course-${seedIds[slug]}`;
+  await open(page, '/rezepte');
+  await expect(tid(page, 'recipe-view-tiles')).toHaveAttribute('aria-checked', 'true');
+  await expect(tid(page, course('rec-mango-curry'))).toHaveText('Hauptgericht');
+  await expect(tid(page, card('rec-grillabend'))).toBeVisible();
+  await expect(tid(page, course('rec-grillabend'))).toHaveCount(0);
+  await tid(page, 'recipe-search').fill('Gemischter Salat');
+  await expect(tid(page, course('rec-gemischter-salat'))).toHaveText('Beilage');
+  await tid(page, 'recipe-view-list').click();
+  await expect(tid(page, card('rec-gemischter-salat'))).toBeVisible();
+  await expect(tidPrefix(page, 'recipe-card-course-')).toHaveCount(0);
+  await tid(page, 'recipe-view-tiles').click();
+  await expect(tid(page, course('rec-gemischter-salat'))).toHaveText('Beilage');
+});
+
 test('AC-019 (0001) / AC-015 (0008): search tolerates typos and synonyms and survives opening a recipe', async ({
   page,
 }) => {
