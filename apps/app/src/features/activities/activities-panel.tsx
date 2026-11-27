@@ -515,7 +515,9 @@ function ActivityCard(props: {
       accessibilityLabel={activity.name}
       aria-selected={!!props.selected}
       onPress={props.onPress}
+      // Cards of one row are as tall as the tallest (review 0003, B-15).
       style={(state) => ({
+        flexGrow: 1,
         opacity: state.pressed ? 0.75 : 1,
         borderRadius: theme.shape.radius.card,
       })}
@@ -523,7 +525,7 @@ function ActivityCard(props: {
       <Surface
         padding={12}
         style={[
-          { flexDirection: 'row', alignItems: 'center', gap: 12 },
+          { flexGrow: 1, flexDirection: 'row', alignItems: 'center', gap: 12 },
           props.selected ? { borderWidth: 1.5, borderColor: theme.colors.accent } : null,
         ]}
       >

@@ -226,25 +226,27 @@ describe('Jetzt abgleichen (REQ-010)', () => {
   const now = new Date('2026-11-22T16:04:00Z'); // 17:04 in Berlin
   const zone = 'Europe/Berlin';
 
-  it('AC-039: the row and its screen-reader name', () => {
+  it('AC-039: the row and its screen-reader name; only "Jetzt abgleichen" is the link (review 0003, B-13)', () => {
     expect(
       syncRow({ lastSyncedAt: '2026-11-22T15:58:00Z', syncing: false, now, timeZone: zone }),
     ).toEqual({
-      label: 'Zuletzt abgeglichen: heute, 16:58 · Jetzt abgleichen',
+      status: 'Zuletzt abgeglichen: heute, 16:58',
+      action: 'Jetzt abgleichen',
       accessibilityLabel: 'Jetzt abgleichen, zuletzt abgeglichen heute, 16:58',
     });
     expect(
-      syncRow({ lastSyncedAt: '2026-11-22T15:58:00Z', syncing: true, now, timeZone: zone }).label,
-    ).toBe('Wird abgeglichen …');
+      syncRow({ lastSyncedAt: '2026-11-22T15:58:00Z', syncing: true, now, timeZone: zone }),
+    ).toMatchObject({ status: 'Zuletzt abgeglichen: heute, 16:58', action: 'Wird abgeglichen …' });
   });
 
   it('AC-041: never synced is "Noch nicht abgeglichen · Jetzt abgleichen"; another day shows the date', () => {
     expect(syncRow({ lastSyncedAt: undefined, syncing: false, now, timeZone: zone })).toEqual({
-      label: 'Noch nicht abgeglichen · Jetzt abgleichen',
+      status: 'Noch nicht abgeglichen',
+      action: 'Jetzt abgleichen',
       accessibilityLabel: 'Jetzt abgleichen, noch nicht abgeglichen',
     });
     expect(
-      syncRow({ lastSyncedAt: '2026-11-20T08:30:00Z', syncing: false, now, timeZone: zone }).label,
-    ).toBe('Zuletzt abgeglichen: 20.11., 9:30 · Jetzt abgleichen');
+      syncRow({ lastSyncedAt: '2026-11-20T08:30:00Z', syncing: false, now, timeZone: zone }).status,
+    ).toBe('Zuletzt abgeglichen: 20.11., 9:30');
   });
 });

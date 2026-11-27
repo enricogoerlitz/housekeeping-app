@@ -373,6 +373,10 @@ staticwebapp hostname` kennt kein „Standard setzen“. Durchführen: Enrico (P
     bei „Erinnern“ an; aus erinnert ohnehin niemanden. Entfernt man im Formular die Uhrzeit, springt
     „Erinnern“ sofort wieder auf an (wie gespeichert, `remindAtDueTimeFor`). Im Code ist
     `Chore.remindAtDueTime` nur `false`, wenn aus; fehlt es, ist es an. `CACHE_VERSION` 14.
+23. Browser-Durchklick 27.11. (Review 0003, B-13): Unter „Profil“ steht der Abgleich-Status grau
+    („Zuletzt abgeglichen: heute, 16:58 ·“), nur „Jetzt abgleichen“ ist der Link (vorher die ganze
+    Zeile in Akzentfarbe, wie ein Fehler). Der Screenreader-Name des Links bleibt (AC-039); während
+    des Abgleichs heißt der Link „Wird abgeglichen …“.
 
 ## Daten
 

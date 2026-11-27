@@ -64,6 +64,8 @@ export function PlanSheet(props: {
    */
   eatersLabel?: string;
   eatersOptional?: boolean;
+  /** The button instead of "Am Do 26.11. Abend einplanen" (a series, review 0003, B-11). */
+  actionLabel?: (choice: PlanChoice) => string | undefined;
   /** The notice after planning instead of "Am Do 26.11. Abend eingeplant" (a series, spec 0041). */
   notice?: (choice: PlanChoice) => string | undefined;
   /** The Tageszeit it opens with: the last ("Abend"), or the first for an activity (REQ-006). */
@@ -186,7 +188,7 @@ export function PlanSheet(props: {
       testID="plan-recipe-sheet"
       actions={{
         primary: {
-          label: planButtonLabel(choice.date, slotName),
+          label: props.actionLabel?.(choice) ?? planButtonLabel(choice.date, slotName),
           icon: 'calendar-plus',
           disabled: online.disabled || noEaters || !choice.slotId,
           hint:
