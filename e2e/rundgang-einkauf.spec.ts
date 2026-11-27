@@ -101,6 +101,23 @@ test('AC-023: "Als erledigt markieren" in "Posten bearbeiten"', async ({ page })
   await expect(openItem(page, 'Zahnpasta')).toHaveCount(0);
 });
 
+test('AC-057: on the desktop a ✓ in the hovered row marks it done with one click', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await open(page, '/liste');
+  const row = openItem(page, 'Duschgel');
+  const done = page.getByRole('button', { name: 'Duschgel erledigt' });
+  // The ✓ keeps its place (nothing jumps); its wrapper fades it in.
+  const shown = () => done.evaluate((el) => getComputedStyle(el.parentElement!).opacity);
+  await expect.poll(shown).toBe('0');
+  await row.hover();
+  await expect.poll(shown).toBe('1');
+  await done.click();
+  await expect(openItem(page, 'Duschgel')).toHaveCount(0);
+  await expect(toastMessage(page)).toContainText('Duschgel erledigt');
+});
+
 test('AC-026: the pantry check opens "Vorrat & Gewürze"', async ({ page }) => {
   await open(page, '/liste');
   await tid(page, 'list-from-plan').click();

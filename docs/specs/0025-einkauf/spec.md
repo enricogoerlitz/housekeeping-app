@@ -146,6 +146,9 @@ Warteschlange, „Abhaken gewinnt“.
   „Erledigt“, auch bei Nadja, Hinweis „Milch erledigt“ mit „Rückgängig“; links wischen entfernt weiter.
 - AC-023: Angenommen Desktop · Wenn „Milch“ öffnen, „Als erledigt markieren“ · Dann Fenster zu,
   „Milch“ unter „Erledigt“.
+- AC-057: Angenommen Desktop mit Maus, „Zahnpasta“ offen · Wenn ich über die Zeile fahre und auf
+  ✓ „Zahnpasta erledigt“ klicke · Dann „Zahnpasta“ unter „Erledigt“, Hinweis mit „Rückgängig“; ohne
+  Maus über der Zeile ist ✓ unsichtbar, mit Tab erreichbar (Entscheidung 24).
 - AC-024 (offline): Angenommen offline · Wenn wischen · Dann sofort unter „Erledigt“ mit
   „wird synchronisiert“, mit Netz auch bei Nadja.
 - AC-025 (Konflikt): Angenommen Nadja hat „Liste“ offen · Wenn Enrico zuhause „Milch“ erledigt ·
@@ -341,6 +344,11 @@ Alle nach Enricos Regel „Empfehlung nehmen“ (Claude, 22.11.2026).
     Meldung, wo die Posten sind: „Wieder da – abgehakt unter „Erledigt““ (vorher kamen sie
     unsichtbar unter das zugeklappte „Erledigt“ zurück). „Bereich“ auf „Artikel“ ohne eigenes „▾“ —
     das Menü zeichnet seinen Pfeil selbst (vorher „Bereich ▾ ⌄“).
+24. Browser-Durchklick 27.11. (Review 0003, B-10, Freigabe Enrico): Am Desktop erledigt ein ✓ in
+    der Zeile den Posten mit einem Klick (AC-057), statt Zeile öffnen → „Als erledigt markieren“.
+    Das ✓ erscheint nur, solange die Maus über der Zeile steht oder es den Tastaturfokus hat; reines
+    Darüberfahren tut nichts. Ändert D24 (Spec 0006) für Maus und Trackpad: Die Liste bleibt ohne
+    Kästchen, auf dem Handy bleibt das Wischen. Auf Touch-Geräten ohne Wischen (iPad) steht ✓ immer da.
 
 ## Daten
 

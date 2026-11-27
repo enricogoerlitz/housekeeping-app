@@ -31,6 +31,7 @@ import {
   GhostRow,
   GroupLabel,
   Icon,
+  IconButton,
   List,
   ListRow,
   Menu,
@@ -42,6 +43,7 @@ import {
   Text,
   toast,
   useBreakpoint,
+  useFinePointer,
   useToastAvoid,
   useTheme,
   type MenuOption,
@@ -81,9 +83,35 @@ function PendingDot(props: { itemId: string }) {
 }
 
 /**
+ * ✓ „… erledigt“ where there is no swipe (spec 0025, AC-057, decision 24): with a mouse it shows
+ * only while the pointer is over the row or the button has the keyboard focus, so the list keeps
+ * its look without checkboxes (D24); on touch screens without the swipe (iPad) it always shows.
+ */
+function DoneButton(props: { itemId: string; name: string; rowHovered: boolean }) {
+  const fine = useFinePointer();
+  const [focused, setFocused] = useState(false);
+  const shown = !fine || props.rowHovered || focused;
+  return (
+    <View
+      style={{ opacity: shown ? 1 : 0 }}
+      {...({ onFocus: () => setFocused(true), onBlur: () => setFocused(false) } as object)}
+    >
+      <IconButton
+        icon="check"
+        label={`${props.name} erledigt`}
+        size={36}
+        onPress={() => checkOnList(props.itemId, props.name)}
+        testID={`item-${props.itemId}-done`}
+      />
+    </View>
+  );
+}
+
+/**
  * An open item on "Liste" (D24): no checkbox; "− 2× +" for pure counts, "500 g ›" for
  * quantities. A tap opens "Posten bearbeiten"; on phones a swipe to the left removes it (online)
- * and a swipe to the right marks it as done, offline too (spec 0025, REQ-006).
+ * and a swipe to the right marks it as done, offline too (spec 0025, REQ-006); elsewhere a ✓
+ * does (AC-057).
  */
 function ItemRow(props: {
   item: ShoppingItem;
@@ -94,9 +122,13 @@ function ItemRow(props: {
   onOpen: (itemId: string, name: string) => void;
 }) {
   const { item } = props;
+  const [hovered, setHovered] = useState(false);
   const name = props.article?.name ?? 'Unbekannter Artikel';
   const summary = summarizeItem(item);
   const count = itemCount(item);
+  const done = props.swipe ? null : (
+    <DoneButton itemId={item.id} name={name} rowHovered={hovered} />
+  );
   const note = summary.notes.join(', ');
   // The press area speaks what it shows; a count is read by the stepper next to it.
   const label = [note ? `${name} (${note})` : name, count === undefined ? summary.amount : '']
@@ -121,12 +153,29 @@ function ItemRow(props: {
       }
       controls={
         count !== undefined ? (
-          <CountStepper itemId={item.id} name={name} count={count} testID={`item-${item.id}`} />
-        ) : undefined
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <CountStepper itemId={item.id} name={name} count={count} testID={`item-${item.id}`} />
+            {done}
+          </View>
+        ) : (
+          (done ?? undefined)
+        )
       }
       testID={`item-${item.id}`}
     />
   );
+  if (!props.swipe) {
+    return (
+      <View
+        {...({
+          onPointerEnter: () => setHovered(true),
+          onPointerLeave: () => setHovered(false),
+        } as object)}
+      >
+        {row}
+      </View>
+    );
+  }
   return (
     <SwipeToRemove
       label="Entfernen"
