@@ -67,6 +67,9 @@ dahinter verschiebt sich nicht. Quelle: Video 3, Befunde 2 und 6. Offline: offli
   erscheinen) · Dann übernimmt das Fenster die neue Höhe einmal, wenn sie zur Ruhe gekommen ist
 - AC-008: Angenommen iOS hat den sichtbaren Bereich (464 px) um 120 px nach unten geschoben · Dann
   endet das Fenster an der Unterkante des sichtbaren Bereichs (260 px über der Unterkante des Layouts)
+- AC-024 (Nachklick 27.11.): Angenommen „Dauerposten“ · Wenn ich „+“ tippe · Dann wartet „Neuer
+  Dauerposten“ außer Sicht, bis die Tastatur da ist (höchstens 400 ms), und gleitet dann in einer
+  Bewegung an seinen Platz auf ihr, ohne auf halbem Weg stehen zu bleiben und nach oben zu springen
 
 **REQ-003 — Fenster und Tastatur gehen zusammen.** Wird ein Fenster mit offener Tastatur
 geschlossen, geht die Tastatur sofort mit; nichts bleibt mitten im Bild stehen. Quelle: Video 3,
@@ -258,7 +261,21 @@ Befund 7. Offline: offline vollständig.
     obere Teil (Felder); die Links und die freie Fläche darunter lagen außerhalb. Jetzt wischt der
     ganze Inhalt bis zum unteren Rand, mit und ohne Tastatur (ändert Spec 0055, REQ-002).
   - Gefunden, nicht geändert: B-04 (Titelfoto beim Wechsel in den Bearbeiten-Modus ~3 Bilder leer)
-    — niedrig, eigener Fix. Am echten iPhone prüft Enrico das Wischen in „Neu“.
+    — niedrig, eigener Fix (erledigt in Spec 0056, AC-038). Am echten iPhone prüft Enrico das
+    Wischen in „Neu“.
+- **Nachklick iPhone 27.11., „Dauerposten anlegen knallt nach oben“ (AC-024)** (gemessen im
+  Simulator, installiert: Fensterkante je Bild über `requestAnimationFrame`, Video Bild für Bild;
+  `tmp/iphone-header/`): `openKeyboardNow` stand schon im Tipp. Der Unterschied zu den ruhigen
+  Anlegen-Fenstern („Artikel“, „Neu“): dort öffnet der Tipp das Fenster über die Adresse, es
+  erscheint erst im nächsten Schritt; „Neuer Dauerposten“ erscheint noch im Tipp. iOS hält die Seite
+  rund 100 ms an, während es die Tastatur holt — das schon gleitende Fenster blieb in dieser Zeit auf
+  halbem Weg stehen und sprang danach in einem Bild ganz nach oben. Jetzt wartet jedes Fenster, das
+  bei erwarteter Tastatur (`openKeyboardNow`) erscheint, außer Sicht, bis die Tastatur gemessen ist,
+  höchstens 400 ms; erst dann gleitet es hinein, und der Cursor geht erst danach ins Feld (I-04
+  bleibt). Zentral in `Sheet`, damit es für jedes im Tipp geöffnete Fenster gilt, nicht nur hier;
+  Fenster ohne erwartete Tastatur (Bearbeiten-Fenster, Desktop, Android) öffnen unverändert sofort.
+  Präzisiert AC-004: Das Fenster steht nicht schon vor der Tastatur sichtbar auf ihrem Platz,
+  sondern kommt mit ihr.
 
 ## Daten
 
@@ -276,6 +293,7 @@ Fenstergröße (keine personenbezogenen Daten).
 - [x] 6. Playwright (WebKit, Chromium, 390 × 844) mit simulierter Tastatur: Bearbeiten-Modus,
       „Neu“-Fenster, Link-Fenster, Einkaufsliste scrollt; Bilder in `tmp/review-0003/0044/`
 - [x] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün
+- [x] 7. Nachklick 27.11.: Fenster mit erwarteter Tastatur warten auf sie (AC-024)
 
 Nachweis (26.11.): Tests rot, dann grün: `keyboard-reveal.test.ts` (AC-011–AC-015, AC-018),
 `keyboard-state.test.ts` (AC-003–AC-005, AC-007, AC-008, AC-010), `keyboard.test.tsx` (AC-016–AC-021),

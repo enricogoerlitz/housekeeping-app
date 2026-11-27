@@ -94,6 +94,7 @@ export {
   ComposerBar,
   TAB_BAR_HEIGHT,
   useBottomInset,
+  useLargeTitle,
   WIDE_GUTTER,
   type NavItem,
   type SidebarGroup,

@@ -1,4 +1,4 @@
-import { expect as baseExpect } from '@playwright/test';
+import { expect as baseExpect, type Page } from '@playwright/test';
 
 import {
   contentReady,
@@ -180,4 +180,57 @@ test('AC-031 / AC-034: planned today or offline, "Fertig" just leaves', async ({
   await tid(page, 'cook-done').click();
   await expect(tid(page, 'cook-cooked-today')).toHaveCount(0);
   await expect(tid(page, 'cooking-screen')).toBeHidden();
+});
+
+// Nachklick iPhone 27.11. (REQ-009, REQ-010): the bar's title, the gap above the photo, the photo
+// across the edit mode.
+
+/** Scrolls the page's own scroll area (around the big title) to `top`. */
+async function scrollPage(page: Page, top: number) {
+  await tid(page, 'recipe-title').evaluate((title, y) => {
+    let node = title.parentElement;
+    while (node && !/(auto|scroll)/.test(getComputedStyle(node).overflowY)) {
+      node = node.parentElement;
+    }
+    if (node) node.scrollTop = y;
+  }, top);
+}
+
+const barTitleOpacity = (page: Page) =>
+  tid(page, 'recipe-bar-title').evaluate((title) => getComputedStyle(title.parentElement!).opacity);
+
+test('AC-036 / AC-037: the bar title fades in once the big title is under the bar and out again; the photo stays where it was', async ({
+  page,
+}) => {
+  await open(page, `/rezept/${LASAGNE}`);
+  const photoTop = async () => (await tid(page, 'recipe-photo').boundingBox())?.y;
+  const before = await photoTop();
+  await expect.poll(() => barTitleOpacity(page)).toBe('0');
+  // A little down: the big title is still in sight, the bar shows none.
+  await scrollPage(page, 80);
+  await expect.poll(() => barTitleOpacity(page)).toBe('0');
+  await scrollPage(page, 1200);
+  await expect.poll(() => barTitleOpacity(page)).toBe('1');
+  await scrollPage(page, 0);
+  await expect.poll(() => barTitleOpacity(page)).toBe('0');
+  baseExpect(await photoTop()).toBe(before);
+});
+
+test('AC-038: into the edit mode and back the photo stays the same element (no empty frame)', async ({
+  page,
+}) => {
+  await open(page, '/rezepte?suche=lasagne');
+  await page.locator(`[data-testid="recipe-card-${LASAGNE}"]`).first().click();
+  await expect(tid(page, 'recipe-screen')).toBeVisible();
+  await contentReady(page);
+  // A mark on the element: a page mounted anew would draw a new one without it.
+  await tid(page, 'recipe-photo').evaluate((photo) => {
+    (photo as HTMLElement).dataset.kept = 'yes';
+  });
+  await tid(page, 'recipe-edit').click();
+  await expect(tid(page, 'recipe-edit-save')).toBeVisible();
+  await expect(tid(page, 'recipe-photo')).toHaveAttribute('data-kept', 'yes');
+  await tid(page, 'recipe-edit-cancel').click();
+  await expect(tid(page, 'recipe-edit-save')).toHaveCount(0);
+  await expect(tid(page, 'recipe-photo')).toHaveAttribute('data-kept', 'yes');
 });

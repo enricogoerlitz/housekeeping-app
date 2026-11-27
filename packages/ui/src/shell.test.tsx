@@ -17,6 +17,7 @@ import {
   Sidebar,
   TabBar,
   useBottomInset,
+  useLargeTitle,
   type NavItem,
   type PageScrollControl,
 } from './shell';
@@ -422,6 +423,39 @@ describe('Screen (spec 0005, REQ-002)', () => {
     );
     expect(screen.getByText('Inhalt').parentElement!.style.touchAction).toBe('');
   });
+
+  it('spec 0056, AC-038: the tab swipe switched off (edit mode) keeps the page mounted, so its photo does not flash empty', () => {
+    const swipe = { index: 1, count: 3, onStep: () => undefined };
+    const page = (tabSwipe?: typeof swipe) => (
+      <Screen header={header} tabSwipe={tabSwipe}>
+        <Text testID="content">Inhalt</Text>
+      </Screen>
+    );
+    const view = render(page(swipe));
+    const before = screen.getByTestId('content');
+    view.rerender(page(undefined));
+    expect(screen.getByTestId('content')).toBe(before);
+    view.rerender(page(swipe));
+    expect(screen.getByTestId('content')).toBe(before);
+  });
+
+  it('spec 0056, AC-037: a narrow bar higher than the header never pushes the page down', () => {
+    render(
+      <Screen header={header}>
+        <Text>Inhalt</Text>
+      </Screen>,
+    );
+    const area = scrollArea(screen.getByText('Inhalt'));
+    layout(screen.getByTestId('screen-title'), 60);
+    scrollTo(area, 100);
+    // The bar grew while scrolled (a title on a line of its own).
+    layout(screen.getByTestId('screen-title'), 87);
+    scrollTo(area, 0);
+    expect(area.style.marginTop).toBe('60px');
+    expect(
+      area.firstElementChild instanceof HTMLElement && area.firstElementChild.style.paddingTop,
+    ).toBe('0px');
+  });
 });
 
 describe('ScreenHeader', () => {
@@ -505,6 +539,89 @@ describe('ScreenHeader', () => {
       layout(screen.getByRole('button', { name: 'Zurück' }), 60);
       scrollTo(scrollArea(screen.getByText('Inhalt')), 100);
       expect(screen.getByRole('heading', { name: 'Lasagne' })).toBeTruthy();
+    });
+
+    it('spec 0056, AC-036: on phones the title fades in once the big title of the page is under the bar, and out again above it', () => {
+      let bigBottom = 300;
+      function Page() {
+        const largeTitle = useLargeTitle();
+        return (
+          <Text ref={largeTitle} testID="big">
+            Lasagne
+          </Text>
+        );
+      }
+      const rect = vi
+        .spyOn(Element.prototype, 'getBoundingClientRect')
+        .mockImplementation(function (this: Element) {
+          const bottom = this.getAttribute('data-testid') === 'big' ? bigBottom : 60;
+          return {
+            top: bottom - 30,
+            bottom,
+            height: 30,
+            width: 390,
+            left: 0,
+            right: 390,
+          } as DOMRect;
+        });
+      try {
+        render(
+          <Screen header={bar}>
+            <Page />
+          </Screen>,
+        );
+        const area = scrollArea(screen.getByTestId('big'));
+        // Past the point where the header used to shrink, but the big title is still in sight.
+        scrollTo(area, 100);
+        expect(screen.queryByRole('heading', { name: 'Lasagne' })).toBeNull();
+        bigBottom = 58;
+        scrollTo(area, 250);
+        const title = screen.getByRole('heading', { name: 'Lasagne' });
+        const fade = title.parentElement!.style;
+        expect(fade.opacity).toBe('1');
+        expect(fade.transitionProperty).toBe('opacity');
+        bigBottom = 120;
+        scrollTo(area, 180);
+        expect(screen.queryByRole('heading', { name: 'Lasagne' })).toBeNull();
+        expect(fade.opacity).toBe('0');
+      } finally {
+        rect.mockRestore();
+      }
+    });
+
+    it('spec 0056, AC-037: with a big title on the page the bar title always stands in the row, one line, so the bar keeps its height', () => {
+      function Page() {
+        const largeTitle = useLargeTitle();
+        return (
+          <Text ref={largeTitle} testID="big">
+            Lasagne
+          </Text>
+        );
+      }
+      // The big title further down than the bar.
+      const rect = vi
+        .spyOn(Element.prototype, 'getBoundingClientRect')
+        .mockImplementation(function (this: Element) {
+          const bottom = this.getAttribute('data-testid') === 'big' ? 330 : 60;
+          return { top: bottom - 30, bottom, height: 30, width: 390 } as DOMRect;
+        });
+      try {
+        render(
+          <Screen header={bar}>
+            <Page />
+          </Screen>,
+        );
+        // Drawn but invisible before scrolling: showing it changes nothing but its opacity.
+        const title = screen.getByTestId('screen-title');
+        expect(title.textContent).toBe('Lasagne');
+        expect(title.parentElement!.style.opacity).toBe('0');
+        // In the row of "Zurück" and the buttons, never on a line of its own below them.
+        const row = title.parentElement!.parentElement!;
+        expect(row.contains(screen.getByRole('button', { name: 'Zurück' }))).toBe(true);
+        expect(row.contains(screen.getByRole('button', { name: 'Bearbeiten' }))).toBe(true);
+      } finally {
+        rect.mockRestore();
+      }
     });
 
     it('AC-020: wider screens show the title from the start', () => {
