@@ -200,6 +200,8 @@ test('AC-010: a tapped hit shows pulsing placeholders until the recipe is read',
   await expect(
     page.getByRole('progressbar', { name: 'Das Rezept wird gelesen …' }),
   ).toBeInViewport();
+  // Durchklick 27.11.: the links of "Neu" do not compete with "Übernehmen" of the hit.
+  await expect(tid(page, 'new-recipe-open-ingredients')).toHaveCount(0);
   answer();
   await expect(tid(page, 'new-recipe-web-preview-ingredients')).toBeVisible();
 });
