@@ -107,6 +107,10 @@ Entscheidung 3 A. Offline: nur online.
   steht der aufgelöste TikTok-Link unter „Links“ des Entwurfs, und die Beschreibung floss ein
 - AC-017: Angenommen TikTok liefert keine Daten · Dann trägt der Chip „TikTok konnte nicht gelesen
   werden“, und der Link wird trotzdem übernommen
+- AC-019: Angenommen die Seite `zeit.de/rezepte/lasagne` lässt sich nicht laden (Bezahlschranke,
+  Bot-Schutz, 403, Zeitlimit) · Wenn der Entwurf kommt · Dann sagt der Hinweis „zeit.de ließ sich
+  nicht laden – vermutlich eine Bezahlschranke oder ein Schutz der Seite. Füge den Rezepttext ein
+  oder hänge Screenshots an.“ (Entscheidung 8)
 
 ## Entscheidungen
 
@@ -160,6 +164,19 @@ Entscheidung 3 A. Offline: nur online.
    nach einer kurzen Pause. Die Spracherkennung trennt Äußerungen an Pausen; „am Ende des Tages
    will ich …“ im Redefluss ist Teil eines längeren Abschnitts und beendet nichts. Das Wort selbst
    landet nicht im Feld (AC-018).
+8. Agent, 27.11. (Vorschau-Logs, `recipe_page_unread`): **Der Hinweis zu nicht gelesenen Links
+   sagt, was zu tun ist (AC-019, ergänzt AC-004).** Der Toast nach dem Entwurf nennt bei einer
+   Seite den wahrscheinlichen Grund und den Ausweg (Text einfügen, Screenshots anhängen), bei
+   YouTube die Videobeschreibung (Spec 0064, AC-011); TikTok behält „TikTok konnte nicht gelesen
+   werden“. Je Link eine Zeile, der Toast steht 8 s statt 5 s. Der Chip im KI-Feld bleibt kurz
+   („chefkoch.de konnte nicht gelesen werden“): Das Fenster schließt nach dem Ausfüllen, gelesen
+   wird der Toast. Text aus `unreadLinksNotice` in `core`.
+9. Agent, 27.11. (Vorschau-Logs, `flux_rejected { status: 400 }`): **Eine Ablehnung von FLUX
+   nennt ihren Grund im Log.** Zusätzlich zum Status stehen dort nur Fehlercode (`error.code`, nur
+   Buchstaben, Ziffern, `_.-`, höchstens 64 Zeichen) und Meldung (`error.message`, `detail` oder
+   `error` als Text, eine Zeile, höchstens 200 Zeichen) aus der JSON-Antwort. Wiederholt die
+   Meldung den Bildprompt, das Foto oder den Schlüssel, fällt sie weg; sonst nichts aus der
+   Antwort. Ändert „Logs carry only a reason and a status“ in `_shared/flux.ts`.
 
 ## Daten
 

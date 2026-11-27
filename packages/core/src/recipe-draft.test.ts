@@ -17,6 +17,7 @@ import {
   isNewTag,
   linkChipLabel,
   mainIngredientNames,
+  unreadLinksNotice,
 } from './recipe-draft';
 import { articles, articlesById, makeRecipe } from './test-fixtures';
 import type { Article } from './types';
@@ -434,6 +435,49 @@ describe('linkChipLabel (AC-004, AC-017)', () => {
     expect(linkChipLabel('https://www.tiktok.com/@a/video/1', 'reading')).toBe(
       'TikTok wird gelesen …',
     );
+  });
+});
+
+describe('unreadLinksNotice: the toast after the draft (spec 0040 AC-019, spec 0064 AC-011)', () => {
+  const source = (
+    url: string,
+    kind: RecipeDraftSource['kind'],
+    read = false,
+  ): RecipeDraftSource => ({
+    url,
+    kind,
+    read,
+  });
+
+  it('AC-019 (0040): a page that failed says why it probably failed and what to do instead', () => {
+    expect(unreadLinksNotice([source('https://www.zeit.de/rezepte/lasagne', 'page')])).toBe(
+      'zeit.de ließ sich nicht laden – vermutlich eine Bezahlschranke oder ein Schutz der Seite. Füge den Rezepttext ein oder hänge Screenshots an.',
+    );
+  });
+
+  it('AC-011 (0064): a YouTube video without its description asks for the description', () => {
+    expect(unreadLinksNotice([source('https://youtu.be/gkgJAPBrwT8', 'youtube')])).toBe(
+      'Die Videobeschreibung ließ sich nicht lesen – kopiere sie ins Textfeld, dann übernimmt die KI sie genau.',
+    );
+  });
+
+  it('AC-017 (0040): TikTok keeps its short line; several failed links get one line each', () => {
+    expect(
+      unreadLinksNotice([
+        source('https://vm.tiktok.com/ZGdXoJ8Ay/', 'tiktok'),
+        source('https://www.chefkoch.de/rezepte/1', 'page', true),
+        source('https://www.zeit.de/rezepte/lasagne', 'page'),
+      ]),
+    ).toBe(
+      'TikTok konnte nicht gelesen werden\nzeit.de ließ sich nicht laden – vermutlich eine Bezahlschranke oder ein Schutz der Seite. Füge den Rezepttext ein oder hänge Screenshots an.',
+    );
+  });
+
+  it('everything read: no toast', () => {
+    expect(unreadLinksNotice([source('https://www.chefkoch.de/rezepte/1', 'page', true)])).toBe(
+      undefined,
+    );
+    expect(unreadLinksNotice([])).toBe(undefined);
   });
 });
 

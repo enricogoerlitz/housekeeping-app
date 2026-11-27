@@ -73,6 +73,20 @@ gespeichert („YouTube“ als Bezeichnung, wenn nichts anderes passt). Das Vors
   das Rezept den Link `https://www.youtube.com/watch?v=gkgJAPBrwT8`
 - AC-010: Angenommen „Foto generieren“ ist aus · Dann wird das Vorschaubild als Foto übernommen
 
+**REQ-005 — Ehrlich bei ungelesener Beschreibung.** Kommt nur der Titel an (Rückfall auf oEmbed
+oder gar nichts), gilt der Link als „nicht gelesen“: Der Hinweis nach dem Entwurf sagt, was zu tun
+ist, und die KI gibt keine erfundenen Mengen als Rezept des Videos aus. Ändert AC-005: Dort gibt es
+weiter keinen Fehler, der Link zählt aber nicht mehr als gelesen. Quelle: Vorschau-Logs 27.11.
+Offline: nur online.
+
+- AC-011: Angenommen die Video-Seite liefert keine Beschreibung (`youtube_page_unread`), oEmbed den
+  Titel · Wenn der Entwurf kommt · Dann trägt die Quelle `read: false` mit Vorschaubild und
+  Adresse, und der Hinweis lautet „Die Videobeschreibung ließ sich nicht lesen – kopiere sie ins
+  Textfeld, dann übernimmt die KI sie genau.“
+- AC-012: Angenommen dieselbe Lage · Dann bekommt die KI den Titel mit dem Vermerk „nur der Titel,
+  Beschreibung nicht lesbar“, und die Anweisung verbietet, Mengen, Portionen und Schritte als die
+  der Quelle auszugeben
+
 ## Entscheidungen
 
 1. **Watch-Seite statt API:** Der PoC vom 27.11. zeigte von einem deutschen Anschluss vollständige
@@ -83,6 +97,16 @@ gespeichert („YouTube“ als Bezeichnung, wenn nichts anderes passt). Das Vors
    TikTok-Cover über den vorhandenen Bild-Abruf (`fetch-image`) und dessen Grenzen.
 3. **Grenzen:** Video-Seite höchstens 2,5 MB und 8 s, oEmbed 4 s, Beschreibung höchstens 6000
    Zeichen an die KI.
+4. **Nur Titel heißt „nicht gelesen“ (REQ-005, 27.11. nach der Vorschau).** Auf dem
+   Supabase-Server leitet die Video-Seite von youtube.com weg (`youtube_page_unread { reason:
+"blocked_host" }`, vermutlich Googles Bot-Prüfung); oEmbed liefert weiter den Titel. Bisher galt
+   der Link damit als gelesen, und die KI erfand aus dem Titel ein ganzes Rezept mit falschen
+   Mengen und Portionen. Jetzt meldet `readYouTube` `descriptionUnread`, die Quelle trägt
+   `read: false`, Titel und Vorschaubild bleiben (die KI bekommt den Titel, das Bild bleibt die
+   Foto-Wahl „Original“; das Vorschaubild geht wie bisher nicht an die KI). Kein neuer Zustand im
+   Vertrag: `read: false` reicht für den vorhandenen Hinweis. Eine leere Beschreibung auf einer
+   gelesenen Video-Seite zählt als gelesen. Der Hinweistext spricht von „der KI“ statt „ich“, wie
+   die übrigen Texte des KI-Fensters.
 
 ## Daten
 
@@ -112,6 +136,8 @@ gespeichert außer dem Link und dem gewählten Foto des Rezepts.
     `https://www.youtube.com/watch?v=<ID>`.
   - **Vorschau (Supabase-Server):** offen, prüft der Koordinator nach dem Deploy.
 - [x] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün (27.11., lokal)
+- [x] 5. Nur Titel → „nicht gelesen“ mit Hinweis und Regel in der Anweisung (AC-011, AC-012);
+      Hinweis über `unreadLinksNotice` (core), Toast 8 s
 
 ## Nachweis
 
@@ -123,3 +149,7 @@ gespeichert außer dem Link und dem gewählten Foto des Rezepts.
   erkennt WebP (`imageTypeOf`), die App verkleinert es wie jedes Foto.
 - Die Anweisung an die KI nennt jetzt „TikTok- und YouTube-Texte“ als Quellen; gegen das echte
   Modell nicht geprüft (kein bezahlter Aufruf).
+- REQ-005 (27.11.): rot zuerst `handler.test.ts` „AC-011, AC-012“ (Quelle `read: true` statt
+  `false`) und drei Tests in `youtube.test.ts` (ohne `descriptionUnread`); in `core`
+  `unreadLinksNotice` (AC-011) rot ohne Funktion, danach grün. Gegen das echte Modell und den
+  Supabase-Server nicht geprüft (kein bezahlter Aufruf; zeigt die nächste Vorschau).

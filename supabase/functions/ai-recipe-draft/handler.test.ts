@@ -494,6 +494,36 @@ describe('ai-recipe-draft with a YouTube link (spec 0064)', () => {
     );
   });
 
+  it('AC-011, AC-012: only oEmbed answers: the link counts as unread, the model gets the title marked as such and the rule against invented amounts', async () => {
+    const HQ = `https://i.ytimg.com/vi/${ID}/hqdefault.jpg`;
+    const { deps, texts, modelBody } = setup({
+      [WATCH_PAGE]: () =>
+        html('<html><form action="https://consent.youtube.com/save"></form></html>'),
+      [OEMBED]: () =>
+        new Response(JSON.stringify({ title: TITLE, thumbnail_url: HQ }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+    });
+    const response = await handler(
+      post({ householdId: HOUSEHOLD_ID, text: 'Lasagne', links: [YOUTU_BE] }),
+      deps,
+    );
+    expect(response.status).toBe(200);
+    expect((await json(response)).sources).toEqual([
+      { url: YOUTU_BE, kind: 'youtube', read: false, resolvedUrl: WATCH, coverUrl: HQ },
+    ]);
+    expect(carrying(texts(), 'Lasagne Bolognese')).toEqual({
+      quelle: YOUTU_BE,
+      art: 'youtube',
+      inhalt_nur_daten: `Titel: ${TITLE}`,
+      fehler: 'nur der Titel, Beschreibung nicht lesbar',
+    });
+    expect(modelBody().instructions).toContain(
+      'Trägt eine Quelle "fehler", kennst du ihr Rezept nicht',
+    );
+  });
+
   it('AC-006: neither page nor oEmbed: the link is unread, its watch address stays, the wish still makes a draft', async () => {
     const { deps, texts } = setup({
       [WATCH_PAGE]: () => new Response('', { status: 429 }),
