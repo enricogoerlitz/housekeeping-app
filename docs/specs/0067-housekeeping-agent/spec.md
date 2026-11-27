@@ -1,11 +1,11 @@
 ---
-status: entwurf
+status: freigegeben
 datum: 2026-11-27
 ---
 
 # 0067 — Housekeeping-Agent: ein zentraler KI-Agent für den ganzen Haushalt
 
-**Quelle:** Enrico, 27.11.2026 (Wünsche gesammelt in `tmp/ki-agent-zentral/wuensche-enrico.md`),
+**Freigegeben:** Enrico, 27.11.2026. **Quelle:** Enrico, 27.11.2026 (Wünsche gesammelt in `tmp/ki-agent-zentral/wuensche-enrico.md`),
 UI-Konzept https://claude.ai/artifact/Ca9pvzsvycaXpUapnTub2y (abgenommen mit Feedback),
 Feature-Recherche `tmp/ki-agent-zentral/feature-recherche.md`, Architekturbericht
 `tmp/ki-agent-zentral/architektur.md`, PoCs `tmp/ki-chat-poc/BERICHT*.md`. Baut auf Spec 0066
@@ -224,7 +224,7 @@ Mit Enrico am 27.11.2026 entschieden:
 7. Rezepte über die vorhandene Entwurfs-Strecke, Prüfen im vorhandenen Editor (kein zweiter
    Editor im Chat).
 8. Bild: ein KI-Bild ohne Auswahl; Google-Bilder zur Auswahl.
-9. OFFEN (Bau prüft): Welche Dateien das Modell annimmt. Annahme: Bilder (JPEG nach Umwandlung
+9. Abgenommen mit Annahme (Bau prüft und meldet): Welche Dateien das Modell annimmt. Annahme: Bilder (JPEG nach Umwandlung
    wie heute, auch HEIC vom iPhone) und PDF als Datei-Eingabe; alles andere wird in der App
    abgewiesen (AC-010).
 10. Modelle: nur GPT-Familie. Start mit `gpt-6.1-terra` für den Agenten. Der Bau bewertet
@@ -241,7 +241,7 @@ Mit Enrico am 27.11.2026 entschieden:
 13. Aus Spec 0066 offen und hier zu erledigen: ein privates Löschprotokoll für direkt gelöschte
     Chats; die Umgebung (`env`) in den Metadaten der Conversation; die Vorschau leert ihre
     Foundry-Conversations vor dem Reset.
-14. OFFEN: Speicherort der Ansicht. Annahme: Spalte in der eigenen, synchronisierten Zeile der
+14. Abgenommen mit Annahme: Speicherort der Ansicht: Spalte in der eigenen, synchronisierten Zeile der
     Person (wie `notification_settings`), nur von ihr lesbar und schreibbar.
 
 ## Grenzfälle, die in der App fest verdrahtet sind
