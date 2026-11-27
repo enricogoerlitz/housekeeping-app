@@ -20,6 +20,7 @@ import { View, type HostInstance } from 'react-native';
 
 import { DictationField } from '@/features/shell/dictation-field';
 import { useOnlineOnly } from '@/features/shell/offline';
+import { usePromptDictation } from '@/lib/use-prompt-dictation';
 import { useOriginBack, usePageParams } from '@/lib/url-state';
 
 import { AgentMessages } from './agent-messages';
@@ -103,6 +104,12 @@ export function AgentScreen() {
       setText('');
     });
   };
+  // Spec 0068: "Senden" while dictating stops, waits for the last words and sends them along.
+  const dictation = usePromptDictation({
+    value: text,
+    onChangeText: (value) => setText(value.slice(0, AGENT_LIMITS.message)),
+    onSend: () => send(text),
+  });
 
   const newChat = () => {
     chat.reset();
@@ -208,7 +215,8 @@ export function AgentScreen() {
           multiline
           grow
           round
-          onSubmitEditing={() => send(text)}
+          dictation={dictation}
+          onSubmitEditing={dictation.send}
           blurOnSubmit
           returnKeyType="send"
           testID="agent-input"
@@ -226,9 +234,11 @@ export function AgentScreen() {
                 icon="send"
                 label="Senden"
                 variant="filled"
-                disabled={disabled || locating || atLimit || text.trim() === ''}
+                disabled={
+                  disabled || locating || atLimit || (text.trim() === '' && !dictation.pending)
+                }
                 hint={disabled ? OFFLINE_AGENT_HINT : undefined}
-                onPress={() => send(text)}
+                onPress={dictation.send}
                 testID="agent-send"
               />
             )
