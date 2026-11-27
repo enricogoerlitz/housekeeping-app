@@ -3,6 +3,7 @@ import { formatStars } from './ratings';
 import { contentsInBook } from './collections';
 import { averageRating, courseLabel, filterRecipes, sortRecipes, type RecipeSort } from './recipes';
 import { normalizeText } from './text';
+import { isUnfinishedRecipe } from './unfinished-recipes';
 import type {
   Article,
   CollectionRecipe,
@@ -52,19 +53,23 @@ export interface RecipeListFilter {
   /** Tag keys (tagKey); several: a recipe passes only with all of them (spec 0037, REQ-006). */
   tags: string[];
   minRating?: MinRating;
+  /** Only recipes without ingredients and steps (spec 0061, REQ-002). */
+  unfinished: boolean;
 }
 
 export const EMPTY_RECIPE_LIST_FILTER: RecipeListFilter = {
   favorites: false,
   fitsAll: false,
   rare: false,
+  unfinished: false,
   courses: [],
   cuisines: [],
   tags: [],
 };
 
-/** The quick chips in the filter row, in this order (REQ-002). */
-export type QuickFilter = 'favorites' | 'fast' | 'vegetarian' | 'vegan' | 'fitsAll' | 'rare';
+/** The quick chips in the filter row, in this order (REQ-002); "Unfertig" last (spec 0061). */
+export type QuickFilter =
+  'favorites' | 'fast' | 'vegetarian' | 'vegan' | 'fitsAll' | 'rare' | 'unfinished';
 
 export const QUICK_FILTERS: readonly { value: QuickFilter; label: string }[] = [
   { value: 'favorites', label: 'Favoriten' },
@@ -73,7 +78,23 @@ export const QUICK_FILTERS: readonly { value: QuickFilter; label: string }[] = [
   { value: 'vegan', label: 'Vegan' },
   { value: 'fitsAll', label: 'Passt für alle' },
   { value: 'rare', label: 'Lange nicht gekocht' },
+  { value: 'unfinished', label: 'Unfertig' },
 ];
+
+/**
+ * The quick chips as shown (spec 0061, REQ-002): "Unfertig (n)" with the number of unfinished
+ * recipes of the household, left out while there are none and it is off (AC-006, AC-009).
+ */
+export function shownQuickFilters(
+  filter: RecipeListFilter,
+  unfinished: number,
+): { value: QuickFilter; label: string }[] {
+  return QUICK_FILTERS.flatMap((chip) => {
+    if (chip.value !== 'unfinished') return [chip];
+    if (unfinished === 0 && !filter.unfinished) return [];
+    return [{ value: chip.value, label: `${chip.label} (${unfinished})` }];
+  });
+}
 
 export function isQuickFilterActive(filter: RecipeListFilter, chip: QuickFilter): boolean {
   switch (chip) {
@@ -88,6 +109,8 @@ export function isQuickFilterActive(filter: RecipeListFilter, chip: QuickFilter)
       return filter.fitsAll;
     case 'rare':
       return filter.rare;
+    case 'unfinished':
+      return filter.unfinished;
   }
 }
 
@@ -109,6 +132,8 @@ export function toggleQuickFilter(filter: RecipeListFilter, chip: QuickFilter): 
       return { ...filter, fitsAll: !active };
     case 'rare':
       return { ...filter, rare: !active };
+    case 'unfinished':
+      return { ...filter, unfinished: !active };
   }
 }
 
@@ -119,6 +144,7 @@ export function activeFilterCount(filter: RecipeListFilter): number {
     Number(filter.favorites) +
     Number(filter.fitsAll) +
     Number(filter.rare) +
+    Number(filter.unfinished) +
     Number(filter.diet !== undefined) +
     Number(filter.maxMinutes !== undefined) +
     Number(filter.minRating !== undefined) +
@@ -373,6 +399,7 @@ export function applyRecipeListFilter(
   const { minRating } = filter;
   return basic.filter((recipe) => {
     if (filter.kind !== undefined && recipe.kind !== filter.kind) return false;
+    if (filter.unfinished && !isUnfinishedRecipe(recipe)) return false;
     const dishes = recipe.kind === 'collection' ? containedRecipes(recipe, context) : [recipe];
     const empty = dishes.length === 0 && recipe.ingredients.length === 0;
     if (filter.courses.length > 0 && !empty) {
@@ -498,11 +525,15 @@ export function recipeShowLabel(recipes: readonly Pick<Recipe, 'kind'>[]): strin
 
 /**
  * The empty list: "Keine Rezepte für „xyzzy““ for a search (AC-004), else "Keine Rezepte für diese
- * Filter" (AC-008).
+ * Filter" (AC-008), or with "Unfertig" on and none left "Alle Rezepte sind ausgearbeitet" (spec
+ * 0061, AC-009).
  */
-export function recipeEmptyLabel(query: string): string {
+export function recipeEmptyLabel(query: string, options: { allWorkedOut?: boolean } = {}): string {
   const shown = query.trim();
-  return shown === '' ? 'Keine Rezepte für diese Filter' : `Keine Rezepte für „${shown}“`;
+  if (shown !== '') return `Keine Rezepte für „${shown}“`;
+  return options.allWorkedOut
+    ? 'Alle Rezepte sind ausgearbeitet'
+    : 'Keine Rezepte für diese Filter';
 }
 
 /** The average on a tile: one decimal with a comma, rounded half up; "4,8" for 4.75 (AC-040). */

@@ -9,6 +9,7 @@ import {
 import {
   canPutRecipeOnList,
   chooseVariant,
+  isUnfinishedRecipe,
   recipeDietChip,
   shownVariantId,
   type Id,
@@ -45,6 +46,7 @@ import { usePageEditor } from './sections/use-page-editor';
 import { RecipePhoto } from './recipe-cover';
 import { RecipeFrame, STACKED_PHOTO_MAX_WIDTH } from './recipe-frame';
 import { useDeleteRecipe } from './use-delete-recipe';
+import { UnfinishedCard } from './work-out';
 
 export interface RecipeDetailProps {
   recipeId: Id;
@@ -171,6 +173,8 @@ function RecipeDetailBody(props: {
   const photo = useRecipePhoto(recipe);
   const editor = usePageEditor(recipe, { unsaved: props.unsaved, onDiscard: props.onBack });
   const editing = editor.draft !== undefined;
+  // Spec 0061: whether the page opened on an unfinished recipe ("Ausgearbeitet" after saving).
+  const [openedUnfinished] = useState(() => isUnfinishedRecipe(recipe));
   // While the page is edited nothing leads away without asking (AC-005).
   const swipe = editing ? undefined : browse;
   const back = () => editor.guard(props.onBack);
@@ -293,6 +297,12 @@ function RecipeDetailBody(props: {
         <EditError editor={editor} />
         <DraftBackupNotice editor={editor} />
         <AiPageTools recipe={recipe} editor={editor} />
+        <UnfinishedCard
+          recipe={recipe}
+          editor={editor}
+          openedUnfinished={openedUnfinished}
+          quick={props.quick}
+        />
         {desktop ? (
           <>
             <Row gap={32} align="flex-start">

@@ -47,6 +47,7 @@ export * from './sync-diff';
 export * from './store-queue';
 export * from './ai-contract';
 export * from './recipe-list';
+export * from './unfinished-recipes';
 export * from './restaurant-list';
 export * from './list-sorts';
 export * from './list-views';

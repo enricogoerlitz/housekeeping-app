@@ -201,6 +201,7 @@ describe('recipe list in the address', () => {
         maxMinutes: 30 as const,
         fitsAll: true,
         rare: true,
+        unfinished: true,
         courses: ['main' as const, 'side' as const],
         cuisines: ['italienisch'],
         tags: ['ofen'],

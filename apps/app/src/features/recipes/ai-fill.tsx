@@ -49,7 +49,15 @@ import {
   useImageDropAndPaste,
   type TabSwipe,
 } from '@housekeeping/ui';
-import { useEffect, useLayoutEffect, useRef, useState, type ComponentRef, type Ref } from 'react';
+import {
+  useEffect,
+  useEffectEvent,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ComponentRef,
+  type Ref,
+} from 'react';
 import { View, type TextInput } from 'react-native';
 
 import { DictationField } from '@/features/shell/dictation-field';
@@ -526,7 +534,8 @@ export interface AiFillResult {
  * the title) and „Prompt“ (the field of spec 0040) in a window. Spec 0055: a recipe with content
  * opens on „Prompt“ and sends itself as `current` (REQ-005, REQ-006); „Foto generieren“ starts off
  * when it has a photo. "Websuche" on a recipe with ingredients asks "Ergänzen oder ersetzen?"
- * (AC-006); "Ergänzen" keeps them.
+ * (AC-006); "Ergänzen" keeps them. `searchNow` searches the title as the window opens, without
+ * the keyboard ("Ausarbeiten", spec 0061, REQ-004).
  */
 export function AiFillSheet(props: {
   title: string;
@@ -538,6 +547,7 @@ export function AiFillSheet(props: {
   current: () => RecipeDraft;
   onDraft: (result: AiFillResult) => void;
   onClose: () => void;
+  searchNow?: boolean;
 }) {
   const [defaults] = useState(() =>
     aiFillDefaults({ editing: true, hasContent: props.hasContent, hasPhoto: props.hasPhoto }),
@@ -549,6 +559,10 @@ export function AiFillSheet(props: {
   const tabs = useAiFillTabs(defaults.tab, search);
   const { tab } = tabs;
   const [mode, setMode] = useState<'add' | 'replace'>('add');
+  const searchTitle = useEffectEvent(() => {
+    if (props.searchNow && defaults.tab === 'web') search.search(props.title);
+  });
+  useEffect(() => searchTitle(), []);
   const submit = () => {
     if (!fill.ready || fill.busy) return;
     const generatePhoto = fill.generatePhoto;
@@ -636,7 +650,7 @@ export function AiFillSheet(props: {
                 tabs.choose('prompt');
               }}
               recipeRows={draftInput}
-              autoFocus={defaults.tab === 'web'}
+              autoFocus={defaults.tab === 'web' && !props.searchNow}
               inputRef={tabs.webField}
               testID="recipe-ai-fill-web"
             />
