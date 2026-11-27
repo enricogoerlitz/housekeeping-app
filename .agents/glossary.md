@@ -401,10 +401,11 @@ Ein Artikel auf der Einkaufsliste, eine Zeile je Artikel. Setzt sich aus **Beitr
 Woher ein Beitrag eines Einkaufspostens kommt, wie es beim Antippen steht: „Lasagne (Fr): 1× · von
 Hand: 1×“. Ein Beitrag aus dem Kalender trägt den Wochentag in Klammern, einer direkt von der
 Rezeptseite oder über „Rezept wählen …“ steht ohne Tag („Mango-Curry“); aus einer Sammlung
-„Grillabend“ bzw. „Grillabend · Kartoffelsalat“ (Spec 0006, Spec 0009).
+„Grillabend“ bzw. „Grillabend · Kartoffelsalat“ (Spec 0006, Spec 0009); ein Beitrag eines
+[Dauerpostens](#dauerposten) heißt „regelmäßig“ (Spec 0060).
 
 - **Im Code:** `ShoppingContribution.source` (`ContributionSource`: `manual` · `recipe` mit
-  `label`; `recurring` entfällt, Spec 0025)
+  `label` · `recurring` mit `recurringItemId` und dem Tag `on`, Spec 0060)
 - **Nicht verwenden:** Quelle (in der Oberfläche), Ursprung
 
 ### Zusatz
@@ -600,10 +601,13 @@ dem Tag, an dem man spätestens anfangen muss (nicht mehr nur am Vortag).
 
 ### Dauerposten
 
-Ein Artikel, der nach einem eigenen Rhythmus von selbst auf die Einkaufsliste kommt, z. B. „Milch
-montags“. **Nicht gebaut** (Spec 0025: Keine Dauerposten; die Herkunft `recurring` entfällt).
+Ein Artikel mit Menge, Zusatz und Rhythmus (wöchentlich an Wochentagen, alle N Wochen, oder
+monatlich am Tag X), der am fälligen Tag von selbst auf die Einkaufsliste kommt, z. B. „Cola 2×,
+wöchentlich Sa“ — als Beitrag mit der Herkunft „regelmäßig“, höchstens einmal je Tag und nicht,
+solange er noch offen draufsteht. Pausiert kommt er nicht. Höchstens einer je Artikel; gehört zum
+Haushalt (Spec 0060, ändert Spec 0025).
 
-- **Im Code:** keiner; der frühere Entwurf `RecurringItem`, `recurring_items` besteht nicht
+- **Im Code:** `RecurringItem`, `recurring_items`; der Zeitplaner `private.add_due_recurring_items`
 - **Nicht verwenden:** Abo, Standardposten
 
 ### Sammlung

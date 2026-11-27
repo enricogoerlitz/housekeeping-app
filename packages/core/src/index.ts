@@ -23,6 +23,7 @@ export * from './shopping';
 export * from './shopping-list';
 export * from './shopping-mode';
 export * from './shopping-picker';
+export * from './recurring-items';
 export * from './chores';
 export * from './chore-schedule';
 export * from './chore-form';

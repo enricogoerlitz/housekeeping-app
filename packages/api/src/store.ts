@@ -20,6 +20,7 @@ import type {
   PackingItem,
   PackingListBag,
   Recipe,
+  RecurringItem,
   Restaurant,
   RowOp,
   ShoppingItem,
@@ -48,6 +49,8 @@ export interface HouseholdData {
   activitySeriesExceptions: ActivitySeriesException[];
   planEntries: MealPlanEntry[];
   items: ShoppingItem[];
+  /** Spec 0060: "Dauerposten" in creation order. */
+  recurringItems: RecurringItem[];
   chores: Chore[];
   choreEvents: ChoreEvent[];
   /** Spec 0022: trips with their people (rows of trips and trip_members). */

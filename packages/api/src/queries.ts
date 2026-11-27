@@ -60,6 +60,8 @@ export const useActivitySeries = () => useDataSelector((data) => data.activitySe
 export const useActivitySeriesExceptions = () =>
   useDataSelector((data) => data.activitySeriesExceptions);
 export const useShoppingItems = () => useDataSelector((data) => data.items);
+/** Spec 0060: "Dauerposten" in creation order. */
+export const useRecurringItems = () => useDataSelector((data) => data.recurringItems);
 export const useChores = () => useDataSelector((data) => data.chores);
 export const useChoreEvents = () => useDataSelector((data) => data.choreEvents);
 /** Spec 0022: trips with their people, in creation order (core tripStripes). */

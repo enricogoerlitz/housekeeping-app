@@ -24,6 +24,8 @@ export const ID_TABLES = [
   'chores',
   'chore_events',
   'meal_plan_entries',
+  // Spec 0060: Dauerposten.
+  'recurring_items',
   'shopping_items',
   'shopping_contributions',
   'packing_bags',
@@ -192,6 +194,8 @@ export const WRITABLE_COLUMNS = {
     'reminder_at',
     'reminder_text',
   ],
+  // Spec 0060: last_added_on is the server's (Decision 7).
+  recurring_items: ['article_id', 'count', 'qty', 'unit', 'note', 'rule', 'starts_on', 'paused'],
   shopping_items: ['article_id'],
   shopping_contributions: ['item_id', 'source', 'count', 'qty', 'unit', 'note'],
   // The meal slots are set by create_household, never by a member (spec 0031, REQ-014).
@@ -246,6 +250,8 @@ export const PATCH_COLUMNS: Partial<Record<WritableTable, readonly string[]>> = 
     'reminder_text',
   ],
   activity_series_exceptions: ['series_id', 'moved_to', 'slot_id', 'starts_at'],
+  // Spec 0060: a Dauerposten keeps its article.
+  recurring_items: ['count', 'qty', 'unit', 'note', 'rule', 'starts_on', 'paused'],
 };
 
 /**

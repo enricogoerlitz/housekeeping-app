@@ -266,6 +266,8 @@ export const PAGE_PARAMS = {
     von: Von,
   },
   verwalten: {},
+  // Spec 0060: "Dauerposten" under "Verwalten", also from the list's ⋯.
+  dauerposten: { von: Von },
   einstellungen: {
     abschnitt: one(oneOf(['profil', 'darstellung', 'ki'])),
     fenster: one(oneOf(['profil'])),
