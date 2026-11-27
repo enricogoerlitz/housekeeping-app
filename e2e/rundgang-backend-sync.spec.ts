@@ -425,8 +425,13 @@ test('AC-022: checking wins — Enrico unchecks "Butter" offline, Nadja re-check
 
   await enrico.bringToFront();
   await showInCart(enrico);
+  // A checked row stays in its area for a moment before it moves to "Im Wagen": take that one.
+  const inCart = tid(enrico, 'sm-done').locator('[role="checkbox"][aria-label="Butter"]');
+  await expect(
+    enrico.locator('[data-testid^="sm-group-"] [role="checkbox"][aria-label="Butter"]'),
+  ).toHaveCount(0);
   await context.setOffline(true);
-  await smCheck(enrico, 'Butter').click();
+  await inCart.click();
   await expect(smCheck(enrico, 'Butter')).toHaveAttribute('aria-checked', 'false');
 
   // Nadja takes the check back and sets it again in "Einkaufen", online.

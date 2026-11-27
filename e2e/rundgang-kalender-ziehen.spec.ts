@@ -128,6 +128,15 @@ async function finger(page: Page) {
           },
         ]);
       }
+      // A finger never stands quite still: one more move once the targets were measured on the
+      // next frames (a slow runner may not have them for the last step).
+      await page.evaluate(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+          ),
+      );
+      await send('touchMove', [point]);
       last = point;
     },
     lift: () => send('touchEnd', []),
