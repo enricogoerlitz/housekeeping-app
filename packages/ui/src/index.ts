@@ -1,6 +1,6 @@
 // Design system of the app. Screens use only what is exported here.
 export * from './themes';
-export { fontAssets } from './fonts';
+export { useThemeFonts } from './fonts';
 export { ThemeProvider, useTheme, useBreakpoint, space } from './theme-context';
 export { icons, type IconName } from './icons';
 export { Text, Icon, Surface, Row, Stack } from './primitives';

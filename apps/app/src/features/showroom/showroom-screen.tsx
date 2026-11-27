@@ -10,6 +10,7 @@ import {
   ChoiceChips,
   DueBar,
   EmptyState,
+  getTheme,
   GhostRow,
   GroupLabel,
   Icon,
@@ -39,6 +40,7 @@ import {
   toast,
   useBreakpoint,
   useTheme,
+  useThemeFonts,
   ViewTabs,
   type ColorMode,
   type IconName,
@@ -73,6 +75,8 @@ export function ShowroomScreen() {
   const settings = useSettings();
   const [themeId, setThemeId] = useState<ThemeId>(settings.themeId);
   const [mode, setMode] = useState<ColorMode>(settings.mode);
+  // Fonts load per theme (spec 0058, REQ-006): the one shown here may not be loaded yet.
+  useThemeFonts(getTheme(themeId, mode).fonts);
   return (
     <ThemeProvider themeId={themeId} mode={mode}>
       <ShowroomContent themeId={themeId} mode={mode} onTheme={setThemeId} onMode={setMode} />
