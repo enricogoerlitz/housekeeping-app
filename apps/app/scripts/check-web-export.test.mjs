@@ -37,7 +37,7 @@ const validDirectives = {
   'img-src': "'self' data: blob:",
   'media-src': "'self' blob:",
   'connect-src':
-    "'self' https://abc.supabase.co wss://abc.supabase.co https://*.stt.speech.microsoft.com",
+    "'self' blob: https://abc.supabase.co wss://abc.supabase.co https://*.stt.speech.microsoft.com",
   'object-src': "'none'",
   'base-uri': "'self'",
 };
@@ -116,8 +116,19 @@ test('rejects an inline script that only has a data-src attribute', () => {
   assert.ok(problems.includes('index.html contains an inline script'));
 });
 
+test('spec 0040 AC-015: connect-src allows blob: ("Aus diesem Foto" reads the shown photo)', () => {
+  assert.deepEqual(checkExport(exportWith()), []);
+  const problems = checkExport(
+    exportWith({ directives: { 'connect-src': "'self' https://abc.supabase.co" } }),
+  );
+  assert.ok(
+    problems.includes('connect-src must allow blob: (spec 0040, "Aus diesem Foto")'),
+    problems.join('; '),
+  );
+});
+
 test('rejects wildcards and bare schemes in connect-src', () => {
-  for (const value of ['*', 'https:', 'wss:', 'http:']) {
+  for (const value of ['*', 'https:', 'wss:', 'http:', 'data:']) {
     const problems = checkExport(
       exportWith({ directives: { 'connect-src': `'self' https://abc.supabase.co ${value}` } }),
     );
@@ -335,7 +346,7 @@ test('EXPO_PUBLIC_DEV_LOGIN=1 with a local Supabase passes', () => {
   const local = 'http://127.0.0.1:54321';
   const problems = checkExport({
     ...exportWith({
-      directives: { 'connect-src': `'self' ${local} ws://127.0.0.1:54321` },
+      directives: { 'connect-src': `'self' blob: ${local} ws://127.0.0.1:54321` },
     }),
     supabaseUrl: local,
     devLogin: '1',
@@ -398,7 +409,7 @@ test('AC-062 (0031): a release build without the seed precaches no sample photo'
   const local = {
     ...exportWith({
       directives: {
-        'connect-src': "'self' http://127.0.0.1:54321 ws://127.0.0.1:54321",
+        'connect-src': "'self' blob: http://127.0.0.1:54321 ws://127.0.0.1:54321",
       },
     }),
     supabaseUrl: 'http://127.0.0.1:54321',

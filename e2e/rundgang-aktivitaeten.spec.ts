@@ -842,3 +842,33 @@ test('a deep link with a name of Object.prototype shows "nicht gefunden" instead
     await expect(tid(page, notFound), route).toBeVisible();
   }
 });
+
+test('spec 0040 AC-015: "Aus diesem Foto" sends the own photo (a blob: URL) under the CSP of the build', async ({
+  page,
+}) => {
+  const blocked: string[] = [];
+  page.on('console', (message) => {
+    if (/Content Security Policy/i.test(message.text())) blocked.push(message.text());
+  });
+  // The image model is replaced here: the test is about reading the shown photo, not about cost.
+  const fake = readFileSync(GPS_PHOTO).toString('base64');
+  let sentImage = false;
+  await page.route('**/functions/v1/ai-image', async (route) => {
+    const body = route.request().postDataJSON() as { image?: string };
+    sentImage = typeof body.image === 'string' && body.image.length > 0;
+    await route.fulfill({ json: { images: [fake], failed: 0 } });
+  });
+
+  await open(page, activityRoute(page, EISLAUFEN));
+  await pickFile(page, 'activity-photo-change', GPS_PHOTO, { prefix: 'activity' });
+  await expect(toastMessage(page)).toHaveText('Foto gespeichert', SYNC);
+  await expectOwnPhoto(tid(page, 'activity-image-photo'));
+
+  await tid(page, 'activity-photo-change').click();
+  await page.getByRole('tab', { name: 'KI' }).click();
+  await tid(page, 'activity-photo-window-ai-from-photo').click();
+  await tid(page, 'activity-photo-window-ai-create').click();
+  await expect(tid(page, 'activity-photo-window-ai-variant-0')).toBeVisible(SYNC);
+  expect(sentImage).toBe(true);
+  expect(blocked).toEqual([]);
+});
