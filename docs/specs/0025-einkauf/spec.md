@@ -333,6 +333,10 @@ Alle nach Enricos Regel „Empfehlung nehmen“ (Claude, 22.11.2026).
 21. Browser-Durchklick 27.11. (Review 0003, B-09): Am Handy steht „⋯“ der Liste am Ende der
     Knopfzeile („Einkaufen“, „+ Aus Kalender …“, „⋯“), damit „Einkaufsliste“ neben Glocke, ⊞ und
     Avatar ganz zu lesen ist (vorher „Einkaufsli…“ bei 390 px).
+22. Durchklick iPhone (27.11., Review 0003, I-08/I-11): „Was fehlt?“ meldet wie „Einkaufen“
+    „Milch steht auf der Liste“ — die Zeile liegt oft außerhalb des Bilds oder wird mit einer
+    vorhandenen zusammengelegt (2× → 3×), sonst sieht man nichts. Das Feld hält Meldungen von
+    sich fern (`useToastAvoid`), auch „1 gekauft · 13 bleiben“ nach „Fertig“.
 
 ## Daten
 

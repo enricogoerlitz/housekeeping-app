@@ -174,6 +174,32 @@ Befund 7. Offline: offline vollständig.
 9. OFFEN: Warum die Tastatur im Video nach „Neu → Rezept“ erst spät kam (der versteckte Feld-Trick
    aus Spec 0033 sollte sie im Tipp öffnen), ist ohne iPhone nicht zu klären. Entscheidung 4 macht
    die Bewegung in beiden Fällen ruhig; Enrico prüft am iPhone, ob die Tastatur mit dem Tipp kommt.
+10. Durchklick iPhone-Simulator (27.11., Review 0003, gemessen mit `scrollY`/`visualViewport`):
+    - **˄ ˅ nur zu sichtbaren Feldern (I-02).** iOS legt beim Fokussieren fest, ob ˄ ˅ ein
+      Nachbarfeld erreichen, und nimmt nur sichtbare (mit `--app-height` ist alles unter der
+      Tastatur abgeschnitten); unser Scrollen zwei Bilder später kam zu spät (in „Beschreibung“
+      war ˅ grau). Jetzt steht das Feld schon vor dem Fokus an seinem Platz: beim Wechsel mit
+      ˄ ˅ im `blur`, beim Antippen im `focusin` (ohne Gleiten), und das nächste Feld schaut
+      44 px herein, wenn beides in den sichtbaren Teil passt (`keyboardRevealScrollTop`, `next`).
+      Liegt das nächste Feld weiter weg (Zeit → unter Gerichtart, Küche, Schlagworte), bleibt ˅
+      grau — iOS.
+    - **Getipptes Feld nimmt die Tastatur vorweg (I-10).** Ein Feld unten (Einkaufsmodus,
+      „Was fehlt?“) ließ Safari die ganze Seite für einige Bilder um 330 pt hochschieben. Auf
+      dem iPhone gilt beim Antippen eines Felds die erwartete Tastatur wie nach „Neu“
+      (Entscheidung 4); verlässt der Cursor alle Felder vorher, endet die Erwartung.
+    - **Fenster-Scrollen (I-14).** Safari scrollt bei offener Tastatur manchmal nur das Fenster
+      (`scrollY` 331, sichtbarer Bereich unverändert, kein `resize`): das `scroll` des Fensters
+      setzt es jetzt auch zurück.
+    - **Meldung über dem Feld (I-09).** Bei offener Tastatur steht eine Meldung 12 über ihr, außer
+      dort liegt das Feld mit dem Cursor: dann 8 darüber (`keyboardToastBottom`).
+    - Gefunden, nicht geändert: I-04 (Fenster „Link“: „Bezeichnung“ im Safari-Tab unter der
+      Leiste), I-05 (beim Schließen ~0,5 s leerer unterer Rand), I-06 (erster Tipp nach dem Tippen
+      kam einmal nicht an) — siehe `tmp/review-0003/durchklick/iphone.md`.
+    - Nachweis (27.11.): Tests rot, dann grün (`keyboard.test.tsx`, `keyboard-reveal.test.ts`,
+      `toast-place.test.ts`, `overlay-handy.test.tsx`, `overlay.test.tsx`,
+      `portrait-hint.test.ts`); `pnpm format:check && pnpm check && pnpm build:web` grün;
+      iPhone-18-Pro-Simulator (iOS 27.2, Safari-Tab): Titel → Beschreibung → Portionen → Zeit mit
+      ˅, `scrollY` bleibt 0 beim Antippen und in „Im Web suchen“.
 
 ## Daten
 

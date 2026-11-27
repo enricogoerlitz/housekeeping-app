@@ -309,6 +309,9 @@ blob:`); das Foto einer Karte wird bei „Übernehmen“ zum Foto des Eintrags.
     bei dem die Wahl „Ergänzen oder ersetzen?“ gar nicht erscheint). Das Seitenfoto schlägt
     „Ergänzen“ nur einem Rezept ohne Foto vor (AC-047, `proposesPagePhoto`). „Ersetzen“ bleibt, wie
     es war. Präzisiert Spec 0045 Entscheidung 2.
+19. Durchklick iPhone (27.11., Review 0003, I-15): Die Platzhalter im Suchfeld passen neben dem
+    Mikrofon aufs Handy: „z. B. „Spaghetti Bolognese““, „z. B. „Kletterhalle““ (vorher
+    abgeschnitten).
 
 ## Daten
 

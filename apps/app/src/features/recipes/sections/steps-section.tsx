@@ -118,7 +118,7 @@ function StepsFields(props: { recipe: Recipe; draft: StepsDraft; editor: PageEdi
       <Row gap={12} align="flex-start">
         <TextField
           label="Vorlauf"
-          placeholder="z. B. Kichererbsen einweichen"
+          placeholder="z. B. Bohnen einweichen"
           value={draft.leadTimeText}
           onChangeText={(leadTimeText) => set({ ...draft, leadTimeText })}
           error={editor.problem('leadTimeText')}

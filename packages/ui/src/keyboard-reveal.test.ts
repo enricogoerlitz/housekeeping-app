@@ -60,4 +60,36 @@ describe('keyboardRevealScrollTop (spec 0044, REQ-004)', () => {
       keyboardRevealScrollTop({ ...base, area: { top: 500, bottom: 844 }, field: field(700) }),
     ).toBeNull();
   });
+
+  describe('the next field peeks in, so iOS lets ˅ reach it (iPhone click-through)', () => {
+    // Visible part 116–448 (with margins). iOS offers ˅ only to a next field that is in view.
+    it('a visible field whose next field is hidden moves up until the next one shows 44 px', () => {
+      // Field at 300, next at 500: the next one's first 44 px end at 544, 96 px too low.
+      expect(keyboardRevealScrollTop({ ...base, field: field(300), next: field(500) })).toBe(
+        500 + 96,
+      );
+    });
+
+    it('a field coming into the upper third goes higher when the next one would stay hidden', () => {
+      // Upper third alone puts the field at 212 and the next (200 px below) at 412, 8 px short.
+      expect(keyboardRevealScrollTop({ ...base, field: field(700), next: field(900) })).toBe(
+        500 + 900 + 44 - 448,
+      );
+    });
+
+    it('a next field too far below to show along with the field is left out', () => {
+      expect(keyboardRevealScrollTop({ ...base, field: field(300), next: field(900) })).toBeNull();
+      expect(keyboardRevealScrollTop({ ...base, field: field(700), next: field(1100) })).toBe(
+        500 + 700 - 212,
+      );
+    });
+
+    it('a next field already in view changes nothing', () => {
+      expect(keyboardRevealScrollTop({ ...base, field: field(200), next: field(300) })).toBeNull();
+      // Upper third as before.
+      expect(keyboardRevealScrollTop({ ...base, field: field(700), next: field(760) })).toBe(
+        500 + 700 - 212,
+      );
+    });
+  });
 });

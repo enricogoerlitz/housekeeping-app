@@ -503,7 +503,11 @@ function IngredientsFields(props: {
           label="Mehrere einfügen"
           icon="clipboard-list"
           variant="link"
-          onPress={() => setSheet({ kind: 'paste' })}
+          onPress={() => {
+            // The window's field has the cursor at once: the keyboard comes with the tap (iPhone).
+            openKeyboardNow();
+            setSheet({ kind: 'paste' });
+          }}
           testID="recipe-paste-ingredients"
         />
         <Button

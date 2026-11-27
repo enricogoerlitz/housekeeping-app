@@ -243,6 +243,11 @@ Netz).
     ein scrollendes Dokument); der `body` der App scrollt aber nie, also hatte der ScrollView der
     Seite keine Höhe. Behoben mit `headerMode: 'float'` (es gibt keinen Kopf; die Karte bleibt ein
     begrenzter Kasten). Wake Lock und Seiten-Sperre waren es nicht; der Wake Lock bleibt.
+16. Durchklick iPhone (27.11., Review 0003, I-01): Im Safari-Tab ersetzte „Bitte Handy hochkant
+    halten“ die ganze App, sobald die Tastatur aufging — `useWindowDimensions` folgt auf dem Web
+    dem sichtbaren Bereich (402 × 384 mit Tastatur, also „quer“). Ob das Handy quer liegt, sagt
+    jetzt `screen.orientation` (ältere iOS: `window.orientation`), ob es ein Handy ist, die kurze
+    Seite des Bildschirms (< 500); ohne diese Angaben gilt die alte Regel.
 
 ## Daten
 

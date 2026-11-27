@@ -64,3 +64,26 @@ export function toastEdge(input: {
   }
   return free(at(input.top)) ? { top: input.top } : { bottom: input.bottom };
 }
+
+/**
+ * How far above the bottom edge the toast stands while the keyboard is open (spec 0032, REQ-002):
+ * 12 above the keyboard, unless the field with the cursor is there (an input bar right above the
+ * keyboard such as "Was fehlt?"); then 8 above that field, if it fits below the top edge
+ * (iPhone click-through, review 0003).
+ */
+export function keyboardToastBottom(input: {
+  windowHeight: number;
+  /** How much of the window the keyboard covers. */
+  inset: number;
+  toastHeight: number;
+  /** The field with the cursor, in window coordinates. */
+  field?: Band;
+}): number {
+  const { windowHeight, inset, toastHeight, field } = input;
+  const bottom = inset + 12;
+  if (!field) return bottom;
+  const top = windowHeight - bottom - toastHeight;
+  const covers = field.top < windowHeight - bottom && field.bottom > top;
+  if (!covers || field.top - 8 - toastHeight < 0) return bottom;
+  return windowHeight - field.top + 8;
+}

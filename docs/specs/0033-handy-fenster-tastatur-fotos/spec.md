@@ -214,6 +214,12 @@ Knöpfen am unteren Rand der Seite, nicht darauf. Quelle: Video-Befund. Offline:
     bisher); läge er dort auf etwas Bedienbarem (Knopf, Link, Feld), steht er oben unter der
     Statusleiste, falls dort frei; sonst bleibt er unten. Gemessen wird im Web beim Erscheinen und
     ein Bild später (`toastEdge`, `toast-place.ts`).
+13. Durchklick iPhone (27.11., Review 0003): „Mehrere einfügen“ öffnet die Tastatur mit dem Tipp
+    wie „+ Zutat“ (I-03; vorher Fokusrahmen ohne Tastatur). Die Meldung misst 400 ms nach dem
+    Erscheinen noch einmal: kommt sie beim Verlassen einer Seite („Fertig“ in „Einkaufen“), lag sie
+    sonst auf dem Feld der Seite, auf der man landet (I-11). Ein Fenster ohne „Abbrechen“
+    („Mitteilungen“) hält links so viel Platz frei wie der rechte Knopf, damit der Titel mittig
+    steht (I-13).
 
 ## Daten
 

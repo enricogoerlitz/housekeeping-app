@@ -170,10 +170,28 @@ function scrollArea(node: HTMLElement): HTMLElement | null {
   return null;
 }
 
-/** Scrolls the scroll area around the focused field so the field is in view (spec 0044). */
-function revealFocused() {
-  const field = document.activeElement;
-  if (!state.open || !isTextField(field)) return;
+/** The text field after `field` in the same scroll area that takes the cursor, if any. */
+function nextField(
+  field: HTMLElement,
+  area: HTMLElement,
+): HTMLInputElement | HTMLTextAreaElement | undefined {
+  let passed = false;
+  for (const candidate of area.querySelectorAll('input, textarea')) {
+    if (candidate === field) passed = true;
+    else if (passed && isTextField(candidate) && !candidate.disabled && !candidate.readOnly) {
+      return candidate;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Scrolls the scroll area around a field so the field, and the start of the next one, are in view
+ * (spec 0044). `smooth` glides;
+ * without it the area stands there at once (the cursor moving with ˄ ˅, see `onBlur`).
+ */
+function reveal(field: HTMLInputElement | HTMLTextAreaElement, smooth: boolean) {
+  if (!state.open) return;
   const area = scrollArea(field);
   if (!area) return;
   const viewport = window.visualViewport;
@@ -187,13 +205,21 @@ function revealFocused() {
       : { top: visibleTop, bottom: visibleTop + (viewport?.height ?? state.visibleHeight) },
     scrollTop: area.scrollTop,
     maxScrollTop: area.scrollHeight - area.clientHeight,
+    next: nextField(field, area)?.getBoundingClientRect(),
   });
   if (top === null) return;
   // A React Native Web ScrollView replaces its node's scrollTo with its own ({ x, y }): the
   // browser's own method, or plain scrollTop, moves it as asked.
-  const smooth = typeof HTMLElement.prototype.scrollTo === 'function';
-  if (smooth) Reflect.apply(HTMLElement.prototype.scrollTo, area, [{ top, behavior: 'smooth' }]);
-  else area.scrollTop = top;
+  if (smooth && typeof HTMLElement.prototype.scrollTo === 'function') {
+    Reflect.apply(HTMLElement.prototype.scrollTo, area, [{ top, behavior: 'smooth' }]);
+  } else {
+    area.scrollTop = top;
+  }
+}
+
+function revealFocused() {
+  const field = document.activeElement;
+  if (isTextField(field)) reveal(field, true);
 }
 
 let frame: number | undefined;
@@ -209,23 +235,49 @@ function revealSoon() {
   });
 }
 
+/** How long a tapped field waits for its keyboard (as `HANDOVER_MS` in keyboard-proxy). */
+const TAP_KEYBOARD_MS = 1500;
+
 function onFocusIn(event: FocusEvent) {
-  if (state.open && isTextField(event.target)) revealSoon();
+  if (!isTextField(event.target)) return;
+  if (state.open) {
+    revealSoon();
+    return;
+  }
+  // A tapped field on iPhone: the app takes the coming keyboard's height at once, so the field
+  // is already above it and Safari does not push the whole page up for a few frames before the
+  // app sets it back (iPhone click-through, review 0003; spec 0044, decision 4).
+  if (!isAppleTouchBrowser(navigator)) return;
+  expectKeyboard(TAP_KEYBOARD_MS);
+  // In place at once, before iOS decides which neighbours ˄ ˅ reach (see `onBlur`).
+  reveal(event.target, false);
 }
 
 // REQ-005, decision 1 (React Aria, `usePreventScroll`): Safari scrolls the whole page to a field
 // the cursor moves to (˄ ˅, a tap, another keyboard), even inside a scroll area of its own. Taking
 // the focus once more with `preventScroll` while it moves keeps Safari still; REQ-004 scrolls.
+// The field is put in place before it takes the focus: iOS decides then which neighbours ˄ ˅
+// reach, and only offers visible ones (iPhone click-through, review 0003).
 let refocusing = false;
 function onBlur(event: FocusEvent) {
   const next = event.relatedTarget;
+  // The cursor left all fields before the expected keyboard came: none is coming.
+  if (state.expected && !refocusing && !isTextField(next)) endExpectation();
   if (refocusing || !isTextField(next) || !isAppleTouchBrowser(navigator)) return;
   refocusing = true;
   try {
+    reveal(next, false);
     next.focus({ preventScroll: true });
   } finally {
     refocusing = false;
   }
+}
+
+// Safari may also scroll the window alone, the visual viewport staying put (a field in a window
+// on the keyboard): no viewport event comes, so the window's own scroll sets it back (iPhone
+// click-through, review 0003).
+function onWindowScroll() {
+  if (state.open) scrollBack();
 }
 
 // ---------- The store ----------
@@ -235,11 +287,13 @@ function listen(on: boolean) {
   if (on) {
     viewport?.addEventListener('resize', update);
     viewport?.addEventListener('scroll', update);
+    window.addEventListener('scroll', onWindowScroll);
     document.addEventListener('focusin', onFocusIn, true);
     document.addEventListener('blur', onBlur, true);
   } else {
     viewport?.removeEventListener('resize', update);
     viewport?.removeEventListener('scroll', update);
+    window.removeEventListener('scroll', onWindowScroll);
     document.removeEventListener('focusin', onFocusIn, true);
     document.removeEventListener('blur', onBlur, true);
   }

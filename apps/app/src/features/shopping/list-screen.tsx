@@ -42,13 +42,14 @@ import {
   Text,
   toast,
   useBreakpoint,
+  useToastAvoid,
   useTheme,
   type MenuOption,
   expandableA11y,
 } from '@housekeeping/ui';
 import { useIsFocused, useRouter } from 'expo-router';
-import { useState, type ReactNode } from 'react';
-import { Platform, Pressable, View } from 'react-native';
+import { useRef, useState, type ReactNode } from 'react';
+import { Platform, Pressable, View, type HostInstance } from 'react-native';
 
 import { useOpenManageEntry } from '@/features/manage/navigation';
 import { confirmFirst } from '@/features/shell/confirm-dialog';
@@ -196,6 +197,9 @@ export function ListScreen() {
   const router = useRouter();
   const openManageEntry = useOpenManageEntry();
   const { isPhone, isWide } = useBreakpoint();
+  // A toast ("Milch steht auf der Liste", "3 gekauft …") stands above "Was fehlt?", not on it.
+  const composer = useRef<HostInstance>(null);
+  useToastAvoid(composer);
 
   // The open item and "Vorratscheck" stand in the address (spec 0019, REQ-013): `/liste?posten=…`.
   const address = usePageParams('liste');
@@ -582,14 +586,20 @@ export function ListScreen() {
       clearFab={false}
       header={header}
       footer={
-        <SmartComposer
-          onDictate={features.ai ? dictate : undefined}
-          dictating={speech.status === 'listening'}
-          dictateDisabled={
-            online.disabled || speech.status === 'starting' || speech.status === 'stopping'
-          }
-          onAssistant={features.ai ? () => assistant.open() : undefined}
-        />
+        <View ref={composer}>
+          <SmartComposer
+            onDictate={features.ai ? dictate : undefined}
+            dictating={speech.status === 'listening'}
+            dictateDisabled={
+              online.disabled || speech.status === 'starting' || speech.status === 'stopping'
+            }
+            onAssistant={features.ai ? () => assistant.open() : undefined}
+            // Feedback as in "Einkaufen": the row may be off screen or merged into one already there.
+            onAdded={(added) =>
+              toast.show({ message: `${added.articleName} steht auf der Liste`, duration: 2500 })
+            }
+          />
+        </View>
       }
     >
       {actions}
