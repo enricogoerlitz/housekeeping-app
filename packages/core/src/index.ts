@@ -78,6 +78,7 @@ export * from './ingredient-groups';
 export * from './cooking-timers';
 export * from './browse-order';
 export * from './recipe-draft';
+export * from './ai-fill';
 export * from './image-context';
 export * from './recipe-video';
 export * from './web-results';

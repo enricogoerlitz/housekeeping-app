@@ -20,6 +20,7 @@ import {
   type NavItem,
   type PageScrollControl,
 } from './shell';
+import { scrollShownToTop } from './scroll-top';
 import { AreaToneContext, ThemeProvider } from './theme-context';
 
 /** The window size react-native-web reads (jsdom reports 0 × 0, a phone). */
@@ -120,6 +121,22 @@ describe('useBottomInset (spec 0029, REQ-002)', () => {
 });
 
 describe('Screen (spec 0005, REQ-002)', () => {
+  it('spec 0057 AC-009: a tap on the active tab scrolls the shown page to the top', () => {
+    const probe = measurable();
+    try {
+      render(
+        <Screen testID="page">
+          <Text>Inhalt</Text>
+        </Screen>,
+      );
+      expect(scrollShownToTop(false)).toBe(1);
+      expect(probe.calls).toHaveLength(1);
+      expect(probe.calls[0]?.top).toBe(0);
+    } finally {
+      probe.restore();
+    }
+  });
+
   it('shows header, tabs, toolbar, content and footer', () => {
     render(
       <Screen
@@ -137,6 +154,47 @@ describe('Screen (spec 0005, REQ-002)', () => {
       expect(within(page).getByText(text)).toBeTruthy();
     }
     expect(within(page).getByRole('heading', { name: 'Rezepte' })).toBeTruthy();
+  });
+
+  /** Every element of the page painted in the page colour. */
+  function pageFills(page: HTMLElement, rgb: string): HTMLElement[] {
+    return [page, ...Array.from(page.querySelectorAll<HTMLElement>('div'))].filter(
+      (element) => element.style.backgroundColor === rgb,
+    );
+  }
+
+  it('spec 0058, AC-005, AC-007: "Wolke" paints its sky behind the page and the header', () => {
+    render(
+      <ThemeProvider themeId="wolke" mode="light">
+        <Screen testID="page" header={header} toolbar={<Text>Suche</Text>}>
+          <Text>Inhalt</Text>
+        </Screen>
+      </ThemeProvider>,
+    );
+    const fills = pageFills(screen.getByTestId('page'), 'rgb(242, 211, 219)');
+    // The page, the toolbar and the header lying over the content on phones.
+    expect(fills.length).toBeGreaterThanOrEqual(3);
+    for (const fill of fills) {
+      expect(fill.style.backgroundImage).toContain('gradient');
+      // One sky in the size of the window, from the top: the header shows the piece behind it.
+      expect(fill.style.backgroundSize).toBe(fills[0]?.style.backgroundSize);
+    }
+    expect(fills[0]?.style.backgroundSize).toBe('100% 844px');
+  });
+
+  it('spec 0058, AC-006: "Markthalle" has no picture behind the page', () => {
+    render(
+      <ThemeProvider themeId="markthalle" mode="light">
+        <Screen testID="page" header={header}>
+          <Text>Inhalt</Text>
+        </Screen>
+      </ThemeProvider>,
+    );
+    const page = screen.getByTestId('page');
+    expect(pageFills(page, 'rgb(250, 246, 238)').length).toBeGreaterThanOrEqual(2);
+    for (const element of [page, ...Array.from(page.querySelectorAll<HTMLElement>('div'))]) {
+      expect(element.style.backgroundImage).toBe('');
+    }
   });
 
   it('gives its area to the content (spec 0005, D4)', () => {
@@ -513,6 +571,30 @@ describe('TabBar', () => {
     expect(screen.getByRole('tab', { name: 'Rezepte' }).getAttribute('aria-selected')).toBe('true');
   });
 
+  it('spec 0058, AC-009: in "Wolke" the active tab sits on a bubble in accentSoft', () => {
+    render(
+      <ThemeProvider themeId="wolke" mode="light">
+        <TabBar items={items} activeKey="recipes" onSelect={() => undefined} />
+      </ThemeProvider>,
+    );
+    const active = screen.getByTestId('tab-recipes').firstElementChild as HTMLElement;
+    expect(active.style.borderTopLeftRadius).toBe('48% 55%');
+    expect(active.style.backgroundColor).toBe('rgb(248, 220, 227)');
+    const idle = screen.getByTestId('tab-today').firstElementChild as HTMLElement;
+    expect(idle.style.backgroundColor).toBe('rgba(0, 0, 0, 0)');
+  });
+
+  it('spec 0058, AC-010: in "Markthalle" the active tab is only tinted', () => {
+    render(
+      <ThemeProvider themeId="markthalle" mode="light">
+        <TabBar items={items} activeKey="recipes" onSelect={() => undefined} />
+      </ThemeProvider>,
+    );
+    const active = screen.getByTestId('tab-recipes').firstElementChild as HTMLElement;
+    expect(active.style.borderTopLeftRadius).toBe('15px');
+    expect(active.style.backgroundColor).toBe('rgba(0, 0, 0, 0)');
+  });
+
   it('stands above the home bar', () => {
     safeArea.insets = { top: 0, right: 0, bottom: 34, left: 0 };
     render(<TabBar items={items} activeKey="today" onSelect={() => undefined} />);
@@ -630,3 +712,22 @@ describe('ComposerBar', () => {
     expect(screen.getByTestId('composer')).toBeTruthy();
   });
 });
+
+/** Lets every element report a box (jsdom has no layout) and records `scroll` calls. */
+function measurable(): { calls: { el: Element; top: unknown }[]; restore: () => void } {
+  const calls: { el: Element; top: unknown }[] = [];
+  const proto = HTMLElement.prototype as unknown as Record<string, unknown>;
+  const rects = proto.getClientRects;
+  const scroll = proto.scroll;
+  proto.getClientRects = () => [{}];
+  proto.scroll = function (this: Element, options: { top?: unknown }) {
+    calls.push({ el: this, top: options.top });
+  };
+  return {
+    calls,
+    restore: () => {
+      proto.getClientRects = rects;
+      proto.scroll = scroll;
+    },
+  };
+}

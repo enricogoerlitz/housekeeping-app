@@ -119,7 +119,7 @@ function RestaurantDetailBody(props: RestaurantDetailProps & { restaurant: Resta
   const entries = usePlanEntries();
   const today = useToday();
   const [routeOpen, setRouteOpen] = useState(false);
-  // Where "Restaurant bearbeiten" puts the cursor: "Notiz bearbeiten" opens it in "Notiz".
+  // Where "Restaurant bearbeiten" puts the cursor: "Notiz hinzufügen" opens it in "Notiz".
   const [focus, setFocus] = useState<RestaurantFormFocus | undefined>();
   const visitsSection: SectionRef = useRef(null);
   const jumpToVisits = useVisitsJump(visitsSection);
@@ -160,20 +160,17 @@ function RestaurantDetailBody(props: RestaurantDetailProps & { restaurant: Resta
       testID="restaurant-edit"
     />
   );
+  // "Teilen" stands at the photo, so ⋯ holds only "Löschen" (spec 0054, REQ-003).
   const more = (
-    <Menu<'share' | 'delete'>
+    <Menu<'delete'>
       trigger="icon"
       icon="ellipsis"
       label="Mehr"
       accessibilityLabel={`Mehr zu ${restaurant.name}`}
       options={[
-        { value: 'share', label: 'Teilen' },
         { value: 'delete', label: 'Löschen', disabled: online.disabled, hint: online.hint },
       ]}
-      onChange={(action) => {
-        if (action === 'delete') remove();
-        else share();
-      }}
+      onChange={() => remove()}
       testID="restaurant-more"
     />
   );
@@ -314,17 +311,21 @@ function RestaurantDetailBody(props: RestaurantDetailProps & { restaurant: Resta
         <Section
           title="Notiz"
           testID="restaurant-notes-section"
+          // An existing note is edited with the pencil at the top; an empty one keeps its first
+          // step (spec 0054, REQ-005).
           action={
-            <Button
-              label={restaurant.notes ? 'Notiz bearbeiten' : 'Notiz hinzufügen'}
-              icon="pencil"
-              variant="link"
-              size="sm"
-              disabled={online.disabled}
-              hint={online.hint}
-              onPress={() => edit('notes')}
-              testID="restaurant-notes-edit"
-            />
+            restaurant.notes ? undefined : (
+              <Button
+                label="Notiz hinzufügen"
+                icon="pencil"
+                variant="link"
+                size="sm"
+                disabled={online.disabled}
+                hint={online.hint}
+                onPress={() => edit('notes')}
+                testID="restaurant-notes-edit"
+              />
+            )
           }
         >
           <Text

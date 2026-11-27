@@ -41,7 +41,7 @@ import {
 import { revealsError } from './reveal-error';
 import { SheetFocusContext, SheetSubmitContext } from './sheet-focus';
 import { switchRowParts } from './time-field-state';
-import { ToneContext, useAreaColors, useTheme } from './theme-context';
+import { ToneContext, bubbleCorners, useAreaColors, useTheme } from './theme-context';
 import type { Theme, Tone } from './themes';
 import { fillChipStyle } from './chip-layout';
 
@@ -98,6 +98,11 @@ export interface ButtonProps {
   hint?: string;
   /** Accessible name when it says more than the label (spec 0027, AC-039). */
   accessibilityLabel?: string;
+  /**
+   * A text button in ink instead of the accent: for leaving, removing or deleting, so only the
+   * main action carries the accent (spec 0054, REQ-008). Only with `variant="link"`.
+   */
+  quiet?: boolean;
 }
 
 export function Button(props: ButtonProps) {
@@ -111,7 +116,7 @@ export function Button(props: ButtonProps) {
     ? 'text'
     : variant === 'primary'
       ? 'onAccent'
-      : variant === 'link'
+      : variant === 'link' && !props.quiet
         ? 'accent'
         : 'text';
   const c = theme.colors;
@@ -196,6 +201,9 @@ export function IconButton({ ref, ...props }: IconButtonProps) {
   const hintRef = useHint(props.hint);
   const slop = size < TOUCH_TARGET ? (TOUCH_TARGET - size) / 2 : 0;
   const framed = props.touchFrame === true && slop > 0;
+  // "Wolke" (spec 0058, REQ-004): every icon button sits on a soft bubble, even a plain one.
+  const bubble = bubbleCorners(theme);
+  const hovering = (hovered: boolean | undefined) => hover(hovered) && !props.disabled;
   const circle = (hovered: boolean | undefined): ViewStyle[] => [
     {
       width: size,
@@ -204,9 +212,14 @@ export function IconButton({ ref, ...props }: IconButtonProps) {
       alignItems: 'center',
       justifyContent: 'center',
     },
+    bubble ?? {},
     variant === 'filled' ? { backgroundColor: area?.fill ?? theme.colors.accent } : {},
-    variant === 'soft' || (variant === 'plain' && hover(hovered) && !props.disabled)
+    variant === 'soft' || (variant === 'plain' && (bubble !== undefined || hovering(hovered)))
       ? { backgroundColor: theme.colors.surfaceSunken }
+      : {},
+    // On a bubble that is always there, hovering darkens it a little.
+    bubble && variant === 'plain' && hovering(hovered)
+      ? { backgroundColor: theme.colors.border }
       : {},
   ];
   const icon = (

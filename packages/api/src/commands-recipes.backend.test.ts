@@ -182,6 +182,25 @@ describe('ingredients with an article (spec 0007, through the section "Zutaten")
     });
   });
 
+  it('AC-030 (spec 0055): an article the AI proposes gets its area and diet, "Neu aus Rezepten"', async () => {
+    await fx.startEnrico();
+    const recipe = firstRecipe();
+    const area = getData().areas[0];
+    if (!area) throw new Error('fixture');
+    addRow(recipe, {
+      article: { kind: 'new', name: 'Gochujang', proposed: { areaId: area.id, diet: 'vegan' } },
+    });
+    await fx.settle();
+    expect(fx.calls.map((call) => call.fn)).toEqual(['applyChanges']);
+    expect(articleByName('Gochujang')).toMatchObject({
+      areaId: area.id,
+      diet: 'vegan',
+      isPantry: false,
+      needsReview: true,
+    });
+    expect(lastIngredient(recipe.id)?.articleId).toBe(articleByName('Gochujang').id);
+  });
+
   it('AC-002: "neu anlegen" with the name of an existing article uses that article', async () => {
     await fx.startEnrico();
     const recipe = firstRecipe();

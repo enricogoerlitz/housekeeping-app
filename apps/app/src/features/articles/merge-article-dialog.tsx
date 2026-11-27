@@ -1,6 +1,6 @@
 import { mergeArticles, useArticles, useRecipes, useShoppingItems } from '@housekeeping/api';
 import { mergeArticlesPreview, type Id } from '@housekeeping/core';
-import { Button, Row, Sheet, Stack, Text, toast } from '@housekeeping/ui';
+import { Sheet, Stack, Text, toast } from '@housekeeping/ui';
 import { useState } from 'react';
 
 import { useOnlineOnly } from '@/features/shell/offline';
@@ -44,23 +44,17 @@ export function MergeArticleDialog(props: {
       title={preview.title}
       onClose={props.onCancel}
       testID="merge-dialog"
-      footer={
-        <Row gap={10} style={{ justifyContent: 'flex-end' }}>
-          <Button
-            label="Abbrechen"
-            variant="secondary"
-            onPress={props.onCancel}
-            testID="merge-dialog-cancel"
-          />
-          <Button
-            label="Zusammenführen"
-            disabled={online.disabled || preview.tooManySynonyms}
-            hint={online.hint ?? preview.tooManySynonymsMessage}
-            onPress={merge}
-            testID="merge-dialog-confirm"
-          />
-        </Row>
-      }
+      // "Abbrechen" · question · named button, like every window that decides (spec 0054).
+      actions={{
+        cancel: { label: 'Abbrechen', onPress: props.onCancel, testID: 'merge-dialog-cancel' },
+        primary: {
+          label: 'Zusammenführen',
+          disabled: online.disabled || preview.tooManySynonyms,
+          hint: online.hint ?? preview.tooManySynonymsMessage,
+          onPress: merge,
+          testID: 'merge-dialog-confirm',
+        },
+      }}
     >
       <Stack gap={10}>
         <Text testID="merge-dialog-text">{preview.message}</Text>

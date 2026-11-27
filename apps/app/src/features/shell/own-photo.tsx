@@ -342,6 +342,7 @@ export function PhotoChoiceField(props: {
             <Button
               label="Foto entfernen"
               variant="link"
+              quiet
               size="sm"
               disabled={online.disabled}
               onPress={state.removePhoto}

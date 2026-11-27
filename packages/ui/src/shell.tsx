@@ -21,12 +21,20 @@ import { bottomInset } from './bottom-inset';
 import { IconButton, keyboardFocusRing } from './controls';
 import { useKeyboard } from './keyboard';
 import { useHover } from './pointer';
+import { scrollableNode, useTopScroller } from './scroll-top';
 import { tabSwipeTouchAction, type TabSwipe } from './tab-swipe';
 import { TabPreviewContext } from './tab-preview';
 import { TabSwipeArea, arrivingChrome } from './tab-swipe-area';
 import { icons, type IconName } from './icons';
 import { Divider, Icon, Text } from './primitives';
-import { AreaToneContext, ToneContext, useBreakpoint, useTheme } from './theme-context';
+import {
+  AreaToneContext,
+  ToneContext,
+  bubbleCorners,
+  pageFill,
+  useBreakpoint,
+  useTheme,
+} from './theme-context';
 import type { Tone } from './themes';
 import { useTitleFit } from './use-title-fit';
 
@@ -143,8 +151,9 @@ export function Screen(props: ScreenProps) {
   const preview = useContext(TabPreviewContext);
   const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const { isPhone } = useBreakpoint();
+  const { isPhone, height } = useBreakpoint();
   const c = theme.colors;
+  const fill = pageFill(theme, height);
   const gutter = isPhone ? theme.shape.gutter : WIDE_GUTTER;
   const inner: ViewStyle = {
     width: '100%',
@@ -204,6 +213,14 @@ export function Screen(props: ScreenProps) {
       else view.measureInWindow((x, y, width, height) => done({ x, y, width, height }));
     },
   }));
+  // A second tap on the active tab brings the page to the top (spec 0057, REQ-002).
+  useTopScroller(
+    {
+      node: () => scrollableNode(scrollView.current),
+      toTop: (animated) => scrollView.current?.scrollTo({ y: 0, animated }),
+    },
+    props.scroll !== false && !preview,
+  );
   const scrollHandler = useAnimatedScrollHandler({
     onScroll: (event) => {
       onPageScroll(event.contentOffset.y);
@@ -278,7 +295,7 @@ export function Screen(props: ScreenProps) {
   if (preview) {
     return (
       <AreaToneContext.Provider value={props.tone}>
-        <View style={{ flex: 1, overflow: 'hidden', backgroundColor: c.bg }}>
+        <View style={[{ flex: 1, overflow: 'hidden' }, fill]}>
           {props.scroll === false ? (
             <View style={{ flex: 1, marginTop: preview.top }}>
               <PageScrollContext.Provider value={{ inset: preview.inset, onScroll: ignoreScroll }}>
@@ -336,10 +353,7 @@ export function Screen(props: ScreenProps) {
   if (!overlay) {
     return (
       <AreaToneContext.Provider value={props.tone}>
-        <View
-          testID={props.testID}
-          style={{ flex: 1, backgroundColor: c.bg, paddingTop: insets.top }}
-        >
+        <View testID={props.testID} style={[{ flex: 1, paddingTop: insets.top }, fill]}>
           {hasChrome ? (
             <View style={{ zIndex: 1, paddingTop: 8 }}>
               {header}
@@ -366,7 +380,7 @@ export function Screen(props: ScreenProps) {
 
   return (
     <AreaToneContext.Provider value={props.tone}>
-      <View testID={props.testID} style={{ flex: 1, backgroundColor: c.bg }}>
+      <View testID={props.testID} style={[{ flex: 1 }, fill]}>
         <View style={{ flex: 1, overflow: 'hidden' }}>
           {body}
           {props.toolbar ? (
@@ -380,8 +394,8 @@ export function Screen(props: ScreenProps) {
                   right: 0,
                   paddingTop: 8,
                   paddingBottom: 8,
-                  backgroundColor: c.bg,
                 },
+                pageFill(theme, height, chrome.now),
                 toolbarStyle,
               ]}
             >
@@ -391,14 +405,10 @@ export function Screen(props: ScreenProps) {
           ) : null}
           <View
             onLayout={onChromeLayout}
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              paddingTop: insets.top,
-              backgroundColor: c.bg,
-            }}
+            style={[
+              { position: 'absolute', top: 0, left: 0, right: 0, paddingTop: insets.top },
+              fill,
+            ]}
           >
             {header}
             {tabs}
@@ -633,6 +643,8 @@ export function TabBar(props: TabBarProps) {
         const active = item.key === props.activeKey;
         // "Frisch" marks the active tab with an ink pill, never with an area colour (D4).
         const pill = active && theme.shape.tabActive === 'pill';
+        // "Wolke" sets the active icon on a soft bubble (spec 0058, REQ-004).
+        const bubble = active && theme.shape.tabActive === 'bubble';
         const Glyph = icons[item.icon];
         const tint = pill ? c.onAccent : active ? c.accent : c.textMuted;
         return (
@@ -657,14 +669,17 @@ export function TabBar(props: TabBarProps) {
             ]}
           >
             <View
-              style={{
-                height: 30,
-                paddingHorizontal: 14,
-                borderRadius: 15,
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: pill ? c.accent : 'transparent',
-              }}
+              style={[
+                {
+                  height: 30,
+                  paddingHorizontal: 14,
+                  borderRadius: 15,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: pill ? c.accent : bubble ? c.accentSoft : 'transparent',
+                },
+                bubble ? bubbleCorners(theme) : null,
+              ]}
             >
               <Glyph size={24} color={tint} strokeWidth={theme.shape.stroke} />
             </View>

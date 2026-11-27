@@ -1,6 +1,6 @@
 // Design system of the app. Screens use only what is exported here.
 export * from './themes';
-export { fontAssets } from './fonts';
+export { useThemeFonts } from './fonts';
 export { ThemeProvider, useTheme, useBreakpoint, space } from './theme-context';
 export { icons, type IconName } from './icons';
 export { Text, Icon, Surface, Row, Stack } from './primitives';
@@ -16,6 +16,7 @@ export {
   keyboardFocusRing,
   type TextFieldProps,
 } from './controls';
+export { CreateButton } from './create-button';
 export { Section, GroupLabel, List, ListRow, CheckRow, GhostRow } from './lists';
 export {
   Avatar,
@@ -33,6 +34,7 @@ export {
   TypingIndicator,
   KindLine,
   KindDot,
+  LoadingLines,
   KIND_ICONS,
   type BadgeProps,
   type PhotoProps,
@@ -56,7 +58,8 @@ export {
 export { pickImageFile } from './pick-image';
 export { useImageDropAndPaste } from './image-drop';
 export { useKeyboard } from './keyboard';
-export { openKeyboardNow } from './keyboard-proxy';
+export { focusAfterChange, openKeyboardNow } from './keyboard-proxy';
+export { TabSwipeContent } from './tab-swipe-area';
 export { useRevealOnShow } from './reveal-on-show';
 export { tabSwipe, type TabSwipe } from './tab-swipe';
 export { useTabPreview } from './tab-preview';
@@ -67,7 +70,7 @@ export { DockedPanel, type DockedPanelState } from './docked-panel';
 export { panelPlacement } from './docked-panel-state';
 export { SwipeArea } from './swipe-area';
 export { CHECK_WINDOW_MS } from './check-window';
-export { useCheckWindow, RowTransition, type CheckWindowState } from './check';
+export { ARRIVE, useCheckWindow, RowTransition, type CheckWindowState } from './check';
 export { announce } from './announce';
 export { SearchOrCreate, type SearchOrCreateHit } from './search-or-create';
 export { SwipeToRemove } from './swipe-row';
@@ -115,3 +118,4 @@ export { openByLink } from './open-in-new-tab';
 export { hatchStyle, withAlpha } from './hatch';
 export { stickyBottomStyle, stickyTopStyle } from './sticky';
 export { revealInScrollParent } from './scroll-reveal';
+export { scrollShownToTop } from './scroll-top';

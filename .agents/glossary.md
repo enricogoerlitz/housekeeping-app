@@ -54,7 +54,8 @@ mit dessen Angaben (Spec 0007). Gepflegt wird er auf der Seite „Artikel“ unt
 
 Markierung an einem Artikel, der für eine Zutat ohne Wahl eines Menschen neu entstanden ist, weil
 kein Artikel des Haushalts und kein Eintrag des Starter-Katalogs zum Namen passte: bei Vorschlägen
-des Assistenten und in den Beispieldaten (Spec 0007, E1; es gibt keine Migration). Starter-Rezepte
+des Assistenten, in den Beispieldaten und für Zutaten eines KI-Entwurfs, denen die KI Bereich und
+Ernährung vorschlägt (Spec 0007, E1; Spec 0055, REQ-009; es gibt keine Migration). Starter-Rezepte
 gibt es nicht mehr (Spec 0023, REQ-011). Die Seite „Artikel“ zeigt diese zum Prüfen und
 Zusammenführen. Die Markierung fällt weg, sobald jemand den Artikel speichert, bestätigt („Passt
 so“), zusammenführt oder löscht (Spec 0007, Offene Frage 1).
@@ -1218,6 +1219,16 @@ gespeichert, bevor die Person „Speichern“ tippt.
 - **Im Code:** `webSearchAsync`, `web-search` (Edge Function), `WebResult`
 - **Nicht verwenden:** Google-Suche, Internetsuche, KI-Suche (das ist die Suche in den eigenen
   Rezepten, Spec 0003)
+
+### Prompt (Reiter)
+
+Der Reiter von „Mit KI ausfüllen“ neben „Websuche“ (früher „Eigene Angaben“, Spec 0055): ein Wunsch
+in eigenen Worten, Links und Fotos; beim Bearbeiten geht das Rezept mit, auf Wunsch mit einer
+Websuche als Hintergrund. Unter der Änderungsansicht bessert „Was soll noch anders sein?“ den
+Vorschlag nach.
+
+- **Im Code:** `AiFillTab` `'prompt'`, `AiFillFields`, `RecipeDraftRequest.current`, `webQuery`
+- **Nicht verwenden:** Eigene Angaben, Chat
 
 ### Änderungsansicht
 

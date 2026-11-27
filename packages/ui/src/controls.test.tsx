@@ -17,6 +17,7 @@ import {
   keyboardFocusRing,
   keyboardFocused,
 } from './controls';
+import { ThemeProvider } from './theme-context';
 import { DEFAULT_THEME_ID, getTheme } from './themes';
 import { pointer } from '../test/setup';
 
@@ -226,6 +227,29 @@ describe('IconButton', () => {
     expect(circle.style.height).toBe('32px');
     fireEvent.click(button);
     expect(onPress).toHaveBeenCalledTimes(1);
+  });
+
+  it('spec 0058, AC-008: in "Wolke" an icon button sits on a soft bubble', () => {
+    render(
+      <ThemeProvider themeId="wolke" mode="light">
+        <IconButton icon="bell" label="Mitteilungen" />
+      </ThemeProvider>,
+    );
+    const button = screen.getByRole('button', { name: 'Mitteilungen' });
+    expect(button.style.borderTopLeftRadius).toBe('48% 55%');
+    expect(button.style.borderBottomRightRadius).toBe('46% 55%');
+    expect(button.style.backgroundColor).toBe('rgb(248, 220, 227)');
+  });
+
+  it('spec 0058, AC-010: in "Markthalle" a plain icon button stays a circle without fill', () => {
+    render(
+      <ThemeProvider themeId="markthalle" mode="light">
+        <IconButton icon="bell" label="Mitteilungen" />
+      </ThemeProvider>,
+    );
+    const button = screen.getByRole('button', { name: 'Mitteilungen' });
+    expect(button.style.borderTopLeftRadius).toBe('20px');
+    expect(button.style.backgroundColor).toBe('');
   });
 
   it('plain: a fine pointer hovering shades it', () => {

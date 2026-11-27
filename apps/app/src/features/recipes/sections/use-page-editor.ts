@@ -104,7 +104,7 @@ export interface PageEditor {
    * The page as `load` would fill it, without opening it (spec 0049): the "after" of the
    * Änderungsansicht.
    */
-  filled: (input: PageDraftInput, options?: { replace?: boolean }) => PageDraft;
+  filled: (input: PageDraftInput, options?: { replace?: boolean; change?: boolean }) => PageDraft;
   /** The Änderungsansicht's result (spec 0049, REQ-005): the edit mode opens with it, unsaved. */
   adopt: (draft: PageDraft) => void;
   /** The photo "Speichern" will set (a chosen AI suggestion, spec 0040 AC-010); none = keep. */
@@ -470,6 +470,7 @@ export function usePageEditor(
     filled: (input, fillOptions) =>
       fillPageDraft(state.draft ?? pageDraft(recipe, contents), input, newId, {
         replace: fillOptions?.replace === true,
+        change: fillOptions?.change === true,
       }),
     adopt: (draft) => dispatch({ type: 'open', draft }),
     chosenPhoto,

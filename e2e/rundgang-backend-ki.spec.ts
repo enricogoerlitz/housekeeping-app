@@ -217,8 +217,7 @@ test('AC-031: a short link is resolved by the server: name and coordinates of th
   );
   const place = aiFixtures.resolveMapsLink();
   await open(page, '/rezepte?ansicht=restaurants');
-  await tid(page, 'recipe-new').click();
-  await tid(page, 'recipe-new-restaurant').click();
+  await tid(page, 'restaurant-new').click();
   await tid(page, 'restaurant-link').fill('https://maps.app.goo.gl/Kurz123');
   await expect(tid(page, 'restaurant-link-short')).toBeVisible();
   await tid(page, 'restaurant-save').click();
@@ -243,8 +242,7 @@ test('AC-032: a link that does not lead to Google Maps: "Das ist kein Karten-Lin
   );
   await open(page, '/rezepte?ansicht=restaurants');
   const count = await tid(page, 'restaurant-count').innerText();
-  await tid(page, 'recipe-new').click();
-  await tid(page, 'recipe-new-restaurant').click();
+  await tid(page, 'restaurant-new').click();
   await tid(page, 'restaurant-link').fill('https://maps.app.goo.gl/Umleitung');
   await tid(page, 'restaurant-save').click();
   await expect(tid(page, 'restaurant-link-error')).toHaveText('Das ist kein Karten-Link');

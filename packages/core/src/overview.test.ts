@@ -405,3 +405,23 @@ describe('spec 0020 REQ-003: the most important entry of a tile', () => {
     expect(tile([], '2026-11-28')).toEqual({ entry: undefined, more: 0 });
   });
 });
+
+describe('overviewTitle, short form (spec 0057, REQ-005)', () => {
+  it('AC-025: the phone reads "Fr., 27. Nov."', () => {
+    expect(overviewTitle('2026-11-27', '2026-11-27', 'short')).toBe('Fr., 27. Nov.');
+  });
+
+  it('AC-026: the long form stays the default', () => {
+    expect(overviewTitle('2026-11-27', '2026-11-27')).toBe('Freitag, 27. November');
+    expect(overviewTitle('2026-11-27', '2026-11-27', 'long')).toBe('Freitag, 27. November');
+  });
+
+  it('AC-027: another year carries the year; short months stay whole', () => {
+    expect(overviewTitle('2027-01-08', '2026-11-27', 'short')).toBe('Fr., 8. Jan. 2027');
+    expect(overviewTitle('2027-05-15', '2027-05-01', 'short')).toBe('Sa., 15. Mai');
+    expect(overviewTitle('2027-03-01', '2027-03-01', 'short')).toBe('Mo., 1. März');
+    expect(overviewTitle('2027-06-01', '2027-06-01', 'short')).toBe('Di., 1. Juni');
+    expect(overviewTitle('2027-07-01', '2027-07-01', 'short')).toBe('Do., 1. Juli');
+    expect(overviewTitle('2027-09-01', '2027-09-01', 'short')).toBe('Mi., 1. Sept.');
+  });
+});

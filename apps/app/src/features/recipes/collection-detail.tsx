@@ -111,7 +111,7 @@ export function CollectionDetailBody(props: {
       />
       {desktop ? actions : null}
       <EditControls editor={editor} />
-      <RecipeMoreMenu recipe={collection} photo={photo} onDelete={remove} onShare={share} />
+      <RecipeMoreMenu recipe={collection} onDelete={remove} />
       {deleteDialog}
     </>
   );

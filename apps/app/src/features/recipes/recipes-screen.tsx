@@ -38,6 +38,7 @@ import {
 import {
   Button,
   Chip,
+  CreateButton,
   EmptyState,
   FieldClearButton,
   FilterBar,
@@ -74,7 +75,6 @@ import { PagePreview, usePageParams, type PageAddress } from '@/lib/url-state';
 
 import { AiSearchPanel } from './ai-search-panel';
 import { useOpenRecipe } from './navigation';
-import { FoodNewMenu, type FoodNewKind } from './new-menu';
 import { NewRecipeSheet } from './new-recipe-sheet';
 import { RecipeFilterPanel } from './recipe-filter-panel';
 import { RecipeDetail } from './recipe-detail';
@@ -240,22 +240,19 @@ export function RecipesScreen() {
   if (view === 'restaurants') return <RestaurantsPanel switcher={switcher} swipe={swipe} />;
 
   const ids = recipes.map((recipe) => recipe.id);
-  const onNew = (kind: FoodNewKind) => {
-    if (kind === 'recipe' || kind === 'collection') openNew(kind);
-    // The restaurant window belongs to the restaurants view; its address opens it (spec 0002).
-    // Closing it stays there, so the new restaurant opens beside its list (spec 0036, AC-017).
-    else {
-      const restaurantsView = viewPatch('restaurants');
-      address.open({ ...restaurantsView, fenster: 'neu-restaurant' }, restaurantsView);
-    }
-  };
-
   const header = (
     <ScreenHeader
       title="Essen"
       right={
         <>
-          <FoodNewMenu onNew={onNew} />
+          {/* "+" creates a recipe at once; the window offers "Sammlung" too (spec 0054, REQ-002). */}
+          <CreateButton
+            label="Rezept anlegen"
+            disabled={online.disabled}
+            hint={online.hint}
+            onPress={() => openNew('recipe')}
+            testID="recipe-new"
+          />
           <StartPageActions />
         </>
       }
