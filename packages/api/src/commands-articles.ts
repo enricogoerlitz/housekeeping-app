@@ -200,6 +200,8 @@ export function deleteArticle(articleId: Id): void {
         articles: current.articles.filter((article) => article.id !== articleId),
         // Only a checked item can be left (articleUsage); it goes with the article (AC-047).
         items: current.items.filter((item) => item.articleId !== articleId),
+        // Its Dauerposten goes with it (spec 0060, AC-012; on delete cascade).
+        recurringItems: current.recurringItems.filter((item) => item.articleId !== articleId),
       })),
   );
 }
@@ -237,6 +239,14 @@ export function mergeArticles(sourceId: Id, targetId: Id): { recipes: number; it
           ),
           recipes: effect.recipes,
           items: effect.items,
+          // Spec 0060, AC-012: the source's Dauerposten to the target when it has none.
+          recurringItems: current.recurringItems.flatMap((item) => {
+            if (item.articleId !== sourceId) return [item];
+            const targetHasOne = current.recurringItems.some(
+              (other) => other.articleId === targetId,
+            );
+            return targetHasOne ? [] : [{ ...item, articleId: targetId }];
+          }),
         };
       });
       return { recipes: preview.recipes, items: preview.items };

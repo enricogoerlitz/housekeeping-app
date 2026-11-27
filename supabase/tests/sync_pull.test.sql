@@ -84,7 +84,8 @@ select is(
         'activity_series_exceptions', 'areas', 'articles', 'chore_events', 'chores',
         'collection_recipes', 'feedback', 'feedback_votes', 'meal_plan_entries', 'notification_settings',
         'packing_bag_items', 'packing_bags', 'packing_items', 'packing_list_bags',
-        'recipe_favorites', 'recipe_ratings', 'recipes', 'restaurant_favorites', 'restaurant_ratings', 'restaurants',
+        'recipe_favorites', 'recipe_ratings', 'recipes', 'recurring_items', 'restaurant_favorites', 'restaurant_ratings',
+        'restaurants',
         'shopping_contributions', 'shopping_items', 'stores', 'trip_members', 'trips'],
   'T6 sync_pull: every synced household table is answered');
 select ok(

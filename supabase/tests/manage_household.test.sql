@@ -311,6 +311,8 @@ insert into public.chore_events (id, household_id, chore_id, title, kind, done_o
 values (tests.fx('event'), tests.fx('wg'), tests.fx('chore'), 'Bad putzen', 'done', current_date, tests.fx('enrico'));
 insert into public.meal_plan_entries (id, household_id, date, slot_id, kind, recipe_id, cook_id)
 values (tests.fx('entry'), tests.fx('wg'), current_date + 1, tests.fx('slot'), 'recipe', tests.fx('recipe'), tests.fx('enrico'));
+insert into public.recurring_items (household_id, article_id, rule, starts_on)
+values (tests.fx('wg'), tests.fx('article'), '{"type": "monthly", "day": 1}', '2026-12-01');
 insert into public.shopping_items (id, household_id, article_id) values (tests.fx('item'), tests.fx('wg'), tests.fx('article'));
 insert into public.shopping_contributions (household_id, item_id) values (tests.fx('wg'), tests.fx('item'));
 insert into public.packing_bags (id, household_id, name, member_id) values (tests.fx('bag'), tests.fx('wg'), 'Kulturbeutel', tests.fx('enrico'));
