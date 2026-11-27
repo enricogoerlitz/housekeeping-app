@@ -202,9 +202,7 @@ export function ChoresScreen() {
       {doneLink}
     </View>
   );
-  const empty = (
-    <ChoresEmpty disabled={online.disabled} hint={online.hint} onCreate={startCreating} />
-  );
+  const empty = <ChoresEmpty disabled={online.disabled} hint={online.hint} />;
 
   let body: ReactElement;
   if (tab === 'upcoming') {
@@ -482,7 +480,7 @@ function AllChores(props: {
 }
 
 /** First steps for a household without chores: one tap on a template, or a chore of your own. */
-function ChoresEmpty(props: { disabled: boolean; hint: string | undefined; onCreate: () => void }) {
+function ChoresEmpty(props: { disabled: boolean; hint: string | undefined }) {
   const members = useMembers();
   const today = useToday();
   const weekday = isoWeekday(today);
@@ -524,17 +522,9 @@ function ChoresEmpty(props: { disabled: boolean; hint: string | undefined; onCre
     <EmptyState
       icon="list-checks"
       title="Noch keine Aufgaben"
-      text="Legt eure erste Aufgabe an oder nehmt eine Vorlage."
+      text="Nehmt eine Vorlage oder legt eine eigene Aufgabe an."
       testID="chores-empty"
     >
-      <Button
-        label="Aufgabe anlegen"
-        icon="plus"
-        onPress={props.onCreate}
-        disabled={props.disabled}
-        hint={props.hint}
-        testID="chores-empty-new"
-      />
       {templates.map((template, index) => (
         <Button
           key={template.label}

@@ -288,7 +288,7 @@ test.describe('REQ-037: alignments', () => {
     expect(Math.abs((input?.width ?? 0) - row.width)).toBeLessThanOrEqual(1);
   });
 
-  test('AC-085: in an empty household the buttons stand centred; chores say „Legt eure …“', async ({
+  test('AC-085: in an empty household the templates stand centred; chores say „Nehmt eine Vorlage …“', async ({
     page,
   }) => {
     const householdId = await createTestHousehold(`Leer ${Date.now()}`);
@@ -296,9 +296,9 @@ test.describe('REQ-037: alignments', () => {
     await switchHousehold(page, householdId);
     await open(page, '/haushalt?ansicht=alle');
     const empty = tid(page, 'chores-empty');
-    await expect(empty).toContainText('Legt eure erste Aufgabe an oder nehmt eine Vorlage.');
+    await expect(empty).toContainText('Nehmt eine Vorlage oder legt eine eigene Aufgabe an.');
     const area = await boxOf(empty);
-    const button = await boxOf(tid(page, 'chores-empty-new'));
+    const button = await boxOf(tid(page, 'chores-template-0'));
     expect(Math.abs(button.x + button.width / 2 - (area.x + area.width / 2))).toBeLessThanOrEqual(
       2,
     );
