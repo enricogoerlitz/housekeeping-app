@@ -589,6 +589,15 @@ async function stubEdgeFunctions(context: BrowserContext): Promise<void> {
   await context.route('**/functions/v1/resolve-maps-link', (route) =>
     fulfilFunction(route, 200, aiFixtures.resolveMapsLink()),
   );
+  // The paid services (images, drafts, web search) never run from a walk-through: a test that
+  // needs one answers it with its own `page.route`, which goes first. Anything else gets "KI nicht
+  // erreichbar" (and its console error fails the test unless the test expects it).
+  if (process.env.E2E_LIVE_AI) return;
+  for (const name of ['ai-image', 'ai-recipe-draft', 'web-search']) {
+    await context.route(`**/functions/v1/${name}*`, (route) =>
+      fulfilError(route, 'ai_unavailable'),
+    );
+  }
 }
 
 // ---------- Map apps (never really opened) ----------

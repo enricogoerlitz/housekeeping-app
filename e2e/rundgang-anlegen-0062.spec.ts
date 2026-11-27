@@ -105,7 +105,11 @@ test.describe('REQ-001 – REQ-005: the window "Neu"', () => {
 
   test('AC-005, AC-007: Return searches once; "Übernehmen" of a hit opens the edit mode', async ({
     page,
+    allowConsoleError,
   }) => {
+    // The taken hit has no photo: it asks for photo suggestions (ai-image); none is made here.
+    allowConsoleError(/^Failed to load resource: the server responded with a status of 503/);
+    await noImages(page);
     const queries = await stubSearch(page, searchReply);
     await stubDraft(page, () => ({
       draft: draft('Spaghetti Bolognese'),
@@ -380,7 +384,11 @@ test.describe('REQ-007 – REQ-010: ✨ "Mit KI ändern"', () => {
 
   test('AC-028: a recipe from the web search offers "Ergänzen · Ersetzen", "Ergänzen" first', async ({
     page,
+    allowConsoleError,
   }) => {
+    // The proposal asks for photo suggestions (ai-image) too; none is made here.
+    allowConsoleError(/^Failed to load resource: the server responded with a status of 503/);
+    await noImages(page);
     const title = await ownRecipe(page);
     await stubSearch(page, searchReply);
     await stubDraft(page, () => ({
