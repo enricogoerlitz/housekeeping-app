@@ -13,6 +13,7 @@ import {
   ScreenHeader,
   Text,
   useBreakpoint,
+  openKeyboardNow,
 } from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
@@ -150,7 +151,10 @@ export function PackingBagsScreen() {
               label="Reisetasche anlegen"
               disabled={online.disabled}
               hint={online.hint}
-              onPress={() => setCreating(true)}
+              onPress={() => {
+                openKeyboardNow();
+                setCreating(true);
+              }}
               testID="bag-new"
             />
           }
@@ -161,7 +165,13 @@ export function PackingBagsScreen() {
       style={isPhone ? undefined : { flex: 1, paddingBottom: 0 }}
     >
       {isPhone ? (
-        <BagsList onSelect={select} onCreate={() => setCreating(true)} />
+        <BagsList
+          onSelect={select}
+          onCreate={() => {
+            openKeyboardNow();
+            setCreating(true);
+          }}
+        />
       ) : (
         <ListDetail
           list={
@@ -169,7 +179,10 @@ export function PackingBagsScreen() {
               <BagsList
                 selectedId={selected?.id}
                 onSelect={select}
-                onCreate={() => setCreating(true)}
+                onCreate={() => {
+                  openKeyboardNow();
+                  setCreating(true);
+                }}
               />
             </ScrollColumn>
           }

@@ -25,6 +25,7 @@ import {
   Section,
   Text,
   toast,
+  openKeyboardNow,
 } from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
@@ -92,8 +93,11 @@ export function AreasView(props: { creating: boolean; onCreatingChange: (open: b
   };
 
   const onAction = (areaId: Id, action: AreaAction) => {
-    if (action === 'rename') setDialog({ kind: 'rename', areaId });
-    else if (action === 'merge') setDialog({ kind: 'mergePick', areaId });
+    if (action === 'rename') {
+      // The keyboard opens with the tap (Nachklick 27.11., B-01).
+      openKeyboardNow();
+      setDialog({ kind: 'rename', areaId });
+    } else if (action === 'merge') setDialog({ kind: 'mergePick', areaId });
     // Also an empty area asks first; "Rückgängig" is gone (spec 0036, Entscheidung 1).
     else setDialog({ kind: 'delete', areaId });
   };
