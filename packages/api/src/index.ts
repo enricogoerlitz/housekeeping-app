@@ -17,6 +17,7 @@ export * from './commands-chores';
 export * from './commands-restaurants';
 export * from './commands-activities';
 export * from './commands-activity-series';
+export * from './commands-recurring';
 export * from './commands-places';
 export * from './commands-packing';
 export * from './commands-notices';

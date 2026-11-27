@@ -232,7 +232,7 @@ interface Dictation {
   items: { index: number; item: DictatedItem }[];
 }
 
-type MoreAction = 'clear-done' | 'clear-list' | 'stores' | 'articles';
+type MoreAction = 'clear-done' | 'clear-list' | 'stores' | 'articles' | 'recurring';
 
 export function ListScreen() {
   const items = useShoppingItems();
@@ -384,6 +384,8 @@ export function ListScreen() {
     },
     { value: 'stores', label: 'Märkte & Bereiche' },
     { value: 'articles', label: 'Artikel' },
+    // Spec 0060, REQ-001.
+    { value: 'recurring', label: 'Dauerposten' },
   ];
   const onMore = (action: MoreAction) => {
     // "‹ Liste" on "Märkte & Bereiche" as on "Artikel" (spec 0031, REQ-036).
@@ -391,6 +393,8 @@ export function ListScreen() {
     // "Zurück" on "Artikel" leads to the list again (spec 0007, AC-021).
     else if (action === 'articles')
       openManageEntry({ pathname: '/artikel', params: { von: 'liste' } });
+    else if (action === 'recurring')
+      openManageEntry({ pathname: '/dauerposten', params: { von: 'liste' } });
     else if (online.disabled) return;
     else if (action === 'clear-done') clearDone();
     else if (items.length > 0) setConfirmClear(true);

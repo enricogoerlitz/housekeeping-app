@@ -715,6 +715,7 @@ insert into public.shopping_contributions (id, household_id, item_id, source, co
   ('4d58f39d-a54e-5c5b-8d0d-2cca68f6ecd7', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', '7b944b03-17eb-5e6b-a1a8-21f2beb188b4', '{"kind":"manual"}'::jsonb, 1, null, null, null, now() + make_interval(days => -120, secs => 0.000016)),
   ('f22ddbbb-7627-54b0-a52f-321564f05045', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', '592665bb-e34c-5a37-b982-476a96c459b4', '{"kind":"manual"}'::jsonb, 1, null, null, null, now() + make_interval(days => -120, secs => 0.000017));
 
+
 insert into public.chores (id, household_id, title, room, recurrence, assignment, effort, next_due_on, next_assignee_id, last_done_on, active_months, due_time, remind_at_due_time, created_at) values
   ('75da8c66-f05b-501d-9521-ef7d3039f680', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'Bad putzen', 'Bad', jsonb_set('{"type":"weekly","every":1}'::jsonb, '{weekdays}', jsonb_build_array(extract(isodow from ((now() at time zone 'Europe/Berlin')::date + 0))::int)), '{"type":"fixed","memberId":"ecc63aaa-a39f-59d0-b7c7-55980a57c2f3"}'::jsonb, 2, ((now() at time zone 'Europe/Berlin')::date + 0), 'ecc63aaa-a39f-59d0-b7c7-55980a57c2f3', ((now() at time zone 'Europe/Berlin')::date - 7), null, null, true, now() + make_interval(days => -120, secs => 0.000000)),
   ('3b116f4c-3ab4-5c3b-997b-574b39484db8', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'Fenster Wohnzimmer', 'Wohnzimmer', '{"type":"everyMonths","every":2}'::jsonb, '{"type":"fixed","memberId":"64399031-c98c-5692-9e99-923924bfff3d"}'::jsonb, 3, ((now() at time zone 'Europe/Berlin')::date - 2), '64399031-c98c-5692-9e99-923924bfff3d', ((now() at time zone 'Europe/Berlin')::date - 63), null, null, true, now() + make_interval(days => -120, secs => 0.000001)),
@@ -1346,6 +1347,7 @@ insert into public.activity_kinds (id, household_id, name, name_key, icon, creat
   ('fa5d9e8a-e7b7-512a-a9b5-3c5d5390251b', '263209f8-b95d-525e-89fc-058960f220a2', 'Treffen', 'treffen', 'users', now() + make_interval(days => -120, secs => 0.000005)),
   ('b283b143-d840-54b3-8c50-55ccfda2d152', '263209f8-b95d-525e-89fc-058960f220a2', 'Reise', 'reise', 'plane', now() + make_interval(days => -120, secs => 0.000006)),
   ('a176bbb6-84e7-5279-a1e5-c0d6d8cbc8d9', '263209f8-b95d-525e-89fc-058960f220a2', 'Sonstiges', 'sonstiges', 'sparkles', now() + make_interval(days => -120, secs => 0.000007));
+
 
 
 

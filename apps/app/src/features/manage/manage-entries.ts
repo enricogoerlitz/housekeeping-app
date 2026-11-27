@@ -69,6 +69,14 @@ export const MANAGE_GROUPS: ManageGroup[] = [
         href: '/maerkte',
         route: '(maerkte)',
       },
+      // Spec 0060, REQ-001.
+      {
+        key: 'recurring',
+        label: 'Dauerposten',
+        icon: 'repeat',
+        href: '/dauerposten',
+        route: 'dauerposten',
+      },
     ],
   },
   {

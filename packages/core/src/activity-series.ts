@@ -55,7 +55,10 @@ function lastDayOfMonth(year: number, monthIndex: number): number {
 }
 
 /** Whether the rule gives a Termin on `date`, ignoring start and end. */
-function matchesRule(series: Pick<ActivitySeries, 'rule' | 'startsOn'>, date: ISODate): boolean {
+export function matchesRule(
+  series: Pick<ActivitySeries, 'rule' | 'startsOn'>,
+  date: ISODate,
+): boolean {
   const { rule } = series;
   const day = parseISODate(date);
   switch (rule.type) {

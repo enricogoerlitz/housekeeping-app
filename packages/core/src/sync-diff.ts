@@ -9,7 +9,7 @@ import type { RowOp } from './sync-overlay';
  * through the store RPCs (the packed state of a Packstück: set_packing_items_packed, spec 0012),
  * or the developer's (status, reason and spec reference of feedback, spec 0027 Decision 10), or the
  * seed's (the bundled sample photo of a recipe, spec 0031, REQ-026), or only through their own
- * RPCs (a recipe's videos, spec 0046).
+ * RPCs (a recipe's videos, spec 0046), or the scheduler's (spec 0060).
  */
 export const NEVER_SENT_COLUMNS = [
   'id',
@@ -31,6 +31,8 @@ export const NEVER_SENT_COLUMNS = [
   'spec_ref',
   'photo',
   'videos',
+  // Spec 0060: the day a Dauerposten last came onto the list is the server's (Decision 7).
+  'last_added_on',
 ] as const;
 
 const NEVER_SENT = new Set<string>(NEVER_SENT_COLUMNS);

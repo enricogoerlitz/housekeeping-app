@@ -10,18 +10,22 @@ import {
   normalizeText,
   parseItemAmount,
   parseSmartInput,
+  RECURRING_LABEL,
   recipeSource,
+  recurringSource,
   replacePlannedOnList,
   summarizeItem,
   weekdayShort,
   type Article,
   type Id,
+  type ISODate,
   type ItemAmount,
   type MealPlanEntry,
   type PlanEntryVariant,
   type PlannedContribution,
   type Recipe,
   type RecipeBook,
+  type RecurringItem,
   type ShoppingContribution,
   type ShoppingItem,
 } from '@housekeeping/core';
@@ -584,6 +588,7 @@ function recipeContributions(
 export function pantryCheckRows(
   entryIds: Id[],
   recipes: readonly PantryRecipe[] = [],
+  recurring: readonly { item: RecurringItem; on: ISODate }[] = [],
 ): PantryCheckRow[] {
   const data = getData();
   const articlesById = indexById(data.articles);
@@ -604,6 +609,24 @@ export function pantryCheckRows(
     planned.push(...contributionsFromEntry(entry, recipe, articlesById, dayLabel));
   }
   for (const chosen of recipes) planned.push(...recipeContributions(chosen, data, book));
+  // Spec 0060, AC-024: chosen under "Regelmäßig"; kept like what is needed, never "Vorrat".
+  for (const { item, on } of recurring) {
+    const article = articlesById[item.articleId];
+    if (!article) continue;
+    planned.push({
+      articleId: article.id,
+      name: article.name,
+      count: item.count,
+      qty: item.qty,
+      unit: item.unit,
+      note: item.note,
+      isPantry: false,
+      recipeId: '',
+      entryId: '',
+      label: RECURRING_LABEL,
+      recurring: { recurringItemId: item.id, on },
+    });
+  }
 
   const rows = new Map<Id, PantryCheckRow>();
   for (const contribution of planned) {
@@ -635,14 +658,16 @@ export function pantryCheckRows(
 function toContribution(planned: PlannedContribution, id: Id): ShoppingContribution {
   return {
     id,
-    source: planned.entryId
-      ? {
-          kind: 'recipe',
-          recipeId: planned.recipeId,
-          entryId: planned.entryId,
-          label: planned.label,
-        }
-      : { kind: 'recipe', recipeId: planned.recipeId, label: planned.label },
+    source: planned.recurring
+      ? recurringSource({ id: planned.recurring.recurringItemId }, planned.recurring.on)
+      : planned.entryId
+        ? {
+            kind: 'recipe',
+            recipeId: planned.recipeId,
+            entryId: planned.entryId,
+            label: planned.label,
+          }
+        : { kind: 'recipe', recipeId: planned.recipeId, label: planned.label },
     count: planned.count,
     qty: planned.qty,
     unit: planned.unit,

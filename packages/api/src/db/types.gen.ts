@@ -1556,6 +1556,70 @@ export type Database = {
           },
         ];
       };
+      recurring_items: {
+        Row: {
+          article_id: string;
+          count: number | null;
+          created_at: string;
+          household_id: string;
+          id: string;
+          last_added_on: string | null;
+          note: string | null;
+          paused: boolean;
+          qty: number | null;
+          rule: NonNullable<Json>;
+          starts_on: string;
+          unit: string | null;
+          updated_at: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          article_id: string;
+          count?: number | null;
+          created_at?: string;
+          household_id: string;
+          id?: string;
+          last_added_on?: string | null;
+          note?: string | null;
+          paused?: boolean;
+          qty?: number | null;
+          rule: NonNullable<Json>;
+          starts_on: string;
+          unit?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          article_id?: string;
+          count?: number | null;
+          created_at?: string;
+          household_id?: string;
+          id?: string;
+          last_added_on?: string | null;
+          note?: string | null;
+          paused?: boolean;
+          qty?: number | null;
+          rule?: NonNullable<Json>;
+          starts_on?: string;
+          unit?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'recurring_items_article_fkey';
+            columns: ['household_id', 'article_id'];
+            isOneToOne: true;
+            referencedRelation: 'articles';
+            referencedColumns: ['household_id', 'id'];
+          },
+          {
+            foreignKeyName: 'recurring_items_household_id_fkey';
+            columns: ['household_id'];
+            isOneToOne: false;
+            referencedRelation: 'households';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       restaurant_favorites: {
         Row: {
           created_at: string;
