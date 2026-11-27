@@ -75,6 +75,7 @@ Use `expo install` for anything native so versions match the Expo SDK.
 | Architecture decisions                                       | `docs/adr/`                                          |
 | System overview, sync concept                                | `docs/architecture/`                                 |
 | Look and feel                                                | `docs/design/DESIGN.md`                              |
+| Published claude.ai artifacts (concepts, visualisations)     | `docs/ARTIFACTS.md` — add every new artifact link    |
 | Domain vocabulary                                            | `.agents/glossary.md`                                |
 | Scratch work (git-ignored)                                   | `tmp/<topic>/`                                       |
 
