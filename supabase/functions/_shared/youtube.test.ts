@@ -132,6 +132,7 @@ describe('readYouTube (REQ-002)', () => {
     expect(result.resolvedUrl).toBe(WATCH);
     expect(result.coverUrl).toBe(MAXRES);
     expect(result.text).toBe(`Titel: ${TITLE}\nBeschreibung: ${DESCRIPTION.trim()}`);
+    expect(result.descriptionUnread).toBeUndefined();
     expect(d.fetchMock.mock.calls.map(([url]) => String(url))).toEqual([PAGE]);
   });
 
@@ -165,7 +166,13 @@ describe('readYouTube (REQ-002)', () => {
       [OEMBED]: () => json(OEMBED_REPLY),
     });
     const result = await readYouTube(video(WATCH), d);
-    expect(result).toEqual({ resolvedUrl: WATCH, text: `Titel: ${TITLE}`, coverUrl: HQ });
+    // AC-011: only the title; the description counts as unread.
+    expect(result).toEqual({
+      resolvedUrl: WATCH,
+      text: `Titel: ${TITLE}`,
+      coverUrl: HQ,
+      descriptionUnread: true,
+    });
   });
 
   it('AC-005: a redirect to the consent page, broken JSON or another video also fall back', async () => {
@@ -188,6 +195,7 @@ describe('readYouTube (REQ-002)', () => {
         resolvedUrl: WATCH,
         text: `Titel: ${TITLE}`,
         coverUrl: HQ,
+        descriptionUnread: true,
       });
     }
   });
@@ -211,7 +219,7 @@ describe('readYouTube (REQ-002)', () => {
     });
     const pending = readYouTube(video('https://youtu.be/gkgJAPBrwT8'), d);
     await vi.advanceTimersByTimeAsync(4_000);
-    expect(await pending).toEqual({ resolvedUrl: WATCH, text: '' });
+    expect(await pending).toEqual({ resolvedUrl: WATCH, text: '', descriptionUnread: true });
   });
 
   it('a page without a thumbnail takes the one of oEmbed; foreign image hosts are not taken', async () => {

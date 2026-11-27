@@ -40,9 +40,50 @@ function imageOf(text: string): string | undefined {
   }
 }
 
+const REASON_CODE = /^[A-Za-z0-9_.-]{1,64}$/;
+const REASON_MESSAGE_CHARS = 200;
+
+/**
+ * Spec 0040, Entscheidung 9: why FLUX refused, from its JSON reply — only an error code and a
+ * short message (Azure `error.code`/`error.message`, Black Forest Labs `detail`). A message that
+ * repeats the prompt, the photo or the key is dropped; nothing else of the reply is logged.
+ */
+function rejectionReason(
+  text: string,
+  secrets: readonly string[],
+): { code?: string; message?: string } {
+  let body: unknown;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    return {};
+  }
+  if (typeof body !== 'object' || body === null) return {};
+  const top = body as { error?: unknown; code?: unknown; message?: unknown; detail?: unknown };
+  const error =
+    typeof top.error === 'object' && top.error !== null
+      ? (top.error as { code?: unknown; message?: unknown })
+      : {};
+  const code = [error.code, top.code].find((value) => typeof value === 'string');
+  const raw = [error.message, top.error, top.message, top.detail].find(
+    (value): value is string => typeof value === 'string',
+  );
+  const reason: { code?: string; message?: string } = {};
+  if (typeof code === 'string' && REASON_CODE.test(code)) reason.code = code;
+  if (raw !== undefined) {
+    const message = Array.from(raw.replace(/[\u0000-\u001f\u007f]+/g, ' ').trim())
+      .slice(0, REASON_MESSAGE_CHARS)
+      .join('');
+    if (message && !secrets.some((secret) => secret !== '' && raw.includes(secret)))
+      reason.message = message;
+  }
+  return reason;
+}
+
 /**
  * One image of 1024 × 1024 px as base64 JPEG. Every failure — network, status, refusal, an answer
- * without an image — is `ai_unavailable`. Logs carry only a reason and a status.
+ * without an image — is `ai_unavailable`. Logs carry only a reason, a status and, for a refusal,
+ * its error code and short message (Entscheidung 9).
  */
 export async function callFlux(
   deps: Pick<Deps, 'fetch' | 'env'>,
@@ -78,7 +119,11 @@ export async function callFlux(
     throw new HttpError('ai_unavailable');
   }
   if (reply.status !== 200) {
-    console.error('flux_rejected', { status: reply.status });
+    const secrets = [request.prompt, request.image ?? '', apiKey];
+    console.error('flux_rejected', {
+      status: reply.status,
+      ...rejectionReason(reply.text, secrets),
+    });
     throw new HttpError('ai_unavailable');
   }
   const image = imageOf(reply.text);

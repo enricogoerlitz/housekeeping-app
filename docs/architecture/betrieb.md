@@ -104,6 +104,25 @@ gh workflow run preview.yml --ref develop
 Sie baut die Vorschau neu auf (frische Beispieldaten, kein Testkonto). Zum Ausprobieren reicht oft
 der lokale Stand (`pnpm dev`).
 
+**Neustart nach dem Zurücksetzen (seit 27.11.2026).** Der Zeitplaner von `pg_cron` behält die
+Job-Liste, die er beim Start geladen hat, auch über `supabase db reset` hinweg. In der Vorschau lief
+er seit dem 22.11. noch mit längst gelöschten Jobs (`purge_recipe_deletions`,
+`run_notification_tick`, jeder Lauf rot) und mit keinem der aktuellen (z. B.
+`add-due-recurring-items`). Deshalb startet der Schritt „Projekt neu starten“ das Vorschau-Projekt
+nach Zurücksetzen, Beispieldaten und Einladungen über die Management-API neu
+(`scripts/ci/supabase-restart.mjs`), wartet höchstens 10 Minuten auf `ACTIVE_HEALTHY` (sonst rot)
+und gibt die Jobs aus `cron.job` aus (rot, wenn keiner da ist). Ob der Zeitplaner danach die
+richtigen Jobs ausführt, zeigt erst der nächste Lauf eines Jobs; nachsehen im SQL-Editor der Vorschau:
+
+```sql
+select j.jobname, d.status, d.start_time
+from cron.job_run_details d left join cron.job j using (jobid)
+order by d.start_time desc limit 20;
+```
+
+Eine Zeile ohne `jobname` ist ein Lauf eines gelöschten Jobs. Die Produktion wird nie zurückgesetzt
+und braucht den Neustart nicht.
+
 ### Freigabe (Veröffentlichung)
 
 ```sh
