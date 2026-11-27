@@ -28,9 +28,11 @@ import {
   SelectRow,
   Sheet,
   Stack,
+  TabSwipeContent,
   Text,
   TextField,
   ViewTabs,
+  focusAfterChange,
   toast,
 } from '@housekeeping/ui';
 import { useState } from 'react';
@@ -54,8 +56,8 @@ import {
   AiFillFields,
   toastUnreadLinks,
   useAiFill,
+  useAiFillTabs,
   useDraftInput,
-  type AiFillTab,
 } from './ai-fill';
 import { IngredientLinesField } from './ingredient-lines-field';
 import { NewRecipeFields } from './recipe-form';
@@ -96,9 +98,11 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
   const [error, setError] = useState<string | undefined>(undefined);
   const fill = useAiFill();
   const draftInput = useDraftInput();
-  // Spec 0049, REQ-001: "Websuche" first, prefilled with the title when the AI opens (AC-001).
+  // Spec 0049, REQ-001: "Websuche" first, prefilled with the title when the AI opens (AC-001);
+  // spec 0055, REQ-001: the tab's field takes the cursor within the tap, the keyboard stays.
   const search = useWebSearch('recipe');
-  const [aiTab, setAiTab] = useState<AiFillTab>('web');
+  const tabs = useAiFillTabs('web', search);
+  const aiTab = tabs.tab;
   // Every opening starts with the kind chosen in "+" (state adjusted while rendering).
   const [shown, setShown] = useState(props.visible);
   if (props.visible !== shown) {
@@ -116,7 +120,7 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
     setError(undefined);
     fill.reset();
     search.reset();
-    setAiTab('web');
+    tabs.setTab('web');
     props.onClose();
   };
 
@@ -128,8 +132,18 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
 
   const takesIngredients = newEntryTakesIngredients(kind);
   const open = (extra: Extra) => {
-    if (extra === 'ai' && search.query.trim() === '') search.setQuery(title.trim());
-    setExtras((current) => new Set(current).add(extra));
+    if (extra !== 'ai') {
+      setExtras((current) => new Set(current).add(extra));
+      return;
+    }
+    // AC-001 (spec 0055): "Im Web suchen" has the cursor with the title, the keyboard stays.
+    focusAfterChange(
+      () => {
+        if (search.query.trim() === '') search.setQuery(title.trim());
+        setExtras((current) => new Set(current).add(extra));
+      },
+      () => tabs.webField.current,
+    );
   };
   const withAi = features.aiRecipes && kind === 'recipe' && extras.has('ai');
 
@@ -145,7 +159,7 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
       .join('\n');
     const chosenPhoto = photo;
     const generatePhoto = fill.generatePhoto;
-    void fill.run(typed).then(async (reply) => {
+    void fill.run({ prefix: typed, title: title.trim() }).then(async (reply) => {
       if (!reply) return;
       // AC-042 (spec 0049): without "Foto generieren" the linked page's photo, unless one was chosen.
       const pagePhoto = chosenPhoto ? undefined : await draftPagePhoto(reply, generatePhoto);
@@ -281,7 +295,7 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
             if (error) setError(undefined);
           }}
           error={error}
-          onSubmit={withAi ? (aiTab === 'web' ? search.search : fillWithAi) : save}
+          onSubmit={withAi ? (aiTab === 'web' ? () => search.search() : fillWithAi) : save}
           autoFocus
         />
         {withAi ? (
@@ -290,22 +304,26 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
               label="Mit KI ausfüllen"
               options={AI_FILL_TABS}
               value={aiTab}
-              onChange={setAiTab}
+              onChange={(next) => tabs.choose(next)}
               testID="new-recipe-ai-tab"
             />
-            {aiTab === 'web' ? (
-              <WebSearchPanel
-                search={search}
-                onLink={(link) => {
-                  fill.setText(link);
-                  setAiTab('own');
-                }}
-                recipeRows={draftInput}
-                testID="new-recipe-web"
-              />
-            ) : (
-              <AiFillFields fill={fill} testID="new-recipe-ai" />
-            )}
+            {/* Spec 0055, REQ-002: only the AI part swipes, not the kind and the title. */}
+            <TabSwipeContent swipe={tabs.swipe} testID="new-recipe-ai-swipe">
+              {aiTab === 'web' ? (
+                <WebSearchPanel
+                  search={search}
+                  onLink={(link) => {
+                    fill.setText(link);
+                    tabs.choose('prompt');
+                  }}
+                  recipeRows={draftInput}
+                  inputRef={tabs.webField}
+                  testID="new-recipe-web"
+                />
+              ) : (
+                <AiFillFields fill={fill} inputRef={tabs.promptField} testID="new-recipe-ai" />
+              )}
+            </TabSwipeContent>
           </Stack>
         ) : null}
         {extras.has('photo') ? <NewPhotoSlot photo={photo} onChange={setPhoto} /> : null}

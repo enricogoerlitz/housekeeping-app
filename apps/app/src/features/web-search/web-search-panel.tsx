@@ -18,6 +18,7 @@ import {
 import {
   Button,
   ChoiceChips,
+  LoadingLines,
   Notice,
   Photo,
   Row,
@@ -27,7 +28,8 @@ import {
   useTheme,
   type SheetAction,
 } from '@housekeeping/ui';
-import { Pressable, View } from 'react-native';
+import type { ComponentRef, Ref } from 'react';
+import { Pressable, View, type TextInput } from 'react-native';
 
 import { DictationField } from '@/features/shell/dictation-field';
 import { useOnlineOnly } from '@/features/shell/offline';
@@ -91,7 +93,7 @@ export function webSearchPrimary(
     disabled: online.disabled || search.busy || search.query.trim() === '',
     hint: online.hint,
     testID: `${testID}-submit`,
-    onPress: search.search,
+    onPress: () => search.search(),
   };
 }
 
@@ -359,10 +361,15 @@ function Preview(props: { search: WebSearch; rows?: RecipeRows; testID: string }
           {card.source}
         </Text>
       </Stack>
+      {/* Spec 0055, REQ-003: placeholders that breathe until the preview is read. */}
       {preview.status === 'loading' ? (
-        <Text variant="small" color="muted" testID={`${id}-busy`}>
-          {search.kind === 'recipe' ? 'Das Rezept wird gelesen …' : 'Der Ort wird eingeordnet …'}
-        </Text>
+        <LoadingLines
+          label={
+            search.kind === 'recipe' ? 'Das Rezept wird gelesen …' : 'Der Ort wird eingeordnet …'
+          }
+          lines={search.kind === 'recipe' ? 6 : 3}
+          testID={`${id}-busy`}
+        />
       ) : null}
       {preview.status === 'failed' ? <Notice icon="circle-alert" text={preview.message} /> : null}
       {preview.status === 'recipe' && props.rows ? (
@@ -416,6 +423,8 @@ export function WebSearchPanel(props: {
   recipeRows?: RecipeRows;
   /** The field takes the cursor when the window opens (nothing to search for yet). */
   autoFocus?: boolean;
+  /** The search field, to give it the cursor on a tab change (spec 0055, REQ-001). */
+  inputRef?: Ref<ComponentRef<typeof TextInput>>;
   testID: string;
 }) {
   const { search, testID } = props;
@@ -437,9 +446,10 @@ export function WebSearchPanel(props: {
           }
           search.setQuery(text.slice(0, WEB_SEARCH_LIMITS.query));
         }}
-        onSubmitEditing={search.search}
+        onSubmitEditing={() => search.search()}
         returnKeyType="search"
         autoFocus={props.autoFocus === true || search.focusRequest > 0}
+        inputRef={props.inputRef}
         editable={!online.disabled && search.state.status !== 'searching'}
         maxLength={WEB_SEARCH_LIMITS.query}
         testID={`${testID}-query`}

@@ -33,7 +33,7 @@ import {
   TextField,
   toast,
 } from '@housekeeping/ui';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 
 import { useOnlineOnly } from '@/features/shell/offline';
 import { PlaceField } from '@/features/shell/place-field';
@@ -47,7 +47,7 @@ import {
 import { ActivityIconField, ActivityKindField } from './activity-kind-field';
 import { ACTIVITY_ICON } from './activity-photo';
 import { errorMessage, FAILED_MESSAGE } from '@/features/shell/error-message';
-import { PlaceWebFill, type WebPlace } from '@/features/web-search/place-web-fill';
+import { usePlaceWebFill, type WebPlace } from '@/features/web-search/place-web-fill';
 
 /** activities_name_length. */
 const ACTIVITY_NAME_MAX_LENGTH = 120;
@@ -283,6 +283,8 @@ export function ActivityFormFields(props: {
   onOpenExisting: (activity: Activity) => void;
   openLabel?: string;
   autoFocus?: boolean;
+  /** Right in the field "Name": "Im Web suchen" of a new one (spec 0055, REQ-010). */
+  nameAction?: ReactNode;
 }) {
   const { form } = props;
   const kindsById = useActivityKindsById();
@@ -307,6 +309,7 @@ export function ActivityFormFields(props: {
           maxLength={ACTIVITY_NAME_MAX_LENGTH}
           autoFocus={props.autoFocus}
           error={form.nameError}
+          right={props.nameAction}
           testID="activity-name"
         />
         {form.duplicate ? (
@@ -461,6 +464,16 @@ export function ActivityFormSheet(props: {
     toast.show({ message: 'Aktivität gespeichert' });
   };
 
+  // Spec 0049: a new one is filled at once, an existing one shows its changes first.
+  const web = usePlaceWebFill({
+    kind: 'activity',
+    name: form.name,
+    ...(editing ? { current: form.webValues() } : {}),
+    hasPhoto: editing?.photoPath !== undefined,
+    onApply: form.applyWeb,
+    onLink: form.changeLink,
+    testID: 'activity-web',
+  });
   return (
     <Sheet
       visible
@@ -486,24 +499,18 @@ export function ActivityFormSheet(props: {
             {online.hint}
           </Text>
         ) : null}
-        {/* Spec 0049: a new one is filled at once, an existing one shows its changes first. */}
-        <PlaceWebFill
-          kind="activity"
-          name={form.name}
-          {...(editing ? { current: form.webValues() } : {})}
-          hasPhoto={editing?.photoPath !== undefined}
-          onApply={form.applyWeb}
-          onLink={form.changeLink}
-          testID="activity-web"
-        />
+        {/* Spec 0055, REQ-010: a new one searches from the name; an existing one keeps the link. */}
+        {editing ? web.link : null}
         <ActivityFormFields
           form={form}
           autoFocus
+          {...(editing ? {} : { nameAction: web.nameButton })}
           onOpenExisting={(existing) => {
             props.onClose();
             props.onOpenExisting(existing.id);
           }}
         />
+        {web.windows}
       </Stack>
     </Sheet>
   );

@@ -350,6 +350,7 @@ function useChoreDetail(props: ChoreDetailProps): {
             label="Löschen"
             icon="trash"
             variant="link"
+            quiet
             disabled={online.disabled}
             hint={online.hint ?? 'Der Verlauf bleibt'}
             onPress={() =>

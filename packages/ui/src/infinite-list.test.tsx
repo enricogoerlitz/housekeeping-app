@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { FOCUS_RING_ROOM } from './controls';
 import { InfiniteList } from './infinite-list';
 import { Text } from './primitives';
+import { scrollShownToTop } from './scroll-top';
 import { PageScrollContext } from './shell';
 import { TabPreviewContext } from './tab-preview';
 
@@ -50,6 +51,25 @@ describe('InfiniteList (AC-029)', () => {
     );
     expect(screen.getByRole('heading', { name: 'Obst' })).toBeTruthy();
     expect(screen.getByText('Birne')).toBeTruthy();
+  });
+
+  it('spec 0057 AC-009: a list that scrolls the page goes to the top on a tap on the active tab', () => {
+    const probe = measurable();
+    try {
+      render(
+        <PageScrollContext.Provider value={{ inset: 0, onScroll: () => undefined }}>
+          <InfiniteList
+            data={rows(5)}
+            keyExtractor={(row) => row.id}
+            renderItem={(row) => <Text>{row.id}</Text>}
+          />
+        </PageScrollContext.Provider>,
+      );
+      expect(scrollShownToTop(true)).toBe(1);
+      expect(probe.calls[0]?.top).toBe(0);
+    } finally {
+      probe.restore();
+    }
   });
 });
 
@@ -290,3 +310,22 @@ describe('InfiniteList scrolling', () => {
     expect(list.scrollTop).toBe(0);
   });
 });
+
+/** Lets every element report a box (jsdom has no layout) and records `scroll` calls. */
+function measurable(): { calls: { el: Element; top: unknown }[]; restore: () => void } {
+  const calls: { el: Element; top: unknown }[] = [];
+  const proto = HTMLElement.prototype as unknown as Record<string, unknown>;
+  const rects = proto.getClientRects;
+  const scroll = proto.scroll;
+  proto.getClientRects = () => [{}];
+  proto.scroll = function (this: Element, options: { top?: unknown }) {
+    calls.push({ el: this, top: options.top });
+  };
+  return {
+    calls,
+    restore: () => {
+      proto.getClientRects = rects;
+      proto.scroll = scroll;
+    },
+  };
+}

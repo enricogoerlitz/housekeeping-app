@@ -5,6 +5,7 @@ import {
   OfflineError,
   preparePhoto,
   starterCatalogEntries,
+  useAreas,
   useArticles,
   useRecipes,
 } from '@housekeeping/api';
@@ -15,9 +16,13 @@ import {
   draftLinks,
   draftToPageInput,
   imageAddress,
+  aiFillDefaults,
   linkChipLabel,
+  promptWebQuery,
   tagValues,
+  type AiFillTab,
   type PageDraftInput,
+  type RecipeDraft,
   type RecipeDraftReply,
   type RecipeDraftSource,
 } from '@housekeeping/core';
@@ -26,27 +31,31 @@ import {
   ChoiceChips,
   Chip,
   IconButton,
+  LoadingLines,
   Photo,
   Row,
   Sheet,
   Stack,
   SwitchRow,
   Text,
+  TabSwipeContent,
   TextField,
   ViewTabs,
+  focusAfterChange,
   pickImageFile,
   toast,
   useBreakpoint,
   useFinePointer,
   useImageDropAndPaste,
+  type TabSwipe,
 } from '@housekeeping/ui';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { View } from 'react-native';
+import { useEffect, useLayoutEffect, useRef, useState, type ComponentRef, type Ref } from 'react';
+import { View, type TextInput } from 'react-native';
 
 import { DictationField } from '@/features/shell/dictation-field';
 import { OFFLINE_EDIT_HINT, useOnlineOnly } from '@/features/shell/offline';
 import { pasteKeys } from '@/features/shell/photo-window';
-import { useWebSearch } from '@/features/web-search/use-web-search';
+import { useWebSearch, type WebSearch } from '@/features/web-search/use-web-search';
 import {
   webSearchPrimary,
   WebSearchPanel,
@@ -78,6 +87,9 @@ export interface AiFill {
   removePhoto: (index: number) => void;
   generatePhoto: boolean;
   setGeneratePhoto: (on: boolean) => void;
+  /** Spec 0055, REQ-007: "Websuche" in "Prompt" — one web search as context, off by default. */
+  webSearch: boolean;
+  setWebSearch: (on: boolean) => void;
   busy: boolean;
   preparing: boolean;
   error: string | undefined;
@@ -85,15 +97,29 @@ export interface AiFill {
   sources: RecipeDraftSource[];
   /** Something to send: text, a link or a photo. */
   ready: boolean;
-  /** "Ausfüllen": the reply, or undefined when it failed (the message is in `error`). */
-  run: (extraText?: string) => Promise<RecipeDraftReply | undefined>;
+  /**
+   * "Ausfüllen": the reply, or undefined when it failed (the message is in `error`). `prefix`
+   * goes before the text (the window "Neu": title, pasted ingredients); `current` is the recipe
+   * the text changes (spec 0055, REQ-006); `title` is searched with the wish (REQ-007).
+   */
+  run: (options?: {
+    prefix?: string;
+    current?: RecipeDraft;
+    title?: string;
+  }) => Promise<RecipeDraftReply | undefined>;
   reset: () => void;
 }
 
-export function useAiFill(): AiFill {
+/** AC-023 (spec 0055): the draft came, the web search did not. */
+const WEB_CONTEXT_UNAVAILABLE = 'Ohne Websuche ausgefüllt – die Suche war nicht erreichbar.';
+
+/** `generatePhoto`: how "Foto generieren" starts (spec 0055, REQ-005; on by default). */
+export function useAiFill(initial: { generatePhoto?: boolean } = {}): AiFill {
+  const startsGenerating = initial.generatePhoto ?? true;
   const [text, setText] = useState('');
   const [photos, setPhotos] = useState<DraftPhoto[]>([]);
-  const [generatePhoto, setGeneratePhoto] = useState(true);
+  const [generatePhoto, setGeneratePhoto] = useState(startsGenerating);
+  const [webSearch, setWebSearch] = useState(false);
   const [busy, setBusy] = useState(false);
   const [preparing, setPreparing] = useState(false);
   const [error, setError] = useState<string>();
@@ -145,21 +171,25 @@ export function useAiFill(): AiFill {
       return current.filter((_, at) => at !== index);
     });
 
-  const run = async (extraText?: string) => {
+  const run: AiFill['run'] = async (options = {}) => {
     setBusy(true);
     setError(undefined);
     setSources([]);
+    const webQuery = webSearch ? promptWebQuery(options.title ?? '', text) : undefined;
     try {
       const reply = await draftRecipeAsync({
-        text: [extraText?.trim(), text.trim()]
+        text: [options.prefix?.trim(), text.trim()]
           .filter(Boolean)
           .join('\n')
           .slice(0, RECIPE_DRAFT_LIMITS.text),
         links,
         photos: photos.map((entry) => entry.photo),
         imagePrompt: generatePhoto,
+        ...(options.current ? { current: options.current } : {}),
+        ...(webQuery ? { webQuery } : {}),
       });
       if (mounted.current) setSources(reply.sources);
+      if (reply.webContext === 'unavailable') toast.show({ message: WEB_CONTEXT_UNAVAILABLE });
       return reply;
     } catch (cause) {
       if (mounted.current)
@@ -174,7 +204,8 @@ export function useAiFill(): AiFill {
     for (const photo of photos) URL.revokeObjectURL(photo.uri);
     setText('');
     setPhotos([]);
-    setGeneratePhoto(true);
+    setGeneratePhoto(startsGenerating);
+    setWebSearch(false);
     setError(undefined);
     setSources([]);
   };
@@ -193,6 +224,8 @@ export function useAiFill(): AiFill {
     removePhoto,
     generatePhoto,
     setGeneratePhoto,
+    webSearch,
+    setWebSearch,
     busy,
     preparing,
     error,
@@ -210,9 +243,11 @@ export function useAiFill(): AiFill {
 export function useDraftInput(): (reply: RecipeDraftReply) => PageDraftInput {
   const articles = useArticles();
   const recipes = useRecipes();
+  const areas = useAreas();
   return (reply) =>
     draftToPageInput(reply.draft, reply.sources, {
       articles,
+      areas,
       catalog: starterCatalogEntries,
       newKey: newRowKey,
       newId: () => crypto.randomUUID(),
@@ -267,8 +302,18 @@ function ImageAddressField(props: {
   );
 }
 
-/** The field, the link chips, the photos and "Foto generieren" (REQ-001 – REQ-003). */
-export function AiFillFields(props: { fill: AiFill; testID: string }) {
+type FieldRef = ComponentRef<typeof TextInput>;
+
+/**
+ * The field, the link chips, the photos, "Websuche" (spec 0055, REQ-007) and "Foto generieren"
+ * (REQ-001 – REQ-003). `inputRef` and `autoFocus` give the field the cursor (spec 0055, REQ-001).
+ */
+export function AiFillFields(props: {
+  fill: AiFill;
+  inputRef?: Ref<FieldRef>;
+  autoFocus?: boolean;
+  testID: string;
+}) {
   const { fill, testID } = props;
   const online = useOnlineOnly();
   const { isPhone } = useBreakpoint();
@@ -295,6 +340,8 @@ export function AiFillFields(props: { fill: AiFill; testID: string }) {
         maxLength={RECIPE_DRAFT_LIMITS.text}
         editable={!disabled}
         hint="Text, bis zu 3 Links und 4 Fotos – die KI füllt den Entwurf, du prüfst und speicherst."
+        autoFocus={props.autoFocus}
+        inputRef={props.inputRef}
         testID={`${testID}-text`}
       />
       {fill.links.length > 0 ? (
@@ -380,6 +427,14 @@ export function AiFillFields(props: { fill: AiFill; testID: string }) {
         </>
       ) : null}
       <SwitchRow
+        label="Websuche"
+        description="Sucht vorher einmal im Web nach Titel und Wunsch – als Hintergrund für die KI."
+        value={fill.webSearch}
+        onValueChange={fill.setWebSearch}
+        disabled={disabled}
+        testID={`${testID}-web-search`}
+      />
+      <SwitchRow
         label="Foto generieren"
         description="Die KI schlägt drei Fotos vor; du wählst eins oder keins."
         value={fill.generatePhoto}
@@ -388,9 +443,11 @@ export function AiFillFields(props: { fill: AiFill; testID: string }) {
         testID={`${testID}-generate-photo`}
       />
       {fill.busy ? (
-        <Text variant="small" color="muted" testID={`${testID}-busy`}>
-          Die KI füllt das Rezept aus … das dauert bis zu einer halben Minute.
-        </Text>
+        <LoadingLines
+          label="Die KI füllt das Rezept aus … das dauert bis zu einer halben Minute."
+          lines={4}
+          testID={`${testID}-busy`}
+        />
       ) : null}
       {fill.error ? (
         <Text variant="small" color="warn" testID={`${testID}-error`}>
@@ -401,18 +458,62 @@ export function AiFillFields(props: { fill: AiFill; testID: string }) {
   );
 }
 
-/** The two tabs of "Mit KI ausfüllen" (spec 0049, REQ-001): "Websuche" first, always. */
-export type AiFillTab = 'web' | 'own';
+/** The two tabs of "Mit KI ausfüllen" (spec 0049, REQ-001; spec 0055, REQ-004: „Prompt“). */
 export const AI_FILL_TABS: { value: AiFillTab; label: string }[] = [
   { value: 'web', label: 'Websuche' },
-  { value: 'own', label: 'Eigene Angaben' },
+  { value: 'prompt', label: 'Prompt' },
 ];
+
+/**
+ * The tabs of "Mit KI ausfüllen" (spec 0055, REQ-001, REQ-002): a tap on a tab gives its field the
+ * cursor within the tap (the keyboard stays), a swipe changes the tab and moves the cursor only
+ * while typing. "Websuche" with cards or a preview has no field to type in, so none is focused.
+ */
+export function useAiFillTabs(initial: AiFillTab, search: WebSearch) {
+  const [tab, setTab] = useState<AiFillTab>(initial);
+  const webField = useRef<FieldRef>(null);
+  const promptField = useRef<FieldRef>(null);
+  const fieldOf = (next: AiFillTab) => {
+    if (next === 'prompt') return promptField.current;
+    const typing = !search.preview && search.state.status !== 'results';
+    return typing ? webField.current : null;
+  };
+  const choose = (next: AiFillTab, options?: { onlyWhenTyping?: boolean }) =>
+    focusAfterChange(
+      () => setTab(next),
+      () => fieldOf(next),
+      options,
+    );
+  const index = AI_FILL_TABS.findIndex((option) => option.value === tab);
+  // Like `tabSwipe`, written out: the step reads the fields only when it happens.
+  const swipe: TabSwipe = {
+    index,
+    count: AI_FILL_TABS.length,
+    onStep: (step) => {
+      const next = AI_FILL_TABS[index + step]?.value;
+      if (next) choose(next, { onlyWhenTyping: true });
+    },
+  };
+  return {
+    tab,
+    setTab,
+    choose,
+    swipe,
+    webField,
+    promptField,
+  };
+}
 
 /** What "Mit KI ausfüllen" hands to the page: a draft, from the web search with its photo. */
 export interface AiFillResult {
   reply: RecipeDraftReply;
   replace: boolean;
   generatePhoto: boolean;
+  /**
+   * Spec 0055, REQ-006: the draft is the whole recipe changed by a wish; the Änderungsansicht
+   * compares it variant by variant (fillPageDraft `change`).
+   */
+  change?: boolean;
   /** The photo of the page found on the web (spec 0049, REQ-004). */
   photo?: Blob;
   /** Spec 0049, REQ-010: „KI-Bild“ — three suggestions from the wish or the title. */
@@ -422,36 +523,51 @@ export interface AiFillResult {
 
 /**
  * "Mit KI ausfüllen" on the recipe page in the edit mode: "Websuche" (spec 0049, prefilled with
- * the title) and „Eigene Angaben“ (the field of spec 0040) in a window. A recipe with ingredients
- * asks "Ergänzen oder ersetzen?" (AC-006); "Ergänzen" keeps them.
+ * the title) and „Prompt“ (the field of spec 0040) in a window. Spec 0055: a recipe with content
+ * opens on „Prompt“ and sends itself as `current` (REQ-005, REQ-006); „Foto generieren“ starts off
+ * when it has a photo. "Websuche" on a recipe with ingredients asks "Ergänzen oder ersetzen?"
+ * (AC-006); "Ergänzen" keeps them.
  */
 export function AiFillSheet(props: {
   title: string;
   hasIngredients: boolean;
+  /** Ingredients or steps: there is something to change (spec 0055, REQ-005). */
+  hasContent: boolean;
+  hasPhoto: boolean;
+  /** The recipe of the edit mode in the draft format (spec 0055, REQ-006). */
+  current: () => RecipeDraft;
   onDraft: (result: AiFillResult) => void;
   onClose: () => void;
 }) {
-  const fill = useAiFill();
+  const [defaults] = useState(() =>
+    aiFillDefaults({ editing: true, hasContent: props.hasContent, hasPhoto: props.hasPhoto }),
+  );
+  const fill = useAiFill({ generatePhoto: defaults.generatePhoto });
   const online = useOnlineOnly();
   const search = useWebSearch('recipe', props.title);
   const draftInput = useDraftInput();
-  const [tab, setTab] = useState<AiFillTab>('web');
+  const tabs = useAiFillTabs(defaults.tab, search);
+  const { tab } = tabs;
   const [mode, setMode] = useState<'add' | 'replace'>('add');
   const submit = () => {
     if (!fill.ready || fill.busy) return;
     const generatePhoto = fill.generatePhoto;
-    void fill.run().then(async (reply) => {
-      if (!reply) return;
-      // AC-042 (spec 0049): without "Foto generieren" the linked page's photo is proposed.
-      const photo = await draftPagePhoto(reply, generatePhoto);
-      props.onClose();
-      props.onDraft({
-        reply,
-        replace: mode === 'replace',
-        generatePhoto,
-        ...(photo ? { photo } : {}),
+    const change = props.hasContent;
+    void fill
+      .run({ title: props.title, ...(change ? { current: props.current() } : {}) })
+      .then(async (reply) => {
+        if (!reply) return;
+        // AC-042 (spec 0049): without "Foto generieren" the linked page's photo is proposed.
+        const photo = await draftPagePhoto(reply, generatePhoto);
+        props.onClose();
+        props.onDraft({
+          reply,
+          replace: change || mode === 'replace',
+          ...(change ? { change } : {}),
+          generatePhoto,
+          ...(photo ? { photo } : {}),
+        });
       });
-    });
   };
   const take = (taken: WebTake) => {
     if (!taken.recipe) return;
@@ -476,7 +592,7 @@ export function AiFillSheet(props: {
           label="Mit KI ausfüllen"
           options={AI_FILL_TABS}
           value={tab}
-          onChange={setTab}
+          onChange={(next) => tabs.choose(next)}
           testID="recipe-ai-fill-tab"
         />
       }
@@ -496,34 +612,44 @@ export function AiFillSheet(props: {
       }}
       testID="recipe-ai-fill"
     >
-      <Stack gap={16}>
-        {props.hasIngredients ? (
-          <ChoiceChips
-            label="Ergänzen oder ersetzen?"
-            options={[
-              { value: 'add', label: 'Ergänzen' },
-              { value: 'replace', label: 'Ersetzen' },
-            ]}
-            value={mode}
-            onChange={setMode}
-            disabled={fill.busy}
-            testID="recipe-ai-fill-mode"
-          />
-        ) : null}
-        {tab === 'web' ? (
-          <WebSearchPanel
-            search={search}
-            onLink={(link) => {
-              fill.setText(link);
-              setTab('own');
-            }}
-            recipeRows={draftInput}
-            testID="recipe-ai-fill-web"
-          />
-        ) : (
-          <AiFillFields fill={fill} testID="recipe-ai-fill-field" />
-        )}
-      </Stack>
+      <TabSwipeContent swipe={tabs.swipe} testID="recipe-ai-fill-swipe">
+        <Stack gap={16}>
+          {/* Spec 0055, AC-020: "Prompt" changes the whole recipe; only "Websuche" asks. */}
+          {props.hasIngredients && tab === 'web' ? (
+            <ChoiceChips
+              label="Ergänzen oder ersetzen?"
+              options={[
+                { value: 'add', label: 'Ergänzen' },
+                { value: 'replace', label: 'Ersetzen' },
+              ]}
+              value={mode}
+              onChange={setMode}
+              disabled={fill.busy}
+              testID="recipe-ai-fill-mode"
+            />
+          ) : null}
+          {tab === 'web' ? (
+            <WebSearchPanel
+              search={search}
+              onLink={(link) => {
+                fill.setText(link);
+                tabs.choose('prompt');
+              }}
+              recipeRows={draftInput}
+              autoFocus={defaults.tab === 'web'}
+              inputRef={tabs.webField}
+              testID="recipe-ai-fill-web"
+            />
+          ) : (
+            <AiFillFields
+              fill={fill}
+              autoFocus={defaults.tab === 'prompt'}
+              inputRef={tabs.promptField}
+              testID="recipe-ai-fill-field"
+            />
+          )}
+        </Stack>
+      </TabSwipeContent>
     </Sheet>
   );
 }
