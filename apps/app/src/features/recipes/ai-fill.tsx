@@ -59,6 +59,7 @@ import {
 } from 'react';
 import { View, type TextInput } from 'react-native';
 
+import { discardFirst } from '@/features/shell/confirm-dialog';
 import { DictationField } from '@/features/shell/dictation-field';
 import { OFFLINE_EDIT_HINT, useOnlineOnly } from '@/features/shell/offline';
 import { pasteKeys } from '@/features/shell/photo-window';
@@ -368,6 +369,19 @@ export function AiFillFields(props: {
         inputRef={props.inputRef}
         testID={`${testID}-text`}
       />
+      {/* Nachklick 27.11., N-05: right under the wish, so it stands in sight on every screen;
+          N-08: a change gets its own words. */}
+      {fill.busy ? (
+        <LoadingLines
+          label={
+            changes
+              ? 'Die KI schreibt einen Vorschlag … das dauert bis zu einer halben Minute.'
+              : 'Die KI füllt das Rezept aus … das dauert bis zu einer halben Minute.'
+          }
+          lines={4}
+          testID={`${testID}-busy`}
+        />
+      ) : null}
       {fill.links.length > 0 ? (
         <Row gap={8} wrap>
           {fill.links.map((url, index) => {
@@ -483,13 +497,6 @@ export function AiFillFields(props: {
           />
         </>
       )}
-      {fill.busy ? (
-        <LoadingLines
-          label="Die KI füllt das Rezept aus … das dauert bis zu einer halben Minute."
-          lines={4}
-          testID={`${testID}-busy`}
-        />
-      ) : null}
       {fill.error ? (
         <Text variant="small" color="warn" testID={`${testID}-error`}>
           {fill.error}
@@ -600,7 +607,9 @@ export function AiFillSheet(props: {
   onClose: () => void;
   searchNow?: boolean;
 }) {
-  const changing = props.entry === 'page';
+  // Nachklick 27.11., iN-05: a recipe with content gets one window from ✨ and from the pen:
+  // "Mit KI ändern", "Prompt" first, the chips "Web" and "Bild". Only an empty one is filled.
+  const changing = props.hasContent;
   const [defaults] = useState(() =>
     aiFillDefaults({ editing: true, hasContent: props.hasContent, hasPhoto: props.hasPhoto }),
   );
@@ -615,9 +624,11 @@ export function AiFillSheet(props: {
     if (props.searchNow && defaults.tab === 'web') search.search(props.title);
   });
   useEffect(() => searchTitle(), []);
-  const id = changing ? 'recipe-ai-change' : 'recipe-ai-fill';
+  const id = props.entry === 'page' ? 'recipe-ai-change' : 'recipe-ai-fill';
   const name = changing ? 'Mit KI ändern' : 'Mit KI ausfüllen';
-  const proposes = changing || props.hasContent;
+  const proposes = changing;
+  // Nachklick 27.11., N-17: a typed wish goes only when asked, like in "Neu".
+  const dismiss = () => discardFirst(fill.text.trim() !== '', props.onClose);
   const submit = () => {
     if (!fill.ready || fill.busy) return;
     const generatePhoto = fill.generatePhoto;
@@ -656,7 +667,7 @@ export function AiFillSheet(props: {
       visible
       size="l"
       title={name}
-      onClose={props.onClose}
+      onClose={dismiss}
       header={
         <ViewTabs
           label={name}
@@ -685,7 +696,7 @@ export function AiFillSheet(props: {
                 hint: online.hint,
                 testID: `${id}-submit`,
               },
-        cancel: { label: 'Abbrechen', onPress: props.onClose, testID: `${id}-cancel` },
+        cancel: { label: 'Abbrechen', onPress: dismiss, testID: `${id}-cancel` },
       }}
       testID={id}
     >

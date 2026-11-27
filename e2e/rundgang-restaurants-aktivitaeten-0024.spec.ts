@@ -59,6 +59,8 @@ test('AC-006, AC-007 / AC-014, AC-015 (0054): the note is read only; the pencil 
   await expect(tid(page, 'restaurant-notes-edit')).toHaveCount(0);
   await tid(page, 'restaurant-edit').click();
   await expect(tid(page, 'restaurant-edit-sheet')).toBeVisible();
+  // Nachklick 27.11., Ruckeln: the pencil opens the form without a cursor.
+  await expect(tid(page, 'restaurant-name')).not.toBeFocused();
   await page.keyboard.press('Escape');
   await open(page, `/restaurant/${PHO}`);
   await expect(tid(page, 'restaurant-notes-text')).toHaveText('Noch keine Notiz');
@@ -237,6 +239,9 @@ test.describe('desktop', () => {
   test('AC-027: a new name shows left and right, the search stays', async ({ page }) => {
     await open(page, `/aktivitaeten?suche=eis&aktivitaet=${EISLAUFEN}`);
     await tid(page, 'activity-edit').click();
+    // Nachklick 27.11., Ruckeln: the pencil opens the form without a cursor.
+    await expect(tid(page, 'activity-sheet')).toBeVisible();
+    await expect(tid(page, 'activity-name')).not.toBeFocused();
     await tid(page, 'activity-name').fill('Eislaufen Neuss');
     await tid(page, 'activity-save').click();
     await expect(tid(page, 'activity-title')).toHaveText('Eislaufen Neuss');

@@ -185,6 +185,9 @@ test.describe('Artikel and Märkte at phone width', () => {
     await expect(tid(page, 'store-order-screen')).toContainText('Aldi Nord');
 
     await tid(page, 'store-rename').click();
+    // Nachklick 27.11., Ruckeln: "Markt bearbeiten" opens without a cursor.
+    await expect(tid(page, 'store-rename-sheet')).toBeVisible();
+    await expect(tid(page, 'store-rename-sheet-name')).not.toBeFocused();
     await tid(page, 'store-rename-sheet-name').fill('Aldi Nordstadt');
     await tid(page, 'store-rename-sheet-save').click();
     await expect(tid(page, 'store-order-screen')).toContainText('Aldi Nordstadt');

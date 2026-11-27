@@ -230,7 +230,11 @@ function RecipeDetailBody(props: {
       />
       {desktop ? actions : null}
       {/* Spec 0062, REQ-007: ✨ beside the pen. */}
-      <AiChangeButton recipe={recipe} onPress={() => setChanging(true)} />
+      <AiChangeButton
+        recipe={recipe}
+        onPress={() => setChanging(true)}
+        onWorkOut={() => editor.start({ kind: 'ai' })}
+      />
       <EditControls editor={editor} />
       <RecipeMoreMenu
         recipe={recipe}

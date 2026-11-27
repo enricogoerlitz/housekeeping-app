@@ -158,6 +158,10 @@ ungekürzt; in einem anderen Jahr mit Jahreszahl). Quelle: #10. Offline: offline
    im Web misst, ob ein Wort über die Breite ragt, und dann einzeilig kürzt; nativ tut sie nichts.
 8. **REQ-005:** fest nach Breite (Handy kurz, sonst lang) statt gemessen: Die Kopfzeile gehört
    Spec 0054, und ein Titel, der je nach Tag die Form wechselt, springt (Spec 0035, AC-014).
+9. Nachklick 27.11., N-18: Kalendereinträge brechen nie vor dem Bindestrich
+   („Kichererbsen-|Eintopf“): ganze Wörter, der Bindestrich darf über den Rand ragen
+   (`hangingHyphens`); ein Wort, das breiter ist als die Spalte, wird wie bisher einzeilig mit „…“
+   gekürzt.
 
 ## Daten
 

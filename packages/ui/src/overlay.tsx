@@ -357,8 +357,14 @@ export function Sheet(props: SheetProps) {
                     onPress={close}
                     testID={props.testID ? `${props.testID}-scrim` : undefined}
                     // Spec 0033, REQ-002: on phones the page behind stays as it is.
+                    // Nachklick 27.11., N-14: the modal hands it the focus first (Escape on a
+                    // window that asks); the browser's ring would frame the whole page.
                     style={[
-                      { flex: 1, backgroundColor: isPhone ? 'transparent' : c.scrim },
+                      {
+                        flex: 1,
+                        backgroundColor: isPhone ? 'transparent' : c.scrim,
+                        outlineWidth: 0,
+                      },
                       NO_PAN,
                     ]}
                   />
@@ -461,6 +467,9 @@ export function Sheet(props: SheetProps) {
                       paddingHorizontal: 20,
                       paddingBottom: 20,
                       paddingTop: 6,
+                      // A window of fixed height: content that grows (TabSwipeContent) reaches its
+                      // bottom (Nachklick 27.11., iN-07).
+                      ...(frame.height ? { flexGrow: 1 } : null),
                     }}
                   >
                     {/* A drag inside the sheet must not switch the page below. */}

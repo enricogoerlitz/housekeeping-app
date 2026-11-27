@@ -221,6 +221,38 @@ auf der lesenden Seite; „Übernehmen“ speichert das gewählte Foto sofort (�
     Rezepts); dort sind die Fotos für die KI und „Foto generieren“ der Weg. Im Reiter „Websuche“
     bleibt er. Zeigt „Websuche“ die Vorschau eines Treffers, fehlen „Foto“, „Zutaten einfügen“ und
     „Sammlung“: „Übernehmen“ nimmt Foto und Zutaten des Treffers, die Links gingen nicht mit.
+12. Nachklick 27.11. (Befunde `tmp/review-0004/durchklick/nach-desktop.md` N-xx, `nach-iphone.md`
+    iN-xx):
+    - **N-01/iN-01:** Die Änderungsansicht zeigt Zutaten und Schritte unter „Alle Varianten“, je
+      Variante und je Gruppe wie die Rezeptseite. Eine Zeile, die nur in eine Variante oder Gruppe
+      wandert (z. B. in die neue Variante „Original“), ist eine geänderte Zeile mit „jetzt nur in
+      „Original““ bzw. „jetzt unter „Soße““ statt „entfernt“ + „neu“ (core `diffRowChanges` mit
+      `loose`/`hint`, `recipeProposal` mit `section`). Eine Gruppe, die sich ändert, wird jetzt auch
+      gespeichert (vorher galt die Zeile als gleich). Die KI-Anweisung beim Ändern: genau eine
+      Variante mehr; die bisherige Fassung heißt „Original“ und trägt nur die ersetzten Zeilen; ein
+      Hinweis an einer gemeinsamen Zutat nennt nie eine Variante, eine andere Sorte bekommt eine
+      eigene Zeile der Variante. Geprüft am Desktop-Befund (Shakshuka): die KI hing nur Eier und
+      Feta um, das war richtig; falsch war die Anzeige. Beim iPhone-Befund (Lasagne) nannte sie die
+      bisherige Fassung „Vegetarisch“ und schrieb „für die vegane Variante“ an eine gemeinsame Zeile.
+    - **N-04:** Return in „Name“ von „Restaurant/Aktivität anlegen“ sucht wie die Lupe im Web, statt
+      sofort anzulegen; Bearbeiten unverändert (dort keine Lupe).
+    - **N-06:** Das Fenster „Neu“ hat immer die Größe `l`, auch leer und als Sammlung; es springt beim
+      Reiterwechsel und beim ersten Suchen nicht mehr.
+    - **N-07:** Scheitert die Websuche in „Neu“, nennt der Hinweis den Reiter „KI-Rezept“.
+    - **N-09:** Titel „Restaurant anlegen“; Toast „Restaurant/Aktivität angelegt“ beim Anlegen,
+      „gespeichert“ beim Bearbeiten.
+    - **N-12:** „Zutaten einfügen“ gibt dem Feld den Cursor (im Tipp, auch am iPhone) und holt es ins
+      Bild. Eingefügte Zutaten allein schalten „Erzeugen“ frei (sie gehen als „Zutaten: …“ an die KI).
+    - **N-13:** Die Rückfrage beim Schließen von „Neu“ und beim Abbrechen eines noch nicht
+      gespeicherten Rezepts (Treffer „Übernehmen“) heißt „Entwurf verwerfen?“.
+    - **N-17:** „Vorschlag prüfen“ fragt vor „Abbrechen“, Escape oder ✕ „Vorschlag verwerfen?“ (Weiter
+      prüfen · Verwerfen): der Vorschlag hat eine KI- oder Suchanfrage gekostet. „Mit KI ändern“ fragt
+      mit getipptem Wunsch „Änderungen verwerfen?“ wie „Neu“.
+    - **iN-06:** „Anlegen“ ohne Titel gibt dem Titel den Cursor im Tipp: die Tastatur bleibt, das
+      Fenster sackt nicht ab.
+    - **Rückgängig:** „Rezept geändert · Rückgängig“ nach „Übernehmen“ steht 10 s statt 5 s. Grund:
+      man prüft die übernommene KI-Änderung erst auf der Seite; ein zweiter Weg zum Zurücknehmen wäre
+      ein neues Bedienelement für einen seltenen Fall.
 
 ## Daten
 

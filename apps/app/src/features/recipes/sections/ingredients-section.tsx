@@ -12,6 +12,7 @@ import {
   chooseRowArticle,
   groupIngredients,
   ingredientLine,
+  ingredientSections,
   ingredientsForVariant,
   keepDuplicateRow,
   moveIngredientAmong,
@@ -82,7 +83,8 @@ const ROW_LABELS: ReorderListLabels = {
  * the ingredients without group, then each group under its heading (spec 0023, REQ-004); "Ist
  * alle" and ⋯ "Zutat bearbeiten" (opens the edit mode with the row, spec 0037), "Artikel
  * bearbeiten", "Entfernen" per ingredient; "+ Zutat" and "Mehrere einfügen" save at once (spec
- * 0056, REQ-001, REQ-002; replaces spec 0037, AC-002). In the edit mode: a flat list of rows with ≡, Menge, Artikel and ⋯,
+ * 0056, REQ-001, REQ-002; replaces spec 0037, AC-002). In the edit mode: the rows by variant and group
+ * (Nachklick 27.11., N-01) with ≡, Menge, Artikel and ⋯,
  * "+ Zutat", "Mehrere einfügen", "Aus Rezept übernehmen" (REQ-003) and "+ Variante" (E9).
  */
 export function IngredientsSection(props: {
@@ -356,12 +358,12 @@ function IngredientsRead(props: {
   );
 }
 
-/** What a row of the open section says under its name: variant, group, Hinweis, Zusatz, new. */
-function rowDetail(row: IngredientRow, draft: IngredientsDraft): string | undefined {
-  const variant = draft.variants.find((candidate) => candidate.id === row.variantId);
+/**
+ * What a row of the open section says under its name: Hinweis, Zusatz, new. Variant and group
+ * are the headings it stands under (Nachklick 27.11., N-01).
+ */
+function rowDetail(row: IngredientRow): string | undefined {
   const parts = [
-    variant ? variant.name.trim() || 'Ohne Namen' : undefined,
-    row.group.trim() || undefined,
     row.prepNote.trim() || undefined,
     row.shoppingNote.trim() ? `Liste: ${row.shoppingNote.trim()}` : undefined,
     row.article?.kind === 'new' || row.article?.kind === 'hit' ? 'neu' : undefined,
@@ -415,8 +417,7 @@ function IngredientsFields(props: {
   const open = openRows(draft, articles);
   const openKeys = new Set(open.map((row) => row.key));
   const ready = draft.rows.filter((row) => !openKeys.has(row.key));
-  const shownKeys = ready.map((row) => row.key);
-  const move = (key: string, toIndex: number) =>
+  const move = (key: string, toIndex: number, shownKeys: readonly string[]) =>
     set(moveIngredientAmong(draft, key, toIndex, shownKeys));
 
   const variantProblem = (id: Id) => editor.problem('variant', id);
@@ -481,45 +482,73 @@ function IngredientsFields(props: {
         onKeep={(key) => set(keepDuplicateRow(draft, key))}
       />
       {ready.length > 0 ? (
-        <ReorderList
-          items={ready.map((row) => ({
-            key: row.key,
-            name: rowName(row, articlesById),
-            subtitle: rowDetail(row, draft),
-          }))}
-          onMove={move}
-          labels={ROW_LABELS}
-          trailing={(item, index) => (
-            <Menu<RowAction>
-              trigger="icon"
-              icon="ellipsis"
-              label="Mehr"
-              accessibilityLabel={`Mehr zu ${item.name}`}
-              onChange={(action) => {
-                if (action === 'edit') {
-                  openKeyboardNow();
-                  setSheet({ kind: 'row', key: item.key });
-                } else if (action === 'article') setArticleFor(householdArticleId(draft, item.key));
-                else if (action === 'remove') set(removeIngredient(draft, item.key));
-                else move(item.key, index + (action === 'up' ? -1 : 1));
-              }}
-              options={[
-                { value: 'edit', label: 'Zutat bearbeiten' },
-                // Greyed out while the article is created only with "Speichern".
-                {
-                  value: 'article',
-                  label: 'Artikel bearbeiten',
-                  disabled: householdArticleId(draft, item.key) === undefined,
-                },
-                { value: 'up', label: 'Nach oben', disabled: index === 0 },
-                { value: 'down', label: 'Nach unten', disabled: index === ready.length - 1 },
-                { value: 'remove', label: 'Entfernen' },
-              ]}
-              testID={`recipe-row-menu-${item.key}`}
-            />
-          )}
-          testID="recipe-rows"
-        />
+        // Nachklick 27.11., N-01: split by variant and group like the recipe page; a row moves
+        // within its part, ⋯ "Zutat bearbeiten" changes its variant or group.
+        ingredientSections(ready, draft.variants).map((section) => (
+          <View
+            key={section.variantId ?? ''}
+            style={{ gap: 8 }}
+            testID={`recipe-rows-part-${section.variantId ?? 'all'}`}
+          >
+            {section.title ? (
+              <Text variant="smallStrong" color="muted">
+                {section.title}
+              </Text>
+            ) : null}
+            {section.groups.map((part) => {
+              const keys = part.items.map((row) => row.key);
+              return (
+                <View key={part.group ?? ''}>
+                  {part.group ? <GroupLabel>{part.group}</GroupLabel> : null}
+                  <ReorderList
+                    items={part.items.map((row) => ({
+                      key: row.key,
+                      name: rowName(row, articlesById),
+                      subtitle: rowDetail(row),
+                    }))}
+                    onMove={(key, toIndex) => move(key, toIndex, keys)}
+                    labels={ROW_LABELS}
+                    trailing={(item, index) => (
+                      <Menu<RowAction>
+                        trigger="icon"
+                        icon="ellipsis"
+                        label="Mehr"
+                        accessibilityLabel={`Mehr zu ${item.name}`}
+                        onChange={(action) => {
+                          if (action === 'edit') {
+                            openKeyboardNow();
+                            setSheet({ kind: 'row', key: item.key });
+                          } else if (action === 'article')
+                            setArticleFor(householdArticleId(draft, item.key));
+                          else if (action === 'remove') set(removeIngredient(draft, item.key));
+                          else move(item.key, index + (action === 'up' ? -1 : 1), keys);
+                        }}
+                        options={[
+                          { value: 'edit', label: 'Zutat bearbeiten' },
+                          // Greyed out while the article is created only with "Speichern".
+                          {
+                            value: 'article',
+                            label: 'Artikel bearbeiten',
+                            disabled: householdArticleId(draft, item.key) === undefined,
+                          },
+                          { value: 'up', label: 'Nach oben', disabled: index === 0 },
+                          {
+                            value: 'down',
+                            label: 'Nach unten',
+                            disabled: index === part.items.length - 1,
+                          },
+                          { value: 'remove', label: 'Entfernen' },
+                        ]}
+                        testID={`recipe-row-menu-${item.key}`}
+                      />
+                    )}
+                    testID="recipe-rows"
+                  />
+                </View>
+              );
+            })}
+          </View>
+        ))
       ) : open.length === 0 ? (
         <Text color="muted">Noch keine Zutaten.</Text>
       ) : null}

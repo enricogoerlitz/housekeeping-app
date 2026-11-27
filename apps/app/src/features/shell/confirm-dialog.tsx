@@ -98,13 +98,19 @@ export function confirmFirst(request: ConfirmRequest): void {
  * "Änderungen verwerfen?" first; an untouched window just closes (review 0003: B-04 for "Neu",
  * I-07 for the windows on the recipe page).
  */
-export function discardFirst(dirty: boolean, close: () => void, testID = 'confirm-discard'): void {
+export function discardFirst(
+  dirty: boolean,
+  close: () => void,
+  testID = 'confirm-discard',
+  /** What goes: „Entwurf verwerfen?“ for a recipe not created yet (Nachklick 27.11., N-13). */
+  title = 'Änderungen verwerfen?',
+): void {
   if (!dirty) {
     close();
     return;
   }
   confirmFirst({
-    title: 'Änderungen verwerfen?',
+    title,
     confirmLabel: 'Verwerfen',
     cancelLabel: 'Weiter bearbeiten',
     needsNetwork: false,

@@ -19,17 +19,7 @@ import {
   type Activity,
   type Id,
 } from '@housekeeping/core';
-import {
-  Button,
-  EmptyState,
-  Icon,
-  IconButton,
-  Menu,
-  Row,
-  Stack,
-  Text,
-  openKeyboardNow,
-} from '@housekeeping/ui';
+import { Button, EmptyState, Icon, IconButton, Menu, Row, Stack, Text } from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
 import { View } from 'react-native';
@@ -142,7 +132,8 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
   );
   // "Teilen" (spec 0047, REQ-001): only the link to the page; works offline.
   const share = () => void shareTarget({ kind: 'activity', id: activity.id });
-  // Spec 0037 and review 0003 (B-06): editing is the pencil at the top right, as on a recipe.
+  // Spec 0037 and review 0003 (B-06): editing is the pencil at the top right, as on a recipe. The
+  // window opens without the keyboard (Nachklick 27.11., Ruckeln).
   const editButton = (
     <IconButton
       icon="pencil"
@@ -150,10 +141,7 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
       label="Bearbeiten"
       disabled={online.disabled}
       hint={online.hint}
-      onPress={() => {
-        openKeyboardNow();
-        props.onWindow('bearbeiten');
-      }}
+      onPress={() => props.onWindow('bearbeiten')}
       testID="activity-edit"
     />
   );

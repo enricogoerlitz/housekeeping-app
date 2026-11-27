@@ -200,6 +200,11 @@ schreibt nur der Server. Quelle: Regel 5, `30-database.md`. Offline: entfällt.
     erkannt …“. I-05: Der Schritt „Regelmäßig kaufen“ am Artikel hat den Fensterkopf aller
     Formulare: „Zurück · Regelmäßig kaufen · Speichern“ (ab Tablet unten), „Löschen“ als letzter
     Knopf im Fenster; jedes Öffnen beginnt mit dem gespeicherten Stand.
+15. Nachklick 27.11.: N-10: „Neuer Dauerposten“ und „Regelmäßig kaufen“ legen mit „Anlegen“ an;
+    ein bestehender Dauerposten speichert mit „Speichern“. N-11: „Dauerposten anlegen“ steht nur im
+    Kopf, der Leerzustand hat keinen zweiten Knopf. iN-02: „Dauerposten anlegen“ öffnet die Tastatur
+    im Tipp (`openKeyboardNow`); vorher bekam das Feld den Fokus erst nach dem Hereingleiten, das
+    Fenster rückte für eine Tastatur hoch, die nicht kam, und fiel nach 1,5 s zurück.
 
 ## Daten
 

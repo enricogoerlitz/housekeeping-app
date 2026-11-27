@@ -97,6 +97,9 @@ export function webSearchPrimary(
   };
 }
 
+/** The photo of a previewed hit: beside its title, never the whole window (N-16). */
+const PREVIEW_PHOTO = 112;
+
 function CardImage(props: { photo: CardPhoto | undefined; size?: number; alt: string }) {
   const photo = props.photo;
   return (
@@ -363,21 +366,15 @@ function Preview(props: { search: WebSearch; rows?: RecipeRows; testID: string }
   return (
     <View style={{ gap: 12 }} testID={id}>
       {/* D-01 (review 0004): while the hit is read the photo stays small beside the title, so the
-          loading lines stand in sight at once; the big photo and its choice come with the preview. */}
-      {loading ? (
-        <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
-          <View style={{ width: THUMB }}>
-            <CardImage photo={search.photos[card.url]} size={THUMB} alt={card.title} />
-          </View>
-          <View style={{ flex: 1 }}>{heading}</View>
+          loading lines stand in sight at once. Nachklick 27.11., N-16: the preview keeps that
+          place and size, so title, ingredients and steps stand in sight too. */}
+      <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
+        <View style={{ width: PREVIEW_PHOTO }}>
+          <CardImage photo={search.photos[card.url]} size={PREVIEW_PHOTO} alt={card.title} />
         </View>
-      ) : (
-        <>
-          <CardImage photo={search.photos[card.url]} alt={card.title} />
-          <PhotoChoice search={search} testID={`${id}-photo`} />
-          {heading}
-        </>
-      )}
+        <View style={{ flex: 1 }}>{heading}</View>
+      </View>
+      {loading ? null : <PhotoChoice search={search} testID={`${id}-photo`} />}
       {/* Spec 0055, REQ-003: placeholders that breathe until the preview is read. */}
       {loading ? (
         <LoadingLines

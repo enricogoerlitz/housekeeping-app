@@ -28,7 +28,6 @@ import {
   ScreenHeader,
   Section,
   Text,
-  openKeyboardNow,
   toast,
 } from '@housekeeping/ui';
 import { useState } from 'react';
@@ -81,11 +80,8 @@ function StoreActions(props: { storeId: Id; onDeleted: () => void }) {
         label="Markt bearbeiten"
         disabled={online.disabled}
         hint={online.hint}
-        onPress={() => {
-          // „Markt bearbeiten“: the name gets the keyboard with the tap (spec 0033, REQ-006).
-          openKeyboardNow();
-          setDialog('rename');
-        }}
+        // „Markt bearbeiten“ (name and place) opens without the keyboard (Nachklick 27.11., Ruckeln).
+        onPress={() => setDialog('rename')}
         testID="store-rename"
       />
       <Menu<StoreAction>

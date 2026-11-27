@@ -307,17 +307,28 @@ test.describe('REQ-007 – REQ-010: ✨ "Mit KI ändern"', () => {
     await expect(tid(page, 'recipe-ingredients')).not.toContainText('Räuchertofu');
   });
 
-  test('AC-020: a recipe with only a title opens on "Websuche" with the title', async ({
+  test('AC-020, Nachklick 27.11. N-02/N-03: a recipe with only a title has ✨ "Mit KI ausarbeiten" like its card, no "Kochen", no "Auf die Liste"', async ({
     page,
   }) => {
     const title = `Linsen-Dal ${unique()}`;
+    const queries: string[] = [];
+    await page.route('**/functions/v1/web-search', async (route) => {
+      queries.push(String((route.request().postDataJSON() as { query?: string }).query));
+      await route.fulfill({ json: { provider: 'serper', query: title, results: [] } });
+    });
     await newRecipeWindow(page);
     await tid(page, 'new-recipe-title').fill(title);
     await tid(page, 'new-recipe-save').click();
     await expect(tid(page, 'recipe-title')).toHaveText(title);
-    await tid(page, 'recipe-ai-change-open').click();
-    await expect(tid(page, 'recipe-ai-change-tab-web')).toHaveAttribute('aria-selected', 'true');
-    await expect(tid(page, 'recipe-ai-change-web-query')).toHaveValue(title);
+    await expect(tid(page, 'recipe-ai-change-open')).toHaveCount(0);
+    await expect(tid(page, 'start-cooking')).toHaveCount(0);
+    await expect(tid(page, 'recipe-to-list')).toHaveCount(0);
+    await tid(page, 'recipe-ai-work-out').click();
+    // The same as the card: the edit mode, "Mit KI ausfüllen" on "Websuche", searching the title.
+    await expect(tid(page, 'recipe-edit-save')).toBeVisible();
+    await expect(tid(page, 'recipe-ai-fill-tab-web')).toHaveAttribute('aria-selected', 'true');
+    await expect(tid(page, 'recipe-ai-fill-web-query')).toHaveValue(title);
+    await expect.poll(() => queries).toEqual([title]);
   });
 
   test('AC-021: in the edit mode there is no ✨', async ({ page }) => {

@@ -240,6 +240,14 @@ bisher. Offline: nur online (offline fragt „Fertig“ nicht und verlässt den 
 12. Bau 27.11.: Im Fenster „Neue Zutat“ des Lesemodus heißt es „Wird mit „Übernehmen“ neu
     angelegt“ statt „… mit „Fertig“ …“, weil dort gleich gespeichert wird. Die Entwurfssicherung
     gilt auch für Sammlungen (gleicher Bearbeitungsmodus).
+13. Nachklick 27.11., N-03/iN-04 (ändert Spec 0008, AC-060): Was nichts bewirkt, steht nicht da.
+    „Kochen“ fehlt bei einem Rezept ohne Schritte, „Auf die Liste“ (und „Noch keine Zutaten“), wenn
+    es bei Portionen und Variante nichts zu kaufen gibt; statt ausgegraut sind sie ausgeblendet.
+    N-15: ✨ „Mit KI ändern“ steht in der Kopfzeile auf einer Linie mit den anderen Knöpfen.
+    N-01: Im Bearbeitungsmodus stehen die Zutaten wie auf der Rezeptseite unter „Alle Varianten“, je
+    Variante und je Gruppe (core `ingredientSections`); verschoben wird innerhalb eines Teils, Variante
+    und Gruppe ändert ⋯ „Zutat bearbeiten“. Die Schritte bleiben in der Reihenfolge des Kochens mit
+    der Variante darunter: nach Varianten getrennt ginge die Reihenfolge verloren.
 
 ## Daten
 

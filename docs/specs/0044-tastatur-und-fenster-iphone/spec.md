@@ -223,6 +223,11 @@ Befund 7. Offline: offline vollständig.
       `keyboard-state.test.ts`, `title-fit.test.ts`, core `add-entry.test.ts`); `pnpm format:check
 && pnpm check && pnpm build:web` grün; installierte PWA im iPhone-18-Pro-Simulator: ˅ in
       „Link“, Schließen ohne hängende Tastatur, `scrollY` 0 in „+ Posten hinzufügen“.
+12. Nachklick 27.11., Ruckeln (ändert Spec 0033, REQ-006 für Bearbeiten-Fenster): Bearbeiten-
+    Fenster über den Stift (Aktivität, Restaurant, Markt) öffnen ohne Cursor und ohne Tastatur. Die
+    Tastatur kam mitten im Hereingleiten, das Fenster sprang hoch und zurück, beim Schließen ebenso.
+    Den Cursor setzen nur Anlegen-Fenster und gezielte Aktionen („Notiz hinzufügen“, Umbenennen,
+    Suchen).
 
 ## Daten
 

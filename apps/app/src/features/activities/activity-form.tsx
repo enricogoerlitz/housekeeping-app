@@ -510,7 +510,9 @@ export function ActivityFormSheet(props: {
         {editing ? web.link : null}
         <ActivityFormFields
           form={form}
-          autoFocus
+          // Only a new one starts typing; an existing one opens calm, without the keyboard coming
+          // up while the window slides in (Nachklick 27.11., Ruckeln).
+          autoFocus={!editing}
           {...(editing ? {} : { nameAction: web.nameButton, onNameSearch: web.searchName })}
           onOpenExisting={(existing) => {
             props.onClose();
