@@ -261,7 +261,7 @@ export function ListScreen() {
   // (AC-028).
   const dictate = () => {
     if (speech.status === 'listening') {
-      void speech.stop().then((transcript) => showDictated(transcript, dictatedItems(transcript)));
+      void speech.stop().then(({ text }) => showDictated(text, dictatedItems(text)));
       return;
     }
     if (speech.status !== 'idle') return;

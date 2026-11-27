@@ -42,6 +42,7 @@ export * from './activities';
 export * from './activity-kinds';
 export * from './activity-series';
 export * from './dictation';
+export * from './prompt-send';
 export * from './sync-delta';
 export * from './sync-overlay';
 export * from './sync-diff';

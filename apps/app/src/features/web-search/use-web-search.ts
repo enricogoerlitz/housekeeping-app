@@ -22,6 +22,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { OFFLINE_EDIT_HINT } from '@/features/shell/offline';
 import { revokeLater } from '@/features/shell/revoke-later';
+import { usePromptDictation, type PromptDictation } from '@/lib/use-prompt-dictation';
 
 // The Websuche (spec 0049) of one window: the query, the cards with their photos (loaded through
 // fetch-image, CSP), and the preview of the card the person tapped. Nothing is saved here.
@@ -71,6 +72,8 @@ export interface WebSearch {
   /** Bumps when the field should take the focus again. */
   focusRequest: number;
   busy: boolean;
+  /** The field's dictation: „Suchen“ while dictating searches the last words too (spec 0068). */
+  dictation: PromptDictation;
 }
 
 function searchMessage(error: unknown, kind: WebSearchKind, promptTab: string): string {
@@ -216,6 +219,13 @@ export function useWebSearch(
     );
   };
 
+  // Spec 0068, AC-014.
+  const dictation = usePromptDictation({
+    value: query,
+    onChangeText: (text) => setQuery(text.slice(0, WEB_SEARCH_LIMITS.query)),
+    onSend: () => search(),
+  });
+
   return {
     kind,
     query,
@@ -248,5 +258,6 @@ export function useWebSearch(
     },
     focusRequest,
     busy: state.status === 'searching' || preview?.status === 'loading',
+    dictation,
   };
 }

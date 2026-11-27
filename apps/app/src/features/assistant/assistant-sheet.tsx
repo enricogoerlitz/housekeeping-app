@@ -27,7 +27,7 @@ import { View } from 'react-native';
 
 import { OFFLINE_EDIT_HINT } from '@/features/shell/offline';
 import { useAssistant } from '@/lib/assistant';
-import { useDictation } from '@/lib/use-dictation';
+import { usePromptDictation } from '@/lib/use-prompt-dictation';
 
 interface UserMessage {
   id: number;
@@ -65,7 +65,6 @@ export function AssistantSheet() {
 
 function AssistantDialog(props: { initialContext: AssistantContext; onClose: () => void }) {
   const offline = useOffline();
-  const dictation = useDictation();
   const [context, setContext] = useState<AssistantContext>(props.initialContext);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -118,16 +117,13 @@ function AssistantDialog(props: { initialContext: AssistantContext; onClose: () 
   };
 
   const busy = offline || pending;
+  // Spec 0068, decision 7: the words go in at the cursor, and "Senden" while dictating sends them.
+  const dictation = usePromptDictation({
+    value: input,
+    onChangeText: setInput,
+    onSend: () => send(input),
+  });
   const listening = dictation.status === 'listening';
-  const pressMic = () => {
-    if (listening) {
-      void dictation.stop().then((text) => {
-        if (mounted.current && text) setInput(text);
-      });
-      return;
-    }
-    if (dictation.status === 'idle') dictation.start();
-  };
 
   const updateMessage = (id: number, patch: Partial<AssistantMessage>) =>
     setMessages((current) =>
@@ -174,12 +170,16 @@ function AssistantDialog(props: { initialContext: AssistantContext; onClose: () 
         round
         accessibilityLabel="Nachricht an den Assistenten"
         placeholder="Nachricht …"
-        value={listening || dictation.status === 'stopping' ? dictation.transcript : input}
-        onChangeText={setInput}
+        value={dictation.shown}
+        onChangeText={(text) => {
+          setInput(text);
+          dictation.typed();
+        }}
+        onSelectionChange={(event) => dictation.select(event.nativeEvent.selection)}
         editable={!busy && dictation.status === 'idle'}
         returnKeyType="send"
         blurOnSubmit={false}
-        onSubmitEditing={() => send(input)}
+        onSubmitEditing={dictation.send}
         testID="assistant-input"
         left={
           <IconButton
@@ -188,7 +188,7 @@ function AssistantDialog(props: { initialContext: AssistantContext; onClose: () 
             size={36}
             variant={listening ? 'filled' : 'plain'}
             disabled={busy || dictation.status === 'starting' || dictation.status === 'stopping'}
-            onPress={pressMic}
+            onPress={dictation.toggle}
             testID="assistant-mic"
           />
         }
@@ -198,8 +198,8 @@ function AssistantDialog(props: { initialContext: AssistantContext; onClose: () 
             variant="filled"
             label="Senden"
             size={40}
-            disabled={busy || listening || input.trim() === ''}
-            onPress={() => send(input)}
+            disabled={busy || (input.trim() === '' && !dictation.pending)}
+            onPress={dictation.send}
             testID="assistant-send"
           />
         }
