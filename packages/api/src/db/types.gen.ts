@@ -32,7 +32,9 @@ export type Database = {
           created_by: string | null;
           description: string | null;
           household_id: string;
+          icon: string | null;
           id: string;
+          kind_id: string | null;
           lat: number | null;
           lng: number | null;
           maps_url: string | null;
@@ -40,6 +42,7 @@ export type Database = {
           name_key: string;
           photo_path: string | null;
           place_name: string | null;
+          remembered: boolean;
           updated_at: string;
           website_url: string | null;
         };
@@ -50,7 +53,9 @@ export type Database = {
           created_by?: string | null;
           description?: string | null;
           household_id: string;
+          icon?: string | null;
           id?: string;
+          kind_id?: string | null;
           lat?: number | null;
           lng?: number | null;
           maps_url?: string | null;
@@ -58,6 +63,7 @@ export type Database = {
           name_key: string;
           photo_path?: string | null;
           place_name?: string | null;
+          remembered?: boolean;
           updated_at?: string;
           website_url?: string | null;
         };
@@ -67,7 +73,9 @@ export type Database = {
           created_by?: string | null;
           description?: string | null;
           household_id?: string;
+          icon?: string | null;
           id?: string;
+          kind_id?: string | null;
           lat?: number | null;
           lng?: number | null;
           maps_url?: string | null;
@@ -75,6 +83,7 @@ export type Database = {
           name_key?: string;
           photo_path?: string | null;
           place_name?: string | null;
+          remembered?: boolean;
           updated_at?: string;
           website_url?: string | null;
         };
@@ -92,6 +101,13 @@ export type Database = {
             isOneToOne: false;
             referencedRelation: 'households';
             referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'activities_kind_fkey';
+            columns: ['household_id', 'kind_id'];
+            isOneToOne: false;
+            referencedRelation: 'activity_kinds';
+            referencedColumns: ['household_id', 'id'];
           },
         ];
       };
@@ -142,6 +158,45 @@ export type Database = {
           },
         ];
       };
+      activity_kinds: {
+        Row: {
+          created_at: string;
+          household_id: string;
+          icon: string;
+          id: string;
+          name: string;
+          name_key: string;
+          updated_at: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          created_at?: string;
+          household_id: string;
+          icon: string;
+          id?: string;
+          name: string;
+          name_key: string;
+          updated_at?: string;
+        };
+        Update: {
+          created_at?: string;
+          household_id?: string;
+          icon?: string;
+          id?: string;
+          name?: string;
+          name_key?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'activity_kinds_household_id_fkey';
+            columns: ['household_id'];
+            isOneToOne: false;
+            referencedRelation: 'households';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       activity_ratings: {
         Row: {
           activity_id: string;
@@ -189,6 +244,131 @@ export type Database = {
             isOneToOne: false;
             referencedRelation: 'household_members';
             referencedColumns: ['household_id', 'profile_id'];
+          },
+        ];
+      };
+      activity_series: {
+        Row: {
+          activity_id: string;
+          created_at: string;
+          eater_ids: string[];
+          ends_on: string | null;
+          guests: number;
+          household_id: string;
+          id: string;
+          note: string | null;
+          reminder_at: string | null;
+          reminder_day_offset: number | null;
+          reminder_text: string | null;
+          rule: NonNullable<Json>;
+          slot_id: string;
+          starts_at: string | null;
+          starts_on: string;
+          updated_at: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          activity_id: string;
+          created_at?: string;
+          eater_ids?: string[];
+          ends_on?: string | null;
+          guests?: number;
+          household_id: string;
+          id?: string;
+          note?: string | null;
+          reminder_at?: string | null;
+          reminder_day_offset?: number | null;
+          reminder_text?: string | null;
+          rule: NonNullable<Json>;
+          slot_id: string;
+          starts_at?: string | null;
+          starts_on: string;
+          updated_at?: string;
+        };
+        Update: {
+          activity_id?: string;
+          created_at?: string;
+          eater_ids?: string[];
+          ends_on?: string | null;
+          guests?: number;
+          household_id?: string;
+          id?: string;
+          note?: string | null;
+          reminder_at?: string | null;
+          reminder_day_offset?: number | null;
+          reminder_text?: string | null;
+          rule?: NonNullable<Json>;
+          slot_id?: string;
+          starts_at?: string | null;
+          starts_on?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'activity_series_activity_fkey';
+            columns: ['household_id', 'activity_id'];
+            isOneToOne: false;
+            referencedRelation: 'activities';
+            referencedColumns: ['household_id', 'id'];
+          },
+          {
+            foreignKeyName: 'activity_series_household_id_fkey';
+            columns: ['household_id'];
+            isOneToOne: false;
+            referencedRelation: 'households';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      activity_series_exceptions: {
+        Row: {
+          created_at: string;
+          household_id: string;
+          id: string;
+          moved_to: string | null;
+          on_date: string;
+          series_id: string;
+          slot_id: string | null;
+          starts_at: string | null;
+          updated_at: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          created_at?: string;
+          household_id: string;
+          id?: string;
+          moved_to?: string | null;
+          on_date: string;
+          series_id: string;
+          slot_id?: string | null;
+          starts_at?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          created_at?: string;
+          household_id?: string;
+          id?: string;
+          moved_to?: string | null;
+          on_date?: string;
+          series_id?: string;
+          slot_id?: string | null;
+          starts_at?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'activity_series_exceptions_household_id_fkey';
+            columns: ['household_id'];
+            isOneToOne: false;
+            referencedRelation: 'households';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'activity_series_exceptions_series_fkey';
+            columns: ['household_id', 'series_id'];
+            isOneToOne: false;
+            referencedRelation: 'activity_series';
+            referencedColumns: ['household_id', 'id'];
           },
         ];
       };
@@ -382,6 +562,7 @@ export type Database = {
           last_done_on: string | null;
           next_assignee_id: string | null;
           next_due_on: string | null;
+          notice_days_before: number | null;
           recurrence: NonNullable<Json>;
           remind_at_due_time: boolean;
           room: string | null;
@@ -400,6 +581,7 @@ export type Database = {
           last_done_on?: string | null;
           next_assignee_id?: string | null;
           next_due_on?: string | null;
+          notice_days_before?: number | null;
           recurrence: NonNullable<Json>;
           remind_at_due_time?: boolean;
           room?: string | null;
@@ -417,6 +599,7 @@ export type Database = {
           last_done_on?: string | null;
           next_assignee_id?: string | null;
           next_due_on?: string | null;
+          notice_days_before?: number | null;
           recurrence?: NonNullable<Json>;
           remind_at_due_time?: boolean;
           room?: string | null;
@@ -878,14 +1061,8 @@ export type Database = {
       };
       notification_settings: {
         Row: {
-          activities_eve_at: string;
-          activities_eve_enabled: boolean;
-          chore_reminders_enabled: boolean;
+          acknowledged_notices: string[];
           created_at: string;
-          daily_summary_at: string;
-          daily_summary_enabled: boolean;
-          daily_summary_parts: string[];
-          entry_reminders_enabled: boolean;
           household_id: string;
           id: string;
           member_id: string;
@@ -893,28 +1070,16 @@ export type Database = {
         };
         ComputedFields: never;
         Insert: {
-          activities_eve_at?: string;
-          activities_eve_enabled?: boolean;
-          chore_reminders_enabled?: boolean;
+          acknowledged_notices?: string[];
           created_at?: string;
-          daily_summary_at?: string;
-          daily_summary_enabled?: boolean;
-          daily_summary_parts?: string[];
-          entry_reminders_enabled?: boolean;
           household_id: string;
           id?: string;
           member_id: string;
           updated_at?: string;
         };
         Update: {
-          activities_eve_at?: string;
-          activities_eve_enabled?: boolean;
-          chore_reminders_enabled?: boolean;
+          acknowledged_notices?: string[];
           created_at?: string;
-          daily_summary_at?: string;
-          daily_summary_enabled?: boolean;
-          daily_summary_parts?: string[];
-          entry_reminders_enabled?: boolean;
           household_id?: string;
           id?: string;
           member_id?: string;
@@ -1340,6 +1505,7 @@ export type Database = {
           total_minutes: number | null;
           updated_at: string;
           variants: NonNullable<Json>;
+          videos: NonNullable<Json>;
         };
         ComputedFields: never;
         Insert: {
@@ -1365,6 +1531,7 @@ export type Database = {
           total_minutes?: number | null;
           updated_at?: string;
           variants?: NonNullable<Json>;
+          videos?: NonNullable<Json>;
         };
         Update: {
           cooked_count?: number;
@@ -1389,10 +1556,75 @@ export type Database = {
           total_minutes?: number | null;
           updated_at?: string;
           variants?: NonNullable<Json>;
+          videos?: NonNullable<Json>;
         };
         Relationships: [
           {
             foreignKeyName: 'recipes_household_id_fkey';
+            columns: ['household_id'];
+            isOneToOne: false;
+            referencedRelation: 'households';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      recurring_items: {
+        Row: {
+          article_id: string;
+          count: number | null;
+          created_at: string;
+          household_id: string;
+          id: string;
+          last_added_on: string | null;
+          note: string | null;
+          paused: boolean;
+          qty: number | null;
+          rule: NonNullable<Json>;
+          starts_on: string;
+          unit: string | null;
+          updated_at: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          article_id: string;
+          count?: number | null;
+          created_at?: string;
+          household_id: string;
+          id?: string;
+          last_added_on?: string | null;
+          note?: string | null;
+          paused?: boolean;
+          qty?: number | null;
+          rule: NonNullable<Json>;
+          starts_on: string;
+          unit?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          article_id?: string;
+          count?: number | null;
+          created_at?: string;
+          household_id?: string;
+          id?: string;
+          last_added_on?: string | null;
+          note?: string | null;
+          paused?: boolean;
+          qty?: number | null;
+          rule?: NonNullable<Json>;
+          starts_on?: string;
+          unit?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'recurring_items_article_fkey';
+            columns: ['household_id', 'article_id'];
+            isOneToOne: true;
+            referencedRelation: 'articles';
+            referencedColumns: ['household_id', 'id'];
+          },
+          {
+            foreignKeyName: 'recurring_items_household_id_fkey';
             columns: ['household_id'];
             isOneToOne: false;
             referencedRelation: 'households';
@@ -1687,6 +1919,7 @@ export type Database = {
           hidden_area_ids: string[];
           household_id: string;
           id: string;
+          maps_url: string | null;
           name: string;
           updated_at: string;
         };
@@ -1697,6 +1930,7 @@ export type Database = {
           hidden_area_ids?: string[];
           household_id: string;
           id?: string;
+          maps_url?: string | null;
           name: string;
           updated_at?: string;
         };
@@ -1706,6 +1940,7 @@ export type Database = {
           hidden_area_ids?: string[];
           household_id?: string;
           id?: string;
+          maps_url?: string | null;
           name?: string;
           updated_at?: string;
         };
@@ -1817,6 +2052,11 @@ export type Database = {
     };
     Functions: {
       accept_invitation: { Args: { invitation_id: string }; Returns: string };
+      acknowledge_notices: { Args: { household_id: string; keys: string[] }; Returns: undefined };
+      add_recipe_video: {
+        Args: { p_household_id: string; p_recipe_id: string; p_video: Json };
+        Returns: boolean;
+      };
       add_shopping_contributions: {
         Args: { p_entries: Json; p_household_id: string };
         Returns: Json;
@@ -1844,34 +2084,30 @@ export type Database = {
       };
       delete_restaurant: { Args: { restaurant_id: string; today: string }; Returns: Json };
       invite_member: { Args: { email: string; household_id: string }; Returns: string };
-      list_push_subscriptions: {
-        Args: { p_current_endpoint?: string };
-        Returns: {
-          created_at: string;
-          device_label: string;
-          id: string;
-          is_current: boolean;
-          last_success_at: string;
-          status: string;
-        }[];
-      };
       merge_areas: { Args: { p_source_id: string; p_target_id: string }; Returns: number };
       merge_articles: { Args: { p_source_id: string; p_target_id: string }; Returns: Json };
       min_app_version: { Args: Record<PropertyKey, never>; Returns: string };
-      register_push_subscription: {
-        Args: { p_auth: string; p_device_label: string; p_endpoint: string; p_p256dh: string };
-        Returns: string;
-      };
       remove_contributions: { Args: { p_ids: string[] }; Returns: number };
       remove_item_contributions: { Args: { p_ids: string[]; p_item_id: string }; Returns: Json };
       remove_member: { Args: { household_id: string; profile_id: string }; Returns: undefined };
-      remove_push_subscription: { Args: { p_id: string }; Returns: boolean };
+      remove_recipe_video: {
+        Args: { p_household_id: string; p_path: string; p_recipe_id: string };
+        Returns: Json;
+      };
       restore_activity: { Args: { activity_id: string }; Returns: boolean };
       restore_chore: { Args: { chore_id: string }; Returns: boolean };
       restore_cleared_items: { Args: { p_household_id: string; p_items: Json }; Returns: number };
       restore_recipe: { Args: { recipe_id: string }; Returns: boolean };
       restore_restaurant: { Args: { restaurant_id: string }; Returns: boolean };
-      send_test_push: { Args: { p_endpoint: string }; Returns: undefined };
+      save_recipe_page: {
+        Args: {
+          p_household_id: string;
+          p_ops: Json;
+          p_recipe_id: string;
+          p_seen_updated_at: string;
+        };
+        Returns: Json;
+      };
       set_activity_favorite: {
         Args: { activity_id: string; favorite: boolean };
         Returns: undefined;
@@ -1886,12 +2122,12 @@ export type Database = {
         Args: { p_changes: Json; p_household_id: string };
         Returns: Json;
       };
-      set_push_subscription_enabled: {
-        Args: { p_enabled: boolean; p_endpoint: string };
-        Returns: undefined;
-      };
       set_recipe_favorite: { Args: { favorite: boolean; recipe_id: string }; Returns: undefined };
       set_recipe_rating: { Args: { recipe_id: string; stars: number }; Returns: undefined };
+      set_recipe_video_poster: {
+        Args: { p_household_id: string; p_path: string; p_poster: string; p_recipe_id: string };
+        Returns: boolean;
+      };
       set_restaurant_favorite: {
         Args: { favorite: boolean; restaurant_id: string };
         Returns: undefined;
@@ -1911,7 +2147,6 @@ export type Database = {
         Returns: Json;
       };
       sync_pull: { Args: { p_request: Json }; Returns: Json };
-      unregister_push_subscription: { Args: { p_endpoint: string }; Returns: undefined };
       update_profile: {
         Args: { color: string; diet_preference: string; dislikes: string[]; name: string };
         Returns: undefined;

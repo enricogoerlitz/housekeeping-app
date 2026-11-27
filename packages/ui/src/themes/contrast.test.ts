@@ -41,12 +41,19 @@ const TEXT_PAIRS: [fg: Role, bg: Role][] = [
   ['warnText', 'warnBg'],
   ['onSuccess', 'success'],
   ['fabText', 'fabBg'],
+  // Spec 0051: the number in the red circle of the bell.
+  ['onBadge', 'badge'],
   ['accent', 'bg'],
   ['accent', 'surface'],
   // The dragged entry floats on the raised surface (spec 0016).
   ['text', 'surfaceRaised'],
   ['textMuted', 'surfaceRaised'],
   ['accent', 'surfaceRaised'],
+  // The Änderungsansicht (spec 0049): new and changed rows on the yellow tint, old values red.
+  ['text', 'changedBg'],
+  ['textMuted', 'changedBg'],
+  ['removedText', 'surface'],
+  ['removedText', 'bg'],
 ];
 // Non-text UI (WCAG 1.4.11): the check mark fill and the assistant button must stand out from
 // the card and the page by at least 3:1.
@@ -135,13 +142,52 @@ describe('theme selection', () => {
     expect(theme.mode).toBe('dark');
   });
 
-  it('accepts only the three theme ids as stored value', () => {
-    expect(isThemeId('markthalle')).toBe(true);
-    expect(isThemeId('klar')).toBe(true);
-    expect(isThemeId('frisch')).toBe(true);
+  it('spec 0058, AC-003: accepts only the nine theme ids as stored value', () => {
+    for (const id of [
+      'markthalle',
+      'klar',
+      'frisch',
+      'wolke',
+      'mitternacht',
+      'zitrus',
+      'salbei',
+      'lavendel',
+      'espresso',
+    ]) {
+      expect(isThemeId(id), id).toBe(true);
+      expect(getTheme(id, 'dark').id).toBe(id);
+    }
     expect(isThemeId('Markthalle')).toBe(false);
     expect(isThemeId(42)).toBe(false);
     expect(isThemeId(undefined)).toBe(false);
+  });
+});
+
+// Spec 0058, REQ-003: text lies directly on a theme's sky, so every colour in it is held to the
+// pairs of `bg` (white clouds only lighten it and are left out).
+describe('page backdrop (spec 0058, AC-005)', () => {
+  const skies = themeFamilies.flatMap((family) =>
+    MODES.flatMap((mode) => {
+      const theme = getTheme(family.id, mode);
+      return (theme.backdrop?.match(/#[0-9A-Fa-f]{6}\b/g) ?? []).map((color) => ({
+        name: `${family.id} ${mode} ${color}`,
+        colors: theme.colors,
+        color,
+      }));
+    }),
+  );
+
+  it('has colours to check', () => {
+    expect(skies.length).toBeGreaterThan(0);
+  });
+
+  it.each(skies)('$name keeps text 4.5:1 and graphics 3:1', ({ colors, color }) => {
+    for (const fg of ['text', 'textMuted', 'accent', 'removedText'] as const) {
+      expect(contrast(colors[fg], color), fg).toBeGreaterThanOrEqual(4.5);
+    }
+    for (const fg of ['fabBg', 'switchOff'] as const) {
+      expect(contrast(colors[fg], color), fg).toBeGreaterThanOrEqual(3);
+    }
   });
 });
 

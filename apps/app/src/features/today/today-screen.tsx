@@ -3,10 +3,10 @@ import {
   useHousehold,
   useHouseholdClock,
   useHouseholdsMap,
-  usePlanEntries,
   useToday,
 } from '@housekeeping/api';
 import {
+  addDays,
   addPresetSlot,
   entriesForDay,
   overviewSections,
@@ -15,12 +15,13 @@ import {
   shiftOverview,
   type ISODate,
 } from '@housekeeping/core';
-import { Screen, ScreenHeader, Text, useBreakpoint } from '@housekeeping/ui';
+import { Screen, ScreenHeader, SwipeArea, Text, useBreakpoint } from '@housekeeping/ui';
 import { useState } from 'react';
 import { View } from 'react-native';
 
 import { HouseholdLine } from '@/features/household/household-line';
 import { AddEntrySheet, type AddTarget } from '@/features/meal-plan/add-entry-sheet';
+import { usePlanEntriesWithSeries } from '@/features/meal-plan/series-entries';
 import { StartPageActions } from '@/features/shell/profile-button';
 import { useOnlineOnly } from '@/features/shell/offline';
 import { useHandedHousehold } from '@/lib/addressed';
@@ -47,10 +48,10 @@ function greeting(hour: number): string {
  * "Übersicht" (spec 0011, REQ-001; spec 0020): one shown day, as if it were today. Head,
  * Tagesleiste (seven days from yesterday), Vorbereitung, planned, "Wie war's?" and "Zu tun" all
  * follow it. The shown day stands in the address (`/?tag=…`, spec 0019): coming back from a detail
- * page and a reload keep it. Phone: head, Tagesleiste, planned, Wie war's?, Zu tun, Einkauf,
- * Reisetasche; tablets the same in one column, with the cards of the planned side by side (spec
- * 0031, REQ-032). Desktop (1,6 : 1): left Tagesleiste and planned, right Wie war's?, Zu tun,
- * Einkauf and Reisetasche (spec 0012).
+ * page and a reload keep it. Phone: head, Tagesleiste, planned, Zu tun, Einkauf, Reisetasche,
+ * Wie war's?; tablets the same in one column, with the cards of the planned side by side (spec
+ * 0031, REQ-032). Desktop (1,6 : 1): left Tagesleiste and planned, right Zu tun, Einkauf,
+ * Reisetasche and Wie war's? (spec 0012; order of spec 0057, REQ-001).
  */
 export function TodayScreen() {
   const address = usePageParams('uebersicht');
@@ -68,7 +69,6 @@ export function TodayScreen() {
   const me = useCurrentMember();
   const household = useHousehold();
   const households = useHouseholdsMap();
-  const planEntries = usePlanEntries();
   const online = useOnlineOnly();
   // "+" and "Hinzufügen" of an empty day (spec 0020, REQ-005); one shown day, so not in the address.
   const [adding, setAdding] = useState<AddTarget | undefined>();
@@ -81,6 +81,8 @@ export function TodayScreen() {
   ) : null;
   // No day = today, so the page follows the date when the day changes while the app runs.
   const shown = address.params.tag ?? today;
+  // Spec 0041: the Termine of the series on the shown day too.
+  const shownEntries = usePlanEntriesWithSeries(shown, shown);
   const show = (date: ISODate) => address.replace({ tag: date === today ? undefined : date });
 
   const slots = household.mealSlots;
@@ -107,7 +109,8 @@ export function TodayScreen() {
   const header = (
     <ScreenHeader
       testID="today-header"
-      title={overviewTitle(shown, today)}
+      // One line: the short form on phones (spec 0057, REQ-005).
+      title={overviewTitle(shown, today, isPhone ? 'short' : 'long')}
       // On phones the active household above the title, with more than one (REQ-007, AC-019).
       above={
         isPhone && Object.keys(households).length > 1 ? (
@@ -137,7 +140,7 @@ export function TodayScreen() {
     <TodayMeals
       shown={shown}
       title={sections.planned}
-      entries={entriesForDay(planEntries, shown, slotOrder)}
+      entries={entriesForDay(shownEntries, shown, slotOrder)}
       slotNames={slotNames}
       grid={!isPhone}
       onAdd={() => addTo(shown)}
@@ -153,15 +156,24 @@ export function TodayScreen() {
   if (!twoColumns) {
     return (
       <Screen testID="today-screen" header={header}>
-        {offlineHint}
-        {nav}
-        {strip}
-        <TodayTrips shown={shown} />
-        {meals}
-        {recap}
-        {chores}
-        <TodayShopping preview={!isPhone} />
-        <TodayPacking shown={shown} />
+        {/* Phones: a swipe to the left shows the next day, to the right the previous one (spec
+            0034, REQ-005); rows that scroll sideways keep their own swipe. */}
+        <SwipeArea
+          enabled={isPhone}
+          onSwipe={(step) => show(addDays(shown, step))}
+          testID="today-swipe"
+        >
+          {offlineHint}
+          {nav}
+          {strip}
+          <TodayTrips shown={shown} />
+          {meals}
+          {chores}
+          <TodayShopping preview={!isPhone} />
+          <TodayPacking shown={shown} />
+          {/* Rating is aftercare: below the day's chores (spec 0057, REQ-001). */}
+          {recap}
+        </SwipeArea>
         <TripWindowHost page="uebersicht" />
         {addSheet}
       </Screen>
@@ -178,10 +190,10 @@ export function TodayScreen() {
           {meals}
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
-          {recap}
           {chores}
           <TodayShopping preview />
           <TodayPacking shown={shown} />
+          {recap}
         </View>
       </View>
       <TripWindowHost page="uebersicht" />

@@ -1,8 +1,13 @@
 // Transport over supabase-js: one RPC per call, answers validated with Zod, errors classified.
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
+  AiImageReplySchema,
+  PlacePreviewReplySchema,
+  WebSearchReplySchema,
   AiSearchResultSchema,
   AssistantReplySchema,
+  RecipeDraftReplySchema,
+  FetchVideoReplySchema,
   ResolveMapsLinkReplySchema,
   SpeechTokenReplySchema,
   type PullResult,
@@ -14,6 +19,7 @@ import {
   AddResultSchema,
   AdjustResultSchema,
   ApplyChangesResultSchema,
+  SavedRecipePageSchema,
   AssignAreaResultSchema,
   CheckResultSchema,
   ClearedItemsSchema,
@@ -25,8 +31,8 @@ import {
   MergeAreasResultSchema,
   NotAvailableResultSchema,
   PackResultSchema,
-  PushSubscriptionRowSchema,
   RawPullResultSchema,
+  RemovedRecipeVideoSchema,
   RestoredRecipeSchema,
   TransportError,
   classifyError,
@@ -63,6 +69,8 @@ interface StorageBucketLike {
 
 /** The private bucket of the photos (supabase/migrations/…_storage_household_media.sql). */
 const MEDIA_BUCKET = 'household-media';
+/** The private bucket of the recipe videos (spec 0043, …_recipe_video.sql). */
+const VIDEO_BUCKET = 'household-videos';
 
 /** Storage status (from the answer's body: the HTTP status is 400 for most refusals) → code. */
 const STORAGE_CODES: Record<number, string> = {
@@ -130,6 +138,25 @@ export interface SupabaseTransportOptions {
   mediaTimeoutMs?: number;
 }
 
+/**
+ * Spec 0040, Entscheidung 4: the server reads the links (10 s) and gives the model 60 s with one
+ * more try; the three images get 45 s each, in parallel. The app waits a little longer than that.
+ */
+const AI_DRAFT_TIMEOUT_MS = 80_000;
+const AI_IMAGE_TIMEOUT_MS = 55_000;
+/**
+ * Spec 0049: a search asks Serper and maybe Brave (8 s each) and reads up to six recipe pages
+ * (6 s); a place preview reads the website (6 s) and gives the model 30 s.
+ */
+const WEB_SEARCH_TIMEOUT_MS = 30_000;
+const PLACE_PREVIEW_TIMEOUT_MS = 45_000;
+/**
+ * Spec 0043, AC-001: the server reads the page (10 s), loads the video (60 s) and uploads it; the
+ * app waits up to 90 s. A video of up to 50 MB downloads within 2 minutes.
+ */
+const FETCH_VIDEO_TIMEOUT_MS = 90_000;
+const VIDEO_DOWNLOAD_TIMEOUT_MS = 120_000;
+
 export function createSupabaseTransport(
   client: SupabaseLike,
   options: SupabaseTransportOptions = {},
@@ -178,10 +205,10 @@ export function createSupabaseTransport(
   }
 
   /** An edge function: errors are `{ error: code }` with an HTTP status (core ErrorReply). */
-  async function invoke(name: string, body: unknown): Promise<unknown> {
+  async function invoke(name: string, body: unknown, waitMs = timeoutMs): Promise<unknown> {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new TransportError('transient', 'timeout', 0)), timeoutMs);
+      timer = setTimeout(() => reject(new TransportError('transient', 'timeout', 0)), waitMs);
     });
     try {
       const reply = await Promise.race([client.functions.invoke(name, { body }), timeout]);
@@ -207,8 +234,9 @@ export function createSupabaseTransport(
     schema: S,
     name: string,
     body: unknown,
+    waitMs?: number,
   ): Promise<z.infer<S>> {
-    const result = schema.safeParse(await invoke(name, body));
+    const result = schema.safeParse(await invoke(name, body, waitMs));
     if (!result.success) throw new TransportError('permanent', 'invalid_response');
     return result.data;
   }
@@ -221,6 +249,8 @@ export function createSupabaseTransport(
   async function media(
     request: (bucket: StorageBucketLike, signal: AbortSignal) => PromiseLike<StorageReply>,
     caller?: AbortSignal,
+    bucketName = MEDIA_BUCKET,
+    waitMs = mediaTimeoutMs,
   ): Promise<unknown> {
     if (caller?.aborted) throw new TransportError('transient', 'aborted', 0);
     const controller = new AbortController();
@@ -233,12 +263,12 @@ export function createSupabaseTransport(
     const timer = setTimeout(() => {
       timedOut = true;
       controller.abort();
-    }, mediaTimeoutMs);
+    }, waitMs);
     const cancel = () => controller.abort();
     caller?.addEventListener('abort', cancel);
     try {
       const reply = await Promise.race([
-        request(client.storage.from(MEDIA_BUCKET), controller.signal),
+        request(client.storage.from(bucketName), controller.signal),
         stopped,
       ]);
       if (reply.error) throw classifyStorageError(reply.error);
@@ -266,6 +296,13 @@ export function createSupabaseTransport(
     applyChanges: (householdId, ops) =>
       parsed(ApplyChangesResultSchema, 'apply_changes', {
         p_household_id: householdId,
+        p_ops: ops,
+      }),
+    saveRecipePage: (householdId, recipeId, seenUpdatedAt, ops) =>
+      parsed(SavedRecipePageSchema, 'save_recipe_page', {
+        p_household_id: householdId,
+        p_recipe_id: recipeId,
+        p_seen_updated_at: seenUpdatedAt ?? null,
         p_ops: ops,
       }),
     setItemChecked: (itemId, checked, seenCheckSeq, onList) =>
@@ -354,6 +391,19 @@ export function createSupabaseTransport(
       }),
     restoreRecipe: (recipeId) =>
       parsed(RestoredRecipeSchema, 'restore_recipe', { recipe_id: recipeId }),
+    setRecipeVideoPoster: (householdId, recipeId, path, poster) =>
+      parsed(z.boolean(), 'set_recipe_video_poster', {
+        p_household_id: householdId,
+        p_recipe_id: recipeId,
+        p_path: path,
+        p_poster: poster,
+      }),
+    removeRecipeVideo: (householdId, recipeId, path) =>
+      parsed(RemovedRecipeVideoSchema, 'remove_recipe_video', {
+        p_household_id: householdId,
+        p_recipe_id: recipeId,
+        p_path: path,
+      }),
     deleteRestaurant: (restaurantId, today) =>
       parsed(DeletedPlaceSchema, 'delete_restaurant', { restaurant_id: restaurantId, today }),
     restoreRestaurant: (restaurantId) =>
@@ -397,32 +447,29 @@ export function createSupabaseTransport(
     beginHouseholdDeletion: (householdId) =>
       parsed(z.array(z.string()), 'begin_household_deletion', { household_id: householdId }),
     deleteHousehold: (householdId) => nothing('delete_household', { household_id: householdId }),
-    registerPushSubscription: (endpoint, p256dh, auth, deviceLabel) =>
-      id('register_push_subscription', {
-        p_endpoint: endpoint,
-        p_p256dh: p256dh,
-        p_auth: auth,
-        p_device_label: deviceLabel,
-      }),
-    setPushSubscriptionEnabled: (endpoint, enabled) =>
-      nothing('set_push_subscription_enabled', { p_endpoint: endpoint, p_enabled: enabled }),
-    unregisterPushSubscription: (endpoint) =>
-      nothing('unregister_push_subscription', { p_endpoint: endpoint }),
-    removePushSubscription: async (subscriptionId) => {
-      const data = await call('remove_push_subscription', { p_id: subscriptionId });
-      if (typeof data !== 'boolean') throw new TransportError('permanent', 'invalid_response');
-      return data;
-    },
-    listPushSubscriptions: (currentEndpoint) =>
-      parsed(z.array(PushSubscriptionRowSchema), 'list_push_subscriptions', {
-        p_current_endpoint: currentEndpoint ?? null,
-      }),
-    sendTestPush: (endpoint) => nothing('send_test_push', { p_endpoint: endpoint }),
+    acknowledgeNotices: (householdId, keys) =>
+      nothing('acknowledge_notices', { household_id: householdId, keys: [...keys] }),
     resolveMapsLink: (url) =>
       invokeParsed(ResolveMapsLinkReplySchema, 'resolve-maps-link', { url }),
+    fetchImage: async (request) => {
+      // supabase-js answers application/octet-stream as a Blob.
+      const data = await invoke('fetch-image', request);
+      if (!(data instanceof Blob)) throw new TransportError('permanent', 'invalid_response');
+      return data;
+    },
     askAssistant: (request) => invokeParsed(AssistantReplySchema, 'ai-assistant', request),
     aiSearch: (request) => invokeParsed(AiSearchResultSchema, 'ai-search', request),
     speechToken: () => invokeParsed(SpeechTokenReplySchema, 'speech-token', {}),
+    aiRecipeDraft: (request) =>
+      invokeParsed(RecipeDraftReplySchema, 'ai-recipe-draft', request, AI_DRAFT_TIMEOUT_MS),
+    aiImage: (request) =>
+      invokeParsed(AiImageReplySchema, 'ai-image', request, AI_IMAGE_TIMEOUT_MS),
+    webSearch: (request) =>
+      invokeParsed(WebSearchReplySchema, 'web-search', request, WEB_SEARCH_TIMEOUT_MS),
+    placePreview: (request) =>
+      invokeParsed(PlacePreviewReplySchema, 'web-search', request, PLACE_PREVIEW_TIMEOUT_MS),
+    fetchVideo: (request) =>
+      invokeParsed(FetchVideoReplySchema, 'fetch-video', request, FETCH_VIDEO_TIMEOUT_MS),
     uploadMedia: async (path, photo) => {
       let sent: PromiseLike<StorageReply> | undefined;
       try {
@@ -461,6 +508,20 @@ export function createSupabaseTransport(
     },
     removeMedia: async (paths) => {
       await media((bucket) => bucket.remove([...paths]));
+    },
+    downloadVideo: async (path, signal) => {
+      // no-store: like the photos, nothing of the video stays in the browser's HTTP cache.
+      const data = await media(
+        (bucket, stop) => bucket.download(path, {}, { cache: 'no-store', signal: stop }),
+        signal,
+        VIDEO_BUCKET,
+        VIDEO_DOWNLOAD_TIMEOUT_MS,
+      );
+      if (!(data instanceof Blob)) throw new TransportError('permanent', 'invalid_response');
+      return data;
+    },
+    removeVideos: async (paths) => {
+      await media((bucket) => bucket.remove([...paths]), undefined, VIDEO_BUCKET);
     },
     syncPull: async (request): Promise<PullResult> => {
       const raw = await parsed(RawPullResultSchema, 'sync_pull', { p_request: request });

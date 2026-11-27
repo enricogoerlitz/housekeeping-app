@@ -393,6 +393,10 @@ Beim Bau ENTSCHIEDEN von Claude (22.11.2026), jeweils die einfachste Lösung im 
     `apps/app/src/lib/plan-date-calendar.tsx`.
 26. **Zeitplaner:** sucht den freien Tag nur an Reise-Enden statt Tag für Tag (gleiches Ergebnis
     wie core, Aufwand nach Zahl der Reisen; Befund des Security-Checks).
+27. iPhone-Durchklick Runde 2 (27.11., I-07, I-17): „Neue Aufgabe“ fragt mit getipptem Titel vor
+    dem Schließen „Änderungen verwerfen?“. Das „+“ in der Kopfzeile von „Haushalt“ steht am Handy
+    schlicht wie das „+“ von „Essen“ (Kopfzeilen der Bereiche ohne getönten Kreis; Unterseiten von
+    „Verwalten“ behalten ihren Kreis).
 
 ## Daten
 

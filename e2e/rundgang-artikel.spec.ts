@@ -1,6 +1,8 @@
 import type { Page } from '@playwright/test';
+import { normalizeText } from '@housekeeping/core';
 
 import {
+  accessToken,
   back,
   expect,
   freshSeed,
@@ -10,6 +12,8 @@ import {
   open,
   openItem,
   openManaged,
+  rpc,
+  supabaseFetch,
   test,
   tid,
   tidPrefix,
@@ -25,6 +29,8 @@ import { seedIds } from './seed-ids';
 freshSeed();
 
 const REWE = seedIds['store-rewe'];
+const HOUSEHOLD = seedIds['hh-demo'];
+const SYNC = { timeout: 30_000 };
 const area = (key: string): string => seedIds[`area-${key}` as keyof typeof seedIds];
 const article = (key: string): string => seedIds[`art-${key}` as keyof typeof seedIds];
 
@@ -76,14 +82,6 @@ test.describe('Artikel and Märkte at phone width', () => {
     await tid(page, 'articles-sort-new').click();
     await expect(tid(page, 'articles-sort')).toContainText('Neu');
     await leaveManaged(page);
-
-    // The other way in: "Liste" ⋯ → "Artikel", and back leads to the list.
-    await nav(page, 'liste');
-    await tid(page, 'list-more').click();
-    await tid(page, 'list-more-articles').click();
-    await expect(tid(page, 'articles-screen')).toBeVisible();
-    await back(page);
-    await expect(tid(page, 'screen-title')).toHaveText('Einkaufsliste');
   });
 
   test('AC-026 / AC-031 / AC-033: "+ Neu" creates "Drachenfrucht", a synonym of another article is refused, unused it can be deleted', async ({
@@ -107,11 +105,17 @@ test.describe('Artikel and Märkte at phone width', () => {
     await expect(dragon).toHaveCount(1);
     await dragon.click();
     await tid(page, 'article-delete').click();
+    // Spec 0036: asks first; "Abbrechen" leaves it, the toast after deleting has no undo.
+    await expect(tid(page, 'confirm-delete-article')).toBeVisible();
+    await tid(page, 'confirm-delete-article-cancel').click();
+    await expect(tid(page, 'confirm-delete-article')).toBeHidden();
+    await expect(tid(page, 'article-sheet')).toBeVisible();
+    await tid(page, 'article-delete').click();
+    await tid(page, 'confirm-delete-article-confirm').click();
     await expect(tid(page, 'article-sheet')).toBeHidden();
     await expect(toastMessage(page)).toHaveText('„Drachenfrucht“ gelöscht');
+    await expect(tid(page, 'toast-action')).toHaveCount(0);
     await expect(dragon).toHaveCount(0);
-    await tid(page, 'toast-action').click();
-    await expect(dragon).toHaveCount(1);
   });
 
   test('AC-028 / AC-034: "Kokosmilch" shows its recipes and cannot be deleted while used', async ({
@@ -179,6 +183,9 @@ test.describe('Artikel and Märkte at phone width', () => {
     await expect(tid(page, 'store-order-screen')).toContainText('Aldi Nord');
 
     await tid(page, 'store-rename').click();
+    // Nachklick 27.11., Ruckeln: "Markt bearbeiten" opens without a cursor.
+    await expect(tid(page, 'store-rename-sheet')).toBeVisible();
+    await expect(tid(page, 'store-rename-sheet-name')).not.toBeFocused();
     await tid(page, 'store-rename-sheet-name').fill('Aldi Nordstadt');
     await tid(page, 'store-rename-sheet-save').click();
     await expect(tid(page, 'store-order-screen')).toContainText('Aldi Nordstadt');
@@ -250,6 +257,42 @@ test.describe('Artikel and Märkte at phone width', () => {
     await expect(tid(page, 'articles-screen')).toBeVisible();
     await expect(tid(page, 'articles-filter-noArea')).toHaveAttribute('aria-selected', 'true');
     await expect(tidPrefix(page, 'article-').filter({ hasText: 'Geschenkpapier' })).toHaveCount(1);
+  });
+
+  test('AC-057: "Fertig" with the untouched name keeps the rename Nadja made meanwhile', async ({
+    page,
+  }) => {
+    const feigen = article('feigen');
+    await openArticles(page);
+    await tid(page, 'articles-search').fill('Feigen');
+    await tid(page, `article-${feigen}`).click();
+    await expect(tid(page, 'article-name')).toHaveValue('Feigen');
+
+    // Nadja renames it on her device; the delta sync brings it while the window is open.
+    const renamed = 'Feigen frisch';
+    await rpc(await accessToken('nadja'), 'apply_changes', {
+      p_household_id: HOUSEHOLD,
+      p_ops: [
+        {
+          kind: 'patch',
+          table: 'articles',
+          id: feigen,
+          changes: { name: renamed, name_key: normalizeText(renamed) },
+        },
+      ],
+    });
+    await expect(tid(page, `article-${feigen}`)).toContainText(renamed, SYNC);
+    // The field still shows the name from opening; leaving it and "Fertig" save nothing.
+    await expect(tid(page, 'article-name')).toHaveValue('Feigen');
+    await tid(page, 'article-name').focus();
+    await tid(page, 'article-name').blur();
+    await tid(page, 'article-done').click();
+    await expect(tid(page, 'article-sheet')).toBeHidden();
+    await expect(tid(page, `article-${feigen}`)).toContainText(renamed);
+    const response = await supabaseFetch(`/rest/v1/articles?select=name&id=eq.${feigen}`, {
+      token: await accessToken('enrico'),
+    });
+    expect(await response.json()).toEqual([{ name: renamed }]);
   });
 });
 

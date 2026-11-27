@@ -25,12 +25,9 @@ const realConfigText = readFileSync(
 );
 
 const supabaseUrl = 'https://abc.supabase.co';
-// The application server public key of RFC 8291 Appendix A: a published test value, no secret.
-const vapidPublicKey =
-  'BP4z9KsN6nGRTbVYI_c7VJSPQTBtkgcy27mlmlMoZIIgDll6e3vCYLocInmYWAmS6TlzAC8wEqKK6PBru3jl7A8';
 const serviceWorker =
   'const PRECACHE = [{"revision":"1","url":"index.html"},{"revision":null,"url":"_expo/static/js/web/entry-1.js"}];' +
-  "self.addEventListener('fetch', f); self.addEventListener('push', p); self.addEventListener('notificationclick', c);";
+  "self.addEventListener('fetch', f);";
 const versionFile = '{"version":"2026.12.4","commit":"0123456789abcdef"}\n';
 
 const validDirectives = {
@@ -38,8 +35,9 @@ const validDirectives = {
   'script-src': "'self'",
   'style-src': "'self' 'unsafe-inline'",
   'img-src': "'self' data: blob:",
+  'media-src': "'self' blob:",
   'connect-src':
-    "'self' https://abc.supabase.co wss://abc.supabase.co https://*.stt.speech.microsoft.com",
+    "'self' blob: https://abc.supabase.co wss://abc.supabase.co https://*.stt.speech.microsoft.com",
   'object-src': "'none'",
   'base-uri': "'self'",
 };
@@ -56,7 +54,6 @@ function exportWith({
     html: `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="${csp}" /></head><body>${body}</body></html>`,
     serviceWorker,
     supabaseUrl,
-    vapidPublicKey,
     swaConfig: realConfigText,
     versionFile,
   };
@@ -71,6 +68,21 @@ function configWith(change) {
 
 test('a valid export passes', () => {
   assert.deepEqual(checkExport(exportWith()), []);
+});
+
+test('spec 0043: media-src is exactly self and blob: (the recipe video plays from a blob URL)', () => {
+  assert.match(
+    checkExport(exportWith({ directives: { 'media-src': undefined } })).join('\n'),
+    /media-src must be exactly 'self' blob:/,
+  );
+  assert.match(
+    checkExport(
+      exportWith({
+        directives: { 'media-src': "'self' blob: https://v16-webapp-prime.tiktok.com" },
+      }),
+    ).join('\n'),
+    /media-src must be exactly 'self' blob:/,
+  );
 });
 
 test('hashes in script-src-elem pass', () => {
@@ -104,8 +116,19 @@ test('rejects an inline script that only has a data-src attribute', () => {
   assert.ok(problems.includes('index.html contains an inline script'));
 });
 
+test('spec 0040 AC-015: connect-src allows blob: ("Aus diesem Foto" reads the shown photo)', () => {
+  assert.deepEqual(checkExport(exportWith()), []);
+  const problems = checkExport(
+    exportWith({ directives: { 'connect-src': "'self' https://abc.supabase.co" } }),
+  );
+  assert.ok(
+    problems.includes('connect-src must allow blob: (spec 0040, "Aus diesem Foto")'),
+    problems.join('; '),
+  );
+});
+
 test('rejects wildcards and bare schemes in connect-src', () => {
-  for (const value of ['*', 'https:', 'wss:', 'http:']) {
+  for (const value of ['*', 'https:', 'wss:', 'http:', 'data:']) {
     const problems = checkExport(
       exportWith({ directives: { 'connect-src': `'self' https://abc.supabase.co ${value}` } }),
     );
@@ -126,61 +149,21 @@ test('rejects a missing service worker', () => {
   assert.ok(problems.includes('sw.js is missing'));
 });
 
-test('AC-009: rejects a service worker without push handling', () => {
-  for (const event of ['push', 'notificationclick']) {
-    const problems = checkExport({
-      ...exportWith(),
-      serviceWorker: serviceWorker.replace(`'${event}'`, "'other'"),
-    });
-    assert.ok(problems.includes(`sw.js has no ${event} handler`), event);
-  }
-});
-
-test('rejects a missing or broken public VAPID key', () => {
-  const broken = [
-    undefined,
-    '',
-    'nicht-base64url!',
-    vapidPublicKey.slice(0, -4),
-    // 65 bytes, but not an uncompressed point (the first byte is not 0x04)
-    `C${vapidPublicKey.slice(1)}`,
-  ];
-  for (const key of broken) {
-    const problems = checkExport({ ...exportWith(), vapidPublicKey: key });
-    assert.ok(
-      problems.some((problem) => problem.startsWith('EXPO_PUBLIC_VAPID_PUBLIC_KEY')),
-      String(key),
-    );
-  }
-});
-
-test('AC-046: rejects an export that contains the private VAPID key or the push secret', () => {
-  const secrets = {
-    VAPID_PRIVATE_KEY: 'private-value-123456',
-    PUSH_SEND_SECRET: 'secret-value-7890',
-  };
+test('AC-046: rejects an export that contains the value of a given secret', () => {
+  const secrets = { SOME_SECRET: 'secret-value-7890' };
   const files = [
     { path: 'index.html', content: Buffer.from('<html></html>') },
-    {
-      path: '_expo/static/js/web/entry.js',
-      content: Buffer.from('const k="private-value-123456";'),
-    },
     { path: 'sw.js', content: Buffer.from('x secret-value-7890 y') },
   ];
   const problems = checkExport({ ...exportWith(), files, secrets });
-  assert.ok(
-    problems.includes('_expo/static/js/web/entry.js contains the value of VAPID_PRIVATE_KEY'),
-  );
-  assert.ok(problems.includes('sw.js contains the value of PUSH_SEND_SECRET'));
+  assert.ok(problems.includes('sw.js contains the value of SOME_SECRET'));
   // Names only, never the values.
-  for (const problem of problems) {
-    assert.ok(!problem.includes('private-value') && !problem.includes('secret-value'), problem);
-  }
+  for (const problem of problems) assert.ok(!problem.includes('secret-value'), problem);
 });
 
 test('AC-046: a clean export passes the secret scan; unset secrets are skipped', () => {
   const files = [{ path: 'index.html', content: Buffer.from('<html></html>') }];
-  const secrets = { VAPID_PRIVATE_KEY: 'private-value-123456', PUSH_SEND_SECRET: undefined };
+  const secrets = { SOME_SECRET: 'secret-value-7890', UNSET: undefined };
   assert.deepEqual(checkExport({ ...exportWith(), files, secrets }), []);
 });
 
@@ -363,7 +346,7 @@ test('EXPO_PUBLIC_DEV_LOGIN=1 with a local Supabase passes', () => {
   const local = 'http://127.0.0.1:54321';
   const problems = checkExport({
     ...exportWith({
-      directives: { 'connect-src': `'self' ${local} ws://127.0.0.1:54321` },
+      directives: { 'connect-src': `'self' blob: ${local} ws://127.0.0.1:54321` },
     }),
     supabaseUrl: local,
     devLogin: '1',
@@ -426,7 +409,7 @@ test('AC-062 (0031): a release build without the seed precaches no sample photo'
   const local = {
     ...exportWith({
       directives: {
-        'connect-src': "'self' http://127.0.0.1:54321 ws://127.0.0.1:54321",
+        'connect-src': "'self' blob: http://127.0.0.1:54321 ws://127.0.0.1:54321",
       },
     }),
     supabaseUrl: 'http://127.0.0.1:54321',

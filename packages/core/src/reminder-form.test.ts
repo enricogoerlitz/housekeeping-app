@@ -5,7 +5,6 @@ import {
   REMINDER_OFF_DRAFT,
   reminderDayChoices,
   reminderDraftFrom,
-  reminderReachHint,
   reminderSave,
   switchedOnDraft,
 } from './reminder-form';
@@ -190,26 +189,5 @@ describe('reminderDayChoices', () => {
       selected: false,
       disabled: true,
     });
-  });
-});
-
-describe('reminderReachHint', () => {
-  it('REQ-007: nothing to say when the kind is on and this device is registered', () => {
-    expect(reminderReachHint({ kindEnabled: true, deviceRegistered: true })).toBeUndefined();
-  });
-
-  it('AC-026: this device shows no notifications', () => {
-    expect(reminderReachHint({ kindEnabled: true, deviceRegistered: false })).toBe(
-      'Auf diesem Gerät kommen keine Benachrichtigungen an',
-    );
-  });
-
-  it('REQ-007: the kind switched off for me comes first', () => {
-    expect(reminderReachHint({ kindEnabled: false, deviceRegistered: false })).toBe(
-      'Erinnerungen an Einträgen sind bei dir aus',
-    );
-    expect(reminderReachHint({ kindEnabled: false, deviceRegistered: true })).toBe(
-      'Erinnerungen an Einträgen sind bei dir aus',
-    );
   });
 });

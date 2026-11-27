@@ -12,10 +12,8 @@ import type { Chore, Id, ISODate, Member, Trip } from './types';
 
 // When a chore is due (spec 0026, REQ-009 to REQ-014): the stored date (next_due_on) waits on
 // trips until the first day somebody who can do the chore is at home ("frei"). Nothing is
-// stored; a changed trip takes effect at once. The same rules live in SQL for the notification
-// scheduler (private.chore_can_do_on, chore_first_free_day, chore_due_state,
-// chore_acting_assignee, chore_due_text; ADR-0014) — a change here needs the other place, and
-// notification_parity.test.sql carries the names of these tests.
+// stored; a changed trip takes effect at once. Spec 0051: the in-app notices use these rules too;
+// the SQL copy of the notification scheduler is gone with it.
 
 /** Who is away when: the household's members and its trips (only its own, AC-044). */
 export interface ChoreAway {
@@ -149,7 +147,7 @@ export function flexibleProgress(chore: Chore, day: ISODate): number {
 export type ChoreDueState = 'overdue' | 'today' | 'flexibleDue';
 
 /**
- * Whether the chore is due on `day` (core dueChores, SQL private.chore_due_state): never "bei
+ * Whether the chore is due on `day` (core dueChores): never "bei
  * Bedarf", never outside its season, never on a day nobody who can do it is at home (REQ-011);
  * flexible from FLEXIBLE_DUE_FROM of its interval; otherwise "today" on its Zähltag and
  * "overdue" after it.

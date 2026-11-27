@@ -10,6 +10,7 @@ import {
   tid,
   toastMessage,
   TODAY,
+  tripRow,
 } from './helpers';
 import { seedIds } from './seed-ids';
 
@@ -86,9 +87,7 @@ test.describe('REQ-004: a trip as a draft', () => {
     await tid(page, 'trip-draft').click();
     await tid(page, 'trip-save').click();
     await expect(toastMessage(page)).toHaveText('Entwurf gespeichert');
-    const row = page
-      .locator('[data-testid^="trip-"][data-testid$="-open"]')
-      .filter({ hasText: 'Skiurlaub' });
+    const row = tripRow(page, 'Skiurlaub');
     await expect(row).toContainText('Entwurf');
     await row.click();
     await expect(tid(page, 'trip-draft-badge')).toBeVisible();

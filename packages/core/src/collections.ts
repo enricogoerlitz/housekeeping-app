@@ -100,9 +100,9 @@ export function collectionEntryLabel(title: string, recipeCount: number): string
   return count === '' ? title : `${title} · ${count}`;
 }
 
-/** The line under the title: "für 6 · 2 Rezepte · 4 eigene Zutaten"; parts with 0 drop out. */
+/** The line under the title: "für 6 · 2 Rezepte · 4 eigene Zutaten · 90 Min"; parts with 0 drop out. */
 export function collectionSummary(
-  collection: Pick<Recipe, 'servings' | 'ingredients'>,
+  collection: Pick<Recipe, 'servings' | 'ingredients' | 'totalMinutes'>,
   contents: readonly CollectionContent[],
 ): string {
   const own = collection.ingredients.length;
@@ -111,6 +111,8 @@ export function collectionSummary(
     collectionRecipeCountLabel(contents.length),
   ];
   if (own > 0) parts.push(own === 1 ? '1 eigene Zutat' : `${own} eigene Zutaten`);
+  // Spec 0037, REQ-005: a collection has a time like a recipe; it shows where a recipe's does.
+  if (collection.totalMinutes !== undefined) parts.push(`${collection.totalMinutes} Min`);
   return parts.filter((part) => part !== '').join(' · ');
 }
 
@@ -165,7 +167,10 @@ export function collectionFitsPreference(
   return dietFitsPreference(collectionDiet(collection, contents, articlesById), pref);
 }
 
-/** recipeFitsPreference for a recipe, collectionFitsPreference for a collection. */
+/**
+ * recipeFitsPreference for a recipe, collectionFitsPreference for a collection; an empty collection
+ * fits (spec 0037, AC-013).
+ */
 export function dishFitsPreference(
   recipe: Recipe,
   pref: DietPreference,
@@ -173,7 +178,10 @@ export function dishFitsPreference(
   book: RecipeBook,
 ): boolean {
   if (recipe.kind === 'collection') {
-    return collectionFitsPreference(recipe, contentsInBook(recipe, book), pref, articlesById);
+    const contents = contentsInBook(recipe, book);
+    // Spec 0037, AC-013: an empty collection fits every diet.
+    if (contents.length === 0 && recipe.ingredients.length === 0) return true;
+    return collectionFitsPreference(recipe, contents, pref, articlesById);
   }
   return recipeFitsPreference(recipe, pref, articlesById);
 }

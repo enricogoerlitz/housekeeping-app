@@ -9,6 +9,7 @@ import {
   useActiveHouseholdId,
   useCurrentMemberId,
   useHouseholdInvitations,
+  useHouseholdOwnerId,
   useHouseholdsMap,
   useMembers,
   useMyInvitations,
@@ -24,6 +25,7 @@ import {
 } from '@housekeeping/core';
 import {
   Avatar,
+  Badge,
   Button,
   Icon,
   List,
@@ -36,7 +38,7 @@ import {
 import { useState } from 'react';
 import { View } from 'react-native';
 
-import { ConfirmDialog } from '@/features/shell/confirm-dialog';
+import { confirmFirst, ConfirmDialog } from '@/features/shell/confirm-dialog';
 import { useOnlineOnly } from '@/features/shell/offline';
 import { errorMessage } from '@/features/shell/error-message';
 
@@ -117,12 +119,28 @@ export function CreateHouseholdForm() {
   );
 }
 
-/** AC-008/AC-009: invites a Google address into the active household. */
+/**
+ * AC-008/AC-009: invites a Google address into the active household. Only the owner invites
+ * (spec 0042, AC-011); the others read who can.
+ */
 export function InviteForm() {
   const online = useOnlineOnly();
   const { busy, run } = useAction();
   const [email, setEmail] = useState('');
   const [error, setError] = useState<string>();
+  const me = useCurrentMemberId();
+  const ownerId = useHouseholdOwnerId();
+  const owner = useMembers().find((member) => member.id === ownerId);
+
+  if (ownerId !== me) {
+    return (
+      <Text variant="small" color="muted" testID="household-invite-owner-only">
+        {owner
+          ? `Einladen und Entfernen kann nur ${owner.name}, Eigentümer des Haushalts.`
+          : 'Einladen und Entfernen kann nur der Eigentümer des Haushalts.'}
+      </Text>
+    );
+  }
 
   const submit = async () => {
     setError(undefined);
@@ -169,6 +187,8 @@ export function InviteForm() {
 /**
  * Members of the active household and its open invitations („Eingeladen“). „Entfernen“ and
  * „Verlassen“ ask first; the server call happens only on the confirmation (spec 0018, REQ-004).
+ * The owner carries „Eigentümer“ and is the only one with „Entfernen“; everybody can leave
+ * (spec 0042, REQ-005, AC-011).
  * „Zurückziehen“ withdraws an invitation without asking (spec 0027, REQ-001, Decision 2); the
  * last member has no „Verlassen“, only „Haushalt löschen“ below (AC-017).
  */
@@ -176,6 +196,7 @@ export function MemberList() {
   const members = useMembers();
   const invitations = useHouseholdInvitations();
   const me = useCurrentMemberId();
+  const ownerId = useHouseholdOwnerId();
   const households = useHouseholdsMap();
   const activeHouseholdId = useActiveHouseholdId();
   const householdName = households[activeHouseholdId]?.household.name ?? '';
@@ -217,6 +238,20 @@ export function MemberList() {
         {members.map((member) => {
           const self = member.id === me;
           const last = members.length === 1;
+          const isOwner = member.id === ownerId;
+          const canRemove = !last && (self || me === ownerId);
+          const action = canRemove ? (
+            <Button
+              label={self ? 'Verlassen' : 'Entfernen'}
+              variant="link"
+              quiet
+              size="sm"
+              disabled={online.disabled || busy}
+              hint={online.hint}
+              onPress={() => setAsking({ id: member.id, name: member.name })}
+              testID={`household-member-remove-${member.id}`}
+            />
+          ) : null;
           return (
             <ListRow
               key={member.id}
@@ -224,17 +259,18 @@ export function MemberList() {
               subtitle={memberProfileLine(member)}
               leading={<Avatar name={member.name} color={member.color} size="m" />}
               trailing={
-                last ? undefined : (
-                  <Button
-                    label={self ? 'Verlassen' : 'Entfernen'}
-                    variant="link"
-                    size="sm"
-                    disabled={online.disabled || busy}
-                    hint={online.hint}
-                    onPress={() => setAsking({ id: member.id, name: member.name })}
-                    testID={`household-member-remove-${member.id}`}
-                  />
-                )
+                isOwner || action ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    {isOwner ? (
+                      <Badge
+                        label="Eigentümer"
+                        tone="accent"
+                        testID={`member-owner-${member.id}`}
+                      />
+                    ) : null}
+                    {action}
+                  </View>
+                ) : undefined
               }
               testID={`household-member-${member.id}`}
             />
@@ -254,10 +290,19 @@ export function MemberList() {
               <Button
                 label="Zurückziehen"
                 variant="link"
+                quiet
                 size="sm"
                 disabled={online.disabled || busy}
                 hint={online.hint}
-                onPress={() => void withdraw(invitation.id, invitation.email)}
+                onPress={() =>
+                  confirmFirst({
+                    title: 'Einladung zurückziehen?',
+                    message: invitation.email,
+                    confirmLabel: 'Zurückziehen',
+                    onConfirm: () => void withdraw(invitation.id, invitation.email),
+                    testID: 'confirm-withdraw-invitation',
+                  })
+                }
                 testID={`household-invitation-withdraw-${invitation.id}`}
               />
             }

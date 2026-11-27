@@ -15,7 +15,13 @@ import { fileURLToPath } from 'node:url';
 
 import { tsImport } from 'tsx/esm/api';
 
-import { HOUSEHOLD_NAME, bootstrapSql, parseEmail, runBootstrap } from './prod-bootstrap.mjs';
+import {
+  HOUSEHOLD_NAME,
+  bootstrapSql,
+  parseArgs,
+  parseEmail,
+  runBootstrap,
+} from './prod-bootstrap.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 mkdirSync(path.join(root, 'tmp'), { recursive: true });
@@ -109,6 +115,35 @@ describe('bootstrapSql', () => {
 
   test('rejects an address that was not parsed first', () => {
     assert.throws(() => bootstrapSql('Bootstrap-Probe@Example.com'), /parseEmail/);
+  });
+});
+
+describe('a further household (--household)', () => {
+  test('parseArgs: no arguments means "Enrico & Nadja", --household names another one', () => {
+    assert.deepEqual(parseArgs([]), { household: HOUSEHOLD_NAME, named: false });
+    assert.deepEqual(parseArgs(['--household', '  Teddy & Mauz ']), {
+      household: 'Teddy & Mauz',
+      named: true,
+    });
+  });
+
+  test('parseArgs refuses anything else, an empty name and more than 80 characters', () => {
+    for (const args of [
+      [EMAIL],
+      ['--household'],
+      ['--household', '   '],
+      ['--household', 'x'.repeat(81)],
+      ['--household', 'A', 'B'],
+    ]) {
+      assert.throws(() => parseArgs(args), /Usage|Haushaltsname/);
+    }
+  });
+
+  test('a named household is found by its name only, quotes cannot break out', () => {
+    const text = bootstrapSql(EMAIL, { household: "Teddy's & Mauz", named: true });
+    assert.ok(text.includes("'Teddy''s & Mauz'"));
+    assert.ok(!text.includes(`'${HOUSEHOLD_NAME}'`));
+    assert.doesNotMatch(text, /household_invitations i, input where i\.email = input\.email/);
   });
 });
 
@@ -247,6 +282,23 @@ describe(
       rollback;
     `);
       assert.deepEqual(out, ['1|1|1', 'Europe/Berlin|0']);
+    });
+
+    test('a named further household is created for an address that is already invited elsewhere', () => {
+      const other = { household: 'Teddy & Mauz', named: true };
+      const out = psql(`
+      begin;
+      update public.households set name = name || ' (Seed)' where name = '${HOUSEHOLD_NAME}';
+      ${bootstrapSql(EMAIL)}
+      ${bootstrapSql(EMAIL, other)}
+      ${bootstrapSql(EMAIL, other)}
+      select count(*) from public.household_invitations where email = '${EMAIL}'
+        and household_id in (select id from public.households where name in ('${HOUSEHOLD_NAME}', 'Teddy & Mauz'));
+      select (select count(*) from public.articles x where x.household_id = h.id)
+        from public.households h where name = 'Teddy & Mauz';
+      rollback;
+    `);
+      assert.deepEqual(out, ['1|1|1', '1|1|1', '0|0|0', '2', `${STARTER.articles.length}`]);
     });
 
     test('a member of an existing household (renamed in the app) gets neither household nor invitation', () => {

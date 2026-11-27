@@ -1,6 +1,15 @@
 // Theme contract. Pure data: no React Native imports, so themes can be tested in Node.
 
-export type ThemeId = 'markthalle' | 'klar' | 'frisch';
+export type ThemeId =
+  | 'markthalle'
+  | 'klar'
+  | 'frisch'
+  | 'wolke'
+  | 'mitternacht'
+  | 'zitrus'
+  | 'salbei'
+  | 'lavendel'
+  | 'espresso';
 export type ColorMode = 'light' | 'dark';
 /** Colour worlds of the app areas. Only the theme "Frisch" shows them (see `areaTone`). */
 export type Tone = 'essen' | 'plan' | 'liste' | 'haushalt' | 'ki';
@@ -32,6 +41,10 @@ export interface ThemeColors {
   /** Offline and "needs attention" hints: orange, never red. */
   warnBg: string;
   warnText: string;
+  /** The Änderungsansicht (spec 0049): the subtle yellow behind a new or changed field or row. */
+  changedBg: string;
+  /** The Änderungsansicht: an old value or a removed row, struck through; always with a word. */
+  removedText: string;
   checkLine: string;
   /** The track of a switch that is off: 3:1 on page and card (spec 0031, REQ-035). */
   switchOff: string;
@@ -40,6 +53,12 @@ export interface ThemeColors {
   scrim: string;
   fabBg: string;
   fabText: string;
+  /**
+   * The red circle with the number of open notices on the bell (spec 0051): the only red of the
+   * app, by the owner's wish; never for hints, errors or anything overdue.
+   */
+  badge: string;
+  onBadge: string;
   tones: Record<Tone, { bg: string; fg: string }>;
   /** Terrakotta, Pflaume, Ocker, Moos, Grau (spec 0010, D19). */
   kinds: Record<KindColor, string>;
@@ -105,13 +124,28 @@ export interface ThemeShape {
   /** Cards and inputs get a hairline border. */
   cardBorder: boolean;
   checkBorderWidth: number;
-  /** Active tab: tinted icon and label, or an ink pill behind the icon. */
+  /**
+   * Active tab: tinted icon and label, or an ink pill behind the icon. "Wolke" tints like the
+   * others (owner, 27.11.2026: no shape around the active tab).
+   */
   tabActive: 'tint' | 'pill';
   /**
    * One area colour per screen (spec 0005, D4): the area of the screen colours its primary
    * button, its header's filled icon button and the line under the active view tab. Off = accent.
    */
   areaTone: boolean;
+  /**
+   * Spec 0058 ("Wolke"): icon buttons and the active tab sit on an organic bubble instead of a
+   * circle. Each corner is a CSS elliptic radius ("48% 55%"). Undefined = circles, as before.
+   */
+  bubble?: BubbleShape;
+}
+
+export interface BubbleShape {
+  topLeft: string;
+  topRight: string;
+  bottomRight: string;
+  bottomLeft: string;
 }
 
 export interface Theme {
@@ -126,6 +160,12 @@ export interface Theme {
   shape: ThemeShape;
   /** Keys of the font files this theme needs (see fonts.ts). Empty = system font only. */
   fonts: string[];
+  /**
+   * Spec 0058: a CSS background image behind the pages, over `bg` (web only; native shows `bg`).
+   * It starts in `bg` at the top, and every colour in it keeps the text pairs of `bg`.
+   * Undefined = the plain colour.
+   */
+  backdrop?: string;
 }
 
 export interface ThemeFamily {

@@ -22,6 +22,7 @@ import {
   Text,
   keyboardFocusRing,
   pressedWithFinger,
+  useBreakpoint,
   useFinePointer,
   useHover,
   useTheme,
@@ -33,6 +34,7 @@ import { Pressable, View, type GestureResponderEvent, type HostInstance } from '
 import { HATCH_ALPHA, StripeBadges, stripeA11y, stripeLine } from './calendar-parts';
 import { dayLabel, stripeWho, type CalendarData } from './calendar-data';
 import {
+  CalendarSwipe,
   PALE_OPACITY,
   RangeMark,
   TripSource,
@@ -57,6 +59,11 @@ export interface YearViewProps {
   /** A tap on the month name opens the month. */
   onOpenMonth: (monthStart: ISODate) => void;
   onOpenStripe: (stripe: TripStripe) => void;
+  /**
+   * Phones: a sideways swipe over the months pages the year; under them it is left to the view
+   * tabs (spec 0034, REQ-006).
+   */
+  gridSwipe: { enabled: boolean; onSwipe: (step: 1 | -1) => void };
   /** Under the grid, before the year's trips: the strip "Vorgemerkt" (spec 0016, REQ-003). */
   belowGrid?: ReactNode;
   /** Desktop: the grid's room in px down to "Vorgemerkt" (spec 0021, REQ-001); else natural. */
@@ -72,6 +79,10 @@ export interface YearViewProps {
 }
 
 const ROW_GAP = 14;
+// A tall window stretches a month's weeks only up to this (spec 0035, REQ-003); the month itself
+// then stops at its padding, name (32), weekday initials (12) and six such weeks.
+const DAY_ROW_MAX = 28;
+const MONTH_MAX = 2 * 6 + 32 + 12 + 6 * DAY_ROW_MAX;
 
 const WEEKDAY_INITIALS = ['M', 'D', 'M', 'D', 'F', 'S', 'S'];
 const TINT_ALPHA = '33';
@@ -102,7 +113,7 @@ export function YearView(props: YearViewProps) {
   const rowHeight =
     props.height === undefined
       ? undefined
-      : sharedHeight(props.height - (rows.length - 1) * ROW_GAP, rows.length, 0);
+      : sharedHeight(props.height - (rows.length - 1) * ROW_GAP, rows.length, 0, MONTH_MAX);
   const registerMonth = useScrollTo({
     enabled: !props.fillsWindow,
     request: props.scrollRequest,
@@ -113,31 +124,33 @@ export function YearView(props: YearViewProps) {
 
   return (
     <View testID="year-view">
-      <View style={{ gap: ROW_GAP }}>
-        {rows.map((row) => (
-          <View key={row[0]} style={{ flexDirection: 'row', gap: 10, minHeight: rowHeight }}>
-            {row.map((monthStart) => (
-              <View
-                key={monthStart}
-                ref={(node) => registerMonth(monthStart, node)}
-                style={{ flex: 1, minWidth: 0 }}
-              >
-                <MiniMonth
-                  monthStart={monthStart}
-                  data={data}
-                  plannedDays={plannedDays}
-                  chores={chores}
-                  fill={fill}
-                  selected={props.selected}
-                  onOpenDay={props.onOpenDay}
-                  registerDay={props.registerDay}
-                  onOpenMonth={() => props.onOpenMonth(monthStart)}
-                />
-              </View>
-            ))}
-          </View>
-        ))}
-      </View>
+      <CalendarSwipe {...props.gridSwipe}>
+        <View style={{ gap: ROW_GAP }}>
+          {rows.map((row) => (
+            <View key={row[0]} style={{ flexDirection: 'row', gap: 10, minHeight: rowHeight }}>
+              {row.map((monthStart) => (
+                <View
+                  key={monthStart}
+                  ref={(node) => registerMonth(monthStart, node)}
+                  style={{ flex: 1, minWidth: 0 }}
+                >
+                  <MiniMonth
+                    monthStart={monthStart}
+                    data={data}
+                    plannedDays={plannedDays}
+                    chores={chores}
+                    fill={fill}
+                    selected={props.selected}
+                    onOpenDay={props.onOpenDay}
+                    registerDay={props.registerDay}
+                    onOpenMonth={() => props.onOpenMonth(monthStart)}
+                  />
+                </View>
+              ))}
+            </View>
+          ))}
+        </View>
+      </CalendarSwipe>
       {props.belowGrid}
       <View style={{ marginTop: 24 }}>
         <Section title={`Reisen ${props.year}`} testID="year-trips">
@@ -252,7 +265,10 @@ function MiniMonth(props: {
         <WeekRowTarget
           key={week[0]}
           dates={week.map((date) => (date.slice(0, 7) === month ? date : null))}
-          style={[{ flexDirection: 'row' }, props.fill ? { flexGrow: 1 } : null]}
+          style={[
+            { flexDirection: 'row' },
+            props.fill ? { flexGrow: 1, maxHeight: DAY_ROW_MAX } : null,
+          ]}
         >
           {week.map((date) =>
             date.slice(0, 7) === month ? (
@@ -279,6 +295,9 @@ function MiniMonth(props: {
   );
 }
 
+const DIGITS_PHONE = { fontSize: 10, lineHeight: 13 } as const;
+const DIGITS_WIDE = { fontSize: 12, lineHeight: 15 } as const;
+
 function MiniDay(props: {
   date: ISODate;
   data: CalendarData;
@@ -290,6 +309,7 @@ function MiniDay(props: {
   register: (node: HostInstance | null) => void;
 }) {
   const theme = useTheme();
+  const { isPhone } = useBreakpoint();
   const refusedDays = useRefusedDays();
   const coverage = yearDayTrip(props.date, props.data.stripes);
   const member = coverage.kind === 'one' ? props.data.membersById[coverage.memberId] : undefined;
@@ -351,7 +371,12 @@ function MiniDay(props: {
             <Text
               variant="caption"
               color={props.selected ? undefined : isToday ? 'accent' : 'text'}
-              style={[{ fontSize: 10, lineHeight: 13 }, props.selected ? { color: c.bg } : null]}
+              // 12 px where a day is wide enough (spec 0035); a phone's three months a row leave
+              // about 16 px a day, where "27 28 29" would run together (review 0003).
+              style={[
+                isPhone ? DIGITS_PHONE : DIGITS_WIDE,
+                props.selected ? { color: c.bg } : null,
+              ]}
             >
               {String(parseISODate(props.date).getDate())}
             </Text>

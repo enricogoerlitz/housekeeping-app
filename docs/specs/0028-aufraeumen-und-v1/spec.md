@@ -192,30 +192,36 @@ Abschnitt „Daten“ jeder Spec):
 
 ## Risiken
 
-| Risiko                                              | Gegenmaßnahme                                                                    | Test                                    |
-| --------------------------------------------------- | -------------------------------------------------------------------------------- | --------------------------------------- |
-| Falsches Projekt wird zurückgesetzt                 | Pflichtangabe der Kennung, Abgleich mit dem verlinkten Projekt, Namensabfrage    | AC-015, Probe in der Vorschau           |
-| Basis weicht vom gebauten Schema ab                 | `db diff` gegen die alten Migrationen, volle pgTAP-Suite                         | AC-002, AC-001                          |
-| Vault oder Secrets gehen beim Zurücksetzen verloren | nur `public`, `private`, Fotos und Migrationshistorie löschen                    | AC-013, Benachrichtigung nach der Probe |
-| Alte App schreibt in das neue Schema                | `min_app_version` 2026.11.2 sperrt das Schreiben, `CACHE_VERSION` erhöhen (0031) | AC-016, 0031 AC-005, AC-006             |
-| Sicherung lässt sich nicht wiederherstellen         | Wiederherstellungstest vor dem Löschen alter Sicherungen                         | AC-018                                  |
-| Aufräumen entfernt etwas, das noch genutzt wird     | Suche über alle Pakete, volle Tests, e2e-Suite                                   | AC-004, AC-008, AC-009                  |
+| Risiko                                              | Gegenmaßnahme                                                                  | Test                                    |
+| --------------------------------------------------- | ------------------------------------------------------------------------------ | --------------------------------------- |
+| Falsches Projekt wird zurückgesetzt                 | Pflichtangabe der Kennung, Abgleich mit dem verlinkten Projekt, Namensabfrage  | AC-015, Probe in der Vorschau           |
+| Basis weicht vom gebauten Schema ab                 | `db diff` gegen die alten Migrationen, volle pgTAP-Suite                       | AC-002, AC-001                          |
+| Vault oder Secrets gehen beim Zurücksetzen verloren | nur `public`, `private`, Fotos und Migrationshistorie löschen                  | AC-013, Benachrichtigung nach der Probe |
+| Alte App schreibt in das neue Schema                | Weg D: Produktion leer, Geräte laden einmal neu; `CACHE_VERSION` erhöht (0031) | AC-016, 0031 AC-005                     |
+| Sicherung lässt sich nicht wiederherstellen         | Wiederherstellungstest vor dem Löschen alter Sicherungen                       | AC-018                                  |
+| Aufräumen entfernt etwas, das noch genutzt wird     | Suche über alle Pakete, volle Tests, e2e-Suite                                 | AC-004, AC-008, AC-009                  |
 
 ## Umsetzung
 
 - [x] 1. Liste „Entfällt“ aus 0019–0027 hier eintragen (AC-004; beim Bau gegen die Specs prüfen)
-- [ ] 2. Tote Objekte in Datenbank und Code entfernen (AC-004, AC-005, AC-007)
-- [ ] 3. Code-Review, Befunde beheben (AC-006, AC-008)
-- [ ] 4. Migrationen zu neuer Basis zusammenfassen, ADR-0012-Nachtrag, Regeln anpassen (AC-001–AC-003)
-- [ ] 5. Volle e2e-Suite, `/ui-verify`, `/security-check` über die Welle (AC-009–AC-011)
-- [ ] 6. Skript `reset-app-data.mjs`, Probe in der Vorschau (AC-012, AC-015)
+- [x] 2. Tote Objekte in Datenbank und Code entfernen (AC-004, AC-005, AC-007) – durch die Specs
+      0019–0027 und 0031 (REQ-013–REQ-017); Suche am 23.11.2026: die Namen aus „Daten“ stehen in
+      `apps`, `packages` und `scripts` nur noch in Tests, die ihr Fehlen prüfen
+- [x] 3. Code-Review, Befunde beheben (AC-006, AC-008) – Spec 0031
+- [x] 4. ~~Migrationen zu neuer Basis zusammenfassen, ADR-0012-Nachtrag, Regeln anpassen
+      (AC-001–AC-003)~~ – verworfen durch Entscheidung 8 (Weg D)
+- [x] 5. Volle e2e-Suite, `/ui-verify`, `/security-check` über die Welle (AC-009–AC-011) – Spec
+      0031 (Gruppen F und H); volle e2e-Suite in `release.yml` grün
+- [x] 6. Skript `reset-app-data.mjs`, Probe in der Vorschau (AC-012, AC-015) – mit `--data-only`
+      in der Vorschau geprobt (#64); AC-012 verworfen (Entscheidung 8)
       _Stand 23.11.2026:_ Skript mit Tests fertig (`reset-app-data.test.mjs`: Kennung, CI/Terminal,
       verlinktes Projekt, Inhalt der Anweisung). Lokal geprobt: Skript-SQL gegen die lokale
       Datenbank, danach alle Tabellen, Funktionen, `private`, Aufträge und Historie weg, Konten und
       Vault da; `supabase migration up` spielt alle Migrationen wieder ein, pgTAP grün (nach
       `db:reset` mit Seed). Offen: Probe in der Vorschau mit dem Inhaber (braucht `supabase login`).
-- [ ] 7. Mit Enrico: Zeitpunkt, letzte Sicherung, Produktion zurücksetzen, Bootstrap (AC-013, AC-014)
-- [ ] 8. `min_app_version`, Release-PR, Veröffentlichung (AC-016, AC-017)
+- [x] 7. Mit Enrico: Zeitpunkt, letzte Sicherung, Produktion zurücksetzen, Bootstrap (AC-013, AC-014)
+- [x] 8. `min_app_version`, Release-PR, Veröffentlichung (AC-016, AC-017) – Mindestversion bleibt
+      2026.11.1 (Entscheidung 8)
 - [ ] 9. Wiederherstellungstest auf der neuen Basis (AC-018)
       _Nachtrag (Spec 0031, 23.11.2026):_ Schritt 3 ist Spec 0031 (Ultracode-Code-Review). Schritt 4
       legt zusätzlich `supabase/migrations-base.json` an (`replaces: "v2026.11.1"`, `first` = erste
@@ -223,6 +229,21 @@ Abschnitt „Daten“ jeder Spec):
       `version.mjs` die neue Basis einmal zu (0031 REQ-001). Schritt 8 setzt `min_app_version` in der
       neuen Basis auf „2026.11.2“. Die Reihenfolge der Schritte 6 bis 9 steht als Runbook in
       `docs/architecture/betrieb.md`, Abschnitt „Erste produktive Version (0028)“.
+      _Stand 27.11.2026:_ Erster Lauf von Hand (`restore-test.yml` 45944125006, Sicherung vom
+      27.11.) rot beim Einspielen (`data.sql:36`). Die Sicherung ist vollständig (Prüfsumme stimmt).
+      Ursache ist der Test-Aufbau: Supabase hat in der Produktion `auth.custom_oauth_providers` um
+      zwei Spalten erweitert, die das Postgres-Image der festen CLI 3.2.0 noch nicht kennt. Fix:
+      `scripts/backup/align.mjs` liest nur die COPY-Köpfe und ergänzt fehlende Plattform-Spalten und
+      -Tabellen in der Wegwerf-Datenbank als `text` (als `supabase_admin`). `public` und `private`
+      werden nie angepasst. Lokal nachgestellt: ohne Abgleich derselbe Fehler, mit Abgleich
+      vollständig und gleiche Zahlen. Offen: grüner Lauf auf `main` nach der nächsten Veröffentlichung.
 
-- [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web`, `pnpm exec supabase test db`,
+- [x] Nachweis: `pnpm format:check && pnpm check && pnpm build:web`, `pnpm exec supabase test db`,
       `pnpm e2e`, `pnpm e2e:dev` grün
+      _Stand 23.11.2026 (Weg D):_ Sicherung `backup.yml` 45273513499 grün. Produktion mit
+      `reset-app-data.mjs --data-only` geleert: 0 Haushalte, Profile, 5 Aufträge und der Fotospeicher
+      blieben. Release-PR #65 mit Merge-Commit nach `main`; `release.yml` 45276859535 grün (Checks,
+      e2e 6 Shards und dev, Sicherung, Supabase, Web, Prüfung von außen), Tag `v2026.11.2`.
+      `house.kuschel-nest.de/version.json` meldet 2026.11.2. `prod-bootstrap.mjs`: Haushalt
+      „Enrico & Nadja“, Einladung, Startbereiche und Artikelkatalog (keine Starter-Rezepte, 0023)
+      angelegt. Offen: Schritt 9 nach der ersten Nachtsicherung.

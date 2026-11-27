@@ -46,6 +46,8 @@ const NO_CACHE = ['/index.html', '/sw.js', '/register-sw.js', '/version.json'];
 const IMMUTABLE = ['public', 'max-age=31536000', 'immutable'];
 const BUCKET = 'household-media';
 const MAX_PHOTO_BYTES = 2 * 1024 * 1024;
+const VIDEO_BUCKET = 'household-videos';
+const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1']);
 /** Names from net (pg_net) that must never show up in GraphQL, compared without case and `_`. */
@@ -318,6 +320,23 @@ export function checkSeedData(row, environment) {
   );
 }
 
+/**
+ * Spec 0043: the video bucket is private, takes at most 50 MiB and only video/mp4. Missing is red:
+ * the app needs it, and since spec 0048 no backup reads it, so a lost bucket shows up only here.
+ */
+export function checkVideoBucket(bucket) {
+  if (!bucket) return result('Video-Bucket', [`Bucket ${VIDEO_BUCKET} fehlt`]);
+  const problems = [];
+  if (bucket.public !== false) problems.push('ist öffentlich');
+  if (Number(bucket.file_size_limit) !== MAX_VIDEO_BYTES)
+    problems.push('nimmt nicht höchstens 50 MiB an');
+  const types = bucket.allowed_mime_types;
+  if (!Array.isArray(types) || types.length !== 1 || types[0] !== 'video/mp4') {
+    problems.push('nimmt nicht nur video/mp4 an');
+  }
+  return result('Video-Bucket', problems, 'privat, höchstens 50 MiB, nur video/mp4');
+}
+
 /** AC-046: the photo bucket is private, takes at most 2 MiB and only image/jpeg. */
 export function checkPhotoBucket(bucket) {
   if (!bucket) return result('Foto-Bucket', [`Bucket ${BUCKET} fehlt`]);
@@ -421,6 +440,8 @@ function databaseSql({ households, accounts }) {
     `  (select count(*) from auth.users where id = any(${uuidArray(accounts)})) as seed_accounts,`,
     "  (select jsonb_build_object('public', b.public, 'file_size_limit', b.file_size_limit, 'allowed_mime_types', b.allowed_mime_types)",
     `     from storage.buckets b where b.id = '${BUCKET}') as bucket,`,
+    "  (select jsonb_build_object('public', b.public, 'file_size_limit', b.file_size_limit, 'allowed_mime_types', b.allowed_mime_types)",
+    `     from storage.buckets b where b.id = '${VIDEO_BUCKET}') as video_bucket,`,
     `  (select o.name from storage.objects o where o.bucket_id = '${BUCKET}' and o.name is not null`,
     '     order by o.created_at limit 1) as sample_photo',
   ].join('\n');
@@ -593,12 +614,13 @@ export async function runChecks({
 
   const database = ref ? readQuery(supabaseCli, ref, databaseSql(seedIds())) : noRef;
   if (database.error) {
-    for (const name of ['Keine Seed-Daten', 'Foto-Bucket', 'Foto ohne Anmeldung']) {
+    for (const name of ['Keine Seed-Daten', 'Foto-Bucket', 'Video-Bucket', 'Foto ohne Anmeldung']) {
       results.push(result(name, [database.error]));
     }
   } else {
     results.push(checkSeedData(database.row, environment));
     results.push(checkPhotoBucket(database.row.bucket));
+    results.push(checkVideoBucket(database.row.video_bucket));
     const photo = database.row.sample_photo;
     const access =
       typeof photo === 'string' && photo !== ''

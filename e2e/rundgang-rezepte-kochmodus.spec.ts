@@ -23,6 +23,7 @@ import { seedIds } from './seed-ids';
 
 const LASAGNE = seedIds['rec-lasagne'];
 const HALLOUMI = seedIds['rec-halloumi-pfanne'];
+const PFANNKUCHEN = seedIds['rec-pfannkuchen'];
 /** Lasagne's ingredients: i1 = 150 g Rote Linsen, i13 = 40 g Butter (seed order). */
 const LINSEN = nestedSeedId('lasagne-i1');
 
@@ -33,7 +34,7 @@ test('AC-001 / AC-003: "Neue Zutat" starts with the article, then "Menge"; witho
   page,
 }) => {
   await open(page, `/rezept/${LASAGNE}`);
-  await tid(page, 'recipe-ingredients-edit').click();
+  await tid(page, 'recipe-edit').click();
   await tid(page, 'recipe-add-ingredient').click();
   const search = tid(page, 'ingredient-article-search-input');
   await expect(search).toBeFocused();
@@ -52,7 +53,7 @@ test('AC-001 / AC-003: "Neue Zutat" starts with the article, then "Menge"; witho
   await expect(tid(page, 'recipe-ingredients')).toContainText('1 Prise Muskatnuss');
 });
 
-test('AC-004 / AC-005 / AC-007: "Zutat bearbeiten" from the read view saves at once with undo', async ({
+test('AC-004 / AC-005 / AC-007: "Zutat bearbeiten" from the read view opens the edit mode with the row (spec 0037)', async ({
   page,
 }) => {
   await open(page, `/rezept/${LASAGNE}`);
@@ -64,8 +65,9 @@ test('AC-004 / AC-005 / AC-007: "Zutat bearbeiten" from the read view saves at o
   await expect(page.getByText('für 4 Portionen')).toBeVisible();
   await tid(page, 'ingredient-amount').fill('200 g');
   await tid(page, 'ingredient-save').click();
+  await tid(page, 'recipe-edit-save').click();
   await expect(tid(page, `ingredient-amount-${LINSEN}`)).toHaveText('200 g');
-  await expect(toastMessage(page)).toHaveText('Zutat gespeichert');
+  await expect(toastMessage(page)).toHaveText('Gespeichert');
 });
 
 test('AC-008: offline the three entries are greyed out', async ({ page }) => {
@@ -82,14 +84,16 @@ test('AC-008: offline the three entries are greyed out', async ({ page }) => {
 
 test('AC-009 / AC-010: "Abbrechen" and Escape close a section without saving', async ({ page }) => {
   await open(page, `/rezept/${LASAGNE}`);
-  await tid(page, 'recipe-head-edit').click();
+  await tid(page, 'recipe-edit').click();
   await tid(page, 'recipe-head-title').fill('Lasagne neu');
   await page.keyboard.press('Escape');
+  // Spec 0037, AC-005: with changes it asks first.
+  await tid(page, 'confirm-discard-confirm').click();
   await expect(tid(page, 'recipe-title')).toHaveText('Lasagne');
-  await tid(page, 'recipe-steps-edit').click();
-  await expect(tid(page, 'recipe-steps-cancel')).toBeVisible();
-  await tid(page, 'recipe-steps-cancel').click();
-  await expect(tid(page, 'recipe-steps-done')).toBeHidden();
+  await tid(page, 'recipe-edit').click();
+  await expect(tid(page, 'recipe-edit-cancel')).toBeVisible();
+  await tid(page, 'recipe-edit-cancel').click();
+  await expect(tid(page, 'recipe-edit-save')).toBeHidden();
 });
 
 test('AC-013: ingredients without group first, then each group under its heading', async ({
@@ -102,7 +106,7 @@ test('AC-013: ingredients without group first, then each group under its heading
 
 test('AC-015 / AC-016: a step timer of 1 to 600 minutes', async ({ page }) => {
   await open(page, `/rezept/${LASAGNE}`);
-  await tid(page, 'recipe-steps-edit').click();
+  await tid(page, 'recipe-edit').click();
   const menu = page.locator('[data-testid^="recipe-step-menu-"]').first();
   await menu.click();
   await page.locator('[role="menuitem"]').filter({ hasText: 'Bearbeiten' }).click();
@@ -111,7 +115,7 @@ test('AC-015 / AC-016: a step timer of 1 to 600 minutes', async ({ page }) => {
   await expect(page.getByText('1 bis 600 Minuten')).toBeVisible();
   await tid(page, 'recipe-step-sheet-timer').fill('35');
   await tid(page, 'recipe-step-sheet-apply').click();
-  await tid(page, 'recipe-steps-done').click();
+  await tid(page, 'recipe-edit-save').click();
   await expect(tid(page, 'recipe-steps')).toContainText('35 Min');
 });
 
@@ -121,7 +125,7 @@ test('AC-031 / AC-032 / AC-033: links are checked, saved and open in a new tab',
 }) => {
   await open(page, `/rezept/${LASAGNE}`);
   await expect(tid(page, 'recipe-links')).toContainText('Noch keine Links.');
-  await tid(page, 'recipe-links-edit').click();
+  await tid(page, 'recipe-edit').click();
   await tid(page, 'recipe-links-add').click();
   await tid(page, 'recipe-link-url').fill('javascript:alert(1)');
   await tid(page, 'recipe-link-sheet-apply').click();
@@ -129,7 +133,7 @@ test('AC-031 / AC-032 / AC-033: links are checked, saved and open in a new tab',
   await tid(page, 'recipe-link-url').fill('chefkoch.de/r/1');
   await tid(page, 'recipe-link-label').fill('Omas Variante');
   await tid(page, 'recipe-link-sheet-apply').click();
-  await tid(page, 'recipe-links-done').click();
+  await tid(page, 'recipe-edit-save').click();
   const row = tid(page, 'recipe-link-0');
   await expect(row).toContainText('Omas Variante');
   await expect(row).toContainText('chefkoch.de');
@@ -157,29 +161,38 @@ test('AC-037 / AC-039 / AC-044: the cooking mode shows the step as text and the 
   await expect(tid(page, 'cook-step-index')).toHaveText('Schritt 1 von 6');
 });
 
-test('AC-045 / AC-046: "Neu" offers exactly Rezept, Sammlung, Restaurant on both views', async ({
+test('AC-046 / AC-005, AC-007 (0054): each view has its own "+", without a menu', async ({
   page,
 }) => {
   await open(page, '/rezepte?ansicht=restaurants');
-  await tid(page, 'recipe-new').click();
-  await expect(page.locator('[role="menuitem"]')).toHaveText(['Rezept', 'Sammlung', 'Restaurant']);
+  await expect(tid(page, 'recipe-new')).toHaveCount(0);
+  await tid(page, 'restaurant-new').click();
+  await expect(page.locator('[role="menuitem"]')).toHaveCount(0);
+  await expect(tid(page, 'restaurant-sheet')).toBeVisible();
 });
 
-test('AC-049: deleting names the planned entries that go', async ({ page }) => {
-  await open(page, `/rezept/${HALLOUMI}`);
+test('AC-049: deleting asks first and names the planned entries that go (spec 0036: asks first)', async ({
+  page,
+}) => {
+  // Pfannkuchen, so Halloumi-Pfanne stays for the next test (there is no undo any more).
+  await open(page, `/rezept/${PFANNKUCHEN}`);
   await tid(page, 'recipe-plan').click();
   await tid(page, 'plan-recipe-week-next').click();
   await tid(page, 'plan-recipe-save').click();
   await tid(page, 'recipe-more').click();
   await page.locator('[role="menuitem"]').filter({ hasText: 'Löschen' }).click();
+  await expect(tid(page, 'confirm-delete-recipe')).toContainText('Pfannkuchen');
+  await tid(page, 'confirm-delete-recipe-cancel').click();
+  await expect(tid(page, 'recipe-title')).toHaveText('Pfannkuchen');
+  await tid(page, 'recipe-more').click();
+  await page.locator('[role="menuitem"]').filter({ hasText: 'Löschen' }).click();
+  await tid(page, 'confirm-delete-recipe-confirm').click();
   await expect(toastMessage(page)).toContainText(
-    'Halloumi-Pfanne gelöscht · 1 geplanter Eintrag entfällt',
+    'Pfannkuchen gelöscht · 1 geplanter Eintrag entfällt',
   );
-  // Deleting leads back by itself; "Rückgängig" brings the recipe back for the next test.
+  // Deleting leads back by itself and there is no undo.
   await expect(tid(page, 'recipe-more')).toHaveCount(0);
-  await tid(page, 'toast-action').click();
-  await open(page, `/rezept/${HALLOUMI}`);
-  await expect(tid(page, 'recipe-title')).toHaveText('Halloumi-Pfanne');
+  await expect(tid(page, 'toast-action')).toHaveCount(0);
 });
 
 test('Decision 15: deleting asks about the ingredients of the entries that go and takes them off', async ({
@@ -218,7 +231,7 @@ test('Decision 15: deleting asks about the ingredients of the entries that go an
   await tid(page, 'recipe-more').click();
   await page.locator('[role="menuitem"]').filter({ hasText: 'Löschen' }).click();
   await expect(tid(page, 'recipe-delete-dialog')).toContainText('Halloumi-Pfanne löschen?');
-  // AC-049 before left its entry next week after "Rückgängig": one or two entries go.
+  // Earlier tests of this file may have planned Halloumi-Pfanne next week too: one or more entries go.
   await expect(tid(page, 'recipe-delete-message')).toContainText(
     /^Für (1 geplanten Eintrag|\d+ geplante Einträge) (steht 1 Zutat|stehen \d+ Zutaten) auf der Einkaufsliste\.$/,
   );

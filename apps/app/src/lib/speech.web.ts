@@ -2,6 +2,7 @@
 // streams straight to Azure Speech with a short-lived token from the edge function
 // `speech-token`. The Foundry key never reaches the browser. The Speech SDK is large, so it is
 // loaded only when the microphone is pressed.
+import { isDictationStopWord } from '@housekeeping/core';
 import { AI_UNAVAILABLE_MESSAGE, getSpeechToken } from '@housekeeping/api';
 
 import {
@@ -11,8 +12,11 @@ import {
   type SpeechSession,
 } from './speech-common';
 
+// Spec 0040, AC-009: says where the switch is; typing goes on meanwhile.
 const MIC_DENIED_MESSAGE =
-  'Ohne Freigabe fürs Mikrofon geht die Spracheingabe nicht. Du kannst sie in den Browser-Einstellungen erlauben.';
+  'Ohne Freigabe fürs Mikrofon geht die Spracheingabe nicht. Erlaube sie in den Einstellungen – ' +
+  'auf dem iPhone unter Einstellungen › Apps › Safari › Mikrofon, am Computer über das Symbol ' +
+  'neben der Adresse. Tippen geht weiter.';
 const NO_MIC_MESSAGE = 'Kein Mikrofon gefunden';
 
 /** Asks for the microphone once, so a refusal gets a clear message instead of a dead session. */
@@ -48,18 +52,23 @@ export async function startSpeech(handlers: SpeechHandlers): Promise<SpeechSessi
 
   const finals: string[] = [];
   let partial = '';
-  const transcript = () => [...finals, partial].filter((part) => part !== '').join(' ');
+  // A trailing „Ende“ still being recognised is the stop word on its way; it never shows.
+  const transcript = () =>
+    [...finals, isDictationStopWord(partial) ? '' : partial]
+      .filter((part) => part !== '')
+      .join(' ');
 
   recognizer.recognizing = (_sender, event) => {
     partial = event.result.text;
     handlers.onTranscript(transcript());
   };
   recognizer.recognized = (_sender, event) => {
-    if (event.result.reason === sdk.ResultReason.RecognizedSpeech && event.result.text) {
-      finals.push(event.result.text);
-    }
+    const said = event.result.reason === sdk.ResultReason.RecognizedSpeech ? event.result.text : '';
+    const stopWord = isDictationStopWord(said);
+    if (said && !stopWord) finals.push(said);
     partial = '';
     handlers.onTranscript(transcript());
+    if (stopWord) handlers.onStopWord?.();
   };
   recognizer.canceled = (_sender, event) => {
     if (event.reason !== sdk.CancellationReason.Error) return;

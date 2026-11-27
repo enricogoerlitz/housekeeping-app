@@ -4,7 +4,6 @@ import {
   duplicatePackingBag,
   movePackingBagItem,
   setPackingBagMember,
-  snapshot,
   useMembers,
   usePackingBagItems,
   usePackingBags,
@@ -33,12 +32,14 @@ import {
   Text,
   TextField,
   toast,
+  openKeyboardNow,
 } from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { ScrollView, View } from 'react-native';
 
-import { undoAction, useOnlineOnly } from '@/features/shell/offline';
+import { confirmFirst } from '@/features/shell/confirm-dialog';
+import { useOnlineOnly } from '@/features/shell/offline';
 import { useAddressedId } from '@/lib/addressed';
 import { useOriginBack, usePageParams } from '@/lib/url-state';
 
@@ -83,19 +84,19 @@ function BagActions(props: {
       toast.show({ message: `„${name}“ angelegt` });
       return;
     }
-    const restore = snapshot();
-    try {
-      deletePackingBag(bag.id);
-    } catch (caught) {
-      toast.show({ message: messageOf(caught) });
-      return;
-    }
-    props.onDeleted();
-    toast.show({
-      message: `„${bag.name}“ gelöscht`,
-      actionLabel: 'Rückgängig',
-      onAction: undoAction(restore),
-      duration: 5000,
+    confirmFirst({
+      title: `„${bag.name}“ löschen?`,
+      confirmLabel: 'Löschen',
+      onConfirm: () => {
+        try {
+          deletePackingBag(bag.id);
+        } catch (caught) {
+          return messageOf(caught);
+        }
+        props.onDeleted();
+        toast.show({ message: `„${bag.name}“ gelöscht` });
+      },
+      testID: 'confirm-delete-bag',
     });
   };
 
@@ -106,7 +107,11 @@ function BagActions(props: {
         label="Reisetasche umbenennen"
         disabled={online.disabled}
         hint={online.hint}
-        onPress={() => setRenaming(true)}
+        onPress={() => {
+          // The keyboard opens with the tap, the window does not wait for it (Nachklick 27.11., B-01).
+          openKeyboardNow();
+          setRenaming(true);
+        }}
         testID="bag-rename"
       />
       <Menu<BagAction>

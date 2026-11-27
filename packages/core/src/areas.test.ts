@@ -264,4 +264,11 @@ describe('areaDeleteQuestion', () => {
       '1 Artikel steht danach unter ‚Ohne Bereich‘.',
     );
   });
+
+  it('spec 0036, Entscheidung 1: an empty area is asked about too, without an article count', () => {
+    expect(areaDeleteQuestion('Tierbedarf', 0)).toEqual({
+      title: 'Tierbedarf löschen?',
+      message: 'Der Bereich ist leer.',
+    });
+  });
 });

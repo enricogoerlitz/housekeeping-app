@@ -294,3 +294,63 @@ export async function loadRecipeIndex(
     ],
   }));
 }
+
+/** PostgREST answers at most this many rows (max_rows in config.toml). */
+const MAX_ARTICLES = 1000;
+
+const CatalogRow = z.object({ name: text, synonyms: textList });
+const UsageRow = z.object({ cuisine: optionalText, tags: textList });
+const AreaRow = z.object({ name: text });
+/** A household has a few dozen areas at most. */
+const MAX_AREAS = 200;
+
+export interface DraftContext {
+  /** The household's articles: the draft names its ingredients like them (spec 0040, AC-002). */
+  artikel: { name: string; synonyme?: string[] }[];
+  /** Cuisines and tags in use, so the draft speaks the household's words. */
+  kuechen: string[];
+  schlagworte: string[];
+  /** The household's areas: a new article gets one of them (spec 0055, REQ-009). */
+  bereiche: string[];
+}
+
+/** The context of "Mit KI ausfüllen" (spec 0040): article names and synonyms, cuisines, tags. */
+export async function loadDraftContext(
+  client: UserClient,
+  householdId: string,
+): Promise<DraftContext> {
+  const [articles, recipes, areas] = await Promise.all([
+    read(
+      client
+        .from('articles')
+        .select('name, synonyms')
+        .eq('household_id', householdId)
+        .limit(MAX_ARTICLES),
+      CatalogRow,
+    ),
+    read(
+      client
+        .from('recipes')
+        .select('cuisine, tags')
+        .eq('household_id', householdId)
+        .limit(MAX_RECIPES),
+      UsageRow,
+    ),
+    read(
+      client.from('areas').select('name').eq('household_id', householdId).limit(MAX_AREAS),
+      AreaRow,
+    ),
+  ]);
+  const distinct = (values: (string | undefined)[]) =>
+    [...new Set(values.map((value) => value?.trim() ?? '').filter(Boolean))].sort();
+  return {
+    artikel: articles.map((article) =>
+      article.synonyms.length > 0
+        ? { name: article.name, synonyme: article.synonyms }
+        : { name: article.name },
+    ),
+    kuechen: distinct(recipes.map((recipe) => recipe.cuisine)),
+    schlagworte: distinct(recipes.flatMap((recipe) => recipe.tags)),
+    bereiche: distinct(areas.map((area) => area.name)),
+  };
+}

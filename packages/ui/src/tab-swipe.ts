@@ -1,6 +1,7 @@
 // Decisions of the swipe between view tabs on phones (spec 0029, REQ-003, decision 6). Pure, so the
 // thresholds are tested in Node; the component only feeds in the responder's numbers.
 
+import type { ReactNode } from 'react';
 import type { ViewStyle } from 'react-native';
 
 import { claimsSwipe } from './swipe-step';
@@ -79,6 +80,23 @@ export function tabSwipeOffset(dx: number, position: Pick<TabSwipePosition, 'ind
   return Math.sign(dx) * Math.min(TAB_SWIPE_RUBBER_MAX, Math.abs(dx) * RUBBER);
 }
 
+/**
+ * Which neighbour shows beside the content while it stands at `offset` (spec 0034, REQ-007): the
+ * next tab when it moved to the left, the previous one to the right, none at rest or past the ends.
+ */
+export function tabSwipePreviewStep(
+  offset: number,
+  position: Pick<TabSwipePosition, 'index' | 'count'>,
+): -1 | 1 | undefined {
+  if (offset === 0 || !hasNeighbour(offset, position)) return undefined;
+  return offset < 0 ? 1 : -1;
+}
+
+/** Where the content goes on release: back to 0, or a whole width on towards the new tab. */
+export function tabSwipeSettle(step: -1 | 0 | 1, width: number): number {
+  return step === 0 ? 0 : -step * width;
+}
+
 /** On release: +1 to the next tab, -1 to the previous one, 0 to spring back. */
 export function tabSwipeStep(dx: number, vx: number, position: TabSwipePosition): -1 | 0 | 1 {
   if (dx === 0 || !hasNeighbour(dx, position)) return 0;
@@ -97,13 +115,22 @@ export interface TabSwipe {
   count: number;
   /** Same as a tap on the neighbouring tab. */
   onStep: (step: -1 | 1) => void;
+  /**
+   * The neighbour tab `step` away, drawn beside the content while the finger moves it (spec 0034,
+   * REQ-007); undefined past the ends. Without it the new tab slides in after the swipe.
+   */
+  preview?: (step: -1 | 1) => ReactNode;
 }
 
-/** The swipe for a row of view tabs: a step chooses the neighbour like a tap would. */
+/**
+ * The swipe for a row of view tabs: a step chooses the neighbour like a tap would. `preview`
+ * draws the page as it would show a tab; it is drawn beside the content during the swipe.
+ */
 export function tabSwipe<T>(
   options: readonly { value: T }[],
   value: T,
   onChange: (next: T) => void,
+  preview?: (tab: T) => ReactNode,
 ): TabSwipe {
   return {
     index: options.findIndex((option) => option.value === value),
@@ -112,6 +139,12 @@ export function tabSwipe<T>(
       const next = neighbourTab(options, value, step);
       if (next !== undefined) onChange(next);
     },
+    preview: preview
+      ? (step) => {
+          const next = neighbourTab(options, value, step);
+          return next === undefined ? undefined : preview(next);
+        }
+      : undefined,
   };
 }
 

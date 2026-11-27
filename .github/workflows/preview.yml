@@ -9,7 +9,7 @@
 # - One run at a time; a newer run waits and replaces any run still waiting (AC-069).
 # - The preview project is reset on every run (`db reset --remote --no-seed`, the one place the
 #   check "Konventionen" allows it, AC-010), then gets the preview seed without test accounts and
-#   the invitations of PREVIEW_INVITE_EMAILS (AC-014). Push stays off in the preview (decision 8).
+#   the invitations of PREVIEW_INVITE_EMAILS (AC-014).
 # - Jobs with an environment install no packages; the build job, which does, has no environment
 #   and no secret (decision 3).
 name: Vorschau
@@ -50,7 +50,6 @@ jobs:
       # Public values only (they end up in the bundle anyway).
       EXPO_PUBLIC_SUPABASE_URL: ${{ vars.PREVIEW_SUPABASE_URL }}
       EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.PREVIEW_SUPABASE_PUBLISHABLE_KEY }}
-      EXPO_PUBLIC_VAPID_PUBLIC_KEY: ${{ vars.PREVIEW_VAPID_PUBLIC_KEY }}
       EXPO_PUBLIC_APP_VERSION: vorschau
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -63,9 +62,9 @@ jobs:
           cache: pnpm
       - name: Variablen vorhanden
         run: |
-          for name in EXPO_PUBLIC_SUPABASE_URL EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY EXPO_PUBLIC_VAPID_PUBLIC_KEY; do
+          for name in EXPO_PUBLIC_SUPABASE_URL EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY; do
             if [ -z "${!name}" ]; then
-              echo "::error::Variable für $name fehlt (PREVIEW_SUPABASE_URL, PREVIEW_SUPABASE_PUBLISHABLE_KEY, PREVIEW_VAPID_PUBLIC_KEY)"
+              echo "::error::Variable für $name fehlt (PREVIEW_SUPABASE_URL, PREVIEW_SUPABASE_PUBLISHABLE_KEY)"
               exit 1
             fi
           done
@@ -135,16 +134,20 @@ jobs:
         env:
           PREVIEW_INVITE_EMAILS: ${{ secrets.PREVIEW_INVITE_EMAILS }}
         run: node scripts/preview-invites.mjs
+      - name: Projekt neu starten
+        # The pg_cron launcher keeps the job list it loaded at its start across the reset: on
+        # 27.11.2026 it still ran jobs deleted long ago and none of the current ones. A restart
+        # (Management API) starts it fresh; the step waits until the project is ACTIVE_HEALTHY
+        # (at most 10 min, else red) and prints the jobs in cron.job (red without any).
+        run: node scripts/ci/supabase-restart.mjs
       - name: Auth- und API-Konfiguration
         run: supabase config push --remote="$SUPABASE_PROJECT_REF" --yes
       - name: Functions
-        # Docker bundling (no --use-api), so the frozen deno.lock of push-send applies (AC-074).
+        # Docker bundling (no --use-api), as the deploy of every function.
         run: supabase functions deploy --remote="$SUPABASE_PROJECT_REF" --prune --yes
       - name: Secrets der Functions
-        # Only the allowed origin; no FOUNDRY_* and no push values in the preview (decision 8).
-        # Fixed values of [edge_runtime.secrets] in config.toml are pushed too; every one is
-        # overridden here so no local value (VAPID_SUBJECT = https://localhost) reaches the project.
-        run: supabase secrets set --remote="$SUPABASE_PROJECT_REF" --yes "ALLOWED_ORIGINS=$PREVIEW_WEB_ORIGIN" "VAPID_SUBJECT=$PREVIEW_WEB_ORIGIN"
+        # Only the allowed origin; no FOUNDRY_* in the preview (decision 8).
+        run: supabase secrets set --remote="$SUPABASE_PROJECT_REF" --yes "ALLOWED_ORIGINS=$PREVIEW_WEB_ORIGIN"
 
   web-vorschau:
     name: Web Vorschau

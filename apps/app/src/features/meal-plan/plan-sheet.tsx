@@ -7,6 +7,7 @@ import {
 } from '@housekeeping/api';
 import {
   defaultPlanChoice,
+  slotSideFor,
   pagePlanChoice,
   planButtonLabel,
   plannedNotice,
@@ -59,6 +60,15 @@ export function PlanSheet(props: {
   extra?: ReactNode | ((choice: PlanChoice) => ReactNode);
   /** "Wer isst mit?"; an activity has none (spec 0024, REQ-006). Default true. */
   eaters?: boolean;
+  /**
+   * Spec 0041, REQ-005: an activity's "Wer ist dabei?", which may stay empty (`optional`).
+   */
+  eatersLabel?: string;
+  eatersOptional?: boolean;
+  /** The button instead of "Am Do 26.11. Abend einplanen" (a series, review 0003, B-11). */
+  actionLabel?: (choice: PlanChoice) => string | undefined;
+  /** The notice after planning instead of "Am Do 26.11. Abend eingeplant" (a series, spec 0041). */
+  notice?: (choice: PlanChoice) => string | undefined;
   /** The Tageszeit it opens with: the last ("Abend"), or the first for an activity (REQ-006). */
   slot?: 'first' | 'last';
   /** Adds the entry; a thrown error is shown in the window. */
@@ -76,7 +86,13 @@ export function PlanSheet(props: {
 
   const [weekOffset, setWeekOffset] = useState(0);
   const [choice, setChoice] = useState<PlanChoice>(() =>
-    defaultPlanChoice(today, household.mealSlots, members, props.slot),
+    defaultPlanChoice(
+      today,
+      household.mealSlots,
+      members,
+      // Breakfast opens with the first Tageszeit (I-16).
+      props.slot ?? slotSideFor(recipe?.course),
+    ),
   );
   // AC-055, AC-056: members that arrive later count while the eaters are untouched.
   const [touched, setTouched] = useState(false);
@@ -110,7 +126,8 @@ export function PlanSheet(props: {
   const split = recipe ? splitForEaters(recipe.id, choice.eaterIds, choice.guests) : undefined;
   const misfits = split ? split.misfitMemberIds.flatMap((id) => membersById[id] ?? []) : [];
   const withEaters = props.eaters !== false;
-  const noEaters = withEaters && choice.eaterIds.length + choice.guests === 0;
+  const noEaters =
+    withEaters && !props.eatersOptional && choice.eaterIds.length + choice.guests === 0;
 
   const update = (next: PlanChoice, counted = false) => {
     // New eaters or guests start the counters over; a choice made in the counters counts on.
@@ -161,7 +178,7 @@ export function PlanSheet(props: {
     }
     props.onClose();
     toast.show({
-      message: plannedNotice(date, slotName, today),
+      message: props.notice?.(choice) ?? plannedNotice(date, slotName, today),
       actionLabel: 'Ansehen',
       // AC-035: the calendar opens the week of that day; "Vorgemerkt" opens the calendar.
       onAction: () =>
@@ -178,7 +195,7 @@ export function PlanSheet(props: {
       testID="plan-recipe-sheet"
       actions={{
         primary: {
-          label: planButtonLabel(choice.date, slotName),
+          label: props.actionLabel?.(choice) ?? planButtonLabel(choice.date, slotName),
           icon: 'calendar-plus',
           disabled: online.disabled || noEaters || !choice.slotId,
           hint:
@@ -271,6 +288,7 @@ export function PlanSheet(props: {
         {typeof props.extra === 'function' ? props.extra(choice) : props.extra}
         {withEaters ? (
           <EaterPicker
+            label={props.eatersLabel}
             members={members}
             eaterIds={choice.eaterIds}
             guests={choice.guests}

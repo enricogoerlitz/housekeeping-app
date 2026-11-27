@@ -4,24 +4,22 @@ import {
   setActivityPhoto,
   toggleActivityFavorite,
   useActivity,
+  useActivityKindsById,
   useCurrentMember,
   useHousehold,
   useMembers,
   usePlanEntries,
   useToday,
 } from '@housekeeping/api';
-import { isWebUrl, visitsOf, type Activity, type Id } from '@housekeeping/core';
 import {
-  Button,
-  EmptyState,
-  Icon,
-  IconButton,
-  Menu,
-  openExternalLink,
-  Row,
-  Stack,
-  Text,
-} from '@housekeeping/ui';
+  activityImageContext,
+  showsRoute,
+  isWebUrl,
+  visitsOf,
+  type Activity,
+  type Id,
+} from '@housekeeping/core';
+import { Button, EmptyState, Icon, IconButton, Menu, Row, Stack, Text } from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
 import { View } from 'react-native';
@@ -35,10 +33,12 @@ import { useOnlineOnly } from '@/features/shell/offline';
 import { DetailPhotoBlock } from '@/features/shell/own-photo';
 import { useDeletePlace } from '@/features/shell/use-delete-place';
 import { VisitList, VisitsLine, useVisitsJump, type SectionRef } from '@/features/shell/visits';
+import { openLink } from '@/lib/open-link';
+import { shareTarget } from '@/lib/share';
 
 import { ActivityFormSheet } from './activity-form';
-import { ACTIVITY_ICON } from './activity-photo';
-import { activityVisitsLabel, hasPlace } from './labels';
+import { useActivityIcon } from './activity-photo';
+import { activityVisitsLabel } from './labels';
 
 /** The windows of an activity's detail; they stand in the address (spec 0019, REQ-013). */
 export type ActivityWindow = 'bearbeiten' | 'einplanen';
@@ -100,6 +100,9 @@ export function ActivityDetail(props: ActivityDetailProps) {
 function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity }) {
   const { activity } = props;
   const online = useOnlineOnly();
+  const kindsById = useActivityKindsById();
+  const icon = useActivityIcon(activity);
+  const kind = activity.kindId === undefined ? undefined : kindsById[activity.kindId];
   const me = useCurrentMember();
   const members = useMembers();
   const household = useHousehold();
@@ -127,6 +130,22 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
       onPress={() => toggleActivityFavorite(activity.id)}
     />
   );
+  // "Teilen" (spec 0047, REQ-001): only the link to the page; works offline.
+  const share = () => void shareTarget({ kind: 'activity', id: activity.id });
+  // Spec 0037 and review 0003 (B-06): editing is the pencil at the top right, as on a recipe. The
+  // window opens without the keyboard (Nachklick 27.11., Ruckeln).
+  const editButton = (
+    <IconButton
+      icon="pencil"
+      size={44}
+      label="Bearbeiten"
+      disabled={online.disabled}
+      hint={online.hint}
+      onPress={() => props.onWindow('bearbeiten')}
+      testID="activity-edit"
+    />
+  );
+  // "Teilen" stands at the photo, so ⋯ holds only "Löschen" (spec 0054, REQ-003).
   const more = (
     <Menu<'delete'>
       trigger="icon"
@@ -136,7 +155,7 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
       options={[
         { value: 'delete', label: 'Löschen', disabled: online.disabled, hint: online.hint },
       ]}
-      onChange={remove}
+      onChange={() => remove()}
       testID="activity-more"
     />
   );
@@ -150,6 +169,7 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
       right={
         <Row gap={4}>
           {favorite}
+          {editButton}
           {more}
         </Row>
       }
@@ -171,6 +191,7 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
             )}
             <Row gap={4}>
               {favorite}
+              {editButton}
               {more}
             </Row>
           </Row>
@@ -179,9 +200,11 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
         <DetailPhotoBlock
           photoPath={activity.photoPath}
           name={activity.name}
-          placeholderIcon={ACTIVITY_ICON}
+          aiContext={activityImageContext(activity, kind?.name)}
+          placeholderIcon={icon}
           onChange={(photo) => setActivityPhoto(activity.id, photo)}
           onRemove={() => removeActivityPhoto(activity.id)}
+          onShare={share}
           testPrefix="activity"
         />
 
@@ -189,6 +212,18 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
           {props.onBack ? null : (
             <Text variant="title" heading testID="activity-title">
               {activity.name}
+            </Text>
+          )}
+          {kind ? (
+            <Row gap={6}>
+              <Icon name={icon} size={16} color="muted" />
+              <Text variant="small" color="muted" testID="activity-kind">
+                {activity.remembered ? kind.name : `${kind.name} · nicht gemerkt`}
+              </Text>
+            </Row>
+          ) : activity.remembered ? null : (
+            <Text variant="small" color="muted" testID="activity-kind">
+              Nicht gemerkt
             </Text>
           )}
           {activity.description ? (
@@ -226,8 +261,8 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
             </Text>
           ) : null}
           <Row gap={10} wrap style={{ marginTop: 4 }}>
-            {/* AC-015: without a place there is nowhere to route to. */}
-            {hasPlace(activity) ? (
+            {/* Only with a map link (spec 0036, AC-018; before AC-015: with a place). */}
+            {showsRoute(activity) ? (
               <Button
                 label="Route"
                 icon="map-pin"
@@ -240,7 +275,7 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
                 label="Webseite"
                 icon="external-link"
                 variant="secondary"
-                onPress={() => openExternalLink(website)}
+                onPress={() => openLink(website)}
                 testID="activity-website-open"
               />
             ) : null}
@@ -252,15 +287,6 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
               hint={online.hint}
               onPress={() => props.onWindow('einplanen')}
               testID="activity-plan"
-            />
-            <Button
-              label="Bearbeiten"
-              icon="pencil"
-              variant="secondary"
-              disabled={online.disabled}
-              hint={online.hint}
-              onPress={() => props.onWindow('bearbeiten')}
-              testID="activity-edit"
             />
           </Row>
         </Stack>

@@ -274,7 +274,7 @@ select is((select count(*)::int from public.households where id in (tests.fx('ho
 -- Fill "WG Köln": a row in every table that holds household data, photos in the storage.
 insert into fx (key) values ('slot'), ('area'), ('article'), ('store'), ('recipe'), ('collection'),
   ('restaurant'), ('activity'), ('trip'), ('feedback'), ('chore'), ('event'), ('entry'),
-  ('item'), ('bag'), ('bag_item'), ('list_bag'), ('packing_item');
+  ('item'), ('bag'), ('bag_item'), ('list_bag'), ('packing_item'), ('series');
 update public.households set meal_slots = jsonb_build_array(jsonb_build_object('id', tests.fx('slot'), 'name', 'Abend', 'sort', 0))
 where id = tests.fx('wg');
 insert into public.areas (id, household_id, name) values (tests.fx('area'), tests.fx('wg'), 'Obst');
@@ -295,6 +295,10 @@ insert into public.activities (id, household_id, name, name_key, created_by)
 values (tests.fx('activity'), tests.fx('wg'), 'Eislaufen', 'eislaufen', tests.fx('enrico'));
 insert into public.activity_favorites (household_id, activity_id, member_id) values (tests.fx('wg'), tests.fx('activity'), tests.fx('enrico'));
 insert into public.activity_ratings (household_id, activity_id, member_id, stars) values (tests.fx('wg'), tests.fx('activity'), tests.fx('enrico'), 3);
+insert into public.activity_series (id, household_id, activity_id, rule, starts_on, slot_id)
+values (tests.fx('series'), tests.fx('wg'), tests.fx('activity'), '{"type": "yearly"}', '2027-03-14', tests.fx('slot'));
+insert into public.activity_series_exceptions (household_id, series_id, on_date)
+values (tests.fx('wg'), tests.fx('series'), '2028-03-14');
 insert into public.trips (id, household_id, from_on, to_on)
 values (tests.fx('trip'), tests.fx('wg'), '2026-12-01', '2026-12-03');
 insert into public.trip_members (household_id, trip_id, member_id) values (tests.fx('wg'), tests.fx('trip'), tests.fx('enrico'));
@@ -307,6 +311,8 @@ insert into public.chore_events (id, household_id, chore_id, title, kind, done_o
 values (tests.fx('event'), tests.fx('wg'), tests.fx('chore'), 'Bad putzen', 'done', current_date, tests.fx('enrico'));
 insert into public.meal_plan_entries (id, household_id, date, slot_id, kind, recipe_id, cook_id)
 values (tests.fx('entry'), tests.fx('wg'), current_date + 1, tests.fx('slot'), 'recipe', tests.fx('recipe'), tests.fx('enrico'));
+insert into public.recurring_items (household_id, article_id, rule, starts_on)
+values (tests.fx('wg'), tests.fx('article'), '{"type": "monthly", "day": 1}', '2026-12-01');
 insert into public.shopping_items (id, household_id, article_id) values (tests.fx('item'), tests.fx('wg'), tests.fx('article'));
 insert into public.shopping_contributions (household_id, item_id) values (tests.fx('wg'), tests.fx('item'));
 insert into public.packing_bags (id, household_id, name, member_id) values (tests.fx('bag'), tests.fx('wg'), 'Kulturbeutel', tests.fx('enrico'));
@@ -316,12 +322,9 @@ values (tests.fx('list_bag'), tests.fx('wg'), tests.fx('trip'), tests.fx('bag'),
 insert into public.packing_items (id, household_id, list_bag_id, name)
 values (tests.fx('packing_item'), tests.fx('wg'), tests.fx('list_bag'), 'Zahnbürste');
 insert into public.household_invitations (household_id, email, invited_by) values (tests.fx('wg'), 'tom@example.com', tests.fx('enrico'));
-insert into private.notification_deliveries (dedupe_key, profile_id, household_id, kind, due_at)
-values ('daily:wg', tests.fx('enrico'), tests.fx('wg'), 'daily_summary', now());
 insert into private.deletions (household_id, kind, target_id, deleted_by, snapshot)
 values (tests.fx('wg'), 'recipe', gen_random_uuid(), tests.fx('enrico'), '{}');
 insert into public.deleted_records (household_id, table_name, record_id) values (tests.fx('wg'), 'recipes', gen_random_uuid());
-select tests.add_push_subscription(tests.fx('enrico'), 'laptop');
 -- The same in "Kuschelnest", which must stay.
 insert into public.recipes (household_id, title) values (tests.fx('home'), 'Mango-Curry');
 
@@ -405,10 +408,9 @@ select ok(not pg_temp.admits('tom@example.com'),
   'AC-020: no invitation lets Tom in any more');
 select ok(
   exists (select 1 from public.profiles where id = tests.fx('enrico'))
-  and exists (select 1 from private.push_subscriptions where profile_id = tests.fx('enrico'))
   and (select count(*) from public.recipes where household_id = tests.fx('home')) = 1
   and exists (select 1 from storage.objects where bucket_id = 'household-media' and name like tests.fx('home') || '/%'),
-  'AC-020: account, profile, devices and the other household with its photos stay');
+  'AC-020: account, profile and the other household with its photos stay');
 select tests.authenticate_as(tests.fx('enrico'));
 select throws_ok(format('select public.delete_household(%L)', tests.fx('wg')),
   '42501', 'not_member', 'AC-021: a repeated call after deleting is not_member');

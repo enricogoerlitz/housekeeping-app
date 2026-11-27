@@ -3,7 +3,6 @@ import {
   removeBagFromPackingList,
   removePackingItem,
   setPacked,
-  snapshot,
   useMembersById,
 } from '@housekeeping/api';
 import { packingItemLabel, type PackingItem, type PackingSection } from '@housekeeping/core';
@@ -27,7 +26,8 @@ import {
 import { useMemo, useState } from 'react';
 import { View } from 'react-native';
 
-import { undoAction, useOnlineOnly } from '@/features/shell/offline';
+import { confirmFirst } from '@/features/shell/confirm-dialog';
+import { useOnlineOnly } from '@/features/shell/offline';
 
 import { messageOf } from './packing-labels';
 import { TripAddItemSheet } from './trip-add-item-sheet';
@@ -77,20 +77,21 @@ export function TripSection(props: { section: PackingSection }) {
     announce: (item, packed) => `${item.name} ${packed ? 'gepackt' : 'wieder offen'}`,
   });
 
+  // Asks first (spec 0036, Entscheidung 1).
   const removeItem = (item: PackingItem) => {
     if (online.disabled) return;
-    const restore = snapshot();
-    try {
-      removePackingItem(item.id);
-    } catch (failure) {
-      toast.show({ message: messageOf(failure) });
-      return;
-    }
-    toast.show({
-      message: `„${item.name}“ entfernt`,
-      actionLabel: 'Rückgängig',
-      onAction: undoAction(restore),
-      duration: 5000,
+    confirmFirst({
+      title: `„${item.name}“ entfernen?`,
+      confirmLabel: 'Entfernen',
+      onConfirm: () => {
+        try {
+          removePackingItem(item.id);
+        } catch (failure) {
+          return messageOf(failure);
+        }
+        toast.show({ message: `„${item.name}“ entfernt` });
+      },
+      testID: 'confirm-remove-packing-item',
     });
   };
 
@@ -116,18 +117,18 @@ export function TripSection(props: { section: PackingSection }) {
       return;
     }
     if (online.disabled) return;
-    const restore = snapshot();
-    try {
-      removeBagFromPackingList(listBag.id);
-    } catch (failure) {
-      toast.show({ message: messageOf(failure) });
-      return;
-    }
-    toast.show({
-      message: `„${listBag.name}“ aus der Packliste entfernt`,
-      actionLabel: 'Rückgängig',
-      onAction: undoAction(restore),
-      duration: 5000,
+    confirmFirst({
+      title: `„${listBag.name}“ aus der Packliste entfernen?`,
+      confirmLabel: 'Entfernen',
+      onConfirm: () => {
+        try {
+          removeBagFromPackingList(listBag.id);
+        } catch (failure) {
+          return messageOf(failure);
+        }
+        toast.show({ message: `„${listBag.name}“ aus der Packliste entfernt` });
+      },
+      testID: 'confirm-remove-bag',
     });
   };
 

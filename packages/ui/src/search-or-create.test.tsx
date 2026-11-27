@@ -93,6 +93,55 @@ describe('SearchOrCreate (spec 0005, REQ-006)', () => {
     expect(second.onSelect).not.toHaveBeenCalled();
   });
 
+  it('spec 0033, AC-021: ✕ keeps the cursor in the field when it was there', () => {
+    const { onQueryChange } = renderSearch({ query: 'Nudeln' });
+    const input = screen.getByRole('textbox', { name: 'Zutat suchen' });
+    const clear = screen.getByRole('button', { name: 'Suche leeren' });
+    act(() => input.focus());
+    // Pressing a button moves the focus to it before the click.
+    fireEvent.pointerDown(clear);
+    act(() => clear.focus());
+    fireEvent.click(clear);
+    expect(onQueryChange).toHaveBeenCalledWith('');
+    expect(document.activeElement).toBe(input);
+  });
+
+  it('spec 0033, AC-022: ✕ does not put the cursor into the field when it was not there', () => {
+    const { onQueryChange } = renderSearch({ query: 'Nudeln' });
+    const input = screen.getByRole('textbox', { name: 'Zutat suchen' });
+    const clear = screen.getByRole('button', { name: 'Suche leeren' });
+    fireEvent.pointerDown(clear);
+    fireEvent.click(clear);
+    expect(onQueryChange).toHaveBeenCalledWith('');
+    expect(document.activeElement).not.toBe(input);
+  });
+
+  it('spec 0036, AC-006: with `keepFocus` the cursor stays in the field after a pick', () => {
+    const { onSelect, onCreate } = renderSearch({
+      query: 'Fam',
+      keepFocus: true,
+      hits: [{ key: 'familie', title: 'Familie' }],
+      createOptions: [{ key: 'new', label: '„Fam“ neu anlegen' }],
+    });
+    const input = screen.getByRole('textbox', { name: 'Zutat suchen' });
+    fireEvent.click(screen.getByTestId('soc-hit-familie'));
+    expect(onSelect).toHaveBeenCalledWith('familie');
+    expect(document.activeElement).toBe(input);
+    act(() => input.blur());
+    fireEvent.click(screen.getByTestId('soc-create-new'));
+    expect(onCreate).toHaveBeenCalledWith('new');
+    expect(document.activeElement).toBe(input);
+  });
+
+  it('spec 0036, AC-007: `onSubmit` gets Enter in the field', () => {
+    const onSubmit = vi.fn();
+    renderSearch({ query: 'ofen', onSubmit, keepFocus: true });
+    const input = screen.getByRole('textbox', { name: 'Zutat suchen' });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(document.activeElement).toBe(input);
+  });
+
   it('no hits: no list', () => {
     renderSearch({ query: 'Xyz' });
     expect(screen.queryByTestId('soc-hits')).toBeNull();

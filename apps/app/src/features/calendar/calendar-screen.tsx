@@ -27,7 +27,6 @@ import {
   Button,
   DragProvider,
   IconButton,
-  Menu,
   Screen,
   ScreenHeader,
   Section,
@@ -37,9 +36,9 @@ import {
   columnsFor,
   keyboardFocusRing,
   panelPlacement,
+  tabSwipe,
   useBreakpoint,
   useTheme,
-  type MenuOption,
 } from '@housekeeping/ui';
 import { useIsFocused, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -49,14 +48,14 @@ import { ChoreSheet } from '@/features/chores/chore-sheet';
 import { TripSheet } from '@/features/trips/trip-sheet';
 import { TripWindowHost, useTripWindow } from '@/features/trips/trip-window';
 import { AddEntrySheet, type AddTarget } from '@/features/meal-plan/add-entry-sheet';
+import { SeriesOccurrenceSheet } from '@/features/activities/series-occurrence-sheet';
 import { EntrySheet } from '@/features/meal-plan/entry-sheet';
 import { PantryCheckSheet } from '@/features/shopping/pantry-check-sheet';
 import { StartPageActions } from '@/features/shell/profile-button';
 import { useOnlineOnly } from '@/features/shell/offline';
 import { useAddressedId, useHandedHousehold, useMissingObject } from '@/lib/addressed';
 import { useHideAssistantButton } from '@/lib/assistant';
-import { useSettings } from '@/lib/settings';
-import { usePageParams } from '@/lib/url-state';
+import { PagePreview, usePageParams } from '@/lib/url-state';
 
 import { EntryLine } from './calendar-parts';
 import { useCalendarData } from './calendar-data';
@@ -71,6 +70,7 @@ import { DayPanel } from './day-panel';
 import { MonthView } from './month-view';
 import { useEntryTitle, useMoveEntry } from './move-entry';
 import { PlannedLaterStrip } from './planned-later-strip';
+import { WeekMenuLine, WeekMenuSheet } from './week-menu';
 import { WeekView } from './week-view';
 import { YearView } from './year-view';
 
@@ -79,8 +79,6 @@ const VIEWS: { value: CalendarView; label: string }[] = [
   { value: 'month', label: 'Monat' },
   { value: 'year', label: 'Jahr' },
 ];
-
-type MoreAction = 'household-row' | 'trips-new' | 'trips';
 
 /** "Vorgemerkt" in the desktop week: columns of equal width, each at least this wide (REQ-001). */
 const PARKED_COLUMN = 220;
@@ -92,8 +90,8 @@ function defaultSelected(monthStart: ISODate, today: ISODate): ISODate {
 }
 
 /**
- * "Kalender" (spec 0010): week, month and year with ‹ › and "Heute", ▲ Aktivitäten, ⊔ Auf die
- * Einkaufsliste and ⋯. View, chosen day (which gives the period), the day window, the entry window
+ * "Kalender" (spec 0010): week, month and year with ‹ › and "Heute", ▲ Aktivitäten and ⊔ Auf die
+ * Einkaufsliste; the household row always shows (spec 0054, REQ-004). View, chosen day (which gives the period), the day window, the entry window
  * and the windows "Reise eintragen" and "Auf die Einkaufsliste" stand in the address (spec 0019,
  * REQ-012): paging and choosing a day replace the entry, opening a window adds one. Every jump
  * into the calendar uses the same address (`/kalender?tag=…` from the "Übersicht", AC-038); an
@@ -101,7 +99,6 @@ function defaultSelected(monthStart: ISODate, today: ISODate): ISODate {
  */
 export function CalendarScreen() {
   const data = useCalendarData();
-  const settings = useSettings();
   const router = useRouter();
   const tripWindow = useTripWindow('kalender');
   const online = useOnlineOnly();
@@ -148,6 +145,9 @@ export function CalendarScreen() {
   useHideAssistantButton(selected !== undefined && focused && panelPlacement(width) === 'bottom');
   // The add window keeps its target here until spec 0021 gives it times instead of slots.
   const [adding, setAdding] = useState<AddTarget | undefined>();
+  // "Was kochen wir?" (spec 0063): the Wochenkarte, and what it just planned in which week.
+  const [weekMenuOpen, setWeekMenuOpen] = useState(false);
+  const [menuPlanned, setMenuPlanned] = useState<{ weekStart: ISODate; ids: Id[] }>();
   // The screen reader's way to move: the entry window with "Verschieben" first.
   const [moveFirst, setMoveFirst] = useState(false);
   // Removed on another device while open: the window just closes; an unknown id in the address
@@ -176,13 +176,20 @@ export function CalendarScreen() {
   };
   const setOpenEntry = (entry: MealPlanEntry | undefined) => {
     setMoveFirst(false);
-    if (entry) address.open({ eintrag: entry.id });
+    // Spec 0041: a Termin of a series opens its own window (series and its day in the address).
+    if (entry?.series) address.open({ serie: entry.series.seriesId, termin: entry.series.on });
+    else if (entry) address.open({ eintrag: entry.id });
     else address.close({ eintrag: undefined });
   };
   const openMove = (entry: MealPlanEntry) => {
+    if (entry.series) {
+      setOpenEntry(entry);
+      return;
+    }
     setMoveFirst(true);
     address.open({ eintrag: entry.id });
   };
+  const closeOccurrence = () => address.close({ serie: undefined, termin: undefined });
   // "Vorgemerkt · n" under the grid of month and year is unfolded (only on this device).
   const [laterOpen, setLaterOpen] = useState(false);
   const pantryCheck = params.fenster === 'aus-kalender';
@@ -204,12 +211,14 @@ export function CalendarScreen() {
 
   /** The day in the address: today is the default and stays out of it. */
   const dayParam = (date: ISODate) => (date === today ? undefined : date);
+  // The chosen day stays while it is in the new period; paging chooses the period's start.
+  const periodParams = (nextView: CalendarView, nextStart: ISODate, chosen: ISODate) => ({
+    ansicht: calendarViewSlug(nextView),
+    tag: dayParam(periodContains(nextView, nextStart, chosen) ? chosen : nextStart),
+  });
   const show = (nextView: CalendarView, nextStart: ISODate, chosen: ISODate = day) => {
-    // The chosen day stays while it is in the new period; paging chooses the period's start.
-    const nextDay = periodContains(nextView, nextStart, chosen) ? chosen : nextStart;
     address.replace({
-      ansicht: calendarViewSlug(nextView),
-      tag: dayParam(nextDay),
+      ...periodParams(nextView, nextStart, chosen),
       // The week has no day window; month and year keep the chosen day (AC-027).
       fenster: nextView === 'week' && params.fenster === 'tag' ? undefined : params.fenster,
     });
@@ -331,71 +340,22 @@ export function CalendarScreen() {
       ? undefined
       : (direction: -1 | 1) => page(direction);
 
-  const householdOn =
-    view === 'week'
-      ? settings.householdRow.week
-      : view === 'month'
-        ? settings.householdRow.month
-        : false;
   const shownWeek = weekDates(
     view === 'month' ? (selected ?? defaultSelected(start, today)) : start,
   );
 
-  const moreOptions: MenuOption<MoreAction>[] = [
-    // The year always shows the dot of a chore, so it has no switch (spec 0021, REQ-017).
-    ...(view === 'year'
-      ? []
-      : [
-          {
-            value: 'household-row' as const,
-            label: householdOn ? 'Haushalt-Zeile ausblenden' : 'Haushalt-Zeile einblenden',
-          },
-        ]),
-    {
-      value: 'trips-new',
-      label: 'Reise eintragen',
-      disabled: online.disabled,
-      hint: online.hint,
-    },
-    { value: 'trips', label: 'Reisen' },
-  ];
-  const onMore = (action: MoreAction) => {
-    if (action === 'household-row') {
-      if (view === 'year') return;
-      settings.update({
-        householdRow: { ...settings.householdRow, [view]: !householdOn },
-      });
-    } else if (action === 'trips-new') {
-      if (!online.disabled) openWindow('neu-reise');
-    } else {
-      // "‹ Kalender" on "Reisen" (spec 0031, REQ-036).
-      router.navigate({ pathname: '/reisen', params: { von: 'kalender' } });
-    }
-  };
-
-  // Four buttons share the phone's header with the title, so the calendar's own two sit closer.
+  // No ⋯ (spec 0054, REQ-004): trips are drawn over the days or entered on "Reisen".
   const actions = (
     <>
-      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        <IconButton
-          icon="shopping-basket"
-          label="Auf die Einkaufsliste"
-          size={36}
-          disabled={online.disabled}
-          hint={online.hint}
-          onPress={() => openWindow('aus-kalender')}
-          testID="plan-to-list"
-        />
-        <Menu<MoreAction>
-          trigger="icon"
-          icon="ellipsis"
-          label="Mehr"
-          accessibilityLabel="Mehr zum Kalender"
-          options={moreOptions}
-          onChange={onMore}
-          testID="calendar-more"
-        />
-      </View>
+      <IconButton
+        icon="shopping-basket"
+        label="Auf die Einkaufsliste"
+        size={36}
+        disabled={online.disabled}
+        hint={online.hint}
+        onPress={() => openWindow('aus-kalender')}
+        testID="plan-to-list"
+      />
       <StartPageActions />
     </>
   );
@@ -564,7 +524,34 @@ export function CalendarScreen() {
           // A desktop calendar that fills the window ends at the page's edge (REQ-001).
           clearFab={bp !== 'desktop'}
           header={<ScreenHeader title="Kalender" right={actions} />}
-          tabs={tabs}
+          // Spec 0063, REQ-008: "Was kochen wir?" stays in sight under the week's navigation.
+          tabs={
+            view === 'week' ? (
+              <View>
+                {tabs}
+                <WeekMenuLine
+                  weekStart={start}
+                  planned={menuPlanned?.weekStart === start ? menuPlanned.ids : []}
+                  onOpen={() => setWeekMenuOpen(true)}
+                  onToList={() => openWindow('aus-kalender')}
+                />
+              </View>
+            ) : (
+              tabs
+            )
+          }
+          // Phones: a swipe outside the grid changes the view Woche ↔ Monat ↔ Jahr like the tabs;
+          // in the grid it pages (CalendarSwipe takes it first; spec 0034, REQ-006).
+          // The neighbour view stands beside the content while the finger moves it (spec 0034,
+          // REQ-007): the calendar as that view would show it, without windows.
+          tabSwipe={tabSwipe(VIEWS, view, changeView, (next) => (
+            <PagePreview
+              page="kalender"
+              params={periodParams(next, switchView(view, next, start, today, selected), day)}
+            >
+              <CalendarScreen />
+            </PagePreview>
+          ))}
           aside={
             <DayPanel
               data={data}
@@ -585,12 +572,13 @@ export function CalendarScreen() {
           }
         >
           <View ref={(node) => markFill(node)} onLayout={onFillLayout} />
-          <CalendarSwipe enabled={isPhone} onSwipe={page}>
+          {/* In the year only the months page; "Vorgemerkt" and "Reisen" below them change the
+              view like the room under month and week (spec 0034, REQ-006). */}
+          <CalendarSwipe enabled={isPhone && view !== 'year'} onSwipe={page}>
             {view === 'week' ? (
               <WeekView
                 data={data}
                 weekStart={start}
-                showHousehold={householdOn}
                 // The grid of seven columns only from 1100 px, else the list (REQ-032).
                 wide={bp === 'desktop'}
                 height={gridHeight}
@@ -609,7 +597,6 @@ export function CalendarScreen() {
                 selected={selected}
                 onOpenDay={openDay}
                 registerDay={registerDay}
-                showHousehold={householdOn}
                 wide={isWide}
                 longWeekdays={bp === 'desktop'}
                 height={gridHeight}
@@ -632,6 +619,7 @@ export function CalendarScreen() {
                   requestScroll();
                 }}
                 onOpenStripe={openStripe}
+                gridSwipe={{ enabled: isPhone, onSwipe: page }}
                 belowGrid={laterStrip}
                 height={gridHeight}
                 fillsWindow={bp === 'desktop'}
@@ -693,6 +681,13 @@ export function CalendarScreen() {
             </ParkedTarget>
           ) : null}
           {adding ? <AddEntrySheet target={adding} onClose={() => setAdding(undefined)} /> : null}
+          {weekMenuOpen && view === 'week' ? (
+            <WeekMenuSheet
+              weekStart={start}
+              onClose={() => setWeekMenuOpen(false)}
+              onPlanned={(ids) => setMenuPlanned({ weekStart: start, ids })}
+            />
+          ) : null}
           {/* A window stays in the address while a page opened from it is on top (AC-016). */}
           {openEntry && focused ? (
             <EntrySheet
@@ -701,6 +696,14 @@ export function CalendarScreen() {
               moveFirst={moveFirst}
               weekDates={weekDates(openEntry.date ?? start)}
               onClose={() => setOpenEntry(undefined)}
+            />
+          ) : null}
+          {params.serie && params.termin && focused ? (
+            <SeriesOccurrenceSheet
+              key={`${params.serie}:${params.termin}`}
+              seriesId={params.serie}
+              on={params.termin}
+              onClose={closeOccurrence}
             />
           ) : null}
           {openChore && focused ? (

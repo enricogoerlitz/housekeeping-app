@@ -37,10 +37,9 @@ const REQUIRED_CHECKS = [
   'Prüfungen',
   'Datenbank (pgTAP)',
   'Integration (API)',
-  'Deno-Lock',
 ];
 /** Jobs that skip on a docs-only pull request (AC-011); the others always run. */
-const HEAVY = ['Prüfungen', 'Datenbank (pgTAP)', 'Integration (API)', 'Deno-Lock'];
+const HEAVY = ['Prüfungen', 'Datenbank (pgTAP)', 'Integration (API)'];
 
 describe('all workflows', () => {
   test('the old ci.yml is replaced by checks.yml', () => {
@@ -242,37 +241,11 @@ describe('checks.yml', () => {
     assert.doesNotMatch(script, /\.env\b/);
   });
 
-  test('throwaway VAPID keys per run, masked, before the web build and the local stack', () => {
-    for (const [name, before] of [['Prüfungen', /pnpm build:web/]]) {
-      const list = runs(job(name));
-      const keys = list.findIndex((run) =>
-        /node scripts\/push-keys\.mjs --out "\$RUNNER_TEMP\//.test(run),
-      );
-      assert.ok(keys >= 0, name);
-      assert.match(list[keys], /::add-mask::/);
-      assert.match(list[keys], /GITHUB_ENV/);
-      assert.match(list[keys], /rm -f "\$RUNNER_TEMP\//);
-      assert.ok(keys < list.findIndex((run) => before.test(run)), name);
+  test('no workflow names a push secret, key or function', () => {
+    for (const file of readdirSync(path.join(root, '.github/workflows'))) {
+      const text = readFileSync(path.join(root, '.github/workflows', file), 'utf8');
+      assert.doesNotMatch(text, /va[p]id|push[-_]se[n]d|push[-_]key/i, file);
     }
-  });
-
-  test('AC-074: "Deno-Lock" pins the Deno of the edge runtime and installs frozen', () => {
-    const j = job('Deno-Lock');
-    assert.match(j.env.DENO_VERSION, /^\d+\.\d+\.\d+$/);
-    const setup = steps(j).find((step) => step.uses?.startsWith('denoland/setup-deno@'));
-    assert.equal(setup?.with?.['deno-version'], '${{ env.DENO_VERSION }}');
-    const install = steps(j).find((step) =>
-      /deno install --frozen --entrypoint index\.ts/.test(step.run ?? ''),
-    );
-    assert.equal(install?.['working-directory'], 'supabase/functions/push-send');
-    assert.match(install.run, /git diff --exit-code -- deno\.lock/);
-  });
-
-  test('AC-074: push-send resolves its dependencies through a frozen lock file', () => {
-    const config = JSON.parse(
-      readFileSync(path.join(root, 'supabase/functions/push-send/deno.json'), 'utf8'),
-    );
-    assert.deepEqual(config.lock, { path: './deno.lock', frozen: true });
   });
 });
 
@@ -425,11 +398,11 @@ describe('all delivery workflows', () => {
 
   test('secrets set confirms with --yes and overrides every fixed value of [edge_runtime.secrets]', () => {
     // The CLI pushes the fixed values of config.toml with every `secrets set`; a local value such
-    // as VAPID_SUBJECT = "https://localhost" must never reach a cloud project.
+    // as ALLOWED_ORIGINS = "http://localhost:8081" must never reach a cloud project.
     const config = readFileSync(path.join(root, 'supabase/config.toml'), 'utf8');
     const section = config.split(/^\[edge_runtime\.secrets\]$/m)[1].split(/^\[/m)[0];
     const fixed = [...section.matchAll(/^([A-Z0-9_]+)\s*=\s*"(?!env\()/gm)].map((m) => m[1]);
-    assert.ok(fixed.includes('VAPID_SUBJECT'));
+    assert.ok(fixed.includes('ALLOWED_ORIGINS'));
     for (const file of ['preview.yml', 'release.yml', 'redeploy-web.yml']) {
       for (const [id, job] of Object.entries(jobsOf(file))) {
         for (const run of runs(job).filter((r) => /supabase secrets set/.test(r))) {
@@ -570,7 +543,6 @@ describe('preview.yml (Task 7)', () => {
       build.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
       '${{ vars.PREVIEW_SUPABASE_PUBLISHABLE_KEY }}',
     );
-    assert.equal(build.env.EXPO_PUBLIC_VAPID_PUBLIC_KEY, '${{ vars.PREVIEW_VAPID_PUBLIC_KEY }}');
     assert.equal(build.env.EXPO_PUBLIC_APP_VERSION, 'vorschau');
     assert.equal(build.env.EXPO_PUBLIC_DEV_LOGIN, undefined);
     assert.ok(stepIndex(build, /pnpm build:web/) !== -1);
@@ -581,7 +553,7 @@ describe('preview.yml (Task 7)', () => {
       assert.equal(envName(jobs[id]), 'preview', id);
   });
 
-  test('AC-017, AC-014: status, config, reset without seed, preview seed, invitations, then config, functions, secrets', () => {
+  test('AC-017, AC-014: status, config, reset without seed, preview seed, invitations, restart, then config, functions, secrets', () => {
     const job = jobs['supabase-vorschau'];
     assertOrder(
       job,
@@ -591,6 +563,8 @@ describe('preview.yml (Task 7)', () => {
         RESET,
         /supabase db query .*--file supabase\/preview-seed\.sql/,
         /^node scripts\/preview-invites\.mjs$/,
+        // Finding of 27.11.2026: the pg_cron launcher keeps its job list across the reset.
+        /^node scripts\/ci\/supabase-restart\.mjs$/,
         /supabase config push/,
         /supabase functions deploy .*--prune/,
         /supabase secrets set/,
@@ -610,13 +584,13 @@ describe('preview.yml (Task 7)', () => {
     assert.equal((preview.text.match(/PREVIEW_INVITE_EMAILS }}/g) ?? []).length, 1);
   });
 
-  test('decision 8: the preview sets only ALLOWED_ORIGINS and VAPID_SUBJECT, no push keys or AI values', () => {
+  test('decision 8: the preview sets only ALLOWED_ORIGINS, no AI values', () => {
     const job = jobs['supabase-vorschau'];
     assert.equal(
       steps(job)[stepIndex(job, /supabase secrets set/)].run,
-      `supabase secrets set ${REMOTE_REF} --yes "ALLOWED_ORIGINS=$PREVIEW_WEB_ORIGIN" "VAPID_SUBJECT=$PREVIEW_WEB_ORIGIN"`,
+      `supabase secrets set ${REMOTE_REF} --yes "ALLOWED_ORIGINS=$PREVIEW_WEB_ORIGIN"`,
     );
-    assert.doesNotMatch(JSON.stringify(preview.doc), /FOUNDRY_|VAPID_PRIVATE|PUSH_SEND_SECRET/);
+    assert.doesNotMatch(JSON.stringify(preview.doc), /FOUNDRY_/);
   });
 
   test('AC-013: before it reads its own token, the web job proves it cannot read the production one', () => {
@@ -676,11 +650,10 @@ describe('e2e.yml (spec 0031, REQ-002)', () => {
     assert.match(script, /pnpm e2e:dev/);
   });
 
-  test('AC-007: against a local stack with throwaway push keys, before the suite', () => {
+  test('AC-007: against a local stack, before the suite', () => {
     assertOrder(
       suite,
       [
-        /node scripts\/push-keys\.mjs --out "\$RUNNER_TEMP\//,
         /pnpm exec supabase start -x studio,logflare,vector/,
         /supabase status -o env .*PUBLISHABLE_KEY[\s\S]*EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=.*GITHUB_ENV/,
         /pnpm --filter @housekeeping\/e2e exec playwright install --with-deps chromium/,
@@ -697,9 +670,6 @@ describe('e2e.yml (spec 0031, REQ-002)', () => {
       'the step stops before the job',
     );
     assert.equal(suite.env.EXPO_PUBLIC_SUPABASE_URL, 'http://127.0.0.1:54321');
-    const keys = runs(suite).find((run) => /push-keys/.test(run));
-    assert.match(keys, /::add-mask::/);
-    assert.match(keys, /rm -f "\$RUNNER_TEMP\//);
   });
 });
 
@@ -865,9 +835,9 @@ describe('release.yml (Task 8)', () => {
     assert.doesNotMatch(runs(job).join('\n'), /--dry-run|--include-seed|--include-all/);
     assert.equal(
       steps(job)[stepIndex(job, /supabase secrets set/)].run,
-      `supabase secrets set ${REMOTE_REF} --yes "ALLOWED_ORIGINS=$PRODUCTION_WEB_ORIGIN" "VAPID_SUBJECT=$PRODUCTION_WEB_ORIGIN"`,
+      `supabase secrets set ${REMOTE_REF} --yes "ALLOWED_ORIGINS=$PRODUCTION_WEB_ORIGIN"`,
     );
-    assert.doesNotMatch(JSON.stringify(release.doc), /FOUNDRY_|VAPID_PRIVATE|PUSH_SEND_SECRET/);
+    assert.doesNotMatch(JSON.stringify(release.doc), /FOUNDRY_/);
   });
 
   test('AC-064: verification with the version and the commit, then the tag with the change list and the package', () => {

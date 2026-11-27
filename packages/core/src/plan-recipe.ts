@@ -7,7 +7,7 @@ import {
   weekDates,
   weekdayShort,
 } from './dates';
-import type { Id, ISODate, MealSlot, Member } from './types';
+import type { Id, ISODate, MealSlot, Member, SeriesRule } from './types';
 
 // The window "Einplanen" (spec 0008, REQ-009, E11; spec 0023, REQ-013): weeks from Monday, the
 // preselection and the texts of the button and the notice. One window for recipes and collections;
@@ -85,6 +85,22 @@ export function defaultPlanChoice(
 export function planButtonLabel(date: ISODate | null, slotName: string): string {
   if (date === null) return 'Vormerken';
   return `Am ${weekdayShort(date)} ${formatShortDate(date)} ${slotName} einplanen`;
+}
+
+/**
+ * The button when an activity is planned with a rhythm (spec 0041, REQ-003; review 0003, B-11):
+ * "Wöchentlich ab Di 1.12. einplanen", "Alle 2 Wochen ab …", "Monatlich ab …", "Jährlich ab …".
+ */
+export function seriesPlanButtonLabel(rule: SeriesRule, startsOn: ISODate): string {
+  const rhythm =
+    rule.type === 'weekly'
+      ? rule.every === 1
+        ? 'Wöchentlich'
+        : `Alle ${rule.every} Wochen`
+      : rule.type === 'monthly'
+        ? 'Monatlich'
+        : 'Jährlich';
+  return `${rhythm} ab ${weekdayShort(startsOn)} ${formatShortDate(startsOn)} einplanen`;
 }
 
 /**

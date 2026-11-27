@@ -5,7 +5,7 @@
 -- invalid input, a merge that fails at its last step and changes nothing.
 begin;
 \ir _helpers.psql
-select plan(64);
+select plan(66);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 grant select on fx to anon, authenticated;
@@ -125,11 +125,25 @@ select throws_ok(
             values (%L, 'Kokos', 'kokos', '{Kokosmilch}', '{kokosmilch}') $$, tests.fx('home_a')),
   '23505', 'name_taken',
   'AC-031 articles: a synonym equal to the name of another article is rejected');
-select throws_ok(
+-- Spec 0036, Entscheidung 2: „Schinken“ may stand next to Kochschinken with the synonym Schinken;
+-- the search puts the exact name first. The row leaves again, the later cases expect the catalog.
+select lives_ok(
   format($$ insert into public.articles (household_id, name, name_key) values (%L, 'Kokosdrink', 'kokosdrink') $$,
          tests.fx('home_a')),
+  'spec 0036 AC-011 articles: a name equal to a synonym of another article is allowed');
+select lives_ok(
+  format($$ update public.articles set name = 'Milchkokos', synonyms = '{Kokosdrink, Kokos-Getränk}',
+            synonym_keys = '{kokosdrink, kokosgetraenk}' where id = %L $$, tests.fx('milchkokos')),
+  'spec 0036 AC-011 articles: the article keeping that synonym can still be saved with a new one');
+select throws_ok(
+  format($$ update public.articles set synonyms = '{Kokos-Drink}', synonym_keys = '{kokosdrink}' where id = %L $$,
+         tests.fx('drachenfrucht')),
   '23505', 'name_taken',
-  'AC-030 articles: a name equal to a synonym of another article is rejected');
+  'spec 0036 AC-011 articles: a new synonym equal to that name is still rejected');
+select tests.clear_authentication();
+update public.articles set synonyms = '{Kokosdrink}', synonym_keys = '{kokosdrink}' where id = tests.fx('milchkokos');
+delete from public.articles where household_id = tests.fx('home_a') and name_key = 'kokosdrink';
+select tests.authenticate_as(tests.fx('enrico'));
 select throws_ok(
   format($$ update public.articles set synonyms = '{Kokos-Drink}', synonym_keys = '{kokosdrink}' where id = %L $$,
          tests.fx('drachenfrucht')),
@@ -376,11 +390,13 @@ select throws_ok(
   $$ update public.deleted_records set replaced_by = 'x' $$,
   '42501', null,
   'E5 deleted_records: members cannot write replaced_by');
+-- Since spec 0036 (Entscheidung 2) a new article may take the old name; a synonym may not.
 select throws_ok(
-  format($$ insert into public.articles (household_id, name, name_key) values (%L, 'Milchkokos', 'milchkokos') $$,
+  format($$ insert into public.articles (household_id, name, name_key, synonyms, synonym_keys)
+            values (%L, 'Kokos-Getränk', 'kokosgetraenk', '{Milchkokos}', '{milchkokos}') $$,
          tests.fx('home_a')),
   '23505', 'name_taken',
-  'AC-037 articles: the old name is now a synonym of the target and cannot be a new article');
+  'AC-037 articles: the old name is now a synonym of the target and cannot be another synonym');
 
 -- ===================== merge_articles: source not open, target open, empty attributes =============
 select tests.clear_authentication();

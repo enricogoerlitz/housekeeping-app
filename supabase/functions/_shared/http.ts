@@ -14,13 +14,16 @@ export interface Endpoint<Input> {
   schema: z.ZodType<Input>;
   /** Charged after the body is valid and before `run`; omit for functions without cost. */
   quota?: QuotaKind;
+  /** Largest body taken (default 64 KB); more is 413 before anything else is read or done. */
+  maxBodyBytes?: number;
+  /** The reply as JSON, or a ready Response (bytes, fetch-image) that gets the CORS headers. */
   run(context: { input: Input; client: UserClient; userId: string }): Promise<unknown>;
 }
 
-/** Reads at most `limit` bytes; an empty body counts as `{}`. */
+/** Reads at most `limit` bytes (more is 413); an empty body counts as `{}`. */
 async function readJsonBody(request: Request, limit: number): Promise<unknown> {
   const bytes = await readLimitedBody(request, limit);
-  if (bytes === null) throw new HttpError('invalid_request');
+  if (bytes === null) throw new HttpError('payload_too_large');
   try {
     const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes).trim();
     return text === '' ? {} : (JSON.parse(text) as unknown);
@@ -51,10 +54,17 @@ export async function handleRequest<Input>(
     if (request.method !== 'POST') throw new HttpError('invalid_request');
 
     const { client, userId } = await authenticate(request, deps);
-    const parsed = endpoint.schema.safeParse(await readJsonBody(request, MAX_BODY_BYTES));
+    const parsed = endpoint.schema.safeParse(
+      await readJsonBody(request, endpoint.maxBodyBytes ?? MAX_BODY_BYTES),
+    );
     if (!parsed.success) throw new HttpError('invalid_request');
     if (endpoint.quota) await consumeQuota(client, endpoint.quota);
-    return jsonResponse(await endpoint.run({ input: parsed.data, client, userId }), 200, headers);
+    const reply = await endpoint.run({ input: parsed.data, client, userId });
+    if (reply instanceof Response) {
+      for (const [name, value] of Object.entries(headers)) reply.headers.set(name, value);
+      return reply;
+    }
+    return jsonResponse(reply, 200, headers);
   } catch (error) {
     if (error instanceof HttpError) return errorResponse(error.code, headers);
     // Only the error type (and for config errors the variable name) — never payloads.

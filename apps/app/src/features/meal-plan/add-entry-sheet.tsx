@@ -1,6 +1,10 @@
 import {
   addPlanEntry,
+  createActivitySeries,
   defaultEaterIds,
+  OfflineError,
+  planSuggested,
+  snapshot,
   useActivities,
   useArticlesById,
   useHousehold,
@@ -12,27 +16,33 @@ import {
   addEntryReducer,
   addEntryRequest,
   addedNotice,
+  defaultRepeat,
   initialAddEntryState,
   offersReminder,
+  repeatRule,
+  seriesPlanButtonLabel,
+  seriesRuleLabel,
+  type RepeatDraft,
   type AddEntryChoice,
   type AddEntryContext,
   type AddEntryTarget,
   type EntryReminder,
   type Id,
   type ISODate,
+  type PlanSuggestion,
 } from '@housekeeping/core';
 import { Sheet, Text, toast, type SheetAction } from '@housekeeping/ui';
-import { useRouter } from 'expo-router';
-import { useReducer } from 'react';
+import { useReducer, useState } from 'react';
 
 import { DEFAULT_SERVINGS } from '@/features/recipes/recipe-form';
 import { errorMessage, FAILED_MESSAGE } from '@/features/shell/error-message';
-import { useOnlineOnly } from '@/features/shell/offline';
+import { OFFLINE_EDIT_HINT, undoAction, useOnlineOnly } from '@/features/shell/offline';
 
 import { AddEntryCreateBody, addEntryCreateAction, useAddEntryCreate } from './add-entry-create';
 import { AddEntryDetails } from './add-entry-details';
 import { AddEntrySearch, AddEntrySearchHeader } from './add-entry-search';
 import { addSheetTitle } from './labels';
+import { PLAN_ONLINE_HINT } from './plan-suggestions';
 import { useReminderForm } from './reminder-block';
 
 export type AddTarget = AddEntryTarget;
@@ -53,7 +63,6 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
   const activities = useActivities();
   const members = useMembers();
   const articlesById = useArticlesById();
-  const router = useRouter();
 
   const [state, dispatch] = useReducer(addEntryReducer, undefined, () =>
     initialAddEntryState(props.target, {
@@ -66,6 +75,15 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
   const date = addEntryDate(state);
   const slots = household.mealSlots;
   const slotName = slots.find((slot) => slot.id === slotId)?.name;
+  // Spec 0041, REQ-003: "Rhythmus"; while "Einmalig" it follows the chosen day.
+  const repeatDay = date ?? today;
+  const [repeat, setRepeat] = useState<RepeatDraft>(() => defaultRepeat(repeatDay));
+  const [repeatFor, setRepeatFor] = useState(repeatDay);
+  if (repeatFor !== repeatDay) {
+    setRepeatFor(repeatDay);
+    if (repeat.kind === 'none') setRepeat(defaultRepeat(repeatDay));
+  }
+  const rule = choice?.kind === 'activity' && date ? repeatRule(repeat) : undefined;
 
   // Spec 0017, REQ-001: "Erinnern" in the second step, only with a day (not for "Vormerken").
   const reminder = useReminderForm({
@@ -76,7 +94,8 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
   const remindable = offersReminder(date, today);
 
   const choose = (next: AddEntryChoice) => {
-    dispatch({ type: 'choose', choice: next, eaterIds: defaultEaterIds(), context });
+    const firstSlotId = [...slots].sort((a, b) => a.sort - b.sort)[0]?.id;
+    dispatch({ type: 'choose', choice: next, eaterIds: defaultEaterIds(), context, firstSlotId });
     reminder.reset();
   };
 
@@ -99,6 +118,27 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
     dispatch({ type: 'save' });
     const request = addEntryRequest(state, defaultEaterIds());
     if (!request) return;
+    if (rule && date && request.input.activityId) {
+      try {
+        createActivitySeries({
+          activityId: request.input.activityId,
+          rule,
+          startsOn: date,
+          endsOn: repeat.until,
+          slotId: request.input.slotId,
+          startsAt: request.input.startsAt,
+          note: request.input.note,
+          eaterIds: request.input.eaterIds,
+          guests: request.input.guests ?? 0,
+        });
+      } catch (caught) {
+        dispatch({ type: 'fail', error: errorMessage(caught, FAILED_MESSAGE) });
+        return;
+      }
+      props.onClose();
+      toast.show({ message: `„${request.title}“ ${seriesRuleLabel(rule, date)} eingeplant` });
+      return;
+    }
     // A reminder that cannot be saved keeps the window open with its hint (REQ-003).
     let checked: EntryReminder | undefined;
     if (remindable) {
@@ -120,6 +160,37 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
     toast.show({ message: addedNotice(request.title, request.input.date, today) });
   };
 
+  // Spec 0063, REQ-006: "+" plans with the defaults of the second step, then "Rückgängig".
+  const planSuggestion = (suggestion: PlanSuggestion) => {
+    const day = props.target.date;
+    if (online.disabled || day === null) return;
+    const restore = snapshot();
+    try {
+      planSuggested(
+        [
+          {
+            recipeId: suggestion.recipe.id,
+            date: day,
+            plannedLaterEntryId: suggestion.plannedLaterEntryId,
+          },
+        ],
+        props.target.slotId,
+      );
+    } catch (caught) {
+      toast.show({
+        message:
+          caught instanceof OfflineError ? OFFLINE_EDIT_HINT : errorMessage(caught, FAILED_MESSAGE),
+      });
+      return;
+    }
+    props.onClose();
+    toast.show({
+      message: addedNotice(suggestion.recipe.title, day, today),
+      actionLabel: 'Rückgängig',
+      onAction: undoAction(restore),
+    });
+  };
+
   let actions: { primary: SheetAction } | undefined;
   if (creating) {
     const primary = addEntryCreateAction(state, create, online);
@@ -129,7 +200,12 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
     const noEaters = needsEaters && state.portions.eaterIds.length + state.portions.guests === 0;
     actions = {
       primary: {
-        label: state.later ? 'Vormerken' : 'Einplanen',
+        // A series says so (review 0003, B-11): "Wöchentlich ab Di 1.12. einplanen".
+        label: state.later
+          ? 'Vormerken'
+          : rule && date
+            ? seriesPlanButtonLabel(rule, date)
+            : 'Einplanen',
         icon: 'plus',
         disabled: online.disabled || noEaters,
         hint: online.hint ?? (noEaters ? 'Wähl aus, wer mitisst.' : undefined),
@@ -179,11 +255,8 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
           reminder={reminder}
           remindable={remindable}
           online={online}
-          onOpenSettings={() => {
-            props.onClose();
-            router.push('/einstellungen/benachrichtigungen');
-          }}
           onSave={save}
+          repeat={{ value: repeat, onChange: setRepeat }}
         />
       ) : (
         <AddEntrySearch
@@ -194,6 +267,8 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
           onCreate={create.start}
           onTab={(tab) => dispatch({ type: 'setTab', tab })}
           onToggleOlder={() => dispatch({ type: 'toggleOlderLeftovers' })}
+          onPlanSuggestion={planSuggestion}
+          planHint={online.offline ? PLAN_ONLINE_HINT : online.hint}
         />
       )}
     </Sheet>

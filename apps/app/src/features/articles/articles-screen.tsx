@@ -1,4 +1,10 @@
-import { useAreas, useArticles, useRecipes, useShoppingItems } from '@housekeeping/api';
+import {
+  useAreas,
+  useArticles,
+  useRecipes,
+  useRecurringItems,
+  useShoppingItems,
+} from '@housekeeping/api';
 import {
   articleFilterCounts,
   articlesInArea,
@@ -15,10 +21,10 @@ import {
 import {
   Badge,
   Button,
+  CreateButton,
   Chip,
   EmptyState,
   Icon,
-  IconButton,
   InfiniteList,
   List,
   ListDetail,
@@ -30,9 +36,11 @@ import {
   Text,
   TextField,
   useBreakpoint,
+  FieldClearButton,
+  openKeyboardNow,
 } from '@housekeeping/ui';
-import { useMemo, useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { type ComponentRef, useMemo, useRef, useState } from 'react';
+import { ScrollView, View, type TextInput } from 'react-native';
 
 import { useOnlineOnly } from '@/features/shell/offline';
 import { useAddressedId, useMissingObject } from '@/lib/addressed';
@@ -64,6 +72,7 @@ interface ArticleRow {
  * Detail", AC-025). Reading and searching work offline; editing needs the network.
  */
 export function ArticlesScreen() {
+  const searchInput = useRef<ComponentRef<typeof TextInput>>(null);
   const allArticles = useArticles();
   const areas = useAreas();
   const recipes = useRecipes();
@@ -117,7 +126,12 @@ export function ArticlesScreen() {
   // "Ähnliche Namen" compares every name with every other: once per data state.
   const similar = useMemo(() => similarArticleNames(articles), [articles]);
   // "Unbenutzt": in no recipe and not open on the list (AC-046).
-  const usedIds = useMemo(() => usedArticleIds(recipes, items), [recipes, items]);
+  // Spec 0060, AC-011: an article with a Dauerposten is not "Unbenutzt".
+  const recurringItems = useRecurringItems();
+  const usedIds = useMemo(
+    () => usedArticleIds(recipes, items, recurringItems),
+    [recipes, items, recurringItems],
+  );
   const context = useMemo(() => ({ similar, areas, usedIds }), [similar, areas, usedIds]);
   const counts = useMemo(() => articleFilterCounts(articles, context), [articles, context]);
   const areaNames = useMemo(() => new Map(areas.map((area) => [area.id, area.name])), [areas]);
@@ -137,26 +151,15 @@ export function ArticlesScreen() {
   const selected = allArticles.find((article) => article.id === selectedId);
 
   const startCreating = (name = '') => {
+    openKeyboardNow();
     setNewName(name);
     address.open({ fenster: 'neu-artikel' });
   };
   const sortLabel = SORT_OPTIONS.find((option) => option.value === sort)?.label ?? '';
 
-  const addButton = isPhone ? (
-    <IconButton
-      icon="plus"
-      label="Neuer Artikel"
-      variant="soft"
-      disabled={online.disabled}
-      hint={online.hint}
-      onPress={() => startCreating()}
-      testID="articles-new"
-    />
-  ) : (
-    <Button
-      label="Neu"
-      icon="plus"
-      size="sm"
+  const addButton = (
+    <CreateButton
+      label="Artikel anlegen"
       disabled={online.disabled}
       hint={online.hint}
       onPress={() => startCreating()}
@@ -177,6 +180,7 @@ export function ArticlesScreen() {
     <Stack gap={8}>
       <TextField
         round
+        inputRef={searchInput}
         value={query}
         onChangeText={setQuery}
         placeholder="Artikel suchen …"
@@ -185,10 +189,10 @@ export function ArticlesScreen() {
         left={<Icon name="search" size={19} color="muted" />}
         right={
           query ? (
-            <IconButton
-              icon="x"
+            <FieldClearButton
               label="Suche leeren"
-              onPress={() => setQuery('')}
+              onClear={() => setQuery('')}
+              inputRef={searchInput}
               testID="articles-search-clear"
             />
           ) : undefined
@@ -221,7 +225,8 @@ export function ArticlesScreen() {
           />
         ) : (
           <Menu
-            label="Bereich ▾"
+            // The menu draws its own chevron (I-21: "Bereich ▾ ⌄").
+            label="Bereich"
             accessibilityLabel="Nach Bereich filtern"
             icon="map-pin"
             value=""
@@ -252,16 +257,7 @@ export function ArticlesScreen() {
         title="Noch keine Artikel"
         text="Artikel entstehen, wenn du etwas auf die Liste setzt oder Zutaten in ein Rezept schreibst."
         testID="articles-empty"
-      >
-        <Button
-          label="Artikel anlegen"
-          icon="plus"
-          disabled={online.disabled}
-          hint={online.hint}
-          onPress={() => startCreating()}
-          testID="articles-empty-new"
-        />
-      </EmptyState>
+      />
     ) : query.trim() ? (
       <EmptyState
         icon="search"

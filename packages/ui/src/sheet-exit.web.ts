@@ -15,6 +15,9 @@ export function fadeOutCopy(node: unknown, options: { slide: boolean; ms: number
   if (layer.parentElement !== document.body) return;
   const copy = layer.cloneNode(true) as HTMLElement;
   const next = layer.nextSibling;
+  // A window dragged down (spec 0033) leaves from where the finger left it.
+  const place = layer.querySelector<HTMLElement>('[data-sheet-part="panel"]')?.style.transform;
+  const from = place && place !== 'none' ? place : 'translateY(0px)';
   queueMicrotask(() => {
     if (node.isConnected) return;
     copy.setAttribute('inert', '');
@@ -33,11 +36,19 @@ export function fadeOutCopy(node: unknown, options: { slide: boolean; ms: number
     const timing = { duration: options.ms, easing: EASE_OUT, fill: 'forwards' as const };
     const scrim = copy.querySelector<HTMLElement>('[data-sheet-part="scrim"]');
     const panel = copy.querySelector<HTMLElement>('[data-sheet-part="panel"]');
-    if (typeof copy.animate === 'function') {
+    if (typeof copy.animate === 'function' && panel) {
       scrim?.animate([{ opacity: 1 }, { opacity: 0 }], timing);
-      panel?.animate(
+      // Down past the bottom of the screen: a window that stood on the keyboard has the keyboard's
+      // height below it, and only its own height brought it to rest halfway, in sight once the
+      // keyboard had gone (B-03, iPhone click-through 27.11.).
+      const screenBottom = document.documentElement.clientHeight || window.innerHeight;
+      const away = Math.max(
+        panel.offsetHeight,
+        Math.round(screenBottom - panel.getBoundingClientRect().top),
+      );
+      panel.animate(
         options.slide
-          ? [{ transform: 'translateY(0)' }, { transform: `translateY(${panel.offsetHeight}px)` }]
+          ? [{ transform: from }, { transform: `${from} translateY(${away}px)` }]
           : [{ opacity: 1 }, { opacity: 0 }],
         timing,
       );

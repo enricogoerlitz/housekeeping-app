@@ -1,12 +1,13 @@
-import { useState, type ComponentRef, type ReactNode, type Ref } from 'react';
+import { useCallback, useRef, useState, type ComponentRef, type ReactNode, type Ref } from 'react';
 import { Platform, Pressable, View, type TextInput } from 'react-native';
 
-import { Button, IconButton, TextField, keyboardFocusRing } from './controls';
+import { Button, TextField, keyboardFocusRing } from './controls';
+import { FieldClearButton } from './field-clear';
 import { expandableA11y } from './expandable';
 import { List, ListRow } from './lists';
 import { Icon, Text } from './primitives';
 import { useTheme } from './theme-context';
-import { ariaRef } from './hint';
+import { ariaRef, mergeRefs } from './hint';
 
 export interface SearchOrCreateHit {
   key: string;
@@ -53,6 +54,13 @@ export interface SearchOrCreateProps {
   autoFocus?: boolean;
   /** Enter in the field takes the first hit, e.g. the article of an ingredient (spec 0023, AC-001). */
   enterSelects?: boolean;
+  /** Enter in the field, decided by the caller (e.g. take the exact value or create it). */
+  onSubmit?: () => void;
+  /**
+   * After a pick, a create or Enter the cursor goes back into the field, so the next value can be
+   * typed at once (spec 0036, AC-006).
+   */
+  keepFocus?: boolean;
   /** The search field, e.g. to put the focus back on it (spec 0023, AC-003). */
   inputRef?: Ref<ComponentRef<typeof TextInput>>;
   /** Parts get `${testID}-input`, `-hit-<key>`, `-create-<key>`, `-brake`, `-more`. */
@@ -72,10 +80,37 @@ export function SearchOrCreate(props: SearchOrCreateProps) {
   // "Trotzdem neu" with several kinds unlocks the rows, but only for the query it was given for.
   const braked = props.brake !== undefined && overruled !== props.query;
   const disabled = props.createDisabledHint !== undefined;
+  const input = useRef<ComponentRef<typeof TextInput>>(null);
+  // The field for the focus here and, when given, for the caller too.
+  const { inputRef } = props;
+  const setInput = useCallback(
+    (node: ComponentRef<typeof TextInput> | null) => {
+      input.current = node;
+      mergeRefs(inputRef)(node);
+    },
+    [inputRef],
+  );
+  const refocus = () => {
+    if (props.keepFocus) input.current?.focus();
+  };
+  const select = (key: string) => {
+    props.onSelect(key);
+    refocus();
+  };
+  const create = (key: string) => {
+    props.onCreate(key);
+    refocus();
+  };
+  const submit = () => {
+    if (props.onSubmit) props.onSubmit();
+    else if (props.enterSelects && props.hits[0]) props.onSelect(props.hits[0].key);
+    else return;
+    refocus();
+  };
 
   const createAnyway = () => {
     const [only, ...others] = props.createOptions;
-    if (only && others.length === 0) props.onCreate(only.key);
+    if (only && others.length === 0) create(only.key);
     else setOverruled(props.query);
   };
 
@@ -88,25 +123,22 @@ export function SearchOrCreate(props: SearchOrCreateProps) {
         placeholder={props.placeholder}
         accessibilityLabel={props.label}
         autoFocus={props.autoFocus}
-        inputRef={props.inputRef}
+        inputRef={setInput}
         returnKeyType="search"
-        onSubmitEditing={
-          props.enterSelects
-            ? () => {
-                const first = props.hits[0];
-                if (first) props.onSelect(first.key);
-              }
-            : undefined
-        }
+        // Enter searches here; it never saves the window around it (spec 0036, AC-026).
+        submitsWindow={false}
+        onSubmitEditing={props.onSubmit || props.enterSelects ? submit : undefined}
+        // Enter would otherwise blur the field after taking the value (spec 0036, AC-007).
+        blurOnSubmit={props.keepFocus ? false : undefined}
         testID={id('input')}
         left={<Icon name="search" size={20} color="muted" />}
         right={
           props.query ? (
-            <IconButton
-              icon="x"
+            <FieldClearButton
               label={props.clearLabel}
               size={36}
-              onPress={() => props.onQueryChange('')}
+              onClear={() => props.onQueryChange('')}
+              inputRef={input}
               testID={id('clear')}
             />
           ) : undefined
@@ -126,7 +158,7 @@ export function SearchOrCreate(props: SearchOrCreateProps) {
                   </Text>
                 ) : undefined
               }
-              onPress={() => props.onSelect(hit.key)}
+              onPress={() => select(hit.key)}
               testID={id(`hit-${hit.key}`)}
             />
           ))}
@@ -147,7 +179,7 @@ export function SearchOrCreate(props: SearchOrCreateProps) {
                 'aria-description': disabled ? props.createDisabledHint : undefined,
               })}
               disabled={disabled || braked}
-              onPress={() => props.onCreate(option.key)}
+              onPress={() => create(option.key)}
               style={(state) => [
                 {
                   flexDirection: 'row',
@@ -183,7 +215,10 @@ export function SearchOrCreate(props: SearchOrCreateProps) {
                 <Button
                   label={props.brake.acceptLabel}
                   size="sm"
-                  onPress={props.brake.onAccept}
+                  onPress={() => {
+                    props.brake?.onAccept();
+                    refocus();
+                  }}
                   testID={id('brake-accept')}
                 />
                 <Button

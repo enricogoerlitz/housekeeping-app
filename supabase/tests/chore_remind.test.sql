@@ -1,11 +1,11 @@
 -- „Erinnern“ per chore (spec 0027, REQ-009): chores.remind_at_due_time is on by default, can be
--- off only with a time (chores_remind_needs_time), is written through apply_changes like the time,
--- and the scheduler reminds only chores with it on; the daily summary names them either way.
+-- off only with a time (chores_remind_needs_time) and is written through apply_changes like the time.
+-- Spec 0051: it decides whether the chore becomes an in-app notice (packages/core notices.ts).
 -- Negative paths: off without a time, another household, signed out. Parity with
 -- remindAtDueTimeFor in packages/core/src/notifications.test.ts (AC-038).
 begin;
 \ir _helpers.psql
-select plan(17);
+select plan(13);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 grant select on fx to anon, authenticated;
@@ -21,17 +21,6 @@ $$;
 create function tests.remind(p_chore text) returns boolean language sql stable
 as $$ select c.remind_at_due_time from public.chores c where c.id = tests.fx(p_chore) $$;
 
--- The candidates of the household at a local Berlin time, with the person as E or N.
-create function tests.c(p_local timestamp)
-returns table (who text, kind text, body text)
-language sql
-as $$
-  select case c.profile_id when tests.fx('enrico') then 'E' when tests.fx('nadja') then 'N' else '?' end,
-         c.kind, c.body
-  from private.notification_candidates(tests.berlin(p_local)) c
-  where c.household_id = tests.fx('home')
-$$;
-
 grant execute on all functions in schema tests to anon, authenticated;
 
 insert into fx (key, id) values
@@ -42,11 +31,6 @@ insert into fx (key, id) values
   ('home', tests.create_household('Enrico & Nadja', array[tests.fx('enrico'), tests.fx('nadja')])),
   ('home_b', tests.create_household('B', array[tests.fx('ben')]));
 insert into fx (key) values ('muell'), ('bad');
-
-update public.notification_settings
-set daily_summary_enabled = true, daily_summary_at = '07:30', daily_summary_parts = '{chores}',
-    chore_reminders_enabled = true
-where household_id = tests.fx('home');
 
 insert into public.chores (id, household_id, title, recurrence, assignment, next_due_on, next_assignee_id, due_time)
 values
@@ -73,25 +57,6 @@ select throws_ok(tests.patch_sql('home', 'bad', '{"remind_at_due_time": false}')
   '23514', null, 'AC-038: "Erinnern" off without a time is refused');
 select throws_ok(tests.patch_sql('home', 'muell', '{"due_time": null}'),
   '23514', null, 'AC-038: removing the time of a silent chore without switching it on is refused');
-
--- ===================== The scheduler (AC-036) =====================
-select tests.clear_authentication();
-select is(
-  (select count(*)::int from tests.c('2026-11-22 19:00') c where c.kind = 'chore_reminder'), 0,
-  'AC-036: "Erinnern" off, both "Aufgaben mit Uhrzeit" on: at 19:00 nobody gets a message');
-select is(
-  (select c.body from tests.c('2026-11-22 07:30') c where c.who = 'E' and c.kind = 'daily_summary'),
-  'Heute: Müll rausbringen (du, 19:00)',
-  'AC-036: the daily summary still names the chore with its time');
-select tests.authenticate_as(tests.fx('enrico'));
-select lives_ok(tests.patch_sql('home', 'muell', '{"remind_at_due_time": true}'),
-  'AC-036: Enrico switches "Erinnern" on again');
-select tests.clear_authentication();
-select is(
-  (select string_agg(c.who || ': ' || c.body, ' | ' order by c.who) from tests.c('2026-11-22 19:00') c
-   where c.kind = 'chore_reminder'),
-  'E: Müll rausbringen · 19:00 · du bist dran',
-  'AC-036 (spec 0013, AC-023): with "Erinnern" on, Enrico is reminded at 19:00');
 
 -- ===================== Removing the time (AC-038) =====================
 select tests.authenticate_as(tests.fx('enrico'));

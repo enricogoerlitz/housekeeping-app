@@ -1,8 +1,17 @@
-import { useActivities, useCurrentMember, usePlanEntries, useToday } from '@housekeeping/api';
+import {
+  useActivities,
+  useActivityKindsById,
+  useCurrentMember,
+  usePlanEntries,
+  useToday,
+} from '@housekeeping/api';
 import {
   ACTIVITY_SORTS,
   activityMatches,
+  filterRemembered,
+  REMEMBER_FILTERS,
   sortActivities,
+  type RememberFilter,
   visitsOf,
   type Activity,
   type ActivitySort,
@@ -11,7 +20,9 @@ import {
 } from '@housekeeping/core';
 import {
   Button,
+  CreateButton,
   Chip,
+  columnsFor,
   EmptyState,
   Icon,
   IconButton,
@@ -27,18 +38,23 @@ import {
   TextField,
   useBreakpoint,
   useTheme,
+  FieldClearButton,
+  openKeyboardNow,
 } from '@housekeeping/ui';
 import { useIsFocused, useRouter } from 'expo-router';
-import { useEffect } from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
+import { type ComponentRef, useEffect, useRef, useState } from 'react';
+import { Pressable, ScrollView, View, type TextInput } from 'react-native';
 
+import { ListViewSwitch, PlaceTile, TILE_MIN_WIDTH, useListView } from '@/features/shell/list-view';
 import { useOnlineOnly } from '@/features/shell/offline';
 import { ScrollColumn } from '@/features/shell/scroll-column';
+import { useSettings } from '@/lib/settings';
 import { useOriginBack, usePageParams } from '@/lib/url-state';
 
 import { ActivityDetail } from './activity-detail';
 import { ActivityFormSheet } from './activity-form';
-import { ActivityPhoto } from './activity-photo';
+import { ActivityKindsSheet } from './activity-kinds-sheet';
+import { ActivityPhoto, useActivityIcon } from './activity-photo';
 import { activityPlaceLine, activityVisitsLabel } from './labels';
 
 const SORT_OF_SLUG = { name: 'name', bewertung: 'rating', zuletzt: 'recent' } as const;
@@ -50,8 +66,13 @@ function sortShortLabel(sort: ActivitySort): string {
   return ACTIVITY_SORTS.find((entry) => entry.value === sort)?.label ?? '';
 }
 
+const rememberLabel = (filter: RememberFilter) =>
+  REMEMBER_FILTERS.find((entry) => entry.value === filter)?.label ?? '';
+
 /** The list column next to a chosen activity on wide screens ("Liste und Detail"). */
 const LIST_COLUMN_WIDTH = 380;
+/** Space between the cards and tiles, across and down. */
+const GAP = 12;
 
 /**
  * "Aktivitäten" as its own page under "Verwalten" (spec 0024, REQ-008, REQ-009; spec 0004,
@@ -60,6 +81,7 @@ const LIST_COLUMN_WIDTH = 380;
  * highlighted) and the activity on the right with ✕ back to the grid.
  */
 export function ActivitiesScreen() {
+  const searchInput = useRef<ComponentRef<typeof TextInput>>(null);
   const { isPhone, isWide, bp } = useBreakpoint();
   const router = useRouter();
   const online = useOnlineOnly();
@@ -73,21 +95,41 @@ export function ActivitiesScreen() {
   // "‹ Verwalten", or the section it was opened from (spec 0019, REQ-006).
   const { label: backLabel, back } = useOriginBack(params.von, 'verwalten');
   const focused = useIsFocused();
+  // "Kacheln" open the activity's page, "Liste" beside the list on wide screens (spec 0038).
+  const listView = useListView('activities');
+  const tiles = listView.view === 'tiles';
+  const [listWidth, setListWidth] = useState(0);
+  // "Gemerkt", "Alle", "Nicht gemerkt" (spec 0041, REQ-004): never in the address, and back to
+  // "Gemerkt" whenever the list is left (AC-013).
+  const [remember, setRemember] = useState<RememberFilter>('remembered');
+  const [wasFocused, setWasFocused] = useState(focused);
+  if (focused !== wasFocused) {
+    setWasFocused(focused);
+    if (!focused) setRemember('remembered');
+  }
 
   const query = params.suche ?? '';
   const favoritesOnly = params.favoriten === '1';
-  const sort: ActivitySort = SORT_OF_SLUG[params.sortierung ?? 'name'];
+  // Without a sort in the address the one chosen last on this device applies (spec 0036, REQ-002).
+  const settings = useSettings();
+  const sort: ActivitySort = params.sortierung
+    ? SORT_OF_SLUG[params.sortierung]
+    : (settings.listSorts.activities ?? 'name');
   const creating = params.fenster === 'neu-aktivitaet' && focused;
+  const kindsOpen = params.fenster === 'arten' && focused;
   const setQuery = (next: string) => address.replace({ suche: next });
   const setFavoritesOnly = (next: boolean) =>
     address.replace({ favoriten: next ? '1' : undefined });
-  const setSort = (next: ActivitySort) => address.replace({ sortierung: SLUG_OF_SORT[next] });
+  const setSort = (next: ActivitySort) => {
+    settings.update({ listSorts: { ...settings.listSorts, activities: next } });
+    address.replace({ sortierung: SLUG_OF_SORT[next] });
+  };
   const setCreating = (open: boolean) =>
     open ? address.open({ fenster: 'neu-aktivitaet' }) : address.close({ fenster: undefined });
 
   // On wide screens the chosen activity stands in the address and replaces the entry (spec 0019,
   // REQ-014); on phones the same address opens its page, with the list underneath.
-  const selectedId = isWide ? params.aktivitaet : undefined;
+  const selectedId = listView.quick ? params.aktivitaet : undefined;
   const addressed = params.aktivitaet;
   const replace = address.replace;
   useEffect(() => {
@@ -97,46 +139,68 @@ export function ActivitiesScreen() {
   }, [isWide, addressed, replace, router]);
   // From a new activity on to it: the window leaves the address first.
   const open = (activityId: Id) => {
-    if (isWide) address.replace({ fenster: undefined, aktivitaet: activityId });
+    if (listView.quick) address.replace({ fenster: undefined, aktivitaet: activityId });
     else {
       address.replace({ fenster: undefined });
       router.push({ pathname: '/aktivitaet/[id]', params: { id: activityId } });
     }
   };
   const closeDetail = () => address.replace({ aktivitaet: undefined, fenster: undefined });
+  // Spec 0038, AC-005: "Kacheln" close the activity beside the list; the tiles fill the width.
+  const changeView = (next: typeof listView.view) => {
+    if (selectedId) closeDetail();
+    listView.setView(next);
+  };
 
   const visitsById = new Map<Id, Visits>(
     activities.map((activity) => [activity.id, visitsOf('activity', activity.id, entries, today)]),
   );
   const results = sortActivities(
-    activities.filter(
-      (activity) =>
-        (!favoritesOnly || activity.favoriteOf.includes(me.id)) && activityMatches(query, activity),
+    filterRemembered(
+      activities.filter(
+        (activity) =>
+          (!favoritesOnly || activity.favoriteOf.includes(me.id)) &&
+          activityMatches(query, activity),
+      ),
+      remember,
     ),
     sort,
     { me: me.id, entries, today },
   );
 
+  // The window's name field gets the keyboard with the tap (spec 0033, REQ-006).
+  const startCreating = () => {
+    openKeyboardNow();
+    setCreating(true);
+  };
   const empty = activities.length === 0;
-  const addButton = empty ? null : isPhone ? (
-    <IconButton
-      icon="plus"
+  const addButton = empty ? null : (
+    <CreateButton
       label="Aktivität anlegen"
-      variant="soft"
       disabled={online.disabled}
       hint={online.hint}
-      onPress={() => setCreating(true)}
+      onPress={startCreating}
       testID="activity-add"
+    />
+  );
+  // Spec 0041, REQ-001: the kinds are renamed and deleted here.
+  // On wide screens with its word, like "Aktivität anlegen" next to it (review 0003).
+  const kindsButton = isPhone ? (
+    <IconButton
+      icon="layers"
+      label="Arten"
+      variant="soft"
+      onPress={() => address.open({ fenster: 'arten' })}
+      testID="activity-kinds-open"
     />
   ) : (
     <Button
-      label="Aktivität anlegen"
-      icon="plus"
+      label="Arten"
+      icon="layers"
       size="sm"
-      disabled={online.disabled}
-      hint={online.hint}
-      onPress={() => setCreating(true)}
-      testID="activity-add"
+      variant="secondary"
+      onPress={() => address.open({ fenster: 'arten' })}
+      testID="activity-kinds-open"
     />
   );
   const header = (
@@ -144,7 +208,12 @@ export function ActivitiesScreen() {
       title="Aktivitäten"
       backLabel={backLabel}
       onBack={back}
-      right={addButton}
+      right={
+        <Row gap={8}>
+          {kindsButton}
+          {addButton}
+        </Row>
+      }
       testID="activities-title"
     />
   );
@@ -156,6 +225,8 @@ export function ActivitiesScreen() {
 
   const sheet = creating ? (
     <ActivityFormSheet onClose={() => setCreating(false)} onSaved={open} onOpenExisting={open} />
+  ) : kindsOpen ? (
+    <ActivityKindsSheet onClose={() => address.close({ fenster: undefined })} />
   ) : null;
 
   if (empty) {
@@ -173,7 +244,7 @@ export function ActivitiesScreen() {
             icon="plus"
             disabled={online.disabled}
             hint={online.hint}
-            onPress={() => setCreating(true)}
+            onPress={startCreating}
             testID="activity-add"
           />
         </EmptyState>
@@ -183,12 +254,27 @@ export function ActivitiesScreen() {
   }
 
   const split = selectedId !== undefined;
-  const columns = isPhone || split ? 1 : bp === 'desktop' ? 3 : 2;
+  const columns = tiles
+    ? columnsFor(listWidth, { minColumnWidth: TILE_MIN_WIDTH, gap: GAP, minColumns: 2 })
+    : isPhone || split
+      ? 1
+      : bp === 'desktop'
+        ? 3
+        : 2;
+  const cellWidth =
+    columns === 1
+      ? '100%'
+      : listWidth > 0
+        ? Math.floor((listWidth - GAP * (columns - 1)) / columns)
+        : columns === 2
+          ? '48.5%'
+          : '31.8%';
   const sortLabel = sortShortLabel(sort);
   const toolbar = (
     <Stack gap={8}>
       <TextField
         round
+        inputRef={searchInput}
         value={query}
         onChangeText={setQuery}
         placeholder="Aktivitäten suchen …"
@@ -197,39 +283,52 @@ export function ActivitiesScreen() {
         left={<Icon name="search" size={19} color="muted" />}
         right={
           query ? (
-            <IconButton
-              icon="x"
+            <FieldClearButton
               label="Suche leeren"
-              onPress={() => setQuery('')}
+              onClear={() => setQuery('')}
+              inputRef={searchInput}
               testID="activity-search-clear"
             />
           ) : undefined
         }
         testID="activity-search"
       />
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ gap: 8, paddingBottom: 2 }}
-        style={{ flexGrow: 0 }}
-      >
-        <Menu
-          label={sortLabel}
-          accessibilityLabel={`Sortierung: ${sortLabel}`}
-          icon="arrow-up-down"
-          value={sort}
-          onChange={setSort}
-          options={[...ACTIVITY_SORTS]}
-          testID="activity-sort"
-        />
-        <Chip
-          label="Favoriten"
-          icon="heart"
-          selected={favoritesOnly}
-          onPress={() => setFavoritesOnly(!favoritesOnly)}
-          testID="afilter-favorites"
-        />
-      </ScrollView>
+      <Row gap={8}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ gap: 8, paddingBottom: 2 }}
+          style={{ flexGrow: 0, flexShrink: 1 }}
+        >
+          <Menu
+            label={sortLabel}
+            accessibilityLabel={`Sortierung: ${sortLabel}`}
+            icon="arrow-up-down"
+            value={sort}
+            onChange={setSort}
+            options={[...ACTIVITY_SORTS]}
+            testID="activity-sort"
+          />
+          <Menu
+            label={rememberLabel(remember)}
+            accessibilityLabel={`Merken: ${rememberLabel(remember)}`}
+            icon="bookmark"
+            value={remember}
+            onChange={setRemember}
+            options={[...REMEMBER_FILTERS]}
+            testID="activity-remember"
+          />
+          <Chip
+            label="Favoriten"
+            icon="heart"
+            selected={favoritesOnly}
+            onPress={() => setFavoritesOnly(!favoritesOnly)}
+            testID="afilter-favorites"
+          />
+        </ScrollView>
+        <View style={{ flex: 1 }} />
+        <ListViewSwitch value={listView.view} onChange={changeView} testID="activity-view" />
+      </Row>
     </Stack>
   );
   const listBody = (
@@ -245,20 +344,30 @@ export function ActivitiesScreen() {
           testID="activities-no-results"
         />
       ) : (
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+        <View
+          onLayout={(event) => setListWidth(event.nativeEvent.layout.width)}
+          style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GAP }}
+        >
           {results.map((activity) => (
-            <View
-              key={activity.id}
-              style={{ width: columns === 1 ? '100%' : columns === 2 ? '48.5%' : '31.8%' }}
-            >
-              <ActivityCard
-                activity={activity}
-                myRating={activity.ratings[me.id] ?? 0}
-                isFavorite={activity.favoriteOf.includes(me.id)}
-                visits={visitsById.get(activity.id)}
-                selected={activity.id === selectedId}
-                onPress={() => open(activity.id)}
-              />
+            <View key={activity.id} style={{ width: cellWidth }}>
+              {tiles ? (
+                <ActivityTile
+                  activity={activity}
+                  myRating={activity.ratings[me.id] ?? 0}
+                  isFavorite={activity.favoriteOf.includes(me.id)}
+                  visits={visitsById.get(activity.id)}
+                  onPress={() => open(activity.id)}
+                />
+              ) : (
+                <ActivityCard
+                  activity={activity}
+                  myRating={activity.ratings[me.id] ?? 0}
+                  isFavorite={activity.favoriteOf.includes(me.id)}
+                  visits={visitsById.get(activity.id)}
+                  selected={activity.id === selectedId}
+                  onPress={() => open(activity.id)}
+                />
+              )}
             </View>
           ))}
         </View>
@@ -313,6 +422,66 @@ export function ActivitiesScreen() {
   );
 }
 
+/**
+ * "Kacheln" (spec 0038, AC-006): the own photo big in 4:3, else the symbol of its kind or its own
+ * symbol (spec 0041, AC-005); kind, place, favourite, rating and visits below the name.
+ */
+function ActivityTile(props: {
+  activity: Activity;
+  myRating: number;
+  isFavorite: boolean;
+  visits?: Visits;
+  onPress: () => void;
+}) {
+  const kindsById = useActivityKindsById();
+  const { activity } = props;
+  const id = activity.id;
+  const icon = useActivityIcon(activity);
+  const kind = activity.kindId === undefined ? undefined : kindsById[activity.kindId];
+  const placeLine = [kind?.name, activityPlaceLine(activity)].filter(Boolean).join(' · ');
+  const last = props.visits ? activityVisitsLabel(props.visits) : undefined;
+  const signals = props.isFavorite || props.myRating > 0 || last !== undefined;
+  return (
+    <PlaceTile
+      testID={`activity-${id}`}
+      name={activity.name}
+      photoPath={activity.photoPath}
+      placeholderIcon={icon}
+      meta={
+        <View style={{ gap: 4 }}>
+          {placeLine ? (
+            <Text variant="caption" color="muted" numberOfLines={1} testID={`activity-${id}-place`}>
+              {placeLine}
+            </Text>
+          ) : null}
+          {signals ? (
+            <Row gap={8} wrap>
+              {props.isFavorite ? (
+                <View
+                  testID={`activity-${id}-favorite`}
+                  accessibilityLabel="Favorit"
+                  accessibilityRole="image"
+                >
+                  <Icon name="heart" size={15} color="accent" filled />
+                </View>
+              ) : null}
+              {props.myRating ? (
+                <Stars value={props.myRating} size={13} testID={`activity-${id}-stars`} />
+              ) : null}
+              {last ? (
+                <Text variant="caption" color="muted" testID={`activity-${id}-last`}>
+                  {last}
+                </Text>
+              ) : null}
+            </Row>
+          ) : null}
+        </View>
+      }
+      onPress={props.onPress}
+    />
+  );
+}
+
 function ActivityCard(props: {
   activity: Activity;
   myRating: number;
@@ -322,9 +491,11 @@ function ActivityCard(props: {
   onPress: () => void;
 }) {
   const theme = useTheme();
+  const kindsById = useActivityKindsById();
   const { activity } = props;
   const id = activity.id;
-  const placeLine = activityPlaceLine(activity);
+  const kind = activity.kindId === undefined ? undefined : kindsById[activity.kindId];
+  const placeLine = [kind?.name, activityPlaceLine(activity)].filter(Boolean).join(' · ');
   const last = props.visits ? activityVisitsLabel(props.visits) : undefined;
   return (
     <Pressable
@@ -333,7 +504,9 @@ function ActivityCard(props: {
       accessibilityLabel={activity.name}
       aria-selected={!!props.selected}
       onPress={props.onPress}
+      // Cards of one row are as tall as the tallest (review 0003, B-15).
       style={(state) => ({
+        flexGrow: 1,
         opacity: state.pressed ? 0.75 : 1,
         borderRadius: theme.shape.radius.card,
       })}
@@ -341,7 +514,7 @@ function ActivityCard(props: {
       <Surface
         padding={12}
         style={[
-          { flexDirection: 'row', alignItems: 'center', gap: 12 },
+          { flexGrow: 1, flexDirection: 'row', alignItems: 'center', gap: 12 },
           props.selected ? { borderWidth: 1.5, borderColor: theme.colors.accent } : null,
         ]}
       >

@@ -3,6 +3,7 @@
 import { z } from 'zod';
 
 // Type only: reminder.ts imports its schemas from here.
+import type { ActivityIcon } from './activity-kinds';
 import type { EntryReminder } from './reminder';
 
 export type Id = string;
@@ -73,6 +74,8 @@ export interface Store {
   /** Area ids in walking order. Areas missing here come after the ordered ones. */
   areaOrder: Id[];
   hiddenAreaIds: Id[];
+  /** "Karten-Link" (spec 0042, REQ-002): Google Maps / Apple Karten; "Route" shows only with it. */
+  mapsUrl?: string;
 }
 
 // ---------- Recipes ----------
@@ -163,8 +166,28 @@ export interface Recipe {
   lastCookedOn?: ISODate;
   cookedCount: number;
   createdAt: string;
+  /**
+   * The server's `updated_at` of the row (read only): the edit mode remembers it and the save tells
+   * whether the recipe changed meanwhile (spec 0037, AC-006). Undefined before the first pull.
+   */
+  updatedAt?: string;
   /** At most 10, each address once (spec 0023, REQ-009). */
   links: RecipeLink[];
+  /**
+   * The recipe's videos from TikTok in the order they were saved (spec 0046), at most 10, one per
+   * link; written only by the server functions, the files are never kept on the device.
+   */
+  videos: RecipeVideo[];
+}
+
+/** A saved video of a recipe (spec 0043, spec 0046). */
+export interface RecipeVideo {
+  /** The MP4 in household-videos: <household>/recipes/<recipe>/<uuid>.mp4. */
+  path: string;
+  /** The link it was saved from; absent for an old video without a TikTok link. */
+  url?: string;
+  /** Its still in household-media (like a photo), from TikTok's cover; absent when there is none. */
+  poster?: string;
 }
 
 /** "Enthaltenes Rezept": a recipe in a collection (spec 0009, E4). */
@@ -220,6 +243,11 @@ export interface MealPlanEntry {
   startsAt?: TimeOfDay;
   /** Spec 0017: "Erinnern" at a day before the entry and a time; only on entries with a day. */
   reminder?: EntryReminder;
+  /**
+   * Spec 0041: a "Termin" of a series, computed on the device (activity-series.ts) and never
+   * stored as a plan entry; `on` is the day the rule gives it (before any "verschieben").
+   */
+  series?: { seriesId: Id; on: ISODate };
 }
 
 // ---------- Restaurants ----------
@@ -276,12 +304,71 @@ export interface Activity {
   ratedAt?: Record<Id, string>;
   createdBy?: Id;
   createdAt: string;
+  /** "Art" (spec 0041, REQ-001); undefined = none, also after the kind was deleted. */
+  kindId?: Id;
+  /** "Eigenes Symbol" (REQ-002), one of ACTIVITY_ICONS; undefined = the kind's symbol. */
+  icon?: ActivityIcon;
+  /** "Merken" (REQ-004): shown under "Gemerkt" in the list; on unless switched off. */
+  remembered: boolean;
+}
+
+/** "Aktivitätsart" (spec 0041, REQ-001): name and symbol, shared by the household. */
+export interface ActivityKind {
+  id: Id;
+  name: string;
+  icon: ActivityIcon;
+}
+
+/**
+ * The rhythm of a series (spec 0041, REQ-003): the weekly and monthly shapes of the chore
+ * Recurrence, plus "jährlich" on the day and month of the start.
+ */
+export type SeriesRule =
+  | Extract<Recurrence, { type: 'weekly' }>
+  | Extract<Recurrence, { type: 'monthly' }>
+  | { type: 'yearly' };
+
+/** "Serie" (spec 0041, REQ-003): an activity planned with a rhythm. */
+export interface ActivitySeries {
+  id: Id;
+  activityId: Id;
+  rule: SeriesRule;
+  startsOn: ISODate;
+  /** "bis" (inclusive); undefined = "dauerhaft". */
+  endsOn?: ISODate;
+  slotId: Id;
+  startsAt?: TimeOfDay;
+  /** "Zusatz", like on a plan entry. */
+  note?: string;
+  /** "Wer ist dabei?" (REQ-005). */
+  eaterIds: Id[];
+  guests: number;
+  /**
+   * Spec 0059, REQ-003: "Erinnern" for every Termin, counted from its day (0–30 days before);
+   * each computed Termin carries it as its own reminder.
+   */
+  reminder?: EntryReminder;
+}
+
+/** One "Termin" of a series "abgesagt" (no movedTo) or "verschoben" (spec 0041, REQ-003). */
+export interface ActivitySeriesException {
+  id: Id;
+  seriesId: Id;
+  /** The day the rule gives the Termin. */
+  on: ISODate;
+  movedTo?: ISODate;
+  /** Another Tageszeit or Uhrzeit of a moved Termin; undefined = the series' one. */
+  slotId?: Id;
+  startsAt?: TimeOfDay;
 }
 
 // ---------- Shopping ----------
 
 export type ContributionSource =
-  { kind: 'manual' } | { kind: 'recipe'; recipeId: Id; entryId?: Id; label: string };
+  | { kind: 'manual' }
+  | { kind: 'recipe'; recipeId: Id; entryId?: Id; label: string }
+  /** Spec 0060: a Dauerposten on its day `on` (by the server, or early from "Aus Kalender"). */
+  | { kind: 'recurring'; recurringItemId: Id; on: ISODate };
 
 export interface ShoppingContribution {
   id: Id;
@@ -309,6 +396,27 @@ export interface ShoppingItem {
   checkedOnList?: boolean;
   /** Changed offline and not yet confirmed by the server (shown as a small dot). */
   pendingSync?: boolean;
+  createdAt: string;
+}
+
+/** The rhythm of a Dauerposten (spec 0060, Decision 4): the series rules without "jährlich". */
+export type RecurringRule = Exclude<SeriesRule, { type: 'yearly' }>;
+
+/** "Dauerposten" (spec 0060): an article that comes onto the list by itself on its days. */
+export interface RecurringItem {
+  id: Id;
+  articleId: Id;
+  count?: number;
+  qty?: number;
+  unit?: string;
+  /** "Zusatz", like on the list. */
+  note?: string;
+  rule: RecurringRule;
+  /** Counts "alle N Wochen" from this week; nothing is due before it. */
+  startsOn: ISODate;
+  paused: boolean;
+  /** The last day it came onto the list; written only by the server. */
+  lastAddedOn?: ISODate;
   createdAt: string;
 }
 
@@ -349,6 +457,11 @@ export interface Chore {
    * a time. Undefined = on, the default.
    */
   remindAtDueTime?: boolean;
+  /**
+   * „Vorwarnung“ (spec 0059, REQ-004): from this many days (1–60) before the Termin it stands in
+   * the bell; undefined = none.
+   */
+  noticeDaysBefore?: number;
 }
 
 export interface ChoreEvent {
@@ -466,55 +579,19 @@ export interface PackingItem {
 // ---------- Notifications (spec 0013) ----------
 
 /**
- * A time of day "HH:MM" (24 h) in the household's local time, always in five-minute steps like
- * the scheduler's tick (plan, Decision 4; `private.is_five_minute_time` in the database).
+ * A time of day "HH:MM" (24 h) in the household's local time, always in five-minute steps
+ * (spec 0013, Decision 4; `private.is_five_minute_time` in the database).
  */
 export const TimeOfDaySchema = z.string().regex(/^([01]\d|2[0-3]):[0-5][05]$/);
 export type TimeOfDay = z.infer<typeof TimeOfDaySchema>;
 
-/** The parts of the "Tagesüberblick": Essen, Aktivitäten, Aufgaben, Vorbereitung. */
-export const DailySummaryPartSchema = z.enum(['meals', 'activities', 'chores', 'prep']);
-export type DailySummaryPart = z.infer<typeof DailySummaryPartSchema>;
-
 /**
- * "Benachrichtigungs-Einstellungen" of one member in one household (one row per member, created
- * by the server with the defaults; the member changes only these fields).
+ * The own row of `notification_settings` in one household (one per member, created by the
+ * server; spec 0051): the acknowledged in-app notices, written only through acknowledge_notices.
  */
-export const NotificationSettingsSchema = z.object({
-  id: z.string(),
-  memberId: z.string(),
-  dailySummaryEnabled: z.boolean(),
-  dailySummaryAt: TimeOfDaySchema,
-  /** 1–4 parts, each at most once. */
-  dailySummaryParts: z
-    .array(DailySummaryPartSchema)
-    .min(1)
-    .max(4)
-    .refine((parts) => new Set(parts).size === parts.length),
-  activitiesEveEnabled: z.boolean(),
-  activitiesEveAt: TimeOfDaySchema,
-  choreRemindersEnabled: z.boolean(),
-  /** Spec 0017, REQ-007: "Erinnerungen an Einträgen", on at the start. */
-  entryRemindersEnabled: z.boolean(),
-});
-export type NotificationSettings = z.infer<typeof NotificationSettingsSchema>;
-
-/** What the server says about a push subscription ("Deine Geräte"). */
-export const PushSubscriptionStatusSchema = z.enum(['active', 'off', 'unreachable']);
-export type PushSubscriptionStatus = z.infer<typeof PushSubscriptionStatusSchema>;
-
-/**
- * One of the person's own "Push-Abos" as `list_push_subscriptions` returns it: never the push
- * address or keys. Not `PushSubscription`, which is the browser's type.
- */
-export const OwnPushSubscriptionSchema = z.object({
-  id: z.string(),
-  /** "Mac · Chrome" (deviceLabel). */
-  label: z.string(),
-  status: PushSubscriptionStatusSchema,
-  /** The subscription of the device that asks. */
-  isCurrent: z.boolean(),
-  createdAt: z.string(),
-  lastSuccessAt: z.string().optional(),
-});
-export type OwnPushSubscription = z.infer<typeof OwnPushSubscriptionSchema>;
+export interface NotificationSettings {
+  id: Id;
+  memberId: Id;
+  /** Keys of acknowledged notices (`<kind>:<id>[:<more>]:<day>`, notices.ts). */
+  acknowledgedNotices: string[];
+}

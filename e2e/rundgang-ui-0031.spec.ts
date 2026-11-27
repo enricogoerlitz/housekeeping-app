@@ -152,7 +152,9 @@ test.describe('REQ-032: tablets', () => {
 
 test.describe('REQ-033: hyphenation', () => {
   for (const width of [1440, 1024]) {
-    test(`AC-078: at ${width} px long names break at a syllable, never inside it`, async ({
+    // Spec 0057, REQ-004 / AC-024 replaces the automatic hyphenation: titles break between
+    // words and at real hyphens only, „Kichererbsen-|Eintopf“, never „Kichererb-|sen“.
+    test(`AC-078 (0057 AC-024): at ${width} px long names break only at a hyphen or a space`, async ({
       page,
     }) => {
       await page.setViewportSize({ width, height: 900 });
@@ -163,10 +165,8 @@ test.describe('REQ-033: hyphenation', () => {
         .getByText('Kichererbsen-Eintopf', { exact: true })
         .first();
       await expect(stew).toBeVisible();
-      expect(await stew.evaluate((element) => getComputedStyle(element).hyphens)).toBe('auto');
-      // Where „Kichererbsen-“ does not fit the column the browser hyphenates by syllable:
-      // „Ki-cher-erb-sen“ (Entscheidung 15), never „Kichererbse|n“.
-      await expectBreaksAt(stew, 'Kichererbsen-Eintopf', [2, 6, 9]);
+      expect(await stew.evaluate((element) => getComputedStyle(element).hyphens)).toBe('manual');
+      await expectBreaksAt(stew, 'Kichererbsen-Eintopf', []);
 
       // The household row of the week is on from the start (settings).
       await open(page, '/kalender');
@@ -288,7 +288,7 @@ test.describe('REQ-037: alignments', () => {
     expect(Math.abs((input?.width ?? 0) - row.width)).toBeLessThanOrEqual(1);
   });
 
-  test('AC-085: in an empty household the buttons stand centred; chores say „Legt eure …“', async ({
+  test('AC-085: in an empty household the templates stand centred; chores say „Nehmt eine Vorlage …“', async ({
     page,
   }) => {
     const householdId = await createTestHousehold(`Leer ${Date.now()}`);
@@ -296,9 +296,9 @@ test.describe('REQ-037: alignments', () => {
     await switchHousehold(page, householdId);
     await open(page, '/haushalt?ansicht=alle');
     const empty = tid(page, 'chores-empty');
-    await expect(empty).toContainText('Legt eure erste Aufgabe an oder nehmt eine Vorlage.');
+    await expect(empty).toContainText('Nehmt eine Vorlage oder legt eine eigene Aufgabe an.');
     const area = await boxOf(empty);
-    const button = await boxOf(tid(page, 'chores-empty-new'));
+    const button = await boxOf(tid(page, 'chores-template-0'));
     expect(Math.abs(button.x + button.width / 2 - (area.x + area.width / 2))).toBeLessThanOrEqual(
       2,
     );

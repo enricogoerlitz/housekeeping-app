@@ -20,7 +20,7 @@ import { seedIds } from './seed-ids';
 
 // Spec 0027 — "Verwalten und Konto": withdrawing an invitation and the Google hint (REQ-001,
 // REQ-002), the own profile (REQ-003), renaming and deleting a household (REQ-004, REQ-005), the
-// own feedback (REQ-006), the household of "Benachrichtigungen" (REQ-008) and "Jetzt abgleichen"
+// own feedback (REQ-006), and "Jetzt abgleichen"
 // (REQ-010), „Erinnern“ per chore (REQ-009). Each writing test makes its own household; the server rules are pgTAP's
 // (supabase/tests/manage_household.test.sql). Runs once in spec 0028.
 
@@ -51,6 +51,7 @@ test('AC-001, AC-006: inviting names the Google test users; "Zurückziehen" remo
   );
   const row = page.locator('[data-testid^="household-invitation-withdraw-"]').first();
   await row.click();
+  await tid(page, 'confirm-withdraw-invitation-confirm').click();
   await expect(toastMessage(page)).toHaveText(`Einladung an ${email} zurückgezogen`);
   await expect(page.locator('[data-testid^="household-invitation-withdraw-"]')).toHaveCount(0);
 });
@@ -140,31 +141,17 @@ test('AC-028: the sentence about the status stands above the filters', async ({ 
   );
 });
 
-test('AC-032, AC-034: the household of the settings is chosen without switching the app', async ({
-  page,
-}) => {
-  await login(page, 'enrico');
-  await open(page, '/einstellungen/benachrichtigungen?fuer-haushalt=kaputt');
-  await expect(tid(page, 'notif-household-note')).toHaveText(
-    'Gilt für „Enrico & Nadja“ auf allen deinen Geräten.',
-  );
-  await tid(page, `notif-household-${seedIds['hh-test']}`).click();
-  await expect(tid(page, 'notif-household-note')).toHaveText(
-    'Gilt für „Test“ auf allen deinen Geräten.',
-  );
-  await expect(page).toHaveURL(new RegExp(`fuer-haushalt=${seedIds['hh-test']}`));
-});
-
 test('AC-039, AC-041: "Jetzt abgleichen" is a button; offline it is greyed out', async ({
   page,
 }) => {
   await login(page, 'enrico');
   await openSettings(page);
   const row = tid(page, 'sync-last');
-  await expect(row).toContainText('Zuletzt abgeglichen: heute');
+  const status = tid(page, 'sync-status');
+  await expect(status).toContainText('Zuletzt abgeglichen: heute');
   await expect(row).toContainText('Jetzt abgleichen');
   await row.click();
-  await expect(row).toContainText('Zuletzt abgeglichen: heute');
+  await expect(status).toContainText('Zuletzt abgeglichen: heute');
   await goOffline(page);
   await expect(row).toHaveAttribute('aria-disabled', 'true');
 });
@@ -180,7 +167,7 @@ test('AC-035, AC-038: „Erinnern“ comes with a time; off it only shows the ti
   await expect(remind().locator('input')).toBeChecked();
   // The switch carries the test id; its description stands beside it.
   await expect(
-    page.getByText('Erinnert zur Uhrzeit, wer dran ist.', { exact: false }),
+    page.getByText('Erinnert zur Uhrzeit in den Mitteilungen, wer dran ist.', { exact: false }),
   ).toBeVisible();
   await remind().locator('input').click();
   await expect(remind().locator('input')).not.toBeChecked();

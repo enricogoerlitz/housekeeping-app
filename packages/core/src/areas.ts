@@ -156,6 +156,9 @@ export function areaDeleteQuestion(
   const verb = articleCount === 1 ? 'steht' : 'stehen';
   return {
     title: `${name} löschen?`,
-    message: `${articleCount} Artikel ${verb} danach unter ‚Ohne Bereich‘.`,
+    message:
+      articleCount === 0
+        ? 'Der Bereich ist leer.'
+        : `${articleCount} Artikel ${verb} danach unter ‚Ohne Bereich‘.`,
   };
 }

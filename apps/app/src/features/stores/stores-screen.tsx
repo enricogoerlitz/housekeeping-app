@@ -3,6 +3,7 @@ import { storeAreaSummary, type Id } from '@housekeeping/core';
 import {
   Badge,
   Button,
+  CreateButton,
   EmptyState,
   Icon,
   List,
@@ -16,6 +17,7 @@ import {
   toast,
   useBreakpoint,
   ViewTabs,
+  openKeyboardNow,
 } from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
@@ -23,7 +25,7 @@ import { View } from 'react-native';
 
 import { ScrollColumn } from '@/features/shell/scroll-column';
 import { useOnlineOnly } from '@/features/shell/offline';
-import { useOriginBack, usePageParams } from '@/lib/url-state';
+import { PagePreview, useOriginBack, usePageParams } from '@/lib/url-state';
 
 import { AreasView } from './areas-view';
 import { messageOf, viewFromParam, VIEW_OPTIONS, type StoresView } from './labels';
@@ -31,16 +33,22 @@ import { NameSheet } from './store-dialogs';
 import { StoreOrderPanel } from './store-order-screen';
 
 /**
- * The stores (REQ-008): each with "n Bereiche · m ausgeblendet" and "Standard", then "+ Neuer
- * Markt". A store opens its walking order: on phones as a page, on wide screens in the right
- * column (AC-042).
+ * The stores (REQ-008): each with "n Bereiche · m ausgeblendet" and "Standard". A store opens its
+ * walking order: on phones as a page, on wide screens in the right column (AC-042). "Markt
+ * anlegen" stands in the page's header (spec 0054, REQ-001); `creating` opens its window.
  */
-function StoresList(props: { selectedId?: Id; onSelect: (storeId: Id) => void }) {
+function StoresList(props: {
+  selectedId?: Id;
+  onSelect: (storeId: Id) => void;
+  creating: boolean;
+  onCreatingChange: (open: boolean) => void;
+}) {
   const stores = useStores();
   const household = useHousehold();
   const online = useOnlineOnly();
   const { isPhone } = useBreakpoint();
-  const [creating, setCreating] = useState(false);
+  const { creating } = props;
+  const setCreating = props.onCreatingChange;
   // "Reihenfolge übernehmen von …" (spec 0025, AC-050); '' = "Wie die Bereiche" (AC-051).
   const [copyFrom, setCopyFrom] = useState('');
   const copyOptions = [
@@ -62,7 +70,19 @@ function StoresList(props: { selectedId?: Id; onSelect: (storeId: Id) => void })
           title="Noch keine Märkte"
           text="Ohne Markt ist die Liste nach Bereichen sortiert. Mit einem Markt stehen die Bereiche in seinem Laufweg."
           testID="stores-empty"
-        />
+        >
+          <Button
+            label="Markt anlegen"
+            icon="plus"
+            disabled={online.disabled}
+            hint={online.hint}
+            onPress={() => {
+              openKeyboardNow();
+              setCreating(true);
+            }}
+            testID="stores-empty-new"
+          />
+        </EmptyState>
       ) : (
         <List>
           {stores.map((store) => (
@@ -86,17 +106,6 @@ function StoresList(props: { selectedId?: Id; onSelect: (storeId: Id) => void })
           ))}
         </List>
       )}
-      <View style={{ marginTop: 16, alignItems: 'flex-start' }}>
-        <Button
-          label="Neuer Markt"
-          icon="plus"
-          variant={stores.length === 0 ? 'primary' : 'secondary'}
-          disabled={online.disabled}
-          hint={online.hint}
-          onPress={() => setCreating(true)}
-          testID="store-new"
-        />
-      </View>
       {creating ? (
         <NameSheet
           title="Neuer Markt"
@@ -179,6 +188,11 @@ export function StoresScreen() {
   const setView = (next: StoresView) =>
     address.replace({ ansicht: next === 'bereiche' ? 'bereiche' : undefined, markt: undefined });
 
+  const online = useOnlineOnly();
+  const [creating, setCreating] = useState<'store' | 'area'>();
+  const creatingChange = (kind: 'store' | 'area') => (open: boolean) =>
+    setCreating(open ? kind : undefined);
+
   const split = view === 'maerkte' && !isPhone;
   return (
     <Screen
@@ -189,6 +203,32 @@ export function StoresScreen() {
           title="Märkte & Bereiche"
           backLabel={back.label}
           onBack={back.back}
+          right={
+            // One "+" for the tab shown (spec 0054, AC-004).
+            view === 'bereiche' ? (
+              <CreateButton
+                label="Bereich anlegen"
+                disabled={online.disabled}
+                hint={online.hint}
+                onPress={() => {
+                  openKeyboardNow();
+                  setCreating('area');
+                }}
+                testID="areas-new"
+              />
+            ) : (
+              <CreateButton
+                label="Markt anlegen"
+                disabled={online.disabled}
+                hint={online.hint}
+                onPress={() => {
+                  openKeyboardNow();
+                  setCreating('store');
+                }}
+                testID="store-new"
+              />
+            )
+          }
           testID="stores-title"
         />
       }
@@ -201,18 +241,36 @@ export function StoresScreen() {
           testID="stores-view"
         />
       }
-      // On phones a sideways swipe changes the view (spec 0029, REQ-003).
-      tabSwipe={tabSwipe(VIEW_OPTIONS, view, setView)}
+      // On phones a sideways swipe changes the view (spec 0029, REQ-003), with the neighbour view
+      // beside the content (spec 0034, REQ-007).
+      tabSwipe={tabSwipe(VIEW_OPTIONS, view, setView, (next) => (
+        <PagePreview
+          page="maerkte"
+          params={{
+            ...params,
+            ansicht: next === 'bereiche' ? 'bereiche' : undefined,
+            markt: undefined,
+            fenster: undefined,
+          }}
+        >
+          <StoresScreen />
+        </PagePreview>
+      ))}
       scroll={!split}
       style={split ? { flex: 1, paddingBottom: 0 } : undefined}
     >
       {view === 'bereiche' ? (
-        <AreasView />
+        <AreasView creating={creating === 'area'} onCreatingChange={creatingChange('area')} />
       ) : split ? (
         <ListDetail
           list={
             <ScrollColumn>
-              <StoresList selectedId={selected?.id} onSelect={select} />
+              <StoresList
+                selectedId={selected?.id}
+                onSelect={select}
+                creating={creating === 'store'}
+                onCreatingChange={creatingChange('store')}
+              />
             </ScrollColumn>
           }
           detail={
@@ -233,7 +291,11 @@ export function StoresScreen() {
           testID="stores-split"
         />
       ) : (
-        <StoresList onSelect={select} />
+        <StoresList
+          onSelect={select}
+          creating={creating === 'store'}
+          onCreatingChange={creatingChange('store')}
+        />
       )}
     </Screen>
   );

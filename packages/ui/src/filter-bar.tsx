@@ -2,10 +2,10 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Platform, View } from 'react-native';
 
 import { Button, Chip } from './controls';
-import { Surface } from './primitives';
+import { Row, Surface, Text } from './primitives';
 import { Sheet } from './overlay';
 import { ScrollRow } from './scroll-row';
-import { useBreakpoint } from './theme-context';
+import { useBreakpoint, useTheme } from './theme-context';
 
 export interface FilterBarProps {
   /** First row: the search field. */
@@ -18,6 +18,8 @@ export interface FilterBarProps {
   sort?: ReactNode;
   /** Quick chips and the chips of active filters (`Chip removable`); they scroll sideways. */
   chips?: ReactNode;
+  /** At the end of the row, outside the chips that scroll, e.g. the view switch (spec 0038). */
+  trailing?: ReactNode;
   /** All filter fields. Phones: a medium window; wider screens: unfolds below the row. */
   panel: ReactNode;
   /** Title of the window on phones. */
@@ -39,6 +41,7 @@ export interface FilterBarProps {
  */
 export function FilterBar(props: FilterBarProps) {
   const { isPhone } = useBreakpoint();
+  const c = useTheme().colors;
   const [open, setOpen] = useState(false);
   const unfolded = open && !isPhone;
   useEffect(() => {
@@ -54,8 +57,8 @@ export function FilterBar(props: FilterBarProps) {
   const reset = (
     <Button
       label={props.resetLabel}
-      variant={isPhone ? 'ghost' : 'link'}
-      size={isPhone ? 'md' : 'sm'}
+      variant="link"
+      size="sm"
       onPress={props.onReset}
       testID={id('reset')}
     />
@@ -64,17 +67,36 @@ export function FilterBar(props: FilterBarProps) {
   return (
     <View testID={props.testID} style={{ gap: 10 }}>
       {props.search}
-      <ScrollRow>
-        <Chip
-          label={props.filterLabel}
-          icon="list-filter"
-          selected={props.activeCount > 0}
-          onPress={() => setOpen(!open)}
-          testID={id('filter')}
-        />
-        {props.sort}
-        {props.chips}
-      </ScrollRow>
+      <View testID={id('row')} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <ScrollRow>
+            <Chip
+              label={props.filterLabel}
+              icon="list-filter"
+              selected={props.activeCount > 0}
+              onPress={() => setOpen(!open)}
+              testID={id('filter')}
+            />
+            {props.sort}
+            {props.chips}
+          </ScrollRow>
+        </View>
+        {props.trailing ? (
+          <>
+            {/* A hairline keeps the chips that scroll apart from what stays (review 0003). */}
+            <View
+              aria-hidden
+              style={{
+                width: 1,
+                alignSelf: 'stretch',
+                marginVertical: 6,
+                backgroundColor: c.border,
+              }}
+            />
+            {props.trailing}
+          </>
+        ) : null}
+      </View>
       {isPhone ? (
         <Sheet
           visible={open}
@@ -82,10 +104,11 @@ export function FilterBar(props: FilterBarProps) {
           title={props.panelTitle}
           size="m"
           testID={id('panel')}
+          // The live count ("24 Rezepte · 2 Sammlungen zeigen") gets the whole width, so it stays
+          // on one line at 390 px; "Zurücksetzen" below it (review 0003).
           footer={
-            <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
-              {reset}
-              <View style={{ flex: 1 }}>
+            <View style={{ gap: 2, alignItems: 'center' }}>
+              <View style={{ alignSelf: 'stretch' }}>
                 <Button
                   label={props.applyLabel}
                   full
@@ -93,6 +116,8 @@ export function FilterBar(props: FilterBarProps) {
                   testID={id('apply')}
                 />
               </View>
+              {/* A Button aligns itself to the start; the wrapper centres it. */}
+              <View>{reset}</View>
             </View>
           }
         >
@@ -121,6 +146,23 @@ export function FilterBar(props: FilterBarProps) {
           </View>
         </Surface>
       ) : null}
+    </View>
+  );
+}
+
+/**
+ * One field of a filter panel: its title and the chips below it. Never wider than the panel, so
+ * a long run of chips (13 cuisines) wraps inside it instead of running out (spec 0036, AC-005).
+ */
+export function FilterSection(props: { title: string; children: ReactNode; testID?: string }) {
+  return (
+    // maxWidth keeps it inside the panel; it never shrinks, or the sheet of a phone (a column)
+    // squeezes it to its title (spec 0037).
+    <View style={{ gap: 8, flexShrink: 0, maxWidth: '100%' }} testID={props.testID}>
+      <Text variant="smallStrong">{props.title}</Text>
+      <Row wrap gap={8}>
+        {props.children}
+      </Row>
     </View>
   );
 }

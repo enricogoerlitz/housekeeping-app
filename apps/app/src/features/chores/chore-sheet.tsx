@@ -12,11 +12,13 @@ import {
   useToday,
 } from '@housekeeping/api';
 import {
-  asksForPushPermission,
+  choreCalendarEvent,
   choreDraftErrors,
   choreDraftFrom,
+  choreDueOn,
   choreFieldsOf,
   choreNextDate,
+  choreNoticeLabel,
   postponedNotice,
   postponeOptions,
   seasonLabel,
@@ -45,7 +47,8 @@ import {
 import { useMemo, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 
-import { useEnsureDevicePush } from '@/features/notifications/use-device-push';
+import { AddToCalendar, appLink } from '@/features/calendar/add-to-calendar';
+import { confirmFirst } from '@/features/shell/confirm-dialog';
 import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 import { PlanDateCalendar } from '@/lib/plan-date-calendar';
 
@@ -120,11 +123,14 @@ function useChoreDetail(props: ChoreDetailProps): {
   const today = useToday();
   const events = useChoreEvents();
   const online = useOnlineOnly();
-  const ensureDevicePush = useEnsureDevicePush();
   const [editing, setEditing] = useState(false);
   const [draft, update, reset] = useChoreDraft(() => choreDraftFrom(chore, today, me.id));
   const [errors, setErrors] = useState<ChoreDraftErrors>({});
-  const time = useChoreTime(chore.dueTime, chore.remindAtDueTime !== false);
+  const time = useChoreTime(
+    chore.dueTime,
+    chore.remindAtDueTime !== false,
+    chore.noticeDaysBefore ?? 0,
+  );
   const recent = useMemo(() => recentEntries(events, chore), [events, chore]);
   const asNeeded = chore.recurrence.type === 'asNeeded';
 
@@ -146,22 +152,13 @@ function useChoreDetail(props: ChoreDetailProps): {
     const found = choreDraftErrors(draft);
     setErrors(found);
     if (found.title || found.weekdays) return;
-    // A new time asks for this device first, inside the tap (spec 0013, AC-007, Decision 26).
-    if (
-      asksForPushPermission({
-        kind: 'time',
-        gesture: 'tap',
-        before: chore.dueTime,
-        after: time.value,
-      })
-    )
-      ensureDevicePush();
     try {
       // No time removes it (✕, AC-025).
       updateChore(chore.id, {
         ...choreFieldsOf(draft, members, chore),
         dueTime: time.value ?? null,
         remindAtDueTime: time.remind,
+        noticeDaysBefore: time.notice,
       });
     } catch (error) {
       setErrors({ title: errorMessage(error, FAILED_MESSAGE) });
@@ -229,6 +226,9 @@ function useChoreDetail(props: ChoreDetailProps): {
     withUndo(() => postponeChore(chore.id, day), postponedNotice(chore, day, today, away));
   };
   const postponeChoices = postponeOptions(chore, today, away);
+  // Spec 0059: the Termin after trips, for "In meinen Kalender"; none for "Flexibel" (only "etwa").
+  const due = chore.recurrence.type === 'flexible' ? undefined : choreDueOn(chore, away);
+  const notice = choreNoticeLabel(chore.noticeDaysBefore);
 
   return {
     title: chore.title,
@@ -246,6 +246,11 @@ function useChoreDetail(props: ChoreDetailProps): {
           <Text variant="smallStrong" testID="chore-next">
             {nextText}
           </Text>
+          {notice ? (
+            <Text variant="small" color="muted" testID="chore-notice-line">
+              {notice}
+            </Text>
+          ) : null}
           {lastEntry ? (
             <EntryLine event={lastEntry} today={today} prefix="Zuletzt" testID="chore-last" />
           ) : (
@@ -345,12 +350,35 @@ function useChoreDetail(props: ChoreDetailProps): {
             label="Löschen"
             icon="trash"
             variant="link"
+            quiet
             disabled={online.disabled}
             hint={online.hint ?? 'Der Verlauf bleibt'}
-            onPress={() => withUndo(() => deleteChore(chore.id), `„${chore.title}“ gelöscht`)}
+            onPress={() =>
+              confirmFirst({
+                title: `„${chore.title}“ löschen?`,
+                message: 'Der Verlauf bleibt.',
+                confirmLabel: 'Löschen',
+                onConfirm: () => {
+                  deleteChore(chore.id);
+                  props.onClose();
+                  toast.show({ message: `„${chore.title}“ gelöscht` });
+                },
+                testID: 'confirm-delete-chore',
+              })
+            }
             testID="chore-delete"
           />
         </Row>
+        {due ? (
+          <AddToCalendar
+            event={choreCalendarEvent({
+              chore,
+              due,
+              link: appLink({ screen: 'chore', choreId: chore.id }),
+            })}
+            testID="chore-calendar"
+          />
+        ) : null}
       </Stack>
     ),
   };

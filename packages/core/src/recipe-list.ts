@@ -1,6 +1,9 @@
 import { formatQty } from './amounts';
 import { formatStars } from './ratings';
+import { contentsInBook } from './collections';
 import { averageRating, courseLabel, filterRecipes, sortRecipes, type RecipeSort } from './recipes';
+import { normalizeText } from './text';
+import { isUnfinishedRecipe } from './unfinished-recipes';
 import type {
   Article,
   CollectionRecipe,
@@ -19,14 +22,17 @@ import type {
 /** "Lange nicht gekocht": not cooked within this many days (as before spec 0008). */
 export const RARELY_COOKED_DAYS = 21;
 
-/** Zeit in the filter panel, each "höchstens"; 30 is also the quick chip "< 30 Min" (E13). */
-export type TimeLimit = 15 | 30 | 60;
+/**
+ * Zeit in the filter panel, each "höchstens"; 30 is also the quick chip "< 30 Min" (E13). 120
+ * ("< 2 Std") since spec 0037 (AC-016), for collections like a barbecue.
+ */
+export type TimeLimit = 15 | 30 | 60 | 120;
 /** Bewertung in the filter panel: the average from this value on (E13). */
 export type MinRating = 4 | 4.5;
 /** Ernährung in the filter panel; one value at most (AC-006). */
 export type DietFilter = 'vegetarian' | 'vegan';
 
-export const TIME_LIMITS: readonly TimeLimit[] = [15, 30, 60];
+export const TIME_LIMITS: readonly TimeLimit[] = [15, 30, 60, 120];
 export const MIN_RATINGS: readonly MinRating[] = [4, 4.5];
 
 export interface RecipeListFilter {
@@ -44,19 +50,26 @@ export interface RecipeListFilter {
   courses: Course[];
   /** Cuisine keys (cuisineKey); several: a recipe passes with one of them. */
   cuisines: string[];
+  /** Tag keys (tagKey); several: a recipe passes only with all of them (spec 0037, REQ-006). */
+  tags: string[];
   minRating?: MinRating;
+  /** Only recipes without ingredients and steps (spec 0061, REQ-002). */
+  unfinished: boolean;
 }
 
 export const EMPTY_RECIPE_LIST_FILTER: RecipeListFilter = {
   favorites: false,
   fitsAll: false,
   rare: false,
+  unfinished: false,
   courses: [],
   cuisines: [],
+  tags: [],
 };
 
-/** The quick chips in the filter row, in this order (REQ-002). */
-export type QuickFilter = 'favorites' | 'fast' | 'vegetarian' | 'vegan' | 'fitsAll' | 'rare';
+/** The quick chips in the filter row, in this order (REQ-002); "Unfertig" last (spec 0061). */
+export type QuickFilter =
+  'favorites' | 'fast' | 'vegetarian' | 'vegan' | 'fitsAll' | 'rare' | 'unfinished';
 
 export const QUICK_FILTERS: readonly { value: QuickFilter; label: string }[] = [
   { value: 'favorites', label: 'Favoriten' },
@@ -65,7 +78,23 @@ export const QUICK_FILTERS: readonly { value: QuickFilter; label: string }[] = [
   { value: 'vegan', label: 'Vegan' },
   { value: 'fitsAll', label: 'Passt für alle' },
   { value: 'rare', label: 'Lange nicht gekocht' },
+  { value: 'unfinished', label: 'Unfertig' },
 ];
+
+/**
+ * The quick chips as shown (spec 0061, REQ-002): "Unfertig (n)" with the number of unfinished
+ * recipes of the household, left out while there are none and it is off (AC-006, AC-009).
+ */
+export function shownQuickFilters(
+  filter: RecipeListFilter,
+  unfinished: number,
+): { value: QuickFilter; label: string }[] {
+  return QUICK_FILTERS.flatMap((chip) => {
+    if (chip.value !== 'unfinished') return [chip];
+    if (unfinished === 0 && !filter.unfinished) return [];
+    return [{ value: chip.value, label: `${chip.label} (${unfinished})` }];
+  });
+}
 
 export function isQuickFilterActive(filter: RecipeListFilter, chip: QuickFilter): boolean {
   switch (chip) {
@@ -80,6 +109,8 @@ export function isQuickFilterActive(filter: RecipeListFilter, chip: QuickFilter)
       return filter.fitsAll;
     case 'rare':
       return filter.rare;
+    case 'unfinished':
+      return filter.unfinished;
   }
 }
 
@@ -101,6 +132,8 @@ export function toggleQuickFilter(filter: RecipeListFilter, chip: QuickFilter): 
       return { ...filter, fitsAll: !active };
     case 'rare':
       return { ...filter, rare: !active };
+    case 'unfinished':
+      return { ...filter, unfinished: !active };
   }
 }
 
@@ -111,11 +144,13 @@ export function activeFilterCount(filter: RecipeListFilter): number {
     Number(filter.favorites) +
     Number(filter.fitsAll) +
     Number(filter.rare) +
+    Number(filter.unfinished) +
     Number(filter.diet !== undefined) +
     Number(filter.maxMinutes !== undefined) +
     Number(filter.minRating !== undefined) +
     filter.courses.length +
-    filter.cuisines.length
+    filter.cuisines.length +
+    filter.tags.length
   );
 }
 
@@ -139,9 +174,9 @@ export function filterButtonLabel(count: number): string {
   return count === 0 ? 'Filter' : `Filter (${count})`;
 }
 
-/** "< 15 Min" (Zeit). */
+/** "< 15 Min", "< 2 Std" (Zeit). */
 export function timeLimitLabel(minutes: TimeLimit): string {
-  return `< ${minutes} Min`;
+  return minutes === 120 ? '< 2 Std' : `< ${minutes} Min`;
 }
 
 /** "ab 4 ★", "ab 4,5 ★" (Bewertung). */
@@ -154,16 +189,19 @@ export type RecipeFilterChip =
   | { kind: 'kind'; value: RecipeKind; label: string }
   | { kind: 'course'; value: Course; label: string }
   | { kind: 'cuisine'; value: string; label: string }
+  | { kind: 'tag'; value: string; label: string }
   | { kind: 'time'; value: TimeLimit; label: string }
   | { kind: 'rating'; value: MinRating; label: string };
 
 /**
  * The active values that have no quick chip, in the order of the panel's sections: Art,
- * Gerichtart, Küche (with the shown spelling from the facets), Zeit other than 30, Bewertung.
+ * Gerichtart, Küche (with the shown spelling from the facets), Schlagworte, Zeit other than 30,
+ * Bewertung.
  */
 export function activeFilterChips(
   filter: RecipeListFilter,
   facets: readonly CuisineFacet[],
+  tags: readonly CuisineFacet[] = [],
 ): RecipeFilterChip[] {
   const chips: RecipeFilterChip[] = [
     ...(filter.kind === undefined
@@ -178,6 +216,11 @@ export function activeFilterChips(
       kind: 'cuisine',
       value,
       label: cuisineLabel(value, facets),
+    })),
+    ...filter.tags.map((value): RecipeFilterChip => ({
+      kind: 'tag',
+      value,
+      label: cuisineLabel(value, tags),
     })),
   ];
   if (filter.maxMinutes !== undefined && filter.maxMinutes !== 30) {
@@ -209,6 +252,8 @@ export function removeFilterChip(
       return { ...filter, courses: filter.courses.filter((value) => value !== chip.value) };
     case 'cuisine':
       return { ...filter, cuisines: filter.cuisines.filter((value) => value !== chip.value) };
+    case 'tag':
+      return { ...filter, tags: filter.tags.filter((value) => value !== chip.value) };
     case 'time':
       return { ...filter, maxMinutes: undefined };
     case 'rating':
@@ -279,6 +324,30 @@ export function cuisineFacets(items: readonly { cuisine?: string }[]): CuisineFa
   );
 }
 
+/** The key a tag is grouped and filtered by (like cleanTags): "Ofen " and "ofen" are one. */
+export function tagKey(tag: string): string {
+  return normalizeText(tag);
+}
+
+/**
+ * The section "Schlagworte" of the filter panel (spec 0037, REQ-006): the tags of the given
+ * recipes or restaurants with counts, most first. Empty when none has one: then the section is
+ * left out (AC-019).
+ */
+export function tagFacets(items: readonly { tags: readonly string[] }[]): CuisineFacet[] {
+  return spellingFacets(
+    items.flatMap((item) => item.tags),
+    tagKey,
+  );
+}
+
+/** Whether `tags` carry every chosen tag key (REQ-006). */
+export function hasAllTags(tags: readonly string[], chosen: readonly string[]): boolean {
+  if (chosen.length === 0) return true;
+  const keys = new Set(tags.map(tagKey));
+  return chosen.every((key) => keys.has(key));
+}
+
 function cuisineLabel(key: string, facets: readonly CuisineFacet[]): string {
   return facets.find((facet) => facet.key === key)?.label ?? key;
 }
@@ -303,7 +372,10 @@ export interface RecipeListContext {
 /**
  * The recipes that pass every section of the filter, in the given order (REQ-002): the Art; diet,
  * time, own favourites, fits every member and not cooked recently through filterRecipes; one of
- * the chosen courses and cuisines; the average rating from the threshold on (AC-042).
+ * the chosen courses and cuisines; every chosen tag (spec 0037, REQ-006); the average rating from
+ * the threshold on (AC-042). A collection (spec 0037, REQ-004) has the course and cuisine of the
+ * recipes it contains (one fitting is enough); an empty one (nothing contained, no own
+ * ingredients) fits every course, cuisine and diet. It carries no tags.
  */
 export function applyRecipeListFilter(
   recipes: readonly Recipe[],
@@ -327,13 +399,27 @@ export function applyRecipeListFilter(
   const { minRating } = filter;
   return basic.filter((recipe) => {
     if (filter.kind !== undefined && recipe.kind !== filter.kind) return false;
-    if (filter.courses.length > 0) {
-      if (recipe.course === undefined || !filter.courses.includes(recipe.course)) return false;
+    if (filter.unfinished && !isUnfinishedRecipe(recipe)) return false;
+    const dishes = recipe.kind === 'collection' ? containedRecipes(recipe, context) : [recipe];
+    const empty = dishes.length === 0 && recipe.ingredients.length === 0;
+    if (filter.courses.length > 0 && !empty) {
+      const fits = dishes.some(
+        (dish) => dish.course !== undefined && filter.courses.includes(dish.course),
+      );
+      if (!fits) return false;
     }
-    if (cuisines.size > 0 && !cuisines.has(cuisineKey(recipe.cuisine ?? ''))) return false;
+    if (cuisines.size > 0 && !empty) {
+      if (!dishes.some((dish) => cuisines.has(cuisineKey(dish.cuisine ?? '')))) return false;
+    }
+    if (!hasAllTags(recipe.tags, filter.tags)) return false;
     if (minRating !== undefined && (averageRating(recipe) ?? 0) < minRating) return false;
     return true;
   });
+}
+
+/** The recipes a collection contains, for its course and cuisine (REQ-004). */
+function containedRecipes(collection: Recipe, context: RecipeListContext): Recipe[] {
+  return contentsInBook(collection, context).map((content) => content.recipe);
 }
 
 // ---------- Sorting ----------
@@ -392,6 +478,14 @@ export function orderByShuffle<T extends { id: Id }>(
   return [...known, ...added];
 }
 
+/**
+ * "⟳ Neu mischen" stands next to the list only with "Zufall" and no search: a search orders by
+ * hit, so mixing would change nothing (spec 0036, AC-002).
+ */
+export function canReshuffle(sort: RecipeListSort, query: string): boolean {
+  return sort === 'random' && query.trim() === '';
+}
+
 /** The recipes in the chosen sort; "Zufall" follows the stored order (`shuffle`). */
 export function sortRecipeList(
   recipes: readonly Recipe[],
@@ -431,11 +525,15 @@ export function recipeShowLabel(recipes: readonly Pick<Recipe, 'kind'>[]): strin
 
 /**
  * The empty list: "Keine Rezepte für „xyzzy““ for a search (AC-004), else "Keine Rezepte für diese
- * Filter" (AC-008).
+ * Filter" (AC-008), or with "Unfertig" on and none left "Alle Rezepte sind ausgearbeitet" (spec
+ * 0061, AC-009).
  */
-export function recipeEmptyLabel(query: string): string {
+export function recipeEmptyLabel(query: string, options: { allWorkedOut?: boolean } = {}): string {
   const shown = query.trim();
-  return shown === '' ? 'Keine Rezepte für diese Filter' : `Keine Rezepte für „${shown}“`;
+  if (shown !== '') return `Keine Rezepte für „${shown}“`;
+  return options.allWorkedOut
+    ? 'Alle Rezepte sind ausgearbeitet'
+    : 'Keine Rezepte für diese Filter';
 }
 
 /** The average on a tile: one decimal with a comma, rounded half up; "4,8" for 4.75 (AC-040). */

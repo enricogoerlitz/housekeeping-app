@@ -1,4 +1,13 @@
-import { useEffect, useRef, useState, type ComponentRef, type ReactNode, type Ref } from 'react';
+import {
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ComponentRef,
+  type ReactNode,
+  type Ref,
+} from 'react';
 import {
   Platform,
   Pressable,
@@ -13,9 +22,10 @@ import {
   type ViewStyle,
 } from 'react-native';
 
+import { disguiseContactWords, fieldAutofill, isAppleTouchBrowser } from './field-autofill';
 import { mergeRefs, useHint } from './hint';
 import { icons, type IconName } from './icons';
-import { useHover } from './pointer';
+import { useFinePointer, useHover } from './pointer';
 import { Icon, Text, useColor, type ColorToken } from './primitives';
 import {
   IDLE_STAR_POINTER,
@@ -28,9 +38,12 @@ import {
   type StarPointerEvent,
   type StarStep,
 } from './star-value';
+import { growHeight, GROW_PADDING } from './field-grow';
 import { revealsError } from './reveal-error';
+import { ScrollRowRevealContext } from './scroll-fade';
+import { SheetFocusContext, SheetSubmitContext } from './sheet-focus';
 import { switchRowParts } from './time-field-state';
-import { ToneContext, useAreaColors, useTheme } from './theme-context';
+import { ToneContext, bubbleCorners, useAreaColors, useTheme } from './theme-context';
 import type { Theme, Tone } from './themes';
 import { fillChipStyle } from './chip-layout';
 
@@ -61,7 +74,12 @@ export function keyboardFocusRing(theme: Theme, focused: boolean | undefined): V
 export function keyboardFocused(focused: boolean | undefined): boolean {
   if (!focused) return false;
   const doc = (globalThis as { document?: { activeElement?: unknown } }).document;
-  return doc === undefined || keyboardFocus({ target: doc.activeElement });
+  if (doc === undefined) return true;
+  // A text field is always :focus-visible; with it focused, a button's `focused` is stale (a
+  // window moved the focus on), and the ring would show on two controls at once (D-07).
+  const active = doc.activeElement as { tagName?: string; isContentEditable?: boolean } | null;
+  if (/^(INPUT|TEXTAREA)$/.test(active?.tagName ?? '') || active?.isContentEditable) return false;
+  return keyboardFocus({ target: active });
 }
 
 const FOCUS_RING_OFFSET = 2;
@@ -87,6 +105,11 @@ export interface ButtonProps {
   hint?: string;
   /** Accessible name when it says more than the label (spec 0027, AC-039). */
   accessibilityLabel?: string;
+  /**
+   * A text button in ink instead of the accent: for leaving, removing or deleting, so only the
+   * main action carries the accent (spec 0054, REQ-008). Only with `variant="link"`.
+   */
+  quiet?: boolean;
 }
 
 export function Button(props: ButtonProps) {
@@ -100,7 +123,7 @@ export function Button(props: ButtonProps) {
     ? 'text'
     : variant === 'primary'
       ? 'onAccent'
-      : variant === 'link'
+      : variant === 'link' && !props.quiet
         ? 'accent'
         : 'text';
   const c = theme.colors;
@@ -161,7 +184,16 @@ export interface IconButtonProps {
   testID?: string;
   /** E.g. to give the focus back to the button. */
   ref?: Ref<HostInstance>;
+  /**
+   * A button smaller than 44 pt keeps a 44 × 44 tap area on the web too, where react-native-web
+   * ignores hitSlop: the press area is a transparent frame around the visible circle, and its
+   * negative margin keeps the layout of the small button (spec 0047, AC-005).
+   */
+  touchFrame?: boolean;
 }
+
+/** The minimum touch target (DESIGN.md, 40-ui.md). */
+const TOUCH_TARGET = 44;
 
 export function IconButton({ ref, ...props }: IconButtonProps) {
   const theme = useTheme();
@@ -174,6 +206,34 @@ export function IconButton({ ref, ...props }: IconButtonProps) {
     props.color ??
     (inArea ? 'text' : variant === 'filled' ? 'onAccent' : variant === 'soft' ? 'text' : 'muted');
   const hintRef = useHint(props.hint);
+  const slop = size < TOUCH_TARGET ? (TOUCH_TARGET - size) / 2 : 0;
+  const framed = props.touchFrame === true && slop > 0;
+  // "Wolke" (spec 0058, REQ-004): every icon button sits on a soft bubble, even a plain one.
+  const bubble = bubbleCorners(theme);
+  const hovering = (hovered: boolean | undefined) => hover(hovered) && !props.disabled;
+  const circle = (hovered: boolean | undefined): ViewStyle[] => [
+    {
+      width: size,
+      height: size,
+      borderRadius: size / 2,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    bubble ?? {},
+    variant === 'filled' ? { backgroundColor: area?.fill ?? theme.colors.accent } : {},
+    variant === 'soft' || (variant === 'plain' && (bubble !== undefined || hovering(hovered)))
+      ? { backgroundColor: theme.colors.surfaceSunken }
+      : {},
+    // On a bubble that is always there, hovering darkens it a little.
+    bubble && variant === 'plain' && hovering(hovered)
+      ? { backgroundColor: theme.colors.border }
+      : {},
+  ];
+  const icon = (
+    <ToneContext.Provider value={inArea ? { fg: area.onFill } : undefined}>
+      <Icon name={props.icon} size={Math.round(size * 0.52)} color={iconColor} />
+    </ToneContext.Provider>
+  );
   return (
     <Pressable
       ref={mergeRefs(ref, hintRef)}
@@ -184,29 +244,30 @@ export function IconButton({ ref, ...props }: IconButtonProps) {
       accessibilityState={{ disabled: !!props.disabled }}
       disabled={props.disabled}
       onPress={props.onPress}
-      hitSlop={size < 44 ? (44 - size) / 2 : 0}
+      hitSlop={framed ? 0 : slop}
       style={(state) => {
         const { pressed, hovered, focused } = state as PressState;
-        return [
-          {
-            width: size,
-            height: size,
-            borderRadius: size / 2,
-            alignItems: 'center',
-            justifyContent: 'center',
-            opacity: props.disabled ? 0.4 : pressed ? 0.6 : 1,
-          },
-          variant === 'filled' ? { backgroundColor: area?.fill ?? theme.colors.accent } : null,
-          variant === 'soft' || (variant === 'plain' && hover(hovered) && !props.disabled)
-            ? { backgroundColor: theme.colors.surfaceSunken }
-            : null,
-          keyboardFocusRing(theme, focused),
-        ];
+        const opacity = props.disabled ? 0.4 : pressed ? 0.6 : 1;
+        if (framed) {
+          return [
+            {
+              width: TOUCH_TARGET,
+              height: TOUCH_TARGET,
+              margin: -slop,
+              borderRadius: TOUCH_TARGET / 2,
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity,
+            },
+            keyboardFocusRing(theme, focused),
+          ];
+        }
+        return [...circle(hovered), { opacity }, keyboardFocusRing(theme, focused)];
       }}
     >
-      <ToneContext.Provider value={inArea ? { fg: area.onFill } : undefined}>
-        <Icon name={props.icon} size={Math.round(size * 0.52)} color={iconColor} />
-      </ToneContext.Provider>
+      {(state) =>
+        framed ? <View style={circle((state as PressState).hovered)}>{icon}</View> : icon
+      }
     </Pressable>
   );
 }
@@ -242,6 +303,13 @@ export function ChipView(props: ChipProps & { role: 'button' | 'radio' }) {
   const theme = useTheme();
   const hover = useHover();
   const hintRef = useHint(props.hint);
+  // In a row that scrolls, a chosen chip stands whole, not half under its fade (iN-08).
+  const reveal = useContext(ScrollRowRevealContext);
+  const own = useRef<HostInstance | null>(null);
+  const chosen = !!props.selected;
+  useEffect(() => {
+    if (chosen && reveal) reveal(own.current);
+  }, [chosen, reveal]);
   const c = theme.colors;
   const tone = props.tone ? c.tones[props.tone] : undefined;
   const background = props.selected ? c.accent : tone ? tone.bg : c.surface;
@@ -293,7 +361,7 @@ export function ChipView(props: ChipProps & { role: 'button' | 'radio' }) {
     );
   return (
     <Pressable
-      ref={hintRef}
+      ref={mergeRefs(hintRef, own)}
       testID={props.testID}
       accessibilityRole={props.role}
       accessibilityLabel={
@@ -697,6 +765,7 @@ export interface TextFieldProps extends Pick<
   | 'maxLength'
   | 'accessibilityValue'
   | 'autoComplete'
+  | 'onSelectionChange'
 > {
   /** Visible label above the field; also the accessible name. */
   label?: string;
@@ -704,16 +773,39 @@ export interface TextFieldProps extends Pick<
   accessibilityLabel?: string;
   /** Message below the field (orange, never red). */
   error?: string;
+  /**
+   * Marked like `error`, without the message: a narrow field in a row whose message stands below
+   * the whole row (D-05, review 0004).
+   */
+  invalid?: boolean;
   hint?: string;
   /** Content inside the field on the right, e.g. icon buttons. */
   right?: ReactNode;
   left?: ReactNode;
   /** Pill-shaped field for search and composer bars. */
   round?: boolean;
+  /**
+   * With `multiline`: a composer field that starts one line high and grows with its text up to
+   * four lines (spec 0062, decision 14); its buttons on the right stay at the bottom.
+   */
+  grow?: boolean;
+  /** false: Enter in this field never saves the window it is in (a search field). */
+  submitsWindow?: boolean;
   /** The input itself, e.g. to move the focus into it after a choice. */
   inputRef?: Ref<ComponentRef<typeof TextInput>>;
   style?: StyleProp<ViewStyle>;
   testID?: string;
+}
+
+let fieldSerial = 0;
+const nextFieldSerial = () => (fieldSerial += 1);
+const unchanged = (text: string) => text;
+
+/** Safari on iPhone and iPad, where the contact autofill guesses from a field's words. */
+function onAppleTouch(): boolean {
+  return (
+    Platform.OS === 'web' && typeof navigator !== 'undefined' && isAppleTouchBrowser(navigator)
+  );
 }
 
 export function TextField(props: TextFieldProps) {
@@ -737,25 +829,66 @@ export function TextField(props: TextFieldProps) {
   const {
     label,
     error,
+    invalid,
     hint,
     right,
     left,
     round,
+    grow: growProp,
     style,
     testID,
     accessibilityLabel,
     onFocus,
     onBlur,
     inputRef,
+    autoFocus,
+    submitsWindow,
     ...input
   } = props;
+  // Spec 0033, REQ-006: in a window the window focuses the field once it has slid in.
+  const claimFocus = useContext(SheetFocusContext);
+  // Spec 0036, REQ-014: on the desktop Enter in a one-line field of a window saves it, unless the
+  // field does something of its own with Enter (a suggestion list) or opts out.
+  const submitWindow = useContext(SheetSubmitContext);
+  const finePointer = useFinePointer();
+  const enterSaves =
+    finePointer &&
+    submitWindow !== undefined &&
+    !props.multiline &&
+    props.onSubmitEditing === undefined &&
+    submitsWindow !== false;
+  const own = useRef<ComponentRef<typeof TextInput> | null>(null);
+  useEffect(() => {
+    if (!autoFocus || !claimFocus || !own.current) return;
+    return claimFocus(own.current);
+  }, [autoFocus, claimFocus]);
+  // Spec 0033, REQ-005: never "Kontakt autom. ausfüllen" on iOS (field-autofill.ts says how);
+  // react-native-web does not pass `name` on.
+  const [serial] = useState(nextFieldSerial);
+  const autofill = fieldAutofill({
+    serial,
+    keyboardType: props.keyboardType,
+    autoComplete: props.autoComplete,
+  });
+  const words = autofill.disguise && onAppleTouch() ? disguiseContactWords : unchanged;
+  useLayoutEffect(() => {
+    const node = own.current as unknown;
+    if (Platform.OS === 'web' && node instanceof HTMLElement) {
+      node.setAttribute('name', autofill.name);
+    }
+  }, [autofill.name]);
+  const accessibleName = accessibilityLabel ?? label ?? props.placeholder;
+  const grow = growProp === true && props.multiline === true;
+  const [contentHeight, setContentHeight] = useState(0);
+  const lineHeight = theme.type.body.lineHeight ?? 22;
+  const grownHeight = growHeight({ contentHeight, lineHeight, empty: !props.value });
   return (
     <View style={[{ gap: 6 }, style]}>
-      {label ? <Text variant="smallStrong">{label}</Text> : null}
+      {label ? <Text variant="smallStrong">{words(label)}</Text> : null}
       <View
         style={{
           flexDirection: 'row',
-          alignItems: props.multiline ? 'flex-start' : 'center',
+          alignItems: grow ? 'flex-end' : props.multiline ? 'flex-start' : 'center',
           gap: 6,
           minHeight: 50,
           paddingLeft: left ? 12 : 14,
@@ -763,25 +896,42 @@ export function TextField(props: TextFieldProps) {
           borderRadius: round ? theme.shape.radius.input : theme.shape.radius.control,
           backgroundColor: theme.shape.cardBorder || focused ? c.surface : c.surfaceSunken,
           borderWidth: 1.5,
-          borderColor: error
-            ? c.warnText
-            : focused
-              ? c.accent
-              : theme.shape.cardBorder
-                ? c.border
-                : 'transparent',
+          borderColor:
+            error || invalid
+              ? c.warnText
+              : focused
+                ? c.accent
+                : theme.shape.cardBorder
+                  ? c.border
+                  : 'transparent',
         }}
       >
         {left}
         <TextInput
+          autoCapitalize={autofill.autoCapitalize}
+          autoCorrect={autofill.autoCorrect}
+          inputMode={autofill.inputMode}
           {...input}
-          // No autofill from contacts on titles, amounts and notes (spec 0032, AC-010).
-          autoComplete={
-            props.autoComplete ?? (props.keyboardType === 'email-address' ? 'email' : 'off')
-          }
-          ref={inputRef}
+          // No autofill from contacts on titles, amounts and notes (spec 0032, AC-010; 0033).
+          autoComplete={autofill.autoComplete as TextInputProps['autoComplete']}
+          autoFocus={autoFocus === true && !claimFocus}
+          onSubmitEditing={enterSaves ? () => submitWindow() : input.onSubmitEditing}
+          // A window that stays open (a field is missing) keeps the cursor in the field.
+          blurOnSubmit={enterSaves ? false : input.blurOnSubmit}
+          {...(grow
+            ? {
+                numberOfLines: 1,
+                onContentSizeChange: (event: {
+                  nativeEvent: { contentSize: { height: number } };
+                }) => setContentHeight(event.nativeEvent.contentSize.height),
+              }
+            : {})}
+          ref={mergeRefs(own, inputRef)}
+          nativeID={autofill.id}
+          aria-invalid={error || invalid ? true : undefined}
           testID={testID}
-          accessibilityLabel={accessibilityLabel ?? label ?? props.placeholder}
+          placeholder={props.placeholder === undefined ? undefined : words(props.placeholder)}
+          accessibilityLabel={accessibleName === undefined ? undefined : words(accessibleName)}
           placeholderTextColor={placeholderColor}
           onFocus={(event) => {
             setFocused(true);
@@ -796,14 +946,16 @@ export function TextField(props: TextFieldProps) {
             {
               flex: 1,
               color: c.text,
-              paddingVertical: props.multiline ? 12 : 0,
-              minHeight: props.multiline ? 96 : 46,
+              paddingVertical: props.multiline ? GROW_PADDING : 0,
+              minHeight: grow ? undefined : props.multiline ? 96 : 46,
+              height: grow ? grownHeight : undefined,
               // The browser's own focus outline would double the border.
               outlineStyle: 'none',
             } as object,
           ]}
         />
-        {right}
+        {/* A growing field keeps its buttons centred on the last line. */}
+        {grow && right ? <View style={{ paddingBottom: 3 }}>{right}</View> : right}
       </View>
       {error ? (
         <View ref={errorRef}>

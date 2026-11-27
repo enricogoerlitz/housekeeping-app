@@ -9,7 +9,7 @@ import {
   pageQuery,
   placeAfter,
   readPageParams,
-  sectionHref,
+  tabPressAction,
   windowClosedByBack,
   type Origin,
   type PageKey,
@@ -24,8 +24,20 @@ import {
   usePathname,
   useRouter,
 } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import {
+  createContext,
+  createElement,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from 'react';
+import { scrollShownToTop } from '@housekeeping/ui';
 import { Platform } from 'react-native';
+import { useReducedMotion } from 'react-native-reanimated';
 
 // Spec 0019 "Zustand in der Adresse": the only place of the app that reads route parameters
 // (AC-054). Pages read and write their parameters through `usePageParams`, with the names and
@@ -101,8 +113,11 @@ export interface PageAddress<K extends PageKey> {
   params: PageParams<K>;
   /** Changes parameters in place (view, filter, search, sort, paging, selection). */
   replace: (patch: PageParams<K>) => void;
-  /** Opens a window: the address changes in a new history entry. */
-  open: (patch: PageParams<K>) => void;
+  /**
+   * Opens a window: the address changes in a new history entry. `below` changes the entry under
+   * the window too, e.g. to the view the window belongs to (spec 0036, AC-017).
+   */
+  open: (patch: PageParams<K>, below?: PageParams<K>) => void;
   /**
    * Closes a window: back one entry when it was opened here, otherwise (the address was loaded
    * with it) the parameters change in place, so ✕ never leaves the app (AC-042).
@@ -110,7 +125,31 @@ export interface PageAddress<K extends PageKey> {
   close: (patch: PageParams<K>) => void;
 }
 
+const PreviewAddressContext = createContext<
+  { page: PageKey; params: Record<string, unknown> } | undefined
+>(undefined);
+
+/**
+ * Draws a page as it would show with `params`, e.g. the neighbour tab beside a tab swipe (spec
+ * 0034, REQ-007): `usePageParams(page)` inside reads these and writes nothing.
+ */
+export function PagePreview<K extends PageKey>(props: {
+  page: K;
+  params: PageParams<K>;
+  children: ReactNode;
+}) {
+  return createElement(
+    PreviewAddressContext.Provider,
+    { value: { page: props.page, params: props.params as Record<string, unknown> } },
+    props.children,
+  );
+}
+
+const ignore = () => undefined;
+
 export function usePageParams<K extends PageKey>(page: K): PageAddress<K> {
+  const preview = useContext(PreviewAddressContext);
+  const previewing = preview?.page === page;
   const raw = useLocalSearchParams<Raw>();
   // On the page's own route: router.setParams would set them on the focused route above it.
   const navigation = useNavigation();
@@ -132,14 +171,15 @@ export function usePageParams<K extends PageKey>(page: K): PageAddress<K> {
   // Invalid values and defaults leave the address (the route id stays, it is part of the path).
   const invalid = read.invalid.filter((name) => name !== 'id').join(',');
   useEffect(() => {
-    if (invalid) setParams(Object.fromEntries(invalid.split(',').map((name) => [name, undefined])));
-  }, [invalid, setParams]);
+    if (invalid && !previewing)
+      setParams(Object.fromEntries(invalid.split(',').map((name) => [name, undefined])));
+  }, [invalid, previewing, setParams]);
 
   const values = read.values;
   const open = useCallback(
-    (patch: PageParams<K>) => {
+    (patch: PageParams<K>, below?: PageParams<K>) => {
       // Back to the entry below restores its whole address, also what changed inside the window.
-      const before = pageParamsBefore(page, values);
+      const before = pageParamsBefore(page, { ...values, ...below });
       openWindowEntry(
         () => replace(patch),
         () => replace(before),
@@ -156,6 +196,14 @@ export function usePageParams<K extends PageKey>(page: K): PageAddress<K> {
     },
     [replace],
   );
+  if (previewing) {
+    return {
+      params: preview.params as PageParams<K>,
+      replace: ignore,
+      open: ignore,
+      close: ignore,
+    };
+  }
   return { params: values, replace, open, close };
 }
 
@@ -199,12 +247,20 @@ export function useActiveSection(): Origin | undefined {
   return useSyncExternalStore(subscribePlace, placeSnapshot, placeSnapshot)?.section;
 }
 
-/** Choosing a section in the tab bar or the sidebar: its start page, also from inside it. */
-export function useOpenSection(): (section: Origin) => void {
+/**
+ * Choosing a section in the tab bar or the sidebar: its start page, also from inside it; on that
+ * start page a second tap scrolls it to the top (spec 0057, REQ-002).
+ */
+export function usePressSection(): (section: Origin) => void {
   const router = useRouter();
+  const reducedMotion = useReducedMotion();
   return useCallback(
-    (section: Origin) => router.navigate(sectionHref(place, section) as never),
-    [router],
+    (section: Origin) => {
+      const action = tabPressAction(place, section);
+      if (action.kind === 'top') scrollShownToTop(!reducedMotion);
+      else router.navigate(action.href as never);
+    },
+    [router, reducedMotion],
   );
 }
 

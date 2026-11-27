@@ -42,11 +42,11 @@ function ingredientRows(scope: Locator): Locator {
   );
 }
 
-/** "+" → `option` of the "Neu" menu on "Essen" (spec 0008, AC-003; spec 0009, AC-001). */
+/** "+" on "Essen" opens "Neu"; a collection is chosen there (spec 0054, REQ-002; spec 0009). */
 async function newFromMenu(page: Page, option: 'recipe' | 'collection'): Promise<void> {
   await tid(page, 'recipe-new').click();
-  await tid(page, `recipe-new-${option}`).click();
   await expect(tid(page, 'new-recipe-sheet')).toBeVisible();
+  if (option === 'collection') await tid(page, 'new-recipe-open-collection').click();
 }
 
 /** A new recipe from "Essen"; lands on its page. */
@@ -132,20 +132,17 @@ test('AC-021 (0001) / AC-003 (0008) / AC-060 (0006): "Neu" → "Rezept" creates 
   await expect(count).toHaveText(/^\d+ Rezepte · \d+ Sammlungen$/);
   const before = Number((await count.innerText()).match(/\d+/)?.[0]);
 
+  // Spec 0062, AC-001: "+" opens "Neu" on "Websuche" with the title; "Sammlung" stays reachable.
   await tid(page, 'recipe-new').click();
-  // Spec 0023, AC-045: exactly "Rezept", "Sammlung", "Restaurant".
-  for (const option of ['recipe', 'collection', 'restaurant']) {
-    await expect(tid(page, `recipe-new-${option}`), option).toBeVisible();
-  }
-  await expect(tid(page, 'recipe-new-starter')).toHaveCount(0);
-  await tid(page, 'recipe-new-recipe').click();
-  await expect(tid(page, 'new-recipe-kind-recipe')).toHaveAttribute('aria-checked', 'true');
+  await expect(tid(page, 'new-recipe-open-collection')).toBeVisible();
+  await expect(tid(page, 'new-recipe-ai-tab-web')).toHaveAttribute('aria-selected', 'true');
   await tid(page, 'new-recipe-title').fill('Linsen-Dal');
   await tid(page, 'new-recipe-save').click();
   await expect(tid(page, 'recipe-title')).toHaveText('Linsen-Dal');
-  // Spec 0006, AC-060: without ingredients "Auf die Liste" is greyed out with the reason.
-  await expect(tid(page, 'recipe-to-list')).toHaveAttribute('aria-disabled', 'true');
-  await expect(tid(page, 'recipe-to-list-hint')).toHaveText('Noch keine Zutaten');
+  // Nachklick 27.11., N-03 (replaces AC-060 of spec 0006): without ingredients and steps
+  // "Auf die Liste" and "Kochen" are not there.
+  await expect(tid(page, 'recipe-to-list')).toHaveCount(0);
+  await expect(tid(page, 'start-cooking')).toHaveCount(0);
   await back(page);
   const cards = tidPrefix(page, 'recipe-card-').and(page.locator('[role="button"]'));
   await expect(cards.first()).toContainText('Linsen-Dal');
@@ -156,7 +153,7 @@ test('AC-021 (0001) / AC-003 (0008) / AC-060 (0006): "Neu" → "Rezept" creates 
   await newFromMenu(page, 'recipe');
   await tid(page, 'new-recipe-save').click();
   await expect(tid(page, 'new-recipe-title-error')).toHaveText('Titel fehlt');
-  await tid(page, 'new-recipe-sheet-close').click();
+  await tid(page, 'new-recipe-cancel').click();
   await expect(count).toHaveText(new RegExp(`^${before + 1} Rezepte`));
 });
 
@@ -165,7 +162,7 @@ test('AC-001 / AC-004 / AC-007 / AC-011 (0007): "+ Zutat" picks an article; a hi
 }) => {
   await open(page, '/rezepte');
   await newRecipe(page, 'Test-Curry');
-  await tid(page, 'recipe-ingredients-edit').click();
+  await tid(page, 'recipe-edit').click();
   await tid(page, 'recipe-add-ingredient').click();
   await expect(tid(page, 'ingredient-sheet')).toBeVisible();
   await tid(page, 'ingredient-amount').fill('400 ml');
@@ -175,7 +172,7 @@ test('AC-001 / AC-004 / AC-007 / AC-011 (0007): "+ Zutat" picks an article; a hi
   await expect(tid(page, 'ingredient-article-chosen')).toContainText('Kokosmilch');
   await tid(page, 'ingredient-prep-note').fill('gut geschüttelt');
   await tid(page, 'ingredient-save').click();
-  await tid(page, 'recipe-ingredients-done').click();
+  await tid(page, 'recipe-edit-save').click();
 
   const rows = ingredientRows(tid(page, 'recipe-ingredients'));
   await expect(rows).toHaveCount(1);
@@ -205,7 +202,7 @@ test('AC-022 (0001) / AC-008 / AC-010 (0007): a pasted block saves the sure line
 }) => {
   await open(page, '/rezepte');
   await newRecipe(page, 'Paste-Curry');
-  await tid(page, 'recipe-ingredients-edit').click();
+  await tid(page, 'recipe-edit').click();
   await tid(page, 'recipe-paste-ingredients').click();
   await tid(page, 'ingredients-paste').fill(
     '200 ml Kokosmilch\n1 Mango\n1 Prise Salz\n2 Drachenfrüchte',
@@ -216,15 +213,15 @@ test('AC-022 (0001) / AC-008 / AC-010 (0007): a pasted block saves the sure line
   );
   const orange = tidPrefix(page, 'open-row-').filter({ hasText: 'Drachenfrüchte' });
   await expect(orange.first()).toBeVisible();
-  await tid(page, 'recipe-ingredients-done').click();
-  // The section stays open with the orange line; the three sure lines are saved.
+  await tid(page, 'recipe-edit-save').click();
+  // Spec 0037: the edit mode stays open with the orange line until it has an article or goes.
   await expect(tid(page, 'recipe-ingredients-missing')).toBeVisible();
   const removeId = await tidPrefix(page, 'open-row-')
     .and(page.locator('[data-testid$="-remove"]'))
     .first()
     .getAttribute('data-testid');
   await tid(page, removeId ?? 'open-row-remove').click();
-  await tid(page, 'recipe-ingredients-done').click();
+  await tid(page, 'recipe-edit-save').click();
 
   const section = tid(page, 'recipe-ingredients');
   await expect(section.locator(`[data-testid^="ingredient-amount-"]${ACTIVE}`)).toHaveText([
@@ -294,19 +291,18 @@ test('AC-020 / AC-028 (0008): the phone recipe page has its buttons under the he
     await expect(tid(page, id), id).toBeVisible();
   }
   await tid(page, 'recipe-more').click();
-  await expect(tid(page, 'recipe-more-photo')).toBeVisible();
+  // Spec 0054, AC-008: "Foto ändern" stands under the photo, not in ⋯.
+  await expect(tid(page, 'recipe-more-photo')).toHaveCount(0);
   await expect(tid(page, 'recipe-more-delete')).toBeVisible();
   await page.keyboard.press('Escape');
 
   // The read view has no input field.
   await expect(page.locator(`[data-testid="recipe-screen"] input${ACTIVE}`)).toHaveCount(0);
-  await tid(page, 'recipe-notes-edit').click();
+  // Spec 0037: one pen opens every section, "Speichern" saves them together.
+  await tid(page, 'recipe-edit').click();
   await tid(page, 'recipe-notes-input').fill('Mit doppelt Béchamel noch besser.');
-  // Another pen saves the open section and opens the next one.
-  await tid(page, 'recipe-steps-edit').click();
+  await tid(page, 'recipe-edit-save').click();
   await expect(tid(page, 'recipe-notes-text')).toHaveText('Mit doppelt Béchamel noch besser.');
-  await expect(tid(page, 'recipe-steps-done')).toBeVisible();
-  await tid(page, 'recipe-steps-done').click();
   await page.reload();
   await expect(tid(page, 'recipe-notes-text')).toHaveText('Mit doppelt Béchamel noch besser.');
 });
@@ -320,7 +316,7 @@ test('AC-022 (0008): offline the recipe reads, scales and cooks; writing is grey
   await tid(page, card('rec-lasagne')).click();
   await tid(page, 'servings-plus').click();
   await expect(tid(page, 'servings-value')).toHaveText('5');
-  for (const id of ['recipe-plan', 'recipe-to-list', 'recipe-notes-edit', 'recipe-favorite']) {
+  for (const id of ['recipe-plan', 'recipe-to-list', 'recipe-edit', 'recipe-favorite']) {
     await expect(tid(page, id), id).toHaveAttribute('aria-disabled', 'true');
   }
   await tid(page, 'start-cooking').click();

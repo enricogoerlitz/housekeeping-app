@@ -13,16 +13,18 @@ import {
 } from '@housekeeping/ui';
 import { Tabs, useSegments } from 'expo-router';
 import type { BottomTabBarProps } from 'expo-router/tabs';
-import { View } from 'react-native';
+import { Platform, View } from 'react-native';
+import { useReducedMotion } from 'react-native-reanimated';
 import { SafeAreaInsetsContext, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppSidebar } from '@/features/shell/app-sidebar';
 import { OFFLINE_BANNER_TEXT } from '@/features/shell/offline';
 import { InstallHint, useInstallHintVisible } from '@/features/shell/install-hint';
+import { phoneTabOptions } from '@/features/shell/stack-transition';
 import { UpdateBanner, useUpdateBannerVisible } from '@/features/shell/update-banner';
 import { useAssistant } from '@/lib/assistant';
 import { features } from '@/lib/features';
-import { useActiveSection, useOpenSection } from '@/lib/url-state';
+import { useActiveSection, usePressSection } from '@/lib/url-state';
 
 // The keys stay the test ids of the tab bar and the sidebar (`tab-rezepte`, `nav-liste`); the
 // areas with their own stack are route groups, so their pages keep their addresses.
@@ -51,6 +53,12 @@ const FULL_SCREEN_PAGES = new Set(['kochen', 'einkaufen']);
 export default function TabsLayout() {
   const { isPhone } = useBreakpoint();
   const theme = useTheme();
+  // On phones in the browser the pages outside the tab bar slide like a page in an area's stack
+  // (spec 0034, REQ-003); the tabs themselves switch at once.
+  const reducedMotion = useReducedMotion();
+  const slide = Platform.OS === 'web' && isPhone;
+  const tab = slide ? phoneTabOptions(reducedMotion, false) : undefined;
+  const page = slide ? phoneTabOptions(reducedMotion, true) : undefined;
   // No network: not the version lock, which disables editing too but has its own hint.
   const offline = useSyncState().status === 'offline';
   const insets = useSafeAreaInsets();
@@ -94,6 +102,7 @@ export default function TabsLayout() {
             headerShown: false,
             tabBarPosition: isPhone ? 'bottom' : 'left',
             sceneStyle: { backgroundColor: theme.colors.bg },
+            ...tab,
           }}
         >
           <Tabs.Screen name="index" options={{ title: 'Übersicht' }} />
@@ -102,15 +111,16 @@ export default function TabsLayout() {
           <Tabs.Screen name="(liste)" options={{ title: 'Liste' }} />
           <Tabs.Screen name="haushalt" options={{ title: 'Haushalt' }} />
           {/* Not in the tab bar: "Verwalten" with its pages, and the personal settings. */}
-          <Tabs.Screen name="verwalten" options={{ title: 'Verwalten' }} />
-          <Tabs.Screen name="(aktivitaeten)" options={{ title: 'Aktivitäten' }} />
-          <Tabs.Screen name="(reisetaschen)" options={{ title: 'Reisetaschen' }} />
-          <Tabs.Screen name="reisen" options={{ title: 'Reisen' }} />
-          <Tabs.Screen name="(artikel)" options={{ title: 'Artikel' }} />
-          <Tabs.Screen name="(maerkte)" options={{ title: 'Märkte & Bereiche' }} />
-          <Tabs.Screen name="mitglieder" options={{ title: 'Haushalt & Mitglieder' }} />
-          <Tabs.Screen name="feedback" options={{ title: 'Feedback' }} />
-          <Tabs.Screen name="einstellungen" options={{ title: 'Einstellungen' }} />
+          <Tabs.Screen name="verwalten" options={{ title: 'Verwalten', ...page }} />
+          <Tabs.Screen name="(aktivitaeten)" options={{ title: 'Aktivitäten', ...page }} />
+          <Tabs.Screen name="(reisetaschen)" options={{ title: 'Reisetaschen', ...page }} />
+          <Tabs.Screen name="reisen" options={{ title: 'Reisen', ...page }} />
+          <Tabs.Screen name="(artikel)" options={{ title: 'Artikel', ...page }} />
+          <Tabs.Screen name="(maerkte)" options={{ title: 'Märkte & Bereiche', ...page }} />
+          <Tabs.Screen name="dauerposten" options={{ title: 'Dauerposten', ...page }} />
+          <Tabs.Screen name="mitglieder" options={{ title: 'Haushalt & Mitglieder', ...page }} />
+          <Tabs.Screen name="feedback" options={{ title: 'Feedback', ...page }} />
+          <Tabs.Screen name="einstellungen" options={{ title: 'Einstellungen', ...page }} />
         </Tabs>
       </SafeAreaInsetsContext.Provider>
     </View>
@@ -125,20 +135,29 @@ function Navigation(props: BottomTabBarProps) {
   const keyboard = useKeyboard();
   const segments = useSegments();
   const activeRoute = props.state.routes[props.state.index]?.name ?? 'index';
-  // A detail page highlights the section it came from (`von`); a page under "Verwalten"
-  // highlights no tab (spec 0019, REQ-006; spec 0005, AC-054).
+  // A page opened from another section highlights that one while "Zurück" leads there (spec
+  // 0057, REQ-003). A page under "Verwalten" opened from there highlights no tab (spec 0005,
+  // AC-054).
   const section = useActiveSection();
   const activeKey = (section && KEY_OF_SECTION[section]) ?? '';
-  const openSection = useOpenSection();
-  // A section always shows its start page as last left, without detail or window (REQ-005).
+  const pressSection = usePressSection();
+  // A section always shows its start page as last left, without detail or window (REQ-005); on
+  // that start page a second tap scrolls it to the top (spec 0057, REQ-002).
   const select = (key: string) => {
     const target = SECTION_OF_KEY[key];
-    if (target) openSection(target);
+    if (target) pressSection(target);
   };
 
   if (!isPhone) {
     return (
-      <AppSidebar items={NAV} activeKey={activeKey} onSelect={select} activeRoute={activeRoute} />
+      <AppSidebar
+        items={NAV}
+        activeKey={activeKey}
+        onSelect={select}
+        // One mark only: an entry under "Verwalten" only while no tab is highlighted (spec 0057,
+        // AC-017; spec 0035, K-04).
+        activeRoute={activeKey ? '' : activeRoute}
+      />
     );
   }
   if (FULL_SCREEN_PAGES.has(segments[segments.length - 1] ?? '')) return null;

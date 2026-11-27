@@ -4,7 +4,6 @@ import {
   mergeAreas,
   moveArea,
   renameArea,
-  snapshot,
   useAreas,
   useArticles,
 } from '@housekeeping/api';
@@ -16,7 +15,6 @@ import {
   type Id,
 } from '@housekeeping/core';
 import {
-  Button,
   EmptyState,
   Icon,
   IconButton,
@@ -27,12 +25,13 @@ import {
   Section,
   Text,
   toast,
+  openKeyboardNow,
 } from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { View } from 'react-native';
 
-import { undoAction, useOnlineOnly } from '@/features/shell/offline';
+import { useOnlineOnly } from '@/features/shell/offline';
 
 import { useNewAreaHint } from './area-hint';
 import { articleCount, messageOf, ORDER_LABELS } from './labels';
@@ -42,7 +41,6 @@ import { MergeAreaPicker, NameSheet } from './store-dialogs';
 
 type AreaAction = 'rename' | 'merge' | 'delete';
 type Dialog =
-  | { kind: 'new' }
   | { kind: 'rename'; areaId: Id }
   | { kind: 'mergePick'; areaId: Id }
   | { kind: 'mergeConfirm'; areaId: Id; targetId: Id }
@@ -51,9 +49,10 @@ type Dialog =
 /**
  * "Märkte & Bereiche" → "Bereiche" (REQ-010): the household's areas in the order without store,
  * each with its number of articles and ⋯ ("Umbenennen", "Zusammenlegen mit …", "Löschen …"),
- * then "Ohne Bereich · n Artikel ›" and "+ Neuer Bereich" (AC-051).
+ * then "Ohne Bereich · n Artikel ›" (AC-051). "Bereich anlegen" stands in the page's header
+ * (spec 0054, REQ-001); `creating` opens its window.
  */
-export function AreasView() {
+export function AreasView(props: { creating: boolean; onCreatingChange: (open: boolean) => void }) {
   const areas = useAreas();
   const articles = useArticles();
   const online = useOnlineOnly();
@@ -83,35 +82,24 @@ export function AreasView() {
 
   const remove = (areaId: Id) => {
     const name = nameOf(areaId);
-    // Only an empty area comes back whole; the articles of a full one lost it on the server.
-    const empty = countOf(areaId) === 0;
-    const restore = snapshot();
     try {
       deleteArea(areaId);
     } catch (caught) {
       return messageOf(caught);
     }
     close();
-    toast.show(
-      empty
-        ? {
-            message: `„${name}“ gelöscht`,
-            actionLabel: 'Rückgängig',
-            onAction: undoAction(restore),
-          }
-        : { message: `„${name}“ gelöscht` },
-    );
+    toast.show({ message: `„${name}“ gelöscht` });
     return undefined;
   };
 
   const onAction = (areaId: Id, action: AreaAction) => {
-    if (action === 'rename') setDialog({ kind: 'rename', areaId });
-    else if (action === 'merge') setDialog({ kind: 'mergePick', areaId });
-    // Without articles nothing is lost: delete at once, with "Rückgängig" (AC-056).
-    else if (countOf(areaId) === 0) {
-      const problem = remove(areaId);
-      if (problem) setError(problem);
-    } else setDialog({ kind: 'delete', areaId });
+    if (action === 'rename') {
+      // The keyboard opens with the tap (Nachklick 27.11., B-01).
+      openKeyboardNow();
+      setDialog({ kind: 'rename', areaId });
+    } else if (action === 'merge') setDialog({ kind: 'mergePick', areaId });
+    // Also an empty area asks first; "Rückgängig" is gone (spec 0036, Entscheidung 1).
+    else setDialog({ kind: 'delete', areaId });
   };
 
   const menu = (areaId: Id, name: string) => (
@@ -193,18 +181,8 @@ export function AreasView() {
           testID="areas-without"
         />
       </List>
-      <View style={{ marginTop: 16, alignItems: 'flex-start' }}>
-        <Button
-          label="Neuer Bereich"
-          icon="plus"
-          disabled={online.disabled}
-          hint={online.hint}
-          onPress={() => setDialog({ kind: 'new' })}
-          testID="areas-new"
-        />
-      </View>
 
-      {dialog?.kind === 'new' ? (
+      {props.creating ? (
         <NameSheet
           title="Neuer Bereich"
           label="Name"
@@ -218,11 +196,11 @@ export function AreasView() {
             } catch (caught) {
               return messageOf(caught);
             }
-            close();
+            props.onCreatingChange(false);
             newAreaHint(name);
             return undefined;
           }}
-          onClose={close}
+          onClose={() => props.onCreatingChange(false)}
           testID="area-new-sheet"
         />
       ) : null}

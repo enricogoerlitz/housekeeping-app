@@ -66,6 +66,16 @@ const UNIT_BY_SPELLING = new Map<string, string>([
   ['msp.', 'Msp.'],
   ['msp', 'Msp.'],
 ]);
+const FIRST_UNITS = ['g', 'kg', 'ml', 'l', 'EL', 'TL', 'Prise', 'Stück', 'Bund', 'Dose'];
+
+/**
+ * The units the app understands, as they are stored: the common ones first, then the others in
+ * the order above. For the (i) next to a field with a free unit (spec 0036, REQ-006).
+ */
+export const KNOWN_UNITS: readonly string[] = [
+  ...new Set([...FIRST_UNITS, ...UNIT_BY_SPELLING.values()]),
+];
+
 // These unit nouns take a plural after any quantity other than one ("2 Dosen"); the remaining
 // units stay unchanged as measures ("2 Bund", "3 Stück").
 const UNIT_PLURALS: Record<string, string> = {
@@ -142,6 +152,11 @@ function collapseWhitespace(text: string): string {
 
 function findUnit(token: string): string | undefined {
   return UNIT_BY_SPELLING.get(token.normalize('NFC').toLowerCase());
+}
+
+/** True for a unit as it may be written ("g", "Dosen", "el"), e.g. a line "200 g" with no name yet. */
+export function isUnitWord(token: string): boolean {
+  return findUnit(token) !== undefined;
 }
 
 function isSize(token: string): boolean {
@@ -402,11 +417,16 @@ export function amountScalingHint(text: string): string | undefined {
   return scales ? 'Wird mit den Portionen umgerechnet' : 'Bleibt beim Umrechnen gleich';
 }
 
+/** A pasted line without its leading bullet ("- ", "• "). */
+export function withoutBullet(line: string): string {
+  return line.replace(BULLET, '');
+}
+
 /** Splits a pasted block into lines and parses each; empty lines and bullets ("- ", "• ") are ignored. */
 export function parseIngredientBlock(text: string): ParsedIngredient[] {
   return text
     .split(/\r?\n/)
-    .map((line) => parseIngredientLine(line.replace(BULLET, '')))
+    .map((line) => parseIngredientLine(withoutBullet(line)))
     .filter((ingredient): ingredient is ParsedIngredient => ingredient !== null);
 }
 /** German number formatting: 1.5 → "1,5", 600 → "600", 0.333 → "0,33". */

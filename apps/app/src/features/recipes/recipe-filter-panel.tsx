@@ -5,6 +5,7 @@ import {
   minRatingLabel,
   QUICK_FILTERS,
   RECIPE_KINDS,
+  shownQuickFilters,
   TIME_LIMITS,
   timeLimitLabel,
   toggleQuickFilter,
@@ -14,9 +15,10 @@ import {
   type QuickFilter,
   type RecipeListFilter,
 } from '@housekeeping/core';
-import { Chip, Row, Text, useBreakpoint } from '@housekeeping/ui';
-import type { ReactNode } from 'react';
+import { Chip, FilterSection, useBreakpoint } from '@housekeeping/ui';
 import { View } from 'react-native';
+
+import { TagFilter } from '@/features/shell/tag-filter';
 
 /** Gerichtart in the panel and in „Einordnung“, in the order of the concept (Konzept v2, 3.2). */
 export const COURSES: readonly Course[] = [
@@ -28,11 +30,9 @@ export const COURSES: readonly Course[] = [
   'drink',
 ];
 
-/** "Schnell" without the diets, which have their own section "Ernährung" (Konzept v2, 3.2). */
-const PANEL_QUICK = QUICK_FILTERS.filter(
-  (chip) => chip.value !== 'vegetarian' && chip.value !== 'vegan',
-);
-const DIETS = QUICK_FILTERS.filter((chip) => chip.value === 'vegan' || chip.value === 'vegetarian');
+const isDiet = (chip: { value: QuickFilter }) =>
+  chip.value === 'vegetarian' || chip.value === 'vegan';
+const DIETS = QUICK_FILTERS.filter(isDiet);
 
 function toggleIn<T>(values: readonly T[], value: T): T[] {
   return values.includes(value)
@@ -40,27 +40,20 @@ function toggleIn<T>(values: readonly T[], value: T): T[] {
     : [...values, value];
 }
 
-function Part(props: { title: string; children: ReactNode; testID: string }) {
-  return (
-    <View style={{ gap: 8 }} testID={props.testID}>
-      <Text variant="smallStrong">{props.title}</Text>
-      <Row wrap gap={8}>
-        {props.children}
-      </Row>
-    </View>
-  );
-}
-
 /**
  * The fields of the filter panel on "Essen → Rezepte" (spec 0008, REQ-002): Schnell, Art
  * ("Rezepte" or "Sammlungen", one or none; spec 0009, AC-018), Ernährung, Gerichtart, Küche from
- * the household's recipes (left out when none has one, AC-009), Zeit and Bewertung. Every tap
- * applies at once.
+ * the household's recipes (left out when none has one, AC-009), Schlagworte (likewise, spec 0037,
+ * REQ-006), Zeit and Bewertung. Every tap applies at once.
  */
 export function RecipeFilterPanel(props: {
   filter: RecipeListFilter;
   onChange: (filter: RecipeListFilter) => void;
   cuisines: readonly CuisineFacet[];
+  /** The household's tags (core tagFacets). */
+  tags: readonly CuisineFacet[];
+  /** For "Unfertig (n)" (spec 0061, REQ-002). */
+  unfinished: number;
 }) {
   const { filter, onChange } = props;
   const { isPhone } = useBreakpoint();
@@ -82,10 +75,13 @@ export function RecipeFilterPanel(props: {
           : { flexDirection: 'row', flexWrap: 'wrap', columnGap: 32, rowGap: 16 }
       }
     >
-      <Part title="Schnell" testID="recipe-filter-quick">
-        {PANEL_QUICK.map((chip) => quick(chip, 'quick'))}
-      </Part>
-      <Part title="Art" testID="recipe-filter-kind">
+      <FilterSection title="Schnell" testID="recipe-filter-quick">
+        {/* "Schnell" without the diets, which have their own section "Ernährung" (Konzept v2, 3.2). */}
+        {shownQuickFilters(filter, props.unfinished)
+          .filter((chip) => !isDiet(chip))
+          .map((chip) => quick(chip, 'quick'))}
+      </FilterSection>
+      <FilterSection title="Art" testID="recipe-filter-kind">
         {RECIPE_KINDS.map((kind) => (
           <Chip
             key={kind.value}
@@ -95,11 +91,11 @@ export function RecipeFilterPanel(props: {
             testID={`recipe-filter-kind-${kind.value}`}
           />
         ))}
-      </Part>
-      <Part title="Ernährung" testID="recipe-filter-diet">
+      </FilterSection>
+      <FilterSection title="Ernährung" testID="recipe-filter-diet">
         {DIETS.map((chip) => quick(chip, 'diet'))}
-      </Part>
-      <Part title="Gerichtart" testID="recipe-filter-course">
+      </FilterSection>
+      <FilterSection title="Gerichtart" testID="recipe-filter-course">
         {COURSES.map((course) => (
           <Chip
             key={course}
@@ -109,9 +105,9 @@ export function RecipeFilterPanel(props: {
             testID={`recipe-filter-course-${course}`}
           />
         ))}
-      </Part>
+      </FilterSection>
       {props.cuisines.length > 0 ? (
-        <Part title="Küche" testID="recipe-filter-cuisine">
+        <FilterSection title="Küche" testID="recipe-filter-cuisine">
           {props.cuisines.map((facet) => (
             <Chip
               key={facet.key}
@@ -123,9 +119,17 @@ export function RecipeFilterPanel(props: {
               testID={`recipe-filter-cuisine-${facet.key}`}
             />
           ))}
-        </Part>
+        </FilterSection>
       ) : null}
-      <Part title="Zeit" testID="recipe-filter-time">
+      {props.tags.length > 0 ? (
+        <TagFilter
+          facets={props.tags}
+          value={filter.tags}
+          onChange={(tags) => onChange({ ...filter, tags })}
+          testID="recipe-filter-tag"
+        />
+      ) : null}
+      <FilterSection title="Zeit" testID="recipe-filter-time">
         {TIME_LIMITS.map((minutes) => (
           <Chip
             key={minutes}
@@ -140,8 +144,8 @@ export function RecipeFilterPanel(props: {
             testID={`recipe-filter-time-${minutes}`}
           />
         ))}
-      </Part>
-      <Part title="Bewertung" testID="recipe-filter-rating">
+      </FilterSection>
+      <FilterSection title="Bewertung" testID="recipe-filter-rating">
         {MIN_RATINGS.map((stars) => (
           <Chip
             key={stars}
@@ -153,7 +157,7 @@ export function RecipeFilterPanel(props: {
             testID={`recipe-filter-rating-${String(stars).replace('.', '-')}`}
           />
         ))}
-      </Part>
+      </FilterSection>
     </View>
   );
 }

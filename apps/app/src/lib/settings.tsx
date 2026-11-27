@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { parseListSorts, parseListViews, type ListSorts, type ListViews } from '@housekeeping/core';
 import { DEFAULT_THEME_ID, isThemeId, type ColorMode, type ThemeId } from '@housekeeping/ui';
 import {
   createContext,
@@ -24,8 +25,10 @@ export interface LocalSettings {
   aiAssist: boolean;
   /** The iOS tip "Zum Home-Bildschirm" was closed; it is shown only until then. */
   installHintDismissed: boolean;
-  /** The household row of the calendar per view (spec 0010, D18: week on, month off). */
-  householdRow: { week: boolean; month: boolean };
+  /** The sort chosen last per list; a restart keeps it, filters and search not (spec 0036). */
+  listSorts: ListSorts;
+  /** "Kacheln" or "Liste" per area (spec 0038, REQ-001). */
+  listViews: ListViews;
 }
 
 const STORAGE_KEY = 'housekeeping.settings.v1';
@@ -35,20 +38,14 @@ const defaults: LocalSettings = {
   aiSearch: false,
   aiAssist: false,
   installHintDismissed: false,
-  householdRow: { week: true, month: false },
+  listSorts: {},
+  listViews: {},
 };
 
-function parseHouseholdRow(value: unknown): LocalSettings['householdRow'] {
-  const fallback = defaults.householdRow;
-  if (typeof value !== 'object' || value === null) return fallback;
-  const record = value as Record<string, unknown>;
-  return {
-    week: typeof record.week === 'boolean' ? record.week : fallback.week,
-    month: typeof record.month === 'boolean' ? record.month : fallback.month,
-  };
-}
-
-/** Stored values are untrusted: anything unknown falls back to the default. */
+/**
+ * Stored values are untrusted: anything unknown falls back to the default, anything retired (the
+ * household row's switch, spec 0054) is dropped and not written again.
+ */
 function parseSettings(raw: string | null): LocalSettings {
   if (!raw) return defaults;
   try {
@@ -66,7 +63,8 @@ function parseSettings(raw: string | null): LocalSettings {
       aiSearch: record.aiSearch === true,
       aiAssist: record.aiAssist === true,
       installHintDismissed: record.installHintDismissed === true,
-      householdRow: parseHouseholdRow(record.householdRow),
+      listSorts: parseListSorts(record.listSorts),
+      listViews: parseListViews(record.listViews),
     };
   } catch {
     return defaults;

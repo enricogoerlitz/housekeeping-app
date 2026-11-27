@@ -35,6 +35,9 @@ import {
 import { useRef, useState, type ComponentRef } from 'react';
 import { View, type TextInput } from 'react-native';
 
+import { discardFirst } from '@/features/shell/confirm-dialog';
+import { UnitsHint } from '@/features/shell/units-hint';
+
 import { STARTER_DETAIL, useArticleSearch } from './article-search';
 import { newRowKey } from './sections/ingredient-handover';
 
@@ -85,6 +88,8 @@ export function IngredientSheet(props: {
   rowKey?: string;
   /** Under "Menge" when editing from the read view: "für 4 Portionen" (AC-005). */
   servingsNote?: string;
+  /** The read view saves with "Übernehmen" (spec 0056, REQ-001): a new article is created then. */
+  savesAtOnce?: boolean;
   onApply: (draft: IngredientsDraft, rowKey: string) => void;
   onClose: () => void;
 }) {
@@ -172,17 +177,28 @@ export function IngredientSheet(props: {
   const chosenDetail = !chosen
     ? undefined
     : chosen.kind === 'new'
-      ? 'Wird mit „Fertig“ neu angelegt'
+      ? props.savesAtOnce
+        ? 'Wird mit „Übernehmen“ neu angelegt'
+        : 'Wird mit „Fertig“ neu angelegt'
       : [chosen.hit.kind === 'starter' ? STARTER_DETAIL : undefined, search.areaOf(chosen.hit)]
           .filter(Boolean)
           .join(' · ') || 'Ohne Bereich';
+
+  // Typed or chosen something: closing asks first (I-07).
+  const dirty =
+    chosen !== initialChosen ||
+    query.trim() !== (row && !initialChosen ? (row.name ?? '') : '').trim() ||
+    amountText !== (row?.amountText ?? '') ||
+    shoppingNote !== (row?.shoppingNote ?? '') ||
+    prepNote !== (row?.prepNote ?? '') ||
+    group !== (row?.group ?? '');
 
   return (
     <Sheet
       visible
       size="m"
       title={row ? 'Zutat bearbeiten' : 'Neue Zutat'}
-      onClose={props.onClose}
+      onClose={() => discardFirst(dirty, props.onClose)}
       testID="ingredient-sheet"
       actions={{
         primary: {
@@ -281,6 +297,7 @@ export function IngredientSheet(props: {
           onSubmitEditing={apply}
           testID="ingredient-amount"
         />
+        <UnitsHint testID="ingredient-units" />
 
         <View testID="ingredient-rule-field">
           <Text variant="smallStrong" style={{ marginBottom: 6 }}>

@@ -24,12 +24,14 @@ import {
   type Recipe,
   type RecipeKind,
   type RecipeSectionDraft,
+  type RecipeVideo,
   type ShoppingRule,
 } from '@housekeeping/core';
 
 import { catalogChoice, createArticle, insertArticles } from './commands-articles';
 import { INVALID_STARS } from './commands-restaurants';
 import { removeQuietly } from './photos-remote';
+import { removeVideoQuietly } from './recipe-video';
 import { starterCatalogEntries } from './starter/entries';
 import {
   commit,
@@ -143,6 +145,21 @@ function chosenArticle(choice: DraftArticle): Article {
   if (choice.kind === 'hit') return catalogChoice(choice.hit);
   const existing = findArticleByName(choice.name, getData().articles);
   if (existing) return existing;
+  // Spec 0055, REQ-009: area and diet the AI proposed; "Neu aus Rezepten" so somebody checks them.
+  if (choice.proposed) {
+    const [proposed] = insertArticles([
+      {
+        name: choice.name,
+        synonyms: [],
+        diet: choice.proposed.diet ?? 'unknown',
+        isPantry: false,
+        needsReview: true,
+        ...(choice.proposed.areaId === undefined ? {} : { areaId: choice.proposed.areaId }),
+      },
+    ]);
+    if (!proposed?.name) throw new Error('Name fehlt');
+    return proposed;
+  }
   const id = createArticle({ name: choice.name });
   const created = getData().articles.find((article) => article.id === id);
   if (!created) throw new Error('Name fehlt');
@@ -222,28 +239,7 @@ export function saveRecipeSection(recipeId: Id, draft: RecipeSectionDraft): Sect
   let failure: unknown;
   const confirmed = commitConfirmed({ path: 'diff' }, () => {
     try {
-      const data = getData();
-      const recipe = data.recipes.find((candidate) => candidate.id === recipeId);
-      if (!recipe) throw new Error('Rezept nicht gefunden');
-      const patch = sectionPatch(recipe, draft, {
-        articles: data.articles,
-        createArticle: chosenArticle,
-        newId,
-        entries: data.planEntries,
-      });
-      open = patch.open;
-      for (const { articleId, rule } of patch.rules) {
-        const article = getData().articles.find((candidate) => candidate.id === articleId);
-        if (article) rememberRule(article, rule);
-      }
-      patchRecipe(recipeId, (current) => ({ ...current, ...patch.recipe }));
-      if (patch.entries.length > 0) {
-        const changed = new Map(patch.entries.map((entry) => [entry.id, entry]));
-        updateData((current) => ({
-          ...current,
-          planEntries: current.planEntries.map((entry) => changed.get(entry.id) ?? entry),
-        }));
-      }
+      open = applySection(recipeId, draft);
     } catch (error) {
       failure = error;
       throw error;
@@ -255,6 +251,37 @@ export function saveRecipeSection(recipeId: Id, draft: RecipeSectionDraft): Sect
   const saved = getData().recipes.find((recipe) => recipe.id === recipeId);
   if (open.length === 0 || !saved) return { open, confirmed };
   return { open, reopened: addIngredientRows(sectionDraft(saved, 'ingredients'), open), confirmed };
+}
+
+/**
+ * Inside a running command: the draft's section on the recipe as it is now (core sectionPatch),
+ * with new articles, remembered rules and the plan entries of a removed variant. Returns the rows
+ * left open (no article). Shared by the sections and the page (spec 0037, saveRecipePage).
+ */
+export function applySection(recipeId: Id, draft: RecipeSectionDraft): IngredientRow[] {
+  const data = getData();
+  const recipe = data.recipes.find((candidate) => candidate.id === recipeId);
+  if (!recipe) throw new Error('Rezept nicht gefunden');
+  assertSectionFits(recipe, draft);
+  const patch = sectionPatch(recipe, draft, {
+    articles: data.articles,
+    createArticle: chosenArticle,
+    newId,
+    entries: data.planEntries,
+  });
+  for (const { articleId, rule } of patch.rules) {
+    const article = getData().articles.find((candidate) => candidate.id === articleId);
+    if (article) rememberRule(article, rule);
+  }
+  patchRecipe(recipeId, (current) => ({ ...current, ...patch.recipe }));
+  if (patch.entries.length > 0) {
+    const changed = new Map(patch.entries.map((entry) => [entry.id, entry]));
+    updateData((current) => ({
+      ...current,
+      planEntries: current.planEntries.map((entry) => changed.get(entry.id) ?? entry),
+    }));
+  }
+  return patch.open;
 }
 
 /**
@@ -342,6 +369,8 @@ export interface RecipeDeletion {
   ingredients: number;
   /** The recipe's own photo; discardRecipePhoto removes it once "Rückgängig" expired (E5). */
   photoPath?: string;
+  /** The recipe's videos (spec 0046); discardRecipePhoto removes them and their posters too. */
+  videos: RecipeVideo[];
   /** Resolves once the server deleted the recipe; rejects when it refused (the recipe is back). */
   confirmed: Promise<void>;
 }
@@ -418,6 +447,7 @@ export function deleteRecipe(
     collections: effect.collections,
     ingredients,
     photoPath: recipe.photoPath,
+    videos: recipe.videos,
     confirmed,
   };
 }
@@ -445,14 +475,15 @@ export function recipeDeletionListShare(
 }
 
 /**
- * E5: removes the own photo of a deleted recipe when the notice "… gelöscht · Rückgängig" runs
- * out (toast onExpire) — only after the server took the deletion and while the recipe has not
- * come back ("Rückgängig"). Never throws; a file that cannot be removed stays in the household's
- * folder.
+ * E5: removes the own photo of a deleted recipe, and its videos with their posters (spec 0046,
+ * AC-018), when the
+ * notice "… gelöscht · Rückgängig" runs out (toast onExpire) — only after the server took the
+ * deletion and while the recipe has not come back ("Rückgängig"). Never throws; a file that cannot
+ * be removed stays in the household's folder until the nightly sweep (spec 0039).
  */
 export async function discardRecipePhoto(deletion: RecipeDeletion): Promise<void> {
-  const path = deletion.photoPath;
-  if (!path) return;
+  const { photoPath, videos } = deletion;
+  if (!photoPath && videos.length === 0) return;
   try {
     await deletion.confirmed;
   } catch {
@@ -460,10 +491,17 @@ export async function discardRecipePhoto(deletion: RecipeDeletion): Promise<void
   }
   const state = peekState();
   if (!state) return;
-  const inUse = Object.values(state.households).some((data) =>
-    data.recipes.some((recipe) => recipe.id === deletion.recipeId || recipe.photoPath === path),
-  );
-  if (!inUse) await removeQuietly(path);
+  const recipes = Object.values(state.households).flatMap((data) => data.recipes);
+  if (recipes.some((recipe) => recipe.id === deletion.recipeId)) return;
+  if (photoPath && !recipes.some((recipe) => recipe.photoPath === photoPath))
+    await removeQuietly(photoPath);
+  const named = (pick: (video: RecipeVideo) => string | undefined, path: string) =>
+    recipes.some((recipe) => recipe.videos.some((video) => pick(video) === path));
+  for (const video of videos) {
+    if (!named((other) => other.path, video.path)) await removeVideoQuietly(video.path);
+    if (video.poster && !named((other) => other.poster, video.poster))
+      await removeQuietly(video.poster);
+  }
 }
 
 /** Favourites are per person: their own RPC; undo sends the opposite. */

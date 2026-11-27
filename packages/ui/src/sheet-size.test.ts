@@ -8,7 +8,10 @@ const DESKTOP = { width: 1440, height: 900 };
 describe('sheet sizes (spec 0005, REQ-003)', () => {
   it('AC-014: a large window on a phone is 90 % of 844 px high, whatever it shows', () => {
     expect(sheetFrame('l', PHONE)).toEqual({ height: 760, maxHeight: 760 });
-    expect(sheetFrame('m', PHONE)).toEqual({ height: 760, maxHeight: 760 });
+  });
+
+  it('a form window on a phone grows with its content up to 90 % (spec 0033, decision 11)', () => {
+    expect(sheetFrame('m', PHONE)).toEqual({ maxHeight: 760 });
   });
 
   it('AC-015: desktop dialogs are 440 wide by content, 560 × 640 and 760 × 720', () => {

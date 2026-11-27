@@ -1,6 +1,5 @@
 import { createChore, useCurrentMember, useMembers, useToday } from '@housekeeping/api';
 import {
-  asksForPushPermission,
   choreDraftErrors,
   choreFieldsOf,
   newChoreDraft,
@@ -9,7 +8,7 @@ import {
 import { Sheet, Text, toast } from '@housekeeping/ui';
 import { useState } from 'react';
 
-import { useEnsureDevicePush } from '@/features/notifications/use-device-push';
+import { discardFirst } from '@/features/shell/confirm-dialog';
 import { useOnlineOnly } from '@/features/shell/offline';
 
 import { ChoreFormFields, useChoreDraft, useChoreTime } from './chore-form';
@@ -21,7 +20,6 @@ export function NewChoreSheet(props: { visible: boolean; onClose: () => void }) 
   const me = useCurrentMember();
   const today = useToday();
   const online = useOnlineOnly();
-  const ensureDevicePush = useEnsureDevicePush();
   const [draft, update, reset] = useChoreDraft(() => newChoreDraft(today, me.id));
   const [errors, setErrors] = useState<ChoreDraftErrors>({});
   const time = useChoreTime(undefined);
@@ -37,16 +35,12 @@ export function NewChoreSheet(props: { visible: boolean; onClose: () => void }) 
     const found = choreDraftErrors(draft);
     setErrors(found);
     if (found.title || found.weekdays) return;
-    // A time asks for this device first, inside the tap (spec 0013, AC-007, Decision 26).
-    if (
-      asksForPushPermission({ kind: 'time', gesture: 'tap', before: undefined, after: time.value })
-    )
-      ensureDevicePush();
     try {
       createChore({
         ...choreFieldsOf(draft, members),
         dueTime: time.value,
         remindAtDueTime: time.remind,
+        noticeDaysBefore: time.notice,
       });
     } catch (error) {
       setErrors({ title: errorMessage(error, FAILED_MESSAGE) });
@@ -59,7 +53,8 @@ export function NewChoreSheet(props: { visible: boolean; onClose: () => void }) 
   return (
     <Sheet
       visible={props.visible}
-      onClose={close}
+      // A typed title asks before it goes (I-07, like "Neu").
+      onClose={() => discardFirst(draft.title.trim() !== '', close)}
       title="Neue Aufgabe"
       testID="chore-new-sheet"
       size="m"

@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { reducedMotion } from '../test/mocks/reanimated';
 import { safeArea } from '../test/mocks/safe-area';
 import { keyboard } from '../test/setup';
-import { Button } from './controls';
+import { Button, TextField } from './controls';
 import { Text } from './primitives';
 import { Sheet, ToastHost, toast, useToastClearance } from './overlay';
 import { PageScrollContext, PageScrollControlContext, Screen } from './shell';
@@ -45,6 +45,15 @@ describe('Sheet (AC-029)', () => {
     expect(onClose).toHaveBeenCalledTimes(2);
   });
 
+  it('Nachklick 27.11., N-14: the scrim takes the focus of the modal without a frame around the page', () => {
+    render(
+      <Sheet visible onClose={() => undefined} title="Entwurf verwerfen?" size="s" testID="sheet">
+        <Text>Inhalt</Text>
+      </Sheet>,
+    );
+    expect(screen.getByTestId('sheet-scrim').style.outlineWidth).toBe('0px');
+  });
+
   it('closed: not shown; after closing it is gone once faded out', () => {
     const { rerender } = render(
       <Sheet visible={false} onClose={() => undefined} title="Einplanen" size="s" />,
@@ -56,6 +65,40 @@ describe('Sheet (AC-029)', () => {
       rerender(<Sheet visible={false} onClose={() => undefined} title="Einplanen" size="s" />);
     });
     expect(screen.queryByRole('heading', { name: 'Einplanen' })).toBeNull();
+  });
+});
+
+describe('Sheet and the cursor (spec 0033, REQ-006)', () => {
+  function Windows(props: { second: boolean }) {
+    const field = (testID: string) => (
+      <TextField label="Name" value="" onChangeText={() => undefined} autoFocus testID={testID} />
+    );
+    return (
+      <>
+        <Sheet visible onClose={() => undefined} title="Aktivität anlegen" size="m">
+          {field('name')}
+        </Sheet>
+        <Sheet visible={props.second} onClose={() => undefined} title="Im Web suchen" size="l">
+          {field('query')}
+        </Sheet>
+      </>
+    );
+  }
+
+  it('a window opened right after another keeps the cursor in its own field (AC-035 of spec 0055)', () => {
+    vi.useFakeTimers();
+    try {
+      const { rerender } = render(<Windows second={false} />);
+      // The first window has given its field the cursor and still takes it back for a moment.
+      act(() => vi.advanceTimersByTime(300));
+      expect(document.activeElement).toBe(screen.getByTestId('name'));
+      rerender(<Windows second />);
+      act(() => vi.advanceTimersByTime(2_000));
+      expect(document.activeElement).toBe(screen.getByTestId('query'));
+    } finally {
+      act(() => vi.runAllTimers());
+      vi.useRealTimers();
+    }
   });
 });
 
@@ -89,6 +132,54 @@ describe('Sheet leaving with its page (spec 0029, REQ-001)', () => {
     }
   });
 
+  it('removed while it stood on the keyboard: the copy slides down past the screen edge, not only to the keyboard (Durchklick 27.11., B-03)', async () => {
+    const { unmount } = render(
+      <Sheet visible onClose={() => undefined} title="Zutat" size="m" testID="sheet">
+        <Text>Inhalt</Text>
+      </Sheet>,
+    );
+    const frames: Keyframe[][] = [];
+    // jsdom has no Web Animations: a stand-in records what the copy asks for.
+    Object.defineProperty(HTMLElement.prototype, 'animate', {
+      configurable: true,
+      value(keyframes: Keyframe[]) {
+        frames.push(keyframes);
+        return {} as Animation;
+      },
+    });
+    // The window 372 high, on a keyboard: from 12 to 384 of a screen 714 high.
+    const panel = screen.getByTestId('sheet');
+    Object.defineProperty(document.documentElement, 'clientHeight', {
+      configurable: true,
+      value: 714,
+    });
+    Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
+      configurable: true,
+      get() {
+        return (this as HTMLElement).dataset.sheetPart === 'panel' ? 372 : 714;
+      },
+    });
+    const rect = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockImplementation(function measure(this: HTMLElement) {
+        // The modal's own root has no height of its own.
+        const panelPart = this.dataset.sheetPart === 'panel';
+        return { top: panelPart ? 12 : 0, bottom: panelPart ? 384 : 0 } as DOMRect;
+      });
+    expect(panel).toBeTruthy();
+    try {
+      unmount();
+      await Promise.resolve();
+      const slide = frames.find((keyframes) => String(keyframes[1]?.transform).includes('px'));
+      expect(String(slide?.[1]?.transform)).toMatch(/ translateY\(702px\)$/);
+    } finally {
+      Reflect.deleteProperty(HTMLElement.prototype, 'animate');
+      rect.mockRestore();
+      Reflect.deleteProperty(HTMLElement.prototype, 'offsetHeight');
+      Reflect.deleteProperty(document.documentElement, 'clientHeight');
+    }
+  });
+
   it('closed before it is removed: no copy, it has faded out already', async () => {
     const { rerender, unmount } = render(
       <Sheet visible onClose={() => undefined} title="Einplanen" size="m" />,
@@ -113,7 +204,8 @@ describe('Sheet and the keyboard (spec 0032, REQ-002)', () => {
     setWindow(390, 844);
     render(sheet);
     act(() => keyboard.open(400));
-    expect(screen.getByTestId('sheet').style.height).toBe('388px');
+    // A form grows with its content (spec 0033, decision 11), at most up to the top gap.
+    expect(screen.getByTestId('sheet').style.maxHeight).toBe('388px');
     expect(screen.getByTestId('sheet-layer').style.paddingBottom).toBe('444px');
   });
 
@@ -122,7 +214,7 @@ describe('Sheet and the keyboard (spec 0032, REQ-002)', () => {
     render(sheet);
     act(() => keyboard.open(400));
     act(() => keyboard.close());
-    expect(screen.getByTestId('sheet').style.height).toBe('760px');
+    expect(screen.getByTestId('sheet').style.maxHeight).toBe('760px');
   });
 });
 
@@ -199,6 +291,8 @@ describe('Sheet actions (spec 0032, REQ-003)', () => {
     const header = screen.getByTestId('sheet-header');
     expect(within(header).queryByRole('button', { name: 'Abbrechen' })).toBeNull();
     expect(within(header).getByRole('button', { name: 'Fertig' })).toBeTruthy();
+    // The empty left side balances the right button, so the title stays centred.
+    expect(screen.getByTestId('sheet-balance')).toBeTruthy();
   });
 
   it('AC-008: offline "Speichern" is greyed out and says why', () => {
@@ -242,11 +336,14 @@ describe('Sheet sizes and layout (spec 0005, REQ-003)', () => {
     expect(screen.getByTestId('sheet').style.height).toBe('');
   });
 
-  it('phones: a sheet from below over the full width; m and l keep their height', () => {
+  it('phones: a sheet from below over the full width; l keeps its height, m follows its content', () => {
     setWindow(390, 844);
-    const { rerender } = render(sheet('m'));
+    const { rerender } = render(sheet('l'));
     expect(screen.getByTestId('sheet').style.width).toBe('');
     expect(screen.getByTestId('sheet').style.height).toBe('760px');
+    rerender(sheet('m'));
+    expect(screen.getByTestId('sheet').style.height).toBe('');
+    expect(screen.getByTestId('sheet').style.maxHeight).toBe('760px');
     rerender(sheet('s'));
     expect(screen.getByTestId('sheet').style.height).toBe('');
     expect(screen.getByTestId('sheet').style.maxHeight).toBe('422px');

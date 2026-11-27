@@ -17,7 +17,7 @@ import {
 import { seedIds } from '../seed-ids';
 
 // Spec 0013, task 9 — times on a chore and the reservation of a restaurant entry, and the pages a
-// notification opens (`/haushalt?aufgabe=…`, `/kalender?tag=…&eintrag=…`). Runs in the dev smoke
+// notice opens (`/haushalt?aufgabe=…`, `/kalender?tag=…&eintrag=…`). Runs in the dev smoke
 // (playwright.dev.config.ts) on a phone after one fresh seed: "Bad putzen" is due today,
 // "Müll rausbringen" the day after tomorrow at 19:00, and "Trattoria Da Enzo" (plan-enzo-2) is
 // planned the day after tomorrow in the evening, reserved for 19:30.
@@ -63,7 +63,9 @@ test('AC-022, AC-025: a time on "Bad putzen" shows in Haushalt, Zu tun and the h
   await expect(tid(page, 'chore-due-time-minute').locator('option')).toHaveCount(12);
   await expect(tid(page, 'chore-due-time-hour')).toHaveAccessibleName('Uhrzeit, Stunde');
   await expect(tid(page, 'chore-remind').locator('input')).toBeChecked();
-  await expect(tid(page, 'chore-sheet')).toContainText('Erinnert zur Uhrzeit, wer dran ist.');
+  await expect(tid(page, 'chore-sheet')).toContainText(
+    'Erinnert zur Uhrzeit in den Mitteilungen, wer dran ist.',
+  );
   await tid(page, 'chore-save').click();
   await expect(tid(page, 'chore-sheet')).toContainText('19:00');
   await tid(page, 'chore-sheet-close').click();

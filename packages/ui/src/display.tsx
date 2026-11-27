@@ -3,6 +3,7 @@ import { Children, isValidElement, useEffect, useState, type ReactNode } from 'r
 import {
   AccessibilityInfo,
   Animated,
+  Easing,
   Platform,
   Pressable,
   View,
@@ -14,8 +15,9 @@ import { collageInsets, collageLayout } from './collage-layout';
 import { Button, Checkbox, keyboardFocusRing } from './controls';
 import { useHover } from './pointer';
 import type { IconName } from './icons';
-import { HYPHENATE, Icon, Surface, Text } from './primitives';
+import { Icon, Surface, Text, TITLE_BREAK } from './primitives';
 import { ToneContext, useTheme } from './theme-context';
+import { useTooltip } from './tooltip';
 import type { KindColor, Tone } from './themes';
 
 const AVATAR_SIZES = { xs: 18, s: 26, m: 40, l: 56 } as const;
@@ -153,6 +155,16 @@ export interface PhotoProps {
   source?: ImageSource | number;
   /** Shown as placeholder when there is no image. */
   placeholderIcon?: IconName;
+  /**
+   * The photo is on its way: a calm surface of the final size instead of the symbol, so nothing
+   * pops or shifts when it fades in (spec 0034, AC-010).
+   */
+  loading?: boolean;
+  /**
+   * The photo is being generated (spec 0045, REQ-005): the surface pulses softly around a sparkle
+   * and is read as a progress indicator with this label; still when the system reduces motion.
+   */
+  generating?: string;
   width?: number | `${number}%`;
   height?: number;
   aspectRatio?: number;
@@ -172,24 +184,29 @@ export function Photo(props: PhotoProps) {
     aspectRatio: props.aspectRatio,
     borderRadius: radius,
     overflow: 'hidden',
+    backgroundColor: theme.colors.surfaceSunken,
   };
+  if (props.generating !== undefined) {
+    return (
+      <GeneratingPhoto
+        label={props.generating}
+        box={box}
+        style={props.style}
+        testID={props.testID}
+      />
+    );
+  }
   if (props.source === undefined) {
     return (
       <View
         testID={props.testID}
-        style={[
-          box,
-          {
-            backgroundColor: theme.colors.surfaceSunken,
-            alignItems: 'center',
-            justifyContent: 'center',
-          },
-          props.style,
-        ]}
+        style={[box, { alignItems: 'center', justifyContent: 'center' }, props.style]}
       >
-        <ToneContext.Provider value={undefined}>
-          <Icon name={props.placeholderIcon ?? 'utensils'} size={26} color="muted" />
-        </ToneContext.Provider>
+        {props.loading ? null : (
+          <ToneContext.Provider value={undefined}>
+            <Icon name={props.placeholderIcon ?? 'utensils'} size={26} color="muted" />
+          </ToneContext.Provider>
+        )}
       </View>
     );
   }
@@ -203,6 +220,133 @@ export function Photo(props: PhotoProps) {
         style={{ width: '100%', height: '100%' }}
         transition={120}
       />
+    </View>
+  );
+}
+
+/** Static until the system answers, so nothing moves for people who asked for less motion. */
+function useReduceMotion(): boolean {
+  const [reduceMotion, setReduceMotion] = useState(true);
+  useEffect(() => {
+    let cancelled = false;
+    AccessibilityInfo.isReduceMotionEnabled()
+      .then((reduced) => {
+        if (!cancelled) setReduceMotion(reduced);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return reduceMotion;
+}
+
+const PULSE_MS = 900;
+
+/** 0 → 1 → 0 in a loop while motion is allowed; 0 for good with reduced motion. */
+function usePulse(): Animated.Value {
+  const reduceMotion = useReduceMotion();
+  const [glow] = useState(() => new Animated.Value(0));
+  useEffect(() => {
+    if (reduceMotion) return;
+    const timing = (toValue: number) =>
+      Animated.timing(glow, {
+        toValue,
+        duration: PULSE_MS,
+        easing: Easing.inOut(Easing.ease),
+        useNativeDriver: Platform.OS !== 'web',
+      });
+    const loop = Animated.loop(Animated.sequence([timing(1), timing(0)]));
+    loop.start();
+    return () => {
+      loop.stop();
+      glow.setValue(0);
+    };
+  }, [glow, reduceMotion]);
+  return glow;
+}
+
+function GeneratingPhoto(props: {
+  label: string;
+  box: ViewStyle;
+  style?: StyleProp<ViewStyle>;
+  testID?: string;
+}) {
+  const theme = useTheme();
+  // A lighter layer over the sunken surface fades in and out: the tile seems to breathe, while
+  // the sparkle stays steady on top.
+  const glow = usePulse();
+  return (
+    <View
+      testID={props.testID}
+      accessibilityRole="progressbar"
+      accessibilityLabel={props.label}
+      style={[props.box, { alignItems: 'center', justifyContent: 'center' }, props.style]}
+    >
+      <Animated.View
+        style={{
+          position: 'absolute',
+          top: 0,
+          right: 0,
+          bottom: 0,
+          left: 0,
+          backgroundColor: theme.colors.surface,
+          opacity: glow,
+        }}
+      />
+      <ToneContext.Provider value={undefined}>
+        <Icon name="sparkles" size={26} color="muted" />
+      </ToneContext.Provider>
+    </View>
+  );
+}
+
+const LINE_WIDTHS = ['92%', '64%', '80%', '48%', '72%', '56%'] as const;
+
+/**
+ * Something is being read or made (spec 0055, REQ-003): the status line above a few placeholder
+ * lines that breathe like a generating photo; one progress indicator with the status as its
+ * name. Still when the system reduces motion.
+ */
+export function LoadingLines(props: { label: string; lines?: number; testID?: string }) {
+  const theme = useTheme();
+  const glow = usePulse();
+  const count = props.lines ?? 3;
+  return (
+    <View
+      testID={props.testID}
+      accessibilityRole="progressbar"
+      accessibilityLabel={props.label}
+      style={{ gap: 10 }}
+    >
+      <Text variant="small" color="muted">
+        {props.label}
+      </Text>
+      {Array.from({ length: count }, (_, index) => (
+        <View
+          key={index}
+          testID={props.testID ? `${props.testID}-line-${index}` : undefined}
+          style={{
+            width: LINE_WIDTHS[index % LINE_WIDTHS.length],
+            height: 12,
+            borderRadius: 6,
+            overflow: 'hidden',
+            backgroundColor: theme.colors.surfaceSunken,
+          }}
+        >
+          <Animated.View
+            style={{
+              position: 'absolute',
+              top: 0,
+              right: 0,
+              bottom: 0,
+              left: 0,
+              backgroundColor: theme.colors.surface,
+              opacity: glow,
+            }}
+          />
+        </View>
+      ))}
     </View>
   );
 }
@@ -348,6 +492,8 @@ export function MediaCard(props: MediaCardProps) {
       <Text
         variant="cardTitle"
         numberOfLines={2}
+        // Narrow cards in a grid: never "Halloumi-Pfan-|ne" (spec 0057, REQ-004).
+        wholeWords
         style={
           large
             ? {
@@ -799,20 +945,8 @@ const TYPING_DOT = 7;
  */
 export function TypingIndicator(props: { label: string; testID?: string }) {
   const theme = useTheme();
-  const [reduceMotion, setReduceMotion] = useState(true);
+  const reduceMotion = useReduceMotion();
   const [phase] = useState(() => new Animated.Value(0));
-
-  useEffect(() => {
-    let cancelled = false;
-    AccessibilityInfo.isReduceMotionEnabled()
-      .then((reduced) => {
-        if (!cancelled) setReduceMotion(reduced);
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useEffect(() => {
     if (reduceMotion) return;
@@ -900,6 +1034,11 @@ export interface KindLineProps {
    * (spec 0016); it needs `onPress`.
    */
   accessibilityAction?: { label: string; onAction: () => void };
+  /**
+   * The whole text for a tooltip when the title is cut off, e.g. "Aktivität: Bouldern (Power vs.
+   * Balance) · 18:00" (spec 0035, REQ-005); only with a mouse or a trackpad.
+   */
+  tooltip?: string;
   testID?: string;
 }
 
@@ -910,16 +1049,21 @@ export interface KindLineProps {
 export function KindLine(props: KindLineProps) {
   const hover = useHover();
   const theme = useTheme();
+  const { onTarget, hoverProps, tooltip } = useTooltip(props.tooltip, props.testID);
   const compact = props.size === 'compact';
   const title = (
     <Text
+      ref={onTarget}
       variant={compact ? 'caption' : props.quiet ? 'small' : 'body'}
       color={props.quiet || props.struck ? 'muted' : 'text'}
       numberOfLines={compact ? 1 : 2}
+      // Narrow week columns: "Kichererbsen-|Eintopf", never "Kichererbsen|-Eintopf" (N-18).
+      wholeWords={!compact}
+      hangingHyphens
       style={[
         props.detail ? { minWidth: 0 } : { flex: 1, minWidth: 0 },
-        // A calendar entry is a title too, also in `small` and `body` (spec 0031, REQ-033).
-        HYPHENATE,
+        // A calendar entry is a title too, also in `small` and `body` (spec 0057, REQ-004).
+        TITLE_BREAK,
         props.struck ? { textDecorationLine: 'line-through' } : null,
       ]}
     >
@@ -962,13 +1106,15 @@ export function KindLine(props: KindLineProps) {
   const action = props.accessibilityAction;
   if (!props.onPress) {
     return (
-      <View testID={props.testID} accessibilityLabel={props.accessibilityLabel}>
+      <View testID={props.testID} accessibilityLabel={props.accessibilityLabel} {...hoverProps}>
         {body}
+        {tooltip}
       </View>
     );
   }
   return (
     <Pressable
+      {...hoverProps}
       testID={props.testID}
       accessibilityRole="button"
       accessibilityLabel={props.accessibilityLabel ?? props.title}
@@ -998,6 +1144,7 @@ export function KindLine(props: KindLineProps) {
       }}
     >
       {body}
+      {tooltip}
     </Pressable>
   );
 }

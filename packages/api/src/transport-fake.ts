@@ -11,26 +11,43 @@
 // kind check, once per collection and at most 50, cascades and the rows in the snapshot), and
 // Reisetaschen and Packlisten (spec 0012: grants and allowlist, cascades and set null, "je Tag"
 // computed on insert and after a change of the duration, set_packing_items_packed with
-// "Abhaken gewinnt" via pack_seq, restore_packing_items), and notifications (spec 0013: one
-// settings row per member created on joining, readable and patchable only by herself, the
-// five-minute times and the time only on restaurant and activity entries; the push subscriptions of a
-// person with the checks, limits and errors of the device RPCs, ADR-0014). Several transports
+// "Abhaken gewinnt" via pack_seq, restore_packing_items), the five-minute times and the
+// time only on restaurant and activity entries (spec 0013, 0021), and the acknowledged notices
+// (spec 0051: one row per member created on joining, readable only by herself, written through
+// acknowledge_notices). Several transports
 // (users, devices) can share one server.
 import {
+  acknowledgedAfter,
   addDays,
   compareTimestamps,
+  householdClock,
+  householdOwnerId,
   isHalfStar,
+  isNoticeKey,
+  noticeDay,
   isReminderPast,
+  MAX_ACKNOWLEDGE_AT_ONCE,
+  isTikTokUrl,
   isWebUrl,
   packQuantity,
   PROFILE_COLORS,
   tripDays,
   queueEffect,
+  DEFAULT_ACTIVITY_KINDS,
+  isActivityIcon,
+  normalizeText,
+  SeriesRuleSchema,
   RECIPE_LIMITS,
+  type AiImageReply,
+  type AiImageRequest,
   type AiSearchRequest,
   type AiSearchResult,
   type AssistantReply,
   type AssistantRequest,
+  type FetchVideoReply,
+  type FetchVideoRequest,
+  type RecipeDraftReply,
+  type RecipeDraftRequest,
   type ResolveMapsLinkReply,
   type SpeechTokenReply,
   type PullRequest,
@@ -38,6 +55,9 @@ import {
   type SmallRow,
   type TableRows,
   type Tombstone,
+  type PlacePreviewReply,
+  type WebSearchReply,
+  type WebSearchRequest,
 } from '@housekeeping/core';
 
 import {
@@ -70,6 +90,7 @@ import {
 
 type RpcName =
   | 'apply_changes'
+  | 'save_recipe_page'
   | 'set_shopping_item_checked'
   | 'set_shopping_item_not_available'
   | 'add_shopping_contributions'
@@ -110,16 +131,18 @@ type RpcName =
   | 'update_profile'
   | 'begin_household_deletion'
   | 'delete_household'
-  | 'register_push_subscription'
-  | 'set_push_subscription_enabled'
-  | 'unregister_push_subscription'
-  | 'remove_push_subscription'
-  | 'list_push_subscriptions'
-  | 'send_test_push'
+  | 'acknowledge_notices'
   | 'resolve-maps-link'
+  | 'fetch-image'
+  | 'fetch-video'
+  | 'set_recipe_video_poster'
+  | 'remove_recipe_video'
   | 'ai-assistant'
   | 'ai-search'
   | 'speech-token'
+  | 'ai-recipe-draft'
+  | 'ai-image'
+  | 'web-search'
   | 'storage_upload'
   | 'storage_download'
   | 'storage_remove'
@@ -130,6 +153,11 @@ export interface FakeAi {
   assistant?: (request: AssistantRequest) => AssistantReply;
   search?: (request: AiSearchRequest) => AiSearchResult;
   speechToken?: () => SpeechTokenReply;
+  recipeDraft?: (request: RecipeDraftRequest) => RecipeDraftReply;
+  image?: (request: AiImageRequest) => AiImageReply;
+  /** Spec 0049; throw a TransportError to play a provider that is down. */
+  webSearch?: (request: Extract<WebSearchRequest, { mode: 'search' }>) => WebSearchReply;
+  placePreview?: (request: Extract<WebSearchRequest, { mode: 'place' }>) => PlacePreviewReply;
 }
 
 interface FailureRule {
@@ -162,16 +190,23 @@ export interface FakeServer {
   purgeDeletionsBefore(before: string): void;
   /** The place the edge function `resolve-maps-link` answers for a short link. */
   setMapsLink(url: string, reply: ResolveMapsLinkReply): void;
+  /** The bytes the edge function `fetch-image` answers for an address (spec 0039). */
+  setImageAddress(url: string, image: Blob): void;
   /** The answers of the AI edge functions. */
   setAi(ai: FakeAi): void;
   /** A stored photo (bucket household-media). */
   media(path: string): Blob | undefined;
-  /** Like the Vault entries push_send_url and push_send_secret (spec 0013); unset by default. */
-  setPushConfigured(configured: boolean): void;
-  /** The push service answered 404/410 for this address: the subscription is unreachable. */
-  markPushGone(endpoint: string): void;
-  /** The probes sent so far ("Probe senden"), oldest first. */
-  testPushes(): { subscriptionId: string; profileId: string }[];
+  /**
+   * What fetch-video gets behind a TikTok link (spec 0043): the video, or why there is none, and
+   * the address of its cover (spec 0046). Unknown links give `video_unavailable`.
+   */
+  setVideoAddress(
+    url: string,
+    video: Blob | 'video_unavailable' | 'video_too_large',
+    coverUrl?: string,
+  ): void;
+  /** A stored video (bucket household-videos). */
+  video(path: string): Blob | undefined;
   calls: { userId: string; fn: string }[];
 }
 
@@ -193,8 +228,11 @@ const CASCADES: Record<string, { table: string; column: string }[]> = {
   activities: [
     { table: 'activity_favorites', column: 'activity_id' },
     { table: 'activity_ratings', column: 'activity_id' },
+    { table: 'activity_series', column: 'activity_id' },
   ],
   feedback: [{ table: 'feedback_votes', column: 'feedback_id' }],
+  // Spec 0060: a Dauerposten goes with its article (delete_article).
+  articles: [{ table: 'recurring_items', column: 'article_id' }],
   // Spec 0012: the same table as the diff uses (db/tables.ts).
   ...Object.fromEntries(
     Object.entries(CASCADE_CHILDREN).map(([table, children]) => [table, [...(children ?? [])]]),
@@ -227,6 +265,15 @@ const REFERENCES: {
     onDelete: 'restrict',
   },
   { table: 'meal_plan_entries', column: 'activity_id', target: 'activities', onDelete: 'restrict' },
+  // Spec 0041.
+  { table: 'activities', column: 'kind_id', target: 'activity_kinds', onDelete: 'set null' },
+  { table: 'activity_series', column: 'activity_id', target: 'activities', onDelete: 'cascade' },
+  {
+    table: 'activity_series_exceptions',
+    column: 'series_id',
+    target: 'activity_series',
+    onDelete: 'cascade',
+  },
   {
     table: 'meal_plan_entries',
     column: 'leftovers_of_entry_id',
@@ -234,6 +281,7 @@ const REFERENCES: {
     onDelete: 'set null',
   },
   { table: 'shopping_items', column: 'article_id', target: 'articles', onDelete: 'restrict' },
+  { table: 'recurring_items', column: 'article_id', target: 'articles', onDelete: 'cascade' },
   { table: 'chore_events', column: 'chore_id', target: 'chores', onDelete: 'set null' },
   { table: 'articles', column: 'area_id', target: 'areas', onDelete: 'set null' },
   { table: 'packing_bag_items', column: 'bag_id', target: 'packing_bags', onDelete: 'cascade' },
@@ -441,6 +489,9 @@ interface PlaceDeletion {
   /** The old values of the entries that became free text, and the text written. */
   converted: (Row & { new_text: string })[];
   removed: Row[];
+  /** Spec 0041: the series of an activity and their exceptions. */
+  series: Row[];
+  exceptions: Row[];
 }
 type PlaceKind = 'restaurant' | 'activity';
 /** A row of private.deletions: primary key (household, kind, target), the snapshot by kind. */
@@ -499,6 +550,39 @@ const PHOTO_FILE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 const MEDIA_PATH = /^([^/]+)\/(activities|recipes|restaurants)\/[^/]+\/([^/]+)$/;
 /** The bucket's limits: image/jpeg only, at most 2 MiB. */
 const MEDIA_MAX_BYTES = 2 * 1024 * 1024;
+/** <household>/recipes/<recipe id>/<uuid>.mp4 (private.video_household_id, spec 0043). */
+const VIDEO_PATH =
+  /^([^/]+)\/recipes\/([^/]+)\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.mp4$/;
+/** At most this many videos per recipe (recipes_videos_valid, spec 0046). */
+const MAX_VIDEOS = 10;
+
+/** recipes_videos_valid (spec 0046): {path, url?, poster?} in the recipe's own folder. */
+function videosValid(householdId: string, row: Row): boolean {
+  const videos = row.videos ?? [];
+  if (!Array.isArray(videos) || videos.length > MAX_VIDEOS) return false;
+  if (videos.length > 0 && row.kind === 'collection') return false;
+  const prefix = `${householdId}/recipes/${row.id}/`;
+  const paths = new Set<string>();
+  const urls = new Set<string>();
+  for (const video of videos as unknown[]) {
+    if (typeof video !== 'object' || video === null || Array.isArray(video)) return false;
+    const { path, url, poster, ...rest } = video as Record<string, unknown>;
+    if (Object.keys(rest).length > 0 || typeof path !== 'string') return false;
+    if (!path.startsWith(prefix) || !VIDEO_PATH.test(path) || paths.has(path)) return false;
+    paths.add(path);
+    if (url !== undefined && (typeof url !== 'string' || !isWebUrl(url) || urls.has(url)))
+      return false;
+    if (typeof url === 'string') urls.add(url);
+    if (
+      poster !== undefined &&
+      (typeof poster !== 'string' ||
+        !poster.startsWith(prefix) ||
+        !PHOTO_FILE.test(poster.slice(prefix.length)))
+    )
+      return false;
+  }
+  return true;
+}
 
 /** shopping_contributions_note_length (spec 0006, AC-022). */
 const NOTE_MAX_LENGTH = 200;
@@ -605,7 +689,7 @@ function bookedAfter(a: Row, b: Row): boolean {
 /** recipes.kind, its default 'recipe' when a row carries none (spec 0009, E2). */
 const kindOf = (row: Row | undefined) => row?.kind ?? 'recipe';
 
-/** recipes_kind_valid and recipes_kind_fields (spec 0009, E2, E3). */
+/** recipes_kind_valid and recipes_kind_fields (spec 0009, E2, E3; a time since spec 0037). */
 function checkRecipeKind(row: Row): void {
   const kind = kindOf(row);
   if (kind !== 'recipe' && kind !== 'collection')
@@ -620,7 +704,6 @@ function checkRecipeKind(row: Row): void {
     kind === 'recipe'
       ? row.course != null
       : row.course == null &&
-        row.total_minutes == null &&
         row.cuisine == null &&
         row.lead_time == null &&
         empty(row.tags) &&
@@ -673,9 +756,7 @@ const FIVE_MINUTE_TIME = /^([01]\d|2[0-3]):[0-5][05](:00)?$/;
 const TIME_COLUMNS: Record<string, readonly string[]> = {
   chores: ['due_time'],
   meal_plan_entries: ['starts_at', 'reminder_at'],
-  notification_settings: ['daily_summary_at', 'activities_eve_at'],
 };
-const SUMMARY_PARTS = new Set(['meals', 'activities', 'chores', 'prep']);
 
 /** A row as Postgres keeps it: a `time` reads back as "HH:MM:SS"; an invalid one is 23514. */
 function withDbTimes(table: string, row: Row): Row {
@@ -693,26 +774,21 @@ function withDbTimes(table: string, row: Row): Row {
   return next;
 }
 
-/** meal_plan_entries_starts_at_only_timed (spec 0021), the reminder and the parts check. */
+/** meal_plan_entries_starts_at_only_timed (spec 0021) and the reminder. */
 function checkNotificationColumns(table: string, row: Row): void {
   const violated = () => new TransportError('permanent', '23514', 400);
   if (table === 'meal_plan_entries') {
     if (row.starts_at != null && row.kind !== 'restaurant' && row.kind !== 'activity') {
       throw violated();
     }
-    checkReminderColumns(row);
+    checkReminderColumns(row, 366);
+    if (row.reminder_at != null && row.date == null) throw violated();
   }
-  if (table === 'notification_settings') {
-    const parts = row.daily_summary_parts;
-    if (
-      !Array.isArray(parts) ||
-      parts.length < 1 ||
-      parts.length > 4 ||
-      new Set(parts).size !== parts.length ||
-      parts.some((part) => !SUMMARY_PARTS.has(String(part)))
-    ) {
-      throw violated();
-    }
+  // Spec 0059: activity_series_reminder_* (0–30 days) and chores_notice_days_before_valid.
+  if (table === 'activity_series') checkReminderColumns(row, 30);
+  if (table === 'chores' && row.notice_days_before != null) {
+    const days = Number(row.notice_days_before);
+    if (!Number.isInteger(days) || days < 1 || days > 60) throw violated();
   }
 }
 
@@ -723,13 +799,16 @@ const CONTROL_CHARACTER =
 
 /**
  * Spec 0017: meal_plan_entries_reminder_day_offset_valid, _reminder_text_valid,
- * _reminder_complete, _reminder_text_needs_time and _reminder_needs_date.
+ * _reminder_complete and _reminder_text_needs_time; the same at activity_series (spec 0059).
  */
-function checkReminderColumns(row: Row): void {
+function checkReminderColumns(row: Row, maxOffset: number): void {
   const violated = () => new TransportError('permanent', '23514', 400);
   const offset = row.reminder_day_offset;
   const text = row.reminder_text;
-  if (offset != null && !(Number.isInteger(offset) && Number(offset) >= 0 && Number(offset) <= 366))
+  if (
+    offset != null &&
+    !(Number.isInteger(offset) && Number(offset) >= 0 && Number(offset) <= maxOffset)
+  )
     throw violated();
   if (
     text != null &&
@@ -742,7 +821,6 @@ function checkReminderColumns(row: Row): void {
     throw violated();
   if ((offset == null) !== (row.reminder_at == null)) throw violated();
   if (text != null && row.reminder_at == null) throw violated();
-  if (row.reminder_at != null && row.date == null) throw violated();
 }
 
 /**
@@ -775,49 +853,6 @@ function reminderTriggers(previous: Row | undefined, next: Row, timeZone: string
   return row;
 }
 
-/** private.is_push_endpoint: https, a known push service, no port, no credentials (AC-044). */
-const PUSH_ENDPOINT = new RegExp(
-  '^https://(fcm\\.googleapis\\.com|updates\\.push\\.services\\.mozilla\\.com|web\\.push\\.apple\\.com' +
-    '|[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*\\.notify\\.windows\\.com)' +
-    "/[A-Za-z0-9._~:/?@!$&'()*+,;=%-]*$",
-);
-const PUSH_P256DH = /^B[A-Za-z0-9_-]{86}$/;
-const PUSH_AUTH = /^[A-Za-z0-9_-]{22}$/;
-/** Decision 20: at most 10 devices per person, 3 probes in 10 minutes. */
-const MAX_PUSH_DEVICES = 10;
-const MAX_TEST_PUSHES = 3;
-const TEST_PUSH_WINDOW_MS = 10 * 60 * 1000;
-
-interface PushSubscriptionRecord {
-  id: string;
-  profileId: string;
-  endpoint: string;
-  p256dh: string;
-  auth: string;
-  deviceLabel: string;
-  enabled: boolean;
-  goneAt: string | null;
-  lastSuccessAt: string | null;
-  createdAt: string;
-}
-
-function validPushSubscription(
-  endpoint: string,
-  p256dh: string,
-  auth: string,
-  label: string,
-): boolean {
-  return (
-    endpoint.length <= 1024 &&
-    PUSH_ENDPOINT.test(endpoint) &&
-    PUSH_P256DH.test(p256dh) &&
-    PUSH_AUTH.test(auth) &&
-    label.length >= 1 &&
-    label.length <= 60 &&
-    !/[\u0000-\u001f\u007f]/.test(label)
-  );
-}
-
 /** Row checks of the database that a client bug could break (spec 0004, 0006, 0007). */
 function checkRow(householdId: string, table: string, row: Row, tables: TableRows): void {
   checkNotificationColumns(table, row);
@@ -828,6 +863,10 @@ function checkRow(householdId: string, table: string, row: Row, tables: TableRow
     typeof row.note === 'string' &&
     row.note.length > NOTE_MAX_LENGTH
   ) {
+    throw new TransportError('permanent', '23514', 400);
+  }
+  // recipes_videos_valid (spec 0046).
+  if (table === 'recipes' && !videosValid(householdId, row)) {
     throw new TransportError('permanent', '23514', 400);
   }
   const folder = PHOTO_FOLDERS[table];
@@ -849,6 +888,44 @@ function checkRow(householdId: string, table: string, row: Row, tables: TableRow
   if (table === 'activities') {
     const clash = Object.values(tables.activities ?? {}).some(
       (other) => other.id !== row.id && other.name_key === row.name_key,
+    );
+    if (clash) throw new TransportError('permanent', '23505', 409);
+    // activities_icon_valid (spec 0041, Entscheidung 5).
+    if (row.icon != null && !isActivityIcon(String(row.icon))) {
+      throw new TransportError('permanent', '23514', 400);
+    }
+  }
+  // activity_kinds_icon_valid, activity_kinds_household_id_name_key_key (spec 0041).
+  if (table === 'activity_kinds') {
+    if (!isActivityIcon(String(row.icon))) throw new TransportError('permanent', '23514', 400);
+    const clash = Object.values(tables.activity_kinds ?? {}).some(
+      (other) => other.id !== row.id && other.name_key === row.name_key,
+    );
+    if (clash) throw new TransportError('permanent', '23505', 409);
+  }
+  // activity_series_rule_valid, activity_series_period_valid (spec 0041).
+  if (table === 'activity_series') {
+    const invalidPeriod = row.ends_on != null && String(row.ends_on) < String(row.starts_on);
+    if (!SeriesRuleSchema.safeParse(row.rule).success || invalidPeriod) {
+      throw new TransportError('permanent', '23514', 400);
+    }
+  }
+  // activity_series_exceptions_one_per_occurrence (spec 0041).
+  if (table === 'activity_series_exceptions') {
+    const clash = Object.values(tables.activity_series_exceptions ?? {}).some(
+      (other) =>
+        other.id !== row.id && other.series_id === row.series_id && other.on_date === row.on_date,
+    );
+    if (clash) throw new TransportError('permanent', '23505', 409);
+  }
+  // recurring_items_rule_valid, recurring_items_one_per_article (spec 0060).
+  if (table === 'recurring_items') {
+    const rule = SeriesRuleSchema.safeParse(row.rule);
+    if (!rule.success || rule.data.type === 'yearly') {
+      throw new TransportError('permanent', '23514', 400);
+    }
+    const clash = Object.values(tables.recurring_items ?? {}).some(
+      (other) => other.id !== row.id && other.article_id === row.article_id,
     );
     if (clash) throw new TransportError('permanent', '23505', 409);
   }
@@ -890,7 +967,13 @@ export function createFakeServer(): FakeServer {
   const failures: FailureRule[] = [];
   const calls: { userId: string; fn: string }[] = [];
   const mapsLinks = new Map<string, ResolveMapsLinkReply>();
+  const imageAddresses = new Map<string, Blob>();
   const media = new Map<string, Blob>();
+  const videos = new Map<string, Blob>();
+  const videoAddresses = new Map<
+    string,
+    { video: Blob | 'video_unavailable' | 'video_too_large'; coverUrl?: string }
+  >();
   let ai: FakeAi = {};
   /** private.deletions: one snapshot per household, kind and target, kept for RESTORABLE_MS. */
   const deletions = new Map<string, Deletion>();
@@ -925,12 +1008,6 @@ export function createFakeServer(): FakeServer {
     return found as Extract<Deletion, { kind: K }> | undefined;
   }
   const aiUnavailable = () => new TransportError('transient', 'ai_unavailable', 503);
-  /** private.push_subscriptions (spec 0013): never synced, reached only through the RPCs. */
-  let pushSubscriptions: PushSubscriptionRecord[] = [];
-  /** The probes of private.notification_deliveries (kind 'test'), for the rate limit. */
-  const testDeliveries: { subscriptionId: string; profileId: string; at: number }[] = [];
-  let pushConfigured = false;
-
   /** Server clock with microseconds, strictly increasing like `now()` in separate transactions. */
   function now(): string {
     lastMicros = Math.max(lastMicros + 1, Date.now() * 1000);
@@ -941,6 +1018,13 @@ export function createFakeServer(): FakeServer {
 
   const isMember = (userId: string, householdId: string) =>
     members.some((member) => member.household_id === householdId && member.profile_id === userId);
+  /** private.household_owner (spec 0042, REQ-005): earliest join, ties by the smaller id. */
+  const ownerOf = (householdId: string) =>
+    householdOwnerId(
+      members
+        .filter((member) => member.household_id === householdId)
+        .map((m) => ({ profileId: String(m.profile_id), joinedAt: String(m.created_at) })),
+    );
   const memberIdsOf = (householdId: string) =>
     members
       .filter((member) => member.household_id === householdId)
@@ -949,8 +1033,39 @@ export function createFakeServer(): FakeServer {
     members.filter((member) => member.profile_id === userId).map((m) => String(m.household_id));
 
   /**
+   * private.acknowledge_notices (spec 0051, Decisions 7 and 8): unites the keys with the own row,
+   * drops what belongs to a day more than 14 days ago, keeps the newest 400. `invalid_notice`,
+   * `not_found` for a household that is not hers.
+   */
+  function acknowledgeNotices(userId: string, householdId: string, keys: readonly string[]): void {
+    if (keys.length > MAX_ACKNOWLEDGE_AT_ONCE || keys.some((key) => !isNoticeKey(key))) {
+      throw reject('invalid_notice');
+    }
+    if (!isMember(userId, householdId)) throw new TransportError('permanent', 'not_found', 404);
+    const own = Object.values(data.get(householdId)?.notification_settings ?? {}).find(
+      (row) => row.member_id === userId,
+    );
+    if (!own) throw new TransportError('permanent', 'not_found', 404);
+    const timeZone = String(households.get(householdId)?.timezone ?? 'Europe/Berlin');
+    const today = householdClock(new Date(), timeZone).date;
+    // No day further ahead than a reminder can lie (366 days, spec 0017).
+    const latest = addDays(today, 367);
+    if (keys.some((key) => (noticeDay(key) ?? '') > latest)) throw reject('invalid_notice');
+    const current = Array.isArray(own.acknowledged_notices)
+      ? own.acknowledged_notices.map(String)
+      : [];
+    transaction(householdId, (tables) => [
+      withRow(tables, 'notification_settings', {
+        ...own,
+        acknowledged_notices: acknowledgedAfter(current, keys, today),
+      }),
+      undefined,
+    ]);
+  }
+
+  /**
    * household_members_create_notification_settings (spec 0013, Decision 3): a new member gets her
-   * row with the column defaults; an existing one is kept.
+   * row, nothing acknowledged yet (spec 0051); an existing one is kept.
    */
   function createNotificationSettings(householdId: string, profileId: string): void {
     const exists = Object.values(data.get(householdId)?.notification_settings ?? {}).some(
@@ -961,64 +1076,17 @@ export function createFakeServer(): FakeServer {
       withRow(tables, 'notification_settings', {
         id: crypto.randomUUID(),
         member_id: profileId,
-        daily_summary_enabled: false,
-        daily_summary_at: '07:30:00',
-        daily_summary_parts: ['meals', 'activities', 'chores', 'prep'],
-        activities_eve_enabled: false,
-        activities_eve_at: '19:00:00',
-        chore_reminders_enabled: true,
-        entry_reminders_enabled: true,
+        acknowledged_notices: [],
       }),
       undefined,
     ]);
   }
 
-  /** Every device RPC: `not_authenticated` (42501) without a signed-in user. */
+  /** `not_authenticated` without a signed-in user. */
   function requireUser(userId: string): void {
     if (!userId || !profiles.has(userId)) {
       throw new TransportError('permanent', 'not_authenticated', 401);
     }
-  }
-
-  const ownSubscription = (userId: string, endpoint: string) =>
-    pushSubscriptions.find(
-      (subscription) => subscription.endpoint === endpoint && subscription.profileId === userId,
-    );
-
-  /** private.register_push_subscription: upsert by address for the caller (Decision 19, 20). */
-  function registerPushSubscription(
-    userId: string,
-    endpoint: string,
-    p256dh: string,
-    auth: string,
-    deviceLabel: string,
-  ): string {
-    requireUser(userId);
-    const label = deviceLabel.trim();
-    if (!validPushSubscription(endpoint, p256dh, auth, label)) {
-      throw reject('invalid_subscription');
-    }
-    const existing = pushSubscriptions.find((subscription) => subscription.endpoint === endpoint);
-    const own = pushSubscriptions.filter((subscription) => subscription.profileId === userId);
-    if (existing?.profileId !== userId && own.length >= MAX_PUSH_DEVICES) {
-      throw reject('too_many_devices');
-    }
-    const record: PushSubscriptionRecord = {
-      id: existing?.id ?? crypto.randomUUID(),
-      profileId: userId,
-      endpoint,
-      p256dh,
-      auth,
-      deviceLabel: label,
-      enabled: true,
-      goneAt: null,
-      lastSuccessAt: existing?.lastSuccessAt ?? null,
-      createdAt: existing?.createdAt ?? now(),
-    };
-    pushSubscriptions = existing
-      ? pushSubscriptions.map((subscription) => (subscription === existing ? record : subscription))
-      : [...pushSubscriptions, record];
-    return record.id;
   }
 
   function notify(householdId: string): void {
@@ -1509,6 +1577,24 @@ export function createFakeServer(): FakeServer {
     if (columns.some((column) => !allowed.has(column))) throw reject('invalid_change');
   }
 
+  /**
+   * The trigger recurring_contribution_marks_day (spec 0060, Decision 7): a contribution
+   * "regelmäßig" marks its day on its Dauerposten of the same household. The fake skips the bound
+   * of the day (yesterday to eight days ahead); pgTAP covers it.
+   */
+  function markRecurringDay(tables: TableRows, source: unknown): TableRows {
+    if (typeof source !== 'object' || source === null) return tables;
+    const { kind, recurringItemId, on } = source as Record<string, unknown>;
+    if (kind !== 'recurring' || typeof recurringItemId !== 'string' || typeof on !== 'string') {
+      return tables;
+    }
+    const recurring = tables.recurring_items?.[recurringItemId];
+    if (!recurring) return tables;
+    const last = recurring.last_added_on;
+    if (typeof last === 'string' && last >= on) return tables;
+    return withRow(tables, 'recurring_items', { ...recurring, last_added_on: on });
+  }
+
   function addContributions(
     tables: TableRows,
     householdId: string,
@@ -1545,6 +1631,7 @@ export function createFakeServer(): FakeServer {
           const row = next.shopping_contributions?.[contribution.id];
           if (row)
             next = withRow(next, 'shopping_contributions', { ...row, source: contribution.source });
+          next = markRecurringDay(next, contribution.source);
         }
         // Reopening a checked item is a change of `checked`: count it like the server does.
         for (const [id, item] of Object.entries(next.shopping_items ?? {})) {
@@ -1935,7 +2022,14 @@ export function createFakeServer(): FakeServer {
                 ? OPEN_PACKING_ITEM
                 : op.table === 'recipes'
                   ? // Column defaults: a collection must send course null (spec 0009, T1).
-                    { kind: 'recipe', course: 'main', tags: [], variants: [], steps: [] }
+                    {
+                      kind: 'recipe',
+                      course: 'main',
+                      tags: [],
+                      variants: [],
+                      steps: [],
+                      videos: [],
+                    }
                   : op.table === 'meal_plan_entries'
                     ? {
                         starts_at: null,
@@ -2052,6 +2146,34 @@ export function createFakeServer(): FakeServer {
       });
     }
     return result;
+  }
+
+  /** The tables save_recipe_page writes (spec 0037): the page's rows, nothing else. */
+  const PAGE_TABLES = new Set(['recipes', 'articles', 'collection_recipes', 'meal_plan_entries']);
+
+  /** save_recipe_page: the recipe locked, compared with what the caller saw, then apply_changes. */
+  function saveRecipePage(
+    userId: string,
+    householdId: string,
+    recipeId: string,
+    seenUpdatedAt: string | undefined,
+    ops: readonly ChangeOp[],
+  ) {
+    if (!isMember(userId, householdId)) throw new TransportError('permanent', 'not_member', 403);
+    const outside = ops.some(
+      (op) =>
+        !('table' in op) ||
+        !PAGE_TABLES.has(op.table) ||
+        (op.table === 'recipes' && (op.kind !== 'patch' || op.id !== recipeId)),
+    );
+    if (outside) throw reject('invalid_change');
+    const row = data.get(householdId)?.recipes?.[recipeId];
+    if (!row) throw new TransportError('permanent', 'row_not_found', 404);
+    const changedMeanwhile =
+      seenUpdatedAt !== undefined && compareTimestamps(String(row.updated_at), seenUpdatedAt) > 0;
+    applyChanges(userId, householdId, ops);
+    const after = data.get(householdId)?.recipes?.[recipeId]?.updated_at;
+    return { changedMeanwhile, ...(after ? { updatedAt: String(after) } : {}) };
   }
 
   // ---------- sync_pull ----------
@@ -2505,6 +2627,13 @@ export function createFakeServer(): FakeServer {
         favorites: parentRows(place.favorites).map((favorite) => String(favorite.member_id)),
         converted,
         removed: later,
+        series: kind === 'activity' ? parentRows('activity_series') : [],
+        exceptions:
+          kind === 'activity'
+            ? Object.values(before.activity_series_exceptions ?? {}).filter((exception) =>
+                parentRows('activity_series').some((series) => series.id === exception.series_id),
+              )
+            : [],
       };
       let tables = before;
       for (const entry of converted) {
@@ -2541,6 +2670,14 @@ export function createFakeServer(): FakeServer {
     transaction(householdId, (before) => {
       const row: Row = { ...withoutTimestamps(deletion.row), created_at: deletion.row.created_at };
       if (kind === 'activity' && !current.has(String(row.created_by))) row.created_by = null;
+      // A kind deleted meanwhile is not put back (spec 0041).
+      if (
+        kind === 'activity' &&
+        row.kind_id != null &&
+        !before.activity_kinds?.[String(row.kind_id)]
+      ) {
+        row.kind_id = null;
+      }
       checkRow(householdId, place.table, row, before);
       let tables = withRow(before, place.table, row);
       for (const rating of deletion.ratings) {
@@ -2565,6 +2702,18 @@ export function createFakeServer(): FakeServer {
           eater_ids: eaters.filter((id) => current.has(id)),
           cook_id: current.has(String(entry.cook_id)) ? entry.cook_id : null,
         });
+      }
+      for (const series of deletion.series) {
+        if (tables.activity_series?.[series.id]) continue;
+        const eaters = Array.isArray(series.eater_ids) ? series.eater_ids.map(String) : [];
+        tables = withRow(tables, 'activity_series', {
+          ...withoutTimestamps(series),
+          eater_ids: eaters.filter((id) => current.has(id)),
+        });
+      }
+      for (const exception of deletion.exceptions) {
+        if (tables.activity_series_exceptions?.[exception.id]) continue;
+        tables = withRow(tables, 'activity_series_exceptions', withoutTimestamps(exception));
       }
       for (const entry of deletion.converted) {
         const now = tables.meal_plan_entries?.[entry.id];
@@ -2598,6 +2747,67 @@ export function createFakeServer(): FakeServer {
   // ---------- photo bucket (policies of storage.objects) ----------
 
   /** The household of a photo path the user may use, or undefined (wrong shape, foreign). */
+  function videoHousehold(userId: string, path: string): string | undefined {
+    const [, householdId] = VIDEO_PATH.exec(path) ?? [];
+    return householdId && isMember(userId, householdId) ? householdId : undefined;
+  }
+
+  type VideoEntry = { path: string; url?: string; poster?: string };
+  const videosOfRow = (row: Row): VideoEntry[] =>
+    Array.isArray(row.videos) ? (row.videos as VideoEntry[]) : [];
+
+  /**
+   * The recipe's videos as `change` makes them (add_recipe_video, set_recipe_video_poster,
+   * remove_recipe_video of spec 0046): the member's own household only, then the check.
+   */
+  function changeVideos<T>(
+    userId: string,
+    householdId: string,
+    recipeId: string,
+    change: (videos: VideoEntry[], recipe: Row) => [VideoEntry[] | undefined, T],
+    missing: T,
+  ): T {
+    requireUser(userId);
+    if (!isMember(userId, householdId)) throw new TransportError('permanent', 'not_member', 403);
+    return transaction(householdId, (tables) => {
+      const recipe = tables.recipes?.[recipeId];
+      if (!recipe) return [tables, missing];
+      const [next, result] = change(videosOfRow(recipe), recipe);
+      if (!next) return [tables, result];
+      const row = { ...recipe, videos: next };
+      checkRow(householdId, 'recipes', row, tables);
+      return [withRow(tables, 'recipes', withDbTimes('recipes', row)), result];
+    });
+  }
+
+  /** fetch-video (spec 0043, 0046): checks like the function, then the upload and add_recipe_video. */
+  function fetchVideo(userId: string, request: FetchVideoRequest): FetchVideoReply {
+    requireUser(userId);
+    if (!isMember(userId, request.householdId))
+      throw new TransportError('permanent', 'forbidden', 403);
+    const recipe = data.get(request.householdId)?.recipes?.[request.recipeId];
+    if (!recipe || recipe.kind === 'collection')
+      throw new TransportError('permanent', 'forbidden', 403);
+    const links = Array.isArray(recipe.links) ? (recipe.links as { url?: unknown }[]) : [];
+    if (!isTikTokUrl(request.url) || !links.some((link) => link.url === request.url))
+      throw new TransportError('permanent', 'not_a_tiktok_link', 422);
+    if (videosOfRow(recipe).some((video) => video.url === request.url))
+      throw new TransportError('permanent', 'video_exists', 409);
+    const address = videoAddresses.get(request.url) ?? { video: 'video_unavailable' as const };
+    if (typeof address.video === 'string')
+      throw new TransportError('permanent', address.video, 422);
+    const videoPath = `${request.householdId}/recipes/${request.recipeId}/${crypto.randomUUID()}.mp4`;
+    videos.set(videoPath, address.video);
+    changeVideos(
+      userId,
+      request.householdId,
+      request.recipeId,
+      (list) => [[...list, { path: videoPath, url: request.url }], true],
+      false,
+    );
+    return address.coverUrl ? { videoPath, coverUrl: address.coverUrl } : { videoPath };
+  }
+
   function mediaHousehold(userId: string, path: string): string | undefined {
     const [, householdId, , file] = MEDIA_PATH.exec(path) ?? [];
     if (!householdId || !file || !PHOTO_FILE.test(file)) return undefined;
@@ -2610,6 +2820,10 @@ export function createFakeServer(): FakeServer {
     return {
       applyChanges: (householdId, ops) =>
         run(userId, 'apply_changes', () => applyChanges(userId, householdId, ops)),
+      saveRecipePage: (householdId, recipeId, seenUpdatedAt, ops) =>
+        run(userId, 'save_recipe_page', () =>
+          saveRecipePage(userId, householdId, recipeId, seenUpdatedAt, ops),
+        ),
 
       setItemChecked: (requestedItemId, checked, seenCheckSeq, onList = false) =>
         run(userId, 'set_shopping_item_checked', () => {
@@ -2980,6 +3194,18 @@ export function createFakeServer(): FakeServer {
               replaced = { from: sourceItem.id, to: targetItem.id };
               items = 1;
             }
+            // 2b. The Dauerposten of the source to the target when it has none (spec 0060, AC-012).
+            const recurringOf = (articleId: string) =>
+              Object.values(tables.recurring_items ?? {}).find(
+                (row) => row.article_id === articleId,
+              );
+            const sourceRecurring = recurringOf(sourceId);
+            if (sourceRecurring && !recurringOf(targetId)) {
+              tables = withRow(tables, 'recurring_items', {
+                ...sourceRecurring,
+                article_id: targetId,
+              });
+            }
             // 6. Names of the source as synonyms of the target, without duplicate keys.
             const synonyms: string[] = [];
             const keys: string[] = [];
@@ -3184,6 +3410,20 @@ export function createFakeServer(): FakeServer {
             updated_at: time,
           });
           createNotificationSettings(id, userId);
+          // households_seed_activity_kinds (spec 0041, REQ-001).
+          transaction(id, (tables) => [
+            withRows(
+              tables,
+              'activity_kinds',
+              DEFAULT_ACTIVITY_KINDS.map((kind) => ({
+                id: crypto.randomUUID(),
+                name: kind.name,
+                name_key: normalizeText(kind.name),
+                icon: kind.icon,
+              })),
+            ),
+            undefined,
+          ]);
           return id;
         }),
 
@@ -3191,6 +3431,8 @@ export function createFakeServer(): FakeServer {
         run(userId, 'invite_member', () => {
           if (!isMember(userId, householdId))
             throw new TransportError('permanent', 'not_member', 403);
+          if (ownerOf(householdId) !== userId)
+            throw new TransportError('permanent', 'not_owner', 403);
           const address = email.trim().toLowerCase();
           if (!/^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/.test(address)) throw reject('invalid_email');
           const already = members.some(
@@ -3251,6 +3493,8 @@ export function createFakeServer(): FakeServer {
         run(userId, 'remove_member', () => {
           if (!isMember(userId, householdId))
             throw new TransportError('permanent', 'not_member', 403);
+          if (profileId !== userId && ownerOf(householdId) !== userId)
+            throw new TransportError('permanent', 'not_owner', 403);
           if (!isMember(profileId, householdId)) {
             throw new TransportError('permanent', 'member_not_found', 404);
           }
@@ -3351,9 +3595,10 @@ export function createFakeServer(): FakeServer {
           if (memberIdsOf(householdId).length > 1) throw reject('not_last_member');
           // Closed for new members before the photos go (security check 22.11.2026).
           invitations = invitations.filter((invitation) => invitation.household_id !== householdId);
-          return [...media.keys()]
-            .filter((path) => mediaHousehold(userId, path) === householdId)
-            .sort();
+          return [
+            ...[...media.keys()].filter((path) => mediaHousehold(userId, path) === householdId),
+            ...[...videos.keys()].filter((path) => videoHousehold(userId, path) === householdId),
+          ].sort();
         }),
 
       deleteHousehold: (householdId) =>
@@ -3363,7 +3608,9 @@ export function createFakeServer(): FakeServer {
             throw new TransportError('permanent', 'not_member', 403);
           }
           if (memberIdsOf(householdId).length > 1) throw reject('not_last_member');
-          if ([...media.keys()].some((path) => path.startsWith(`${householdId}/`))) {
+          if (
+            [...media.keys(), ...videos.keys()].some((path) => path.startsWith(`${householdId}/`))
+          ) {
             throw reject('media_remaining');
           }
           // One transaction with the cascade: rows, members, invitations, tombstones.
@@ -3380,77 +3627,8 @@ export function createFakeServer(): FakeServer {
           notify(householdId);
         }),
 
-      registerPushSubscription: (endpoint, p256dh, auth, deviceLabel) =>
-        run(userId, 'register_push_subscription', () =>
-          registerPushSubscription(userId, endpoint, p256dh, auth, deviceLabel),
-        ),
-      setPushSubscriptionEnabled: (endpoint, enabled) =>
-        run(userId, 'set_push_subscription_enabled', () => {
-          requireUser(userId);
-          const own = ownSubscription(userId, endpoint);
-          if (!own) throw new TransportError('permanent', 'not_found', 404);
-          pushSubscriptions = pushSubscriptions.map((subscription) =>
-            subscription === own ? { ...own, enabled } : subscription,
-          );
-        }),
-      unregisterPushSubscription: (endpoint) =>
-        run(userId, 'unregister_push_subscription', () => {
-          requireUser(userId);
-          pushSubscriptions = pushSubscriptions.filter(
-            (subscription) =>
-              !(subscription.endpoint === endpoint && subscription.profileId === userId),
-          );
-        }),
-      removePushSubscription: (id) =>
-        run(userId, 'remove_push_subscription', () => {
-          requireUser(userId);
-          const before = pushSubscriptions.length;
-          pushSubscriptions = pushSubscriptions.filter(
-            (subscription) => !(subscription.id === id && subscription.profileId === userId),
-          );
-          return pushSubscriptions.length < before;
-        }),
-      listPushSubscriptions: (currentEndpoint) =>
-        run(userId, 'list_push_subscriptions', () => {
-          requireUser(userId);
-          const current = (subscription: PushSubscriptionRecord) =>
-            subscription.endpoint === currentEndpoint;
-          return pushSubscriptions
-            .filter((subscription) => subscription.profileId === userId)
-            .sort(
-              (a, b) =>
-                Number(current(b)) - Number(current(a)) ||
-                compareTimestamps(a.createdAt, b.createdAt) ||
-                (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
-            )
-            .map((subscription) => ({
-              id: subscription.id,
-              device_label: subscription.deviceLabel,
-              status: subscription.goneAt
-                ? ('unreachable' as const)
-                : subscription.enabled
-                  ? ('active' as const)
-                  : ('off' as const),
-              is_current: current(subscription),
-              created_at: subscription.createdAt,
-              last_success_at: subscription.lastSuccessAt,
-            }));
-        }),
-      sendTestPush: (endpoint) =>
-        run(userId, 'send_test_push', () => {
-          requireUser(userId);
-          const own = ownSubscription(userId, endpoint);
-          if (!own || !own.enabled || own.goneAt !== null) {
-            throw new TransportError('permanent', 'not_found', 404);
-          }
-          if (!pushConfigured) throw reject('push_not_configured');
-          const since = Date.now() - TEST_PUSH_WINDOW_MS;
-          const recent = testDeliveries.filter(
-            (delivery) => delivery.profileId === userId && delivery.at > since,
-          );
-          if (recent.length >= MAX_TEST_PUSHES) throw reject('rate_limited');
-          testDeliveries.push({ subscriptionId: own.id, profileId: userId, at: Date.now() });
-        }),
+      acknowledgeNotices: (householdId, keys) =>
+        run(userId, 'acknowledge_notices', () => acknowledgeNotices(userId, householdId, keys)),
 
       resolveMapsLink: (url) =>
         run(userId, 'resolve-maps-link', () => {
@@ -3458,6 +3636,45 @@ export function createFakeServer(): FakeServer {
           if (!reply) throw new TransportError('permanent', 'not_a_maps_link', 422);
           return reply;
         }),
+      fetchImage: (request) =>
+        run(userId, 'fetch-image', () => {
+          requireUser(userId);
+          if (!isMember(userId, request.householdId))
+            throw new TransportError('permanent', 'forbidden', 403);
+          const image = imageAddresses.get(request.url);
+          if (!image) throw new TransportError('permanent', 'not_an_image', 422);
+          return image;
+        }),
+      fetchVideo: (request) => run(userId, 'fetch-video', () => fetchVideo(userId, request)),
+      setRecipeVideoPoster: (householdId, recipeId, path, poster) =>
+        run(userId, 'set_recipe_video_poster', () =>
+          changeVideos(
+            userId,
+            householdId,
+            recipeId,
+            (list, recipe) =>
+              list.some((video) => video.path === path && video.poster === undefined) &&
+              recipe.photo_path !== poster &&
+              !list.some((video) => video.poster === poster)
+                ? [list.map((video) => (video.path === path ? { ...video, poster } : video)), true]
+                : [undefined, false],
+            false,
+          ),
+        ),
+      removeRecipeVideo: (householdId, recipeId, path) =>
+        run(userId, 'remove_recipe_video', () =>
+          changeVideos<VideoEntry | null>(
+            userId,
+            householdId,
+            recipeId,
+            (list) => {
+              const removed = list.find((video) => video.path === path);
+              if (!removed) return [undefined, null];
+              return [list.filter((video) => video !== removed), removed];
+            },
+            null,
+          ),
+        ),
       askAssistant: (request) =>
         run(userId, 'ai-assistant', () => {
           if (!ai.assistant) throw aiUnavailable();
@@ -3472,6 +3689,39 @@ export function createFakeServer(): FakeServer {
         run(userId, 'speech-token', () => {
           if (!ai.speechToken) throw aiUnavailable();
           return ai.speechToken();
+        }),
+      // Spec 0040: membership is checked like fetch-image; nothing is stored.
+      aiRecipeDraft: (request) =>
+        run(userId, 'ai-recipe-draft', () => {
+          requireUser(userId);
+          if (!isMember(userId, request.householdId))
+            throw new TransportError('permanent', 'forbidden', 403);
+          if (!ai.recipeDraft) throw aiUnavailable();
+          return ai.recipeDraft(request);
+        }),
+      aiImage: (request) =>
+        run(userId, 'ai-image', () => {
+          requireUser(userId);
+          if (!isMember(userId, request.householdId))
+            throw new TransportError('permanent', 'forbidden', 403);
+          if (!ai.image) throw aiUnavailable();
+          return ai.image(request);
+        }),
+      webSearch: (request) =>
+        run(userId, 'web-search', () => {
+          requireUser(userId);
+          if (!isMember(userId, request.householdId))
+            throw new TransportError('permanent', 'forbidden', 403);
+          if (!ai.webSearch) throw new TransportError('transient', 'search_unavailable', 503);
+          return ai.webSearch(request);
+        }),
+      placePreview: (request) =>
+        run(userId, 'web-search', () => {
+          requireUser(userId);
+          if (!isMember(userId, request.householdId))
+            throw new TransportError('permanent', 'forbidden', 403);
+          if (!ai.placePreview) throw aiUnavailable();
+          return ai.placePreview(request);
         }),
 
       // The Storage API answers a refused request with its status (413, 415, 403, 409).
@@ -3497,6 +3747,17 @@ export function createFakeServer(): FakeServer {
       removeMedia: (paths) =>
         run(userId, 'storage_remove', () => {
           for (const path of paths) if (mediaHousehold(userId, path)) media.delete(path);
+        }),
+      downloadVideo: (path, signal) =>
+        run(userId, 'storage_download', () => {
+          if (signal?.aborted) throw new TransportError('transient', 'aborted', 0);
+          const video = videoHousehold(userId, path) ? videos.get(path) : undefined;
+          if (!video) throw new TransportError('permanent', 'not_found', 404);
+          return video;
+        }),
+      removeVideos: (paths) =>
+        run(userId, 'storage_remove', () => {
+          for (const path of paths) if (videoHousehold(userId, path)) videos.delete(path);
         }),
 
       syncPull: (request) =>
@@ -3542,11 +3803,12 @@ export function createFakeServer(): FakeServer {
         created_at: time,
         updated_at: time,
       });
+      // In the given order, so the first one is the owner (spec 0042, REQ-005).
       for (const profileId of memberIds) {
         members.push({
           household_id: household.id,
           profile_id: profileId,
-          created_at: time,
+          created_at: now(),
           updated_at: time,
         });
         createNotificationSettings(household.id, profileId);
@@ -3585,6 +3847,9 @@ export function createFakeServer(): FakeServer {
     failNext(fn, error, options = {}) {
       failures.push({ fn, error, afterApply: options.afterApply ?? false });
     },
+    setImageAddress(url, image) {
+      imageAddresses.set(url, image);
+    },
     setMapsLink(url, reply) {
       mapsLinks.set(url, reply);
     },
@@ -3592,17 +3857,10 @@ export function createFakeServer(): FakeServer {
       ai = next;
     },
     media: (path) => media.get(path),
-    setPushConfigured(configured) {
-      pushConfigured = configured;
+    setVideoAddress: (url, video, coverUrl) => {
+      videoAddresses.set(url, coverUrl ? { video, coverUrl } : { video });
     },
-    markPushGone(endpoint) {
-      const time = now();
-      pushSubscriptions = pushSubscriptions.map((subscription) =>
-        subscription.endpoint === endpoint ? { ...subscription, goneAt: time } : subscription,
-      );
-    },
-    testPushes: () =>
-      testDeliveries.map(({ subscriptionId, profileId }) => ({ subscriptionId, profileId })),
+    video: (path) => videos.get(path),
     purgeDeletionsBefore(before) {
       deletedRecords = deletedRecords.filter(
         (deletion) => compareTimestamps(deletion.deletedAt, before) >= 0,

@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { groupIngredients, groupProblem, groupSuggestions } from './ingredient-groups';
+import {
+  groupIngredients,
+  groupProblem,
+  groupSuggestions,
+  ingredientSections,
+} from './ingredient-groups';
 
 const row = (id: string, group?: string) => ({ id, group });
 
@@ -61,5 +66,54 @@ describe('groupSuggestions and groupProblem', () => {
     expect(groupProblem('x'.repeat(60))).toBeUndefined();
     expect(groupProblem(` ${'x'.repeat(60)} `)).toBeUndefined();
     expect(groupProblem('x'.repeat(61))).toBe('Höchstens 60 Zeichen');
+  });
+});
+
+describe('ingredientSections (Nachklick 27.11., N-01)', () => {
+  const line = (id: string, variantId?: string, group?: string) => ({ id, variantId, group });
+  const variants = [
+    { id: 'v-orig', name: 'Original' },
+    { id: 'v-vegan', name: 'Vegan' },
+  ];
+
+  it('N-01: without variants one part without heading, split by group like the recipe page', () => {
+    expect(ingredientSections([line('salz'), line('butter', undefined, 'Béchamel')], [])).toEqual([
+      {
+        groups: [
+          { items: [line('salz')] },
+          { group: 'Béchamel', items: [line('butter', undefined, 'Béchamel')] },
+        ],
+      },
+    ]);
+  });
+
+  it('N-01: with variants „Alle Varianten“ first, then each variant in its order; empty parts are left out', () => {
+    const rows = [
+      line('tofu', 'v-vegan'),
+      line('tomaten'),
+      line('eier', 'v-orig'),
+      line('feta', 'v-orig', 'Topping'),
+    ];
+    expect(ingredientSections(rows, [...variants, { id: 'v-leer', name: 'Leer' }])).toEqual([
+      { title: 'Alle Varianten', groups: [{ items: [line('tomaten')] }] },
+      {
+        variantId: 'v-orig',
+        title: 'Original',
+        groups: [
+          { items: [line('eier', 'v-orig')] },
+          { group: 'Topping', items: [line('feta', 'v-orig', 'Topping')] },
+        ],
+      },
+      { variantId: 'v-vegan', title: 'Vegan', groups: [{ items: [line('tofu', 'v-vegan')] }] },
+    ]);
+  });
+
+  it('a row of a variant that is gone counts for all variants; a variant without name reads so', () => {
+    expect(
+      ingredientSections([line('salz', 'v-weg'), line('tofu', 'v-x')], [{ id: 'v-x', name: ' ' }]),
+    ).toEqual([
+      { title: 'Alle Varianten', groups: [{ items: [line('salz', 'v-weg')] }] },
+      { variantId: 'v-x', title: 'Ohne Namen', groups: [{ items: [line('tofu', 'v-x')] }] },
+    ]);
   });
 });

@@ -133,6 +133,9 @@ L-08. Offline: Kopfzeile lesend, Rest online.
 - AC-019: Angenommen 14 offene, 3 erledigte · Wenn ⋯ → „Liste leeren …“ · Dann „14 offene und 3
   erledigte Posten werden entfernt, auch die aus dem Kalender.“; bei 1 offenem, 0 erledigten
   „1 offener Posten wird entfernt, auch wenn er aus dem Kalender kommt.“
+- AC-058: Angenommen „Liste“ · Wenn ich ⋯ öffne · Dann stehen dort „Erledigt leeren“, „Liste
+  leeren …“ und „Dauerposten“, aber nicht „Artikel“ und „Märkte & Bereiche“ · Und beide öffnen sich
+  unter „Verwalten“ → „Einkauf“ (Handy ⊞, Desktop Seitenleiste) (Entscheidung 25).
 - AC-020: Angenommen „Zahnpasta“ vor „Duschgel“ unter „Drogerie“ · Wenn − auf 1× (oder Wischen
   links) und „Rückgängig“ · Dann „Zahnpasta“ wieder vor „Duschgel“, auch bei Nadja und nach Neuladen.
 - AC-021 (Rand): Rückgängig nach „Liste leeren“ stellt alle Posten in ihrer früheren Reihenfolge her.
@@ -146,6 +149,12 @@ Warteschlange, „Abhaken gewinnt“.
   „Erledigt“, auch bei Nadja, Hinweis „Milch erledigt“ mit „Rückgängig“; links wischen entfernt weiter.
 - AC-023: Angenommen Desktop · Wenn „Milch“ öffnen, „Als erledigt markieren“ · Dann Fenster zu,
   „Milch“ unter „Erledigt“.
+- ~~AC-057~~ (verworfen 27.11.2026, Entscheidung 26): Angenommen Desktop mit Maus, „Zahnpasta“
+  offen · Wenn ich über die Zeile fahre und auf ✓ „Zahnpasta erledigt“ klicke · Dann „Zahnpasta“
+  unter „Erledigt“, Hinweis mit „Rückgängig“; ohne Maus über der Zeile ist ✓ unsichtbar, mit Tab
+  erreichbar (Entscheidung 24).
+- AC-059: Angenommen Desktop mit Maus, „Duschgel“ offen · Wenn ich über die Zeile fahre · Dann
+  steht in der Zeile kein ✓ „Duschgel erledigt“; erledigt wird wie in AC-023 (Entscheidung 26).
 - AC-024 (offline): Angenommen offline · Wenn wischen · Dann sofort unter „Erledigt“ mit
   „wird synchronisiert“, mit Netz auch bei Nadja.
 - AC-025 (Konflikt): Angenommen Nadja hat „Liste“ offen · Wenn Enrico zuhause „Milch“ erledigt ·
@@ -330,6 +339,33 @@ Alle nach Enricos Regel „Empfehlung nehmen“ (Claude, 22.11.2026).
 20. Beim Bau: `create_store` ohne Vorlage legt die Bereiche in ihrer Reihenfolge an, nichts
     ausgeblendet (wie bisher, Spec 0007 AC-043); „Ohne Bereich“ im Wähler ist auch offline
     wählbar (Laden-Aktion).
+21. Browser-Durchklick 27.11. (Review 0003, B-09): Am Handy steht „⋯“ der Liste am Ende der
+    Knopfzeile („Einkaufen“, „+ Aus Kalender …“, „⋯“), damit „Einkaufsliste“ neben Glocke, ⊞ und
+    Avatar ganz zu lesen ist (vorher „Einkaufsli…“ bei 390 px).
+22. Durchklick iPhone (27.11., Review 0003, I-08/I-11): „Was fehlt?“ meldet wie „Einkaufen“
+    „Milch steht auf der Liste“ — die Zeile liegt oft außerhalb des Bilds oder wird mit einer
+    vorhandenen zusammengelegt (2× → 3×), sonst sieht man nichts. Das Feld hält Meldungen von
+    sich fern (`useToastAvoid`), auch „1 gekauft · 13 bleiben“ nach „Fertig“.
+23. iPhone-Durchklick Runde 2 (27.11., I-12, I-21): Nach „Rückgängig“ auf „Fertig“ sagt eine
+    Meldung, wo die Posten sind: „Wieder da – abgehakt unter „Erledigt““ (vorher kamen sie
+    unsichtbar unter das zugeklappte „Erledigt“ zurück). „Bereich“ auf „Artikel“ ohne eigenes „▾“ —
+    das Menü zeichnet seinen Pfeil selbst (vorher „Bereich ▾ ⌄“).
+24. **Verworfen am 27.11.2026 (Entscheidung 26).** Browser-Durchklick 27.11. (Review 0003, B-10,
+    Freigabe Enrico): Am Desktop erledigt ein ✓ in
+    der Zeile den Posten mit einem Klick (AC-057), statt Zeile öffnen → „Als erledigt markieren“.
+    Das ✓ erscheint nur, solange die Maus über der Zeile steht oder es den Tastaturfokus hat; reines
+    Darüberfahren tut nichts. Ändert D24 (Spec 0006) für Maus und Trackpad: Die Liste bleibt ohne
+    Kästchen, auf dem Handy bleibt das Wischen. Auf Touch-Geräten ohne Wischen (iPad) steht ✓ immer da.
+25. Vorschau-Review 27.11.2026 (Review 0004, Enrico): ⋯ der Liste hat nur noch „Erledigt leeren“,
+    „Liste leeren …“ und „Dauerposten“ (AC-058). „Artikel“ und „Märkte & Bereiche“ entfallen dort:
+    Beide stehen unter „Verwalten“ → „Einkauf“, am Handy über ⊞ im Kopf jeder Tab-Startseite, am
+    Desktop in der Seitenleiste. Ändert Spec 0006, AC-034, und Spec 0031, REQ-036 („‹ Liste“ von
+    dort entfällt; zurück führt nach „Verwalten“).
+26. Vorschau-Review 27.11.2026 (Review 0004, Enrico: „nimmt Platz weg, zwei Klicks sind okay“): Das
+    ✓ in der Zeile (Entscheidung 24, AC-057) entfällt auf allen Geräten; die Zeile sieht aus wie vor
+    B-10. Erledigt wird am Handy mit Wischen nach rechts, sonst über „Posten bearbeiten“ → „Als
+    erledigt markieren“ (AC-022, AC-023, AC-059). Ids bleiben, AC-057 und Entscheidung 24 gelten als
+    verworfen.
 
 ## Daten
 

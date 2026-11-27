@@ -18,12 +18,14 @@ import {
   type ISODate,
   type KindRole,
   type MealSlot,
+  type RepeatDraft,
   type TimeOfDay,
 } from '@housekeeping/core';
 import { Button, Chip, ChoiceChips, Stack, Text, TextField, TimeField } from '@housekeeping/ui';
 import { useState, type Dispatch } from 'react';
 import { ScrollView, View } from 'react-native';
 
+import { RepeatFields } from '@/features/activities/series-fields';
 import { PlanDateCalendar } from '@/lib/plan-date-calendar';
 
 import { KindIcon, recipeRole } from './add-entry-search';
@@ -148,8 +150,9 @@ export function AddEntryDetails(props: {
   reminder: ReminderForm;
   remindable: boolean;
   online: { disabled: boolean; hint: string | undefined };
-  onOpenSettings: () => void;
   onSave: () => void;
+  /** Spec 0041, REQ-003: "Rhythmus" of an activity with a day. */
+  repeat?: { value: RepeatDraft; onChange: (next: RepeatDraft) => void };
 }) {
   const { state, dispatch, context, slots, reminder } = props;
   const entries = usePlanEntries();
@@ -162,6 +165,12 @@ export function AddEntryDetails(props: {
   const split = recipe ? splitForEaters(recipe.id, portions.eaterIds, portions.guests) : undefined;
   const misfits = split ? split.misfitMemberIds.flatMap((id) => membersById[id] ?? []) : [];
   const timed = choice.kind === 'restaurant' || choice.kind === 'activity';
+  // A series has no "Erinnern" of its own (spec 0041, Entscheidungen).
+  const repeating =
+    choice.kind === 'activity' &&
+    !!day &&
+    !later &&
+    (props.repeat?.value.kind ?? 'none') !== 'none';
   const slotOrder = slots.map((slot) => slot.id);
 
   // REQ-012: leftovers lie after their dish; earlier Tageszeiten of its day are greyed out.
@@ -255,8 +264,17 @@ export function AddEntryDetails(props: {
           testID="add-entry-text"
         />
       ) : null}
-      {choice.kind === 'recipe' || choice.kind === 'restaurant' ? (
+      {choice.kind === 'activity' && props.repeat && day && !later ? (
+        <RepeatFields
+          value={props.repeat.value}
+          onChange={props.repeat.onChange}
+          startsOn={day}
+          today={props.today}
+        />
+      ) : null}
+      {choice.kind === 'recipe' || choice.kind === 'restaurant' || choice.kind === 'activity' ? (
         <EaterPicker
+          label={choice.kind === 'activity' ? 'Wer ist dabei?' : undefined}
           members={members}
           eaterIds={portions.eaterIds}
           guests={portions.guests}
@@ -301,12 +319,11 @@ export function AddEntryDetails(props: {
         />
       ) : null}
       <ZusatzField state={state} dispatch={dispatch} />
-      {props.remindable ? (
+      {props.remindable && !repeating ? (
         <ReminderBlock
           form={reminder}
           disabled={props.online.disabled}
           hint={props.online.hint}
-          onOpenSettings={props.onOpenSettings}
           testID="add-entry-reminder"
         />
       ) : null}

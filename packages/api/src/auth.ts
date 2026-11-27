@@ -234,12 +234,6 @@ export interface AuthControllerOptions {
   authCodeInUrl?: boolean;
   /** Removes the callback parameters from the address; called once the session was read. */
   cleanUrl?(): void;
-  /**
-   * Runs at sign-out before anything is cleared, while the session still holds (spec 0013,
-   * AC-042: the app unsubscribes this browser from push and, with network, unregisters it). It
-   * gets at most BEFORE_SIGN_OUT_MS; a failure or a hang never keeps the person signed in.
-   */
-  beforeSignOut?(): Promise<void>;
 }
 
 export interface AuthController {
@@ -264,26 +258,6 @@ const isRetryable = (error: AuthErrorLike) =>
 const isAccountGone = (error: AuthErrorLike) => error.code === 'user_not_found';
 
 const errorName = (error: unknown) => (error instanceof Error ? error.name : 'unknown');
-
-/** How long sign-out waits for `beforeSignOut` (plan 0013, Decision 28). */
-const BEFORE_SIGN_OUT_MS = 3_000;
-
-/** Runs the hook, but never longer than BEFORE_SIGN_OUT_MS and never with an error. */
-async function runBeforeSignOut(hook: (() => Promise<void>) | undefined): Promise<void> {
-  if (!hook) return;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<'timeout'>((resolve) => {
-    timer = setTimeout(() => resolve('timeout'), BEFORE_SIGN_OUT_MS);
-  });
-  try {
-    const outcome = await Promise.race([hook().then(() => 'done' as const), timeout]);
-    if (outcome === 'timeout') console.warn('Unregistering this device took too long');
-  } catch (error) {
-    console.warn(`Unregistering this device failed: ${errorName(error)}`);
-  } finally {
-    clearTimeout(timer);
-  }
-}
 
 const toUser = (session: SessionLike): AuthUser => ({
   id: session.user.id,
@@ -354,8 +328,6 @@ export function createAuthController(options: AuthControllerOptions): AuthContro
   async function signOutHere(message?: string): Promise<void> {
     active = undefined;
     set({ status: 'loading' });
-    // Spec 0013, AC-042: this device stops receiving notifications before its data goes.
-    await runBeforeSignOut(options.beforeSignOut);
     let cleared = true;
     try {
       // AC-003: local data first, so nothing of it outlives the session.
@@ -544,8 +516,6 @@ export function startAuth(
   options: {
     sessionStorage?: SessionStorage;
     cacheStorage?: Storage;
-    /** See AuthControllerOptions.beforeSignOut (spec 0013, AC-042). */
-    beforeSignOut?: () => Promise<void>;
     /** The app's own version (spec 0014): starts the version check, signed in or not. */
     appVersion?: string;
   } = {},
@@ -597,7 +567,6 @@ export function startAuth(
     },
     storedUser: () => readStoredUser(sessionStorage),
     clearMarker: storageMarker(sessionStorage, CLEAR_PENDING_KEY),
-    beforeSignOut: options.beforeSignOut,
     authCodeInUrl,
     cleanUrl: () => {
       const now = currentHref();

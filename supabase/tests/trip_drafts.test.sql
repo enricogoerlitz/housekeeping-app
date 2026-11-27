@@ -3,7 +3,7 @@
 -- the risk table: foreign household, signed out, invalid value (AC-017).
 begin;
 \ir _helpers.psql
-select plan(14);
+select plan(11);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 grant select on fx to anon, authenticated;
@@ -49,14 +49,8 @@ select is((select draft from public.trips where id = tests.fx('mallorca')), true
 select tests.clear_authentication();
 
 -- ===================== AC-013: a draft has no effect =====================
-insert into public.chores (id, household_id, title, recurrence, assignment, next_due_on, next_assignee_id) values
-  (tests.fx('bad'), tests.fx('home'), 'Bad putzen', '{"type": "weekly", "every": 1, "weekdays": [2]}',
-   jsonb_build_object('type', 'fixed', 'memberId', tests.fx('nadja')), '2026-12-15', tests.fx('nadja'));
-
 select is(private.is_silent(tests.fx('home'), tests.fx('nadja'), '2026-12-14'), false,
   'AC-013: Nadja''s notifications still come during her draft');
-select is((select private.chore_first_free_day(c, '2026-12-15') from public.chores c where c.id = tests.fx('bad')),
-  '2026-12-15'::date, 'AC-013: "Bad putzen" stays on 15.12. during the draft');
 
 -- ===================== AC-014: confirming the draft makes it count =====================
 select tests.authenticate_as(tests.fx('enrico'));
@@ -64,16 +58,12 @@ select lives_ok(tests.patch_trip('home', '{"draft": false}'), 'AC-014: a member 
 select tests.clear_authentication();
 select is(private.is_silent(tests.fx('home'), tests.fx('nadja'), '2026-12-14'), true,
   'AC-014: now Nadja is quiet during the trip');
-select is((select private.chore_first_free_day(c, '2026-12-15') from public.chores c where c.id = tests.fx('bad')),
-  '2026-12-20'::date, 'AC-014: "Bad putzen" waits until after the trip');
 
 -- ===================== AC-015: back to draft =====================
 select tests.authenticate_as(tests.fx('enrico'));
 select lives_ok(tests.patch_trip('home', '{"draft": true}'), 'AC-015: a member turns the trip back into a draft');
 select throws_ok(tests.patch_trip('home', '{"draft": "ja"}'), '22P02', null, 'REQ-004: an invalid value is rejected');
 select tests.clear_authentication();
-select is((select private.chore_first_free_day(c, '2026-12-15') from public.chores c where c.id = tests.fx('bad')),
-  '2026-12-15'::date, 'AC-015: "Bad putzen" is back on its date');
 
 -- ===================== AC-017: foreign household and signed out =====================
 select tests.authenticate_as(tests.fx('ben'));

@@ -1,7 +1,10 @@
 import { preparePhoto, usePhoto, WRITE_REJECTED_MESSAGE } from '@housekeeping/api';
+import type { AiImageContext } from '@housekeeping/core';
 import {
   Button,
+  IconButton,
   Photo,
+  PhotoViewer,
   Row,
   Stack,
   Text,
@@ -9,10 +12,12 @@ import {
   type IconName,
   type PhotoProps,
 } from '@housekeeping/ui';
-import { useEffect, useState } from 'react';
-import { View } from 'react-native';
+import { useEffect, useState, type ReactNode } from 'react';
+import { Pressable, View } from 'react-native';
 
 import { useOnlineOnly } from '@/features/shell/offline';
+import { PhotoWindow } from '@/features/shell/photo-window';
+import { revokeLater } from '@/features/shell/revoke-later';
 import { CAN_PICK_PHOTO, pickPhotoFile } from '@/lib/pick-photo';
 import { errorMessage, FAILED_MESSAGE } from '@/features/shell/error-message';
 
@@ -43,6 +48,7 @@ export function OwnPhoto(
       <Photo
         source={source}
         placeholderIcon={props.placeholderIcon}
+        loading={photo.loading}
         width={props.width}
         height={props.height}
         aspectRatio={props.aspectRatio}
@@ -54,41 +60,35 @@ export function OwnPhoto(
 }
 
 /**
- * The photo on a detail page (16:9) with "Foto hinzufügen/ändern" and "Foto entfernen"; both need
- * the network. Test ids `<prefix>-image`, `<prefix>-photo-change`, `<prefix>-photo-remove`.
+ * The photo on a detail page (16:9) with "Foto hinzufügen/ändern", which opens the window
+ * "Foto" (spec 0039); "Foto entfernen" is in there. Both need the network. Test ids
+ * `<prefix>-image`, `<prefix>-photo-change`, `<prefix>-photo-window`, `<prefix>-photo-remove`.
  */
 export function DetailPhotoBlock(props: {
   photoPath: string | undefined;
   name: string;
+  /** What the picture is for, for "KI" in the window (spec 0052, REQ-003). */
+  aiContext: AiImageContext;
   placeholderIcon: IconName;
   onChange: (photo: Blob) => Promise<void>;
   onRemove: () => Promise<void>;
+  /** "Teilen" at the right end of the photo's row (spec 0042, REQ-004). */
+  onShare?: () => void;
   testPrefix: string;
 }) {
   const online = useOnlineOnly();
   const photo = usePhoto(props.photoPath);
   const [busy, setBusy] = useState<'upload' | 'remove' | undefined>();
   const [error, setError] = useState<string | undefined>();
+  const [windowOpen, setWindowOpen] = useState(false);
   const hasPhoto = !!props.photoPath;
   const prefix = props.testPrefix;
 
-  const change = () =>
-    pickPhotoFile((file) => {
-      setError(undefined);
-      setBusy('upload');
-      preparePhoto(file)
-        .then((prepared) => props.onChange(prepared))
-        .then(() => toast.show({ message: 'Foto gespeichert' }))
-        .catch((caught: unknown) => setError(message(caught)))
-        .finally(() => setBusy(undefined));
-    });
-
-  const remove = () => {
+  const run = (kind: 'upload' | 'remove', action: () => Promise<void>, done: string) => {
     setError(undefined);
-    setBusy('remove');
-    props
-      .onRemove()
-      .then(() => toast.show({ message: 'Foto entfernt' }))
+    setBusy(kind);
+    action()
+      .then(() => toast.show({ message: done }))
       .catch((caught: unknown) => setError(message(caught)))
       .finally(() => setBusy(undefined));
   };
@@ -96,45 +96,35 @@ export function DetailPhotoBlock(props: {
   return (
     <View style={{ gap: 8 }}>
       <View style={{ maxWidth: 560 }}>
-        <OwnPhoto
-          photoPath={props.photoPath}
+        <ZoomablePhoto
+          sources={photo.uri ? [{ uri: photo.uri }] : []}
           name={props.name}
-          placeholderIcon={props.placeholderIcon}
-          aspectRatio={16 / 9}
           testID={`${prefix}-image`}
-        />
+        >
+          <OwnPhoto
+            photoPath={props.photoPath}
+            name={props.name}
+            placeholderIcon={props.placeholderIcon}
+            aspectRatio={16 / 9}
+            testID={`${prefix}-image`}
+          />
+        </ZoomablePhoto>
       </View>
       {photo.loading ? (
         <Text variant="caption" color="muted">
           Foto wird geladen …
         </Text>
       ) : null}
-      {CAN_PICK_PHOTO ? (
-        <Row gap={12} wrap>
-          <Button
-            label={hasPhoto ? 'Foto ändern' : 'Foto hinzufügen'}
-            icon="camera"
-            variant="link"
-            size="sm"
-            disabled={online.disabled || busy !== undefined}
-            hint={online.hint}
-            onPress={change}
-            testID={`${prefix}-photo-change`}
-          />
-          {hasPhoto ? (
-            <Button
-              label="Foto entfernen"
-              icon="trash"
-              variant="link"
-              size="sm"
-              disabled={online.disabled || busy !== undefined}
-              hint={online.hint}
-              onPress={remove}
-              testID={`${prefix}-photo-remove`}
-            />
-          ) : null}
-        </Row>
-      ) : null}
+      <View style={{ maxWidth: 560 }}>
+        <PhotoActionRow
+          hasPhoto={hasPhoto}
+          disabled={online.disabled || busy !== undefined}
+          hint={online.hint}
+          onChange={() => setWindowOpen(true)}
+          onShare={props.onShare}
+          testPrefix={prefix}
+        />
+      </View>
       {busy ? (
         <Text variant="small" color="muted" testID={`${prefix}-photo-busy`}>
           {busy === 'upload' ? 'Foto wird hochgeladen …' : 'Foto wird entfernt …'}
@@ -145,7 +135,105 @@ export function DetailPhotoBlock(props: {
           {error}
         </Text>
       ) : null}
+      {windowOpen ? (
+        <PhotoWindow
+          current={photo.uri ? { uri: photo.uri } : undefined}
+          hasPhoto={hasPhoto}
+          name={props.name}
+          aiContext={props.aiContext}
+          placeholderIcon={props.placeholderIcon}
+          aspectRatio={16 / 9}
+          onApply={(prepared) => run('upload', () => props.onChange(prepared), 'Foto gespeichert')}
+          onRemove={() => run('remove', props.onRemove, 'Foto entfernt')}
+          onClose={() => setWindowOpen(false)}
+          testPrefix={prefix}
+        />
+      ) : null}
     </View>
+  );
+}
+
+/**
+ * "Foto hinzufügen/ändern" right under a photo (spec 0036, REQ-008), at a restaurant, an
+ * activity, a recipe and a collection; it opens the window "Foto", where "Foto entfernen" is
+ * (spec 0039, REQ-001). "Teilen" stands as a small icon at the right end of the row, also
+ * offline (spec 0042, REQ-004, AC-016; spec 0047, REQ-001).
+ */
+export function PhotoActionRow(props: {
+  hasPhoto: boolean;
+  disabled: boolean;
+  hint: string | undefined;
+  onChange: () => void;
+  onShare?: () => void;
+  testPrefix: string;
+}) {
+  if (!CAN_PICK_PHOTO && !props.onShare) return null;
+  return (
+    <Row gap={12} align="center">
+      <View style={{ flex: 1, minWidth: 0 }}>
+        {CAN_PICK_PHOTO ? (
+          <Button
+            label={props.hasPhoto ? 'Foto ändern' : 'Foto hinzufügen'}
+            icon="camera"
+            variant="link"
+            size="sm"
+            disabled={props.disabled}
+            hint={props.hint}
+            onPress={props.onChange}
+            testID={`${props.testPrefix}-photo-change`}
+          />
+        ) : null}
+      </View>
+      {props.onShare ? (
+        // Smaller than the other symbols, still 44 × 44 pt to tap (spec 0047, AC-005).
+        <IconButton
+          icon="share"
+          label="Teilen"
+          variant="soft"
+          size={32}
+          touchFrame
+          onPress={props.onShare}
+          testID={`${props.testPrefix}-share`}
+        />
+      ) : null}
+    </Row>
+  );
+}
+
+/**
+ * A photo that opens on the whole screen when tapped (spec 0036, REQ-009); without a photo (the
+ * placeholder) it is only the picture. `<testID>-zoom` is the tap target, `<testID>-viewer` the
+ * full-screen view.
+ */
+function ZoomablePhoto(props: {
+  sources: readonly (number | { uri: string })[];
+  name: string;
+  testID: string;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  if (props.sources.length === 0) return <>{props.children}</>;
+  return (
+    <>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Foto von ${props.name} groß anzeigen`}
+        onPress={() => setOpen(true)}
+        testID={`${props.testID}-zoom`}
+        style={(state) => ({ opacity: state.pressed ? 0.85 : 1 })}
+      >
+        {props.children}
+      </Pressable>
+      {open ? (
+        <PhotoViewer
+          sources={props.sources}
+          alt={props.name}
+          closeLabel="Schließen"
+          onClose={() => setOpen(false)}
+          testID={`${props.testID}-viewer`}
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -163,7 +251,8 @@ export function usePhotoChoice(savedPath: string | undefined) {
   const previewUri = photo.kind === 'new' ? photo.uri : undefined;
   useEffect(
     () => () => {
-      if (previewUri) URL.revokeObjectURL(previewUri);
+      // The closing form still shows it for a moment.
+      if (previewUri) revokeLater(previewUri);
     },
     [previewUri],
   );
@@ -185,7 +274,13 @@ export function usePhotoChoice(savedPath: string | undefined) {
     setPhoto(savedPath ? { kind: 'remove' } : { kind: 'keep' });
   };
 
-  return { savedPath, photo, photoError, preparing, choosePhoto, removePhoto };
+  /** A photo prepared elsewhere, e.g. the one of a place found on the web (spec 0049). */
+  const takePhoto = (prepared: Blob) => {
+    setPhotoError(undefined);
+    setPhoto({ kind: 'new', photo: prepared, uri: URL.createObjectURL(prepared) });
+  };
+
+  return { savedPath, photo, photoError, preparing, choosePhoto, removePhoto, takePhoto };
 }
 
 export type PhotoChoiceState = ReturnType<typeof usePhotoChoice>;
@@ -247,6 +342,7 @@ export function PhotoChoiceField(props: {
             <Button
               label="Foto entfernen"
               variant="link"
+              quiet
               size="sm"
               disabled={online.disabled}
               onPress={state.removePhoto}

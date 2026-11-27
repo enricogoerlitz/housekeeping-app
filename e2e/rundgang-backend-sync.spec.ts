@@ -118,15 +118,21 @@ async function serverItems(
   }));
 }
 
-/** Records every toast text shown from now on (to prove that none appeared). */
+/**
+ * Records every toast text shown from now on (to prove that none appeared). A toast still showing
+ * from before (e.g. „Milch steht auf der Liste“ of an earlier step) is not one of them.
+ */
 async function recordToasts(page: Page): Promise<() => Promise<string[]>> {
   await page.evaluate(() => {
     const seen: string[] = [];
     (window as unknown as { e2eToasts: string[] }).e2eToasts = seen;
+    const textNow = () =>
+      document.querySelector('[data-testid="toast-message"]')?.textContent ?? '';
+    let last = textNow();
     new MutationObserver(() => {
-      const toast = document.querySelector('[data-testid="toast-message"]');
-      const text = toast?.textContent ?? '';
-      if (text && seen.at(-1) !== text) seen.push(text);
+      const text = textNow();
+      if (text && last !== text) seen.push(text);
+      last = text;
     }).observe(document.body, { subtree: true, childList: true, characterData: true });
   });
   return () =>
@@ -203,7 +209,6 @@ test('AC-013: Enrico creates "Linsen-Dal Test"; it appears at Nadja without a re
   await enrico.bringToFront();
   await nav(enrico, 'rezepte');
   await tid(enrico, 'recipe-new').click();
-  await tid(enrico, 'recipe-new-recipe').click();
   await tid(enrico, 'new-recipe-title').fill(title);
   await tid(enrico, 'new-recipe-save').click();
   await expect(tid(enrico, 'recipe-title')).toHaveText(title);
@@ -234,6 +239,7 @@ test('AC-015: Enrico removes "Halloumi-Pfanne" from the plan; it disappears at N
   await enrico.bringToFront();
   await entry(enrico).click();
   await tid(enrico, 'entry-remove').click();
+  await tid(enrico, 'confirm-remove-entry-confirm').click();
   await expect(entry(enrico)).toHaveCount(0);
 
   await nadja.bringToFront();
@@ -272,6 +278,7 @@ test('AC-011 / AC-027 (0006): a check in "Einkaufen" shows live on the list; an 
   await tid(enrico, 'shopping-close').click();
   await openItem(enrico, 'Brot').click();
   await tid(enrico, 'item-sheet-remove').click();
+  await tid(enrico, 'confirm-remove-item-confirm').click();
   await expect(openItem(enrico, 'Brot')).toHaveCount(0);
   await nadja.bringToFront();
   await expect(tid(nadja, 'item-sheet')).toBeHidden(SYNC);
@@ -292,7 +299,7 @@ test('AC-019: the server refuses a recipe change; the old value is back with a c
     'ingredient-shopping-note-',
     '',
   );
-  await page.route('**/rest/v1/rpc/apply_changes', (route) =>
+  await page.route('**/rest/v1/rpc/save_recipe_page', (route) =>
     route.fulfill({
       status: 400,
       contentType: 'application/json',
@@ -304,16 +311,16 @@ test('AC-019: the server refuses a recipe change; the old value is back with a c
       },
     }),
   );
-  await tid(page, 'recipe-ingredients-edit').click();
+  await tid(page, 'recipe-edit').click();
   await tid(page, `recipe-row-menu-${ingredientId}`).click();
   await tid(page, `recipe-row-menu-${ingredientId}-edit`).click();
   await tid(page, 'ingredient-shopping-note').fill('Büffelmozzarella');
   await tid(page, 'ingredient-save').click();
-  await tid(page, 'recipe-ingredients-done').click();
+  await tid(page, 'recipe-edit-save').click();
   await expect(toastMessage(page)).toHaveText(REJECTED);
-  // Spec 0008 (E7): the section opens again with what was sent, so it can be tried again.
-  await expect(tid(page, 'recipe-ingredients-done')).toBeVisible();
-  await page.unroute('**/rest/v1/rpc/apply_changes');
+  // Spec 0037, AC-004: the edit mode stays open with what was sent, to try again.
+  await expect(tid(page, 'recipe-edit-save')).toBeVisible();
+  await page.unroute('**/rest/v1/rpc/save_recipe_page');
   await page.reload();
   await expect(tid(page, `ingredient-shopping-note-${ingredientId}`)).toHaveText('(Fior di Latte)');
 });
@@ -418,8 +425,13 @@ test('AC-022: checking wins — Enrico unchecks "Butter" offline, Nadja re-check
 
   await enrico.bringToFront();
   await showInCart(enrico);
+  // A checked row stays in its area for a moment before it moves to "Im Wagen": take that one.
+  const inCart = tid(enrico, 'sm-done').locator('[role="checkbox"][aria-label="Butter"]');
+  await expect(
+    enrico.locator('[data-testid^="sm-group-"] [role="checkbox"][aria-label="Butter"]'),
+  ).toHaveCount(0);
   await context.setOffline(true);
-  await smCheck(enrico, 'Butter').click();
+  await inCart.click();
   await expect(smCheck(enrico, 'Butter')).toHaveAttribute('aria-checked', 'false');
 
   // Nadja takes the check back and sets it again in "Einkaufen", online.
@@ -473,8 +485,16 @@ test('AC-023: Enrico (offline) and Nadja both add "Brot": one item with both con
     .poll(() => serverItems(householdId, 'Brot'), SYNC)
     .toEqual([{ checked: false, contributions: 2 }]);
   // One row with 2× on both devices (the offline row took the server's item id).
-  const count = async (device: Page) =>
-    tid(device, `item-${await itemIdOf(itemRows(device, 'Brot'))}-count`).innerText();
+  // The id is read anew on every try: the row changes it while the sync merges, and a read of the
+  // old row must not hold the poll up.
+  const count = async (device: Page) => {
+    try {
+      const id = await itemIdOf(itemRows(device, 'Brot'));
+      return await tid(device, `item-${id}-count`).innerText({ timeout: 1_000 });
+    } catch {
+      return '';
+    }
+  };
   await expect.poll(() => count(enrico), SYNC).toBe('2×');
   await expect(itemRows(enrico, 'Brot')).toHaveCount(1);
   await nadja.bringToFront();
@@ -552,6 +572,7 @@ test('AC-025: Enrico checks "Eier" offline, Nadja deletes it; online again it is
   await nav(nadja, 'liste');
   await openItem(nadja, 'Eier').click();
   await tid(nadja, 'item-sheet-remove').click();
+  await tid(nadja, 'confirm-remove-item-confirm').click();
   await expect(itemRows(nadja, 'Eier')).toHaveCount(0);
   await expect.poll(() => serverItems(householdId, 'Eier'), SYNC).toEqual([]);
 
@@ -573,8 +594,8 @@ test('AC-001 (0018): a new recipe keeps its pasted ingredients, also after a rel
   const title = `Dal mit Zutaten ${unique()}`;
   await nav(page, 'rezepte');
   await tid(page, 'recipe-new').click();
-  await tid(page, 'recipe-new-recipe').click();
   await tid(page, 'new-recipe-title').fill(title);
+  await tid(page, 'new-recipe-open-ingredients').click();
   await tid(page, 'new-recipe-ingredients').fill('200 g rote Linsen\n1 Dose Kokosmilch');
   await tid(page, 'new-recipe-save').click();
   await expect(tid(page, 'recipe-title')).toHaveText(title);

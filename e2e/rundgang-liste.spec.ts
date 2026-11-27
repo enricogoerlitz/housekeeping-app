@@ -10,10 +10,12 @@ import {
   goOffline,
   itemIdOf,
   itemRows,
+  leaveManaged,
   nav,
   only,
   open,
   openItem,
+  openManaged,
   secondDevice,
   shoppingCheck,
   showDone,
@@ -147,7 +149,7 @@ test('AC-018 / AC-020 (0006): a tap on "Möhren 500 g" or "Milch" opens "Posten 
   await tid(page, 'item-sheet-done').click();
 });
 
-test('AC-014 / AC-015 (0006): + adds a share "von Hand", − takes it again, − on 1× removes with undo', async ({
+test('AC-014 / AC-015 (0006): + adds a share "von Hand", − takes it again, − on 1× asks, then removes (spec 0036: asks first)', async ({
   page,
 }) => {
   await open(page, '/liste');
@@ -159,14 +161,19 @@ test('AC-014 / AC-015 (0006): + adds a share "von Hand", − takes it again, −
   await tid(page, `item-${lemons}-minus`).click();
   await expect(tid(page, `item-${lemons}-count`)).toHaveText('1×');
   await tid(page, `item-${lemons}-minus`).click();
-  await expect(openItem(page, 'Zitronen')).toHaveCount(0);
-  await expect(toastMessage(page)).toHaveText('Zitronen entfernt');
-  await tid(page, 'toast-action').click();
+  await expect(tid(page, 'confirm-remove-item')).toBeVisible();
+  await tid(page, 'confirm-remove-item-cancel').click();
+  await expect(tid(page, 'confirm-remove-item')).toBeHidden();
   await expect(openItem(page, 'Zitronen')).toHaveCount(1);
   await expect(tid(page, `item-${lemons}-count`)).toHaveText('1×');
-  // The undo reached the server, not only this device.
+  await tid(page, `item-${lemons}-minus`).click();
+  await tid(page, 'confirm-remove-item-confirm').click();
+  await expect(openItem(page, 'Zitronen')).toHaveCount(0);
+  await expect(toastMessage(page)).toHaveText('Zitronen entfernt');
+  await expect(tid(page, 'toast-action')).toHaveCount(0);
+  // The removal reached the server, not only this device.
   await page.reload();
-  await expect(openItem(page, 'Zitronen')).toHaveCount(1);
+  await expect(openItem(page, 'Zitronen')).toHaveCount(0);
 });
 
 test('AC-021 / AC-022 (0006): a note "laktosefrei" shows in brackets; 201 characters are refused', async ({
@@ -189,19 +196,27 @@ test('AC-021 / AC-022 (0006): a note "laktosefrei" shows in brackets; 201 charac
   await expect(openItem(page, 'Milch')).toHaveCount(1);
 });
 
-test('AC-025 (0006): "Entfernen" in the window and a swipe both remove "Milch" with "Rückgängig"', async ({
+test('AC-025 (0006): "Entfernen" in the window and a swipe both ask first, then remove "Milch" without undo (spec 0036: asks first)', async ({
   page,
 }) => {
   await open(page, '/liste');
   await openItem(page, 'Milch').click();
   await tid(page, 'item-sheet-remove').click();
+  await expect(tid(page, 'confirm-remove-item')).toBeVisible();
+  await tid(page, 'confirm-remove-item-cancel').click();
+  await expect(tid(page, 'confirm-remove-item')).toBeHidden();
+  await expect(openItem(page, 'Milch')).toHaveCount(1);
+  await tid(page, 'item-sheet-remove').click();
+  await tid(page, 'confirm-remove-item-confirm').click();
   await expect(tid(page, 'item-sheet')).toBeHidden();
   await expect(openItem(page, 'Milch')).toHaveCount(0);
   await expect(toastMessage(page)).toHaveText('Milch entfernt');
-  await tid(page, 'toast-action').click();
+  await expect(tid(page, 'toast-action')).toHaveCount(0);
+  // Add it again (2× as in the seed) so the swipe has a row.
+  await addItem(page, 'Milch');
   await expect(openItem(page, 'Milch')).toHaveCount(1);
+  await addItem(page, 'Milch');
   const milk = await itemIdOf(openItem(page, 'Milch'));
-  await expect(tid(page, `item-${milk}-count`)).toHaveText('2×');
 
   // A swipe to the left on the phone does the same.
   const box = await tid(page, `item-${milk}-swipe`).boundingBox();
@@ -213,10 +228,16 @@ test('AC-025 (0006): "Entfernen" in the window and a swipe both remove "Milch" w
     await page.mouse.move(box.x + box.width - 20 - step * 30, y);
   }
   await page.mouse.up();
+  await expect(tid(page, 'confirm-remove-item')).toBeVisible();
+  await tid(page, 'confirm-remove-item-confirm').click();
   await expect(openItem(page, 'Milch')).toHaveCount(0);
   await expect(toastMessage(page)).toHaveText('Milch entfernt');
-  await tid(page, 'toast-action').click();
+  await expect(tid(page, 'toast-action')).toHaveCount(0);
+  // Leave "Milch" 2× on the list for the cases after this one.
+  await addItem(page, 'Milch');
   await expect(openItem(page, 'Milch')).toHaveCount(1);
+  await addItem(page, 'Milch');
+  await expect(tid(page, `item-${await itemIdOf(openItem(page, 'Milch'))}-count`)).toHaveText('2×');
 });
 
 test('AC-019 (0006): offline − is greyed out with the hint, + still counts (0019, AC-030); reading still works', async ({
@@ -291,17 +312,24 @@ test('AC-010 (0006): unchecking "Brot" under "Erledigt" opens it again at once',
   await expect(tid(page, 'done-section').locator('[data-testid^="item-"]').first()).toBeVisible();
 });
 
-test('AC-034 (0006): ⋯ offers "Erledigt leeren", "Liste leeren …", "Märkte & Bereiche" and "Artikel"', async ({
+test('AC-058 (0025): ⋯ offers "Erledigt leeren", "Liste leeren …" and "Dauerposten"; "Artikel" and "Märkte & Bereiche" are under "Verwalten"', async ({
   page,
 }) => {
   await open(page, '/liste');
   await tid(page, 'list-more').click();
-  for (const entry of ['clear-done', 'clear-list', 'stores', 'articles']) {
+  for (const entry of ['clear-done', 'clear-list', 'recurring']) {
     await expect(tid(page, `list-more-${entry}`), entry).toBeVisible();
   }
-  await tid(page, 'list-more-stores').click();
+  for (const entry of ['stores', 'articles']) {
+    await expect(tid(page, `list-more-${entry}`), entry).toHaveCount(0);
+  }
+  await page.keyboard.press('Escape');
+  await openManaged(page, 'stores');
   await expect(tid(page, 'stores-screen')).toBeVisible();
-  await back(page);
+  await leaveManaged(page);
+  await openManaged(page, 'articles');
+  await expect(tid(page, 'articles-screen')).toBeVisible();
+  await leaveManaged(page);
   await expect(tid(page, 'screen-title')).toHaveText('Einkaufsliste');
 });
 
@@ -421,8 +449,7 @@ test('AC-034 (0001): moving "Getränke" up at Rewe makes it the first group in "
   await open(page, '/liste');
   await addItem(page, 'Apfelsaft');
   await expect(openItem(page, 'Apfelsaft')).toHaveCount(1);
-  await tid(page, 'list-more').click();
-  await tid(page, 'list-more-stores').click();
+  await openManaged(page, 'stores');
   await tid(page, `store-${REWE}`).click();
   const drinks = tid(page, `area-pos-${area('getraenke')}`);
   const before = Number(await drinks.innerText());
@@ -434,7 +461,7 @@ test('AC-034 (0001): moving "Getränke" up at Rewe makes it the first group in "
     await expect(drinks).toHaveText(String(before - step));
   }
   await back(page);
-  await back(page);
+  await leaveManaged(page);
   await startShopping(page);
   expect((await storeGroups(page))[0]).toBe(`area:${area('getraenke')}`);
 });

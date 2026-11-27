@@ -14,19 +14,26 @@ export const ID_TABLES = [
   'collection_recipes',
   'restaurants',
   'activities',
+  // Spec 0041: kinds, series and their exceptions.
+  'activity_kinds',
+  'activity_series',
+  'activity_series_exceptions',
   'trips',
   'trip_members',
   'feedback',
   'chores',
   'chore_events',
   'meal_plan_entries',
+  // Spec 0060: Dauerposten.
+  'recurring_items',
   'shopping_items',
   'shopping_contributions',
   'packing_bags',
   'packing_bag_items',
   'packing_list_bags',
   'packing_items',
-  // Spec 0013: one row per member, readable only by herself (RLS); created by the server.
+  // Spec 0013, 0051: one row per member, readable only by herself (RLS); created by the server;
+  // her acknowledged notices, written only through acknowledge_notices.
   'notification_settings',
 ] as const;
 
@@ -64,7 +71,7 @@ export const WRITABLE_COLUMNS = {
     'default_shopping_rule',
     'needs_review',
   ],
-  stores: ['name', 'area_order', 'hidden_area_ids'],
+  stores: ['name', 'area_order', 'hidden_area_ids', 'maps_url'],
   // kind ("Rezept" or "Sammlung", spec 0009, E2) only on insert: see PATCH_COLUMNS. photo (the
   // bundled sample photo) is set only by the seed (spec 0031, REQ-026).
   recipes: [
@@ -85,6 +92,7 @@ export const WRITABLE_COLUMNS = {
     'last_cooked_on',
     'cooked_count',
     'links',
+    // videos (spec 0046) only through its RPCs: NEVER_SENT_COLUMNS.
   ],
   // Spec 0009, E4: a contained recipe keeps its collection and its recipe (see PATCH_COLUMNS).
   collection_recipes: ['collection_id', 'recipe_id', 'servings', 'variant_id', 'sort'],
@@ -114,7 +122,30 @@ export const WRITABLE_COLUMNS = {
     'maps_url',
     'website_url',
     'created_by',
+    // Spec 0041: "Art", "eigenes Symbol", "Merken".
+    'kind_id',
+    'icon',
+    'remembered',
   ],
+  activity_kinds: ['name', 'name_key', 'icon'],
+  // A series keeps its activity (see PATCH_COLUMNS).
+  activity_series: [
+    'activity_id',
+    'rule',
+    'starts_on',
+    'ends_on',
+    'slot_id',
+    'starts_at',
+    'note',
+    'eater_ids',
+    'guests',
+    // Spec 0059, REQ-003: "Erinnern" of every Termin.
+    'reminder_day_offset',
+    'reminder_at',
+    'reminder_text',
+  ],
+  // An exception keeps its day; it moves to the next series on "Serie bearbeiten".
+  activity_series_exceptions: ['series_id', 'on_date', 'moved_to', 'slot_id', 'starts_at'],
   // Spec 0022: a trip and its people; people are only inserted and deleted (see PATCH_COLUMNS).
   trips: ['from_on', 'to_on', 'note', 'draft'],
   trip_members: ['trip_id', 'member_id'],
@@ -133,6 +164,8 @@ export const WRITABLE_COLUMNS = {
     'active_months',
     'due_time',
     'remind_at_due_time',
+    // Spec 0059, REQ-004: "Vorwarnung".
+    'notice_days_before',
   ],
   // Entries are only patched: booked by complete_chore, removed by remove_chore_event (spec 0011),
   // their chore set only by delete_chore / restore_chore (spec 0031, REQ-016).
@@ -161,6 +194,8 @@ export const WRITABLE_COLUMNS = {
     'reminder_at',
     'reminder_text',
   ],
+  // Spec 0060: last_added_on is the server's (Decision 7).
+  recurring_items: ['article_id', 'count', 'qty', 'unit', 'note', 'rule', 'starts_on', 'paused'],
   shopping_items: ['article_id'],
   shopping_contributions: ['item_id', 'source', 'count', 'qty', 'unit', 'note'],
   // The meal slots are set by create_household, never by a member (spec 0031, REQ-014).
@@ -180,16 +215,8 @@ export const WRITABLE_COLUMNS = {
     'bag_item_id',
     'from_bag',
   ],
-  // Spec 0013, Decision 3: only these are patched, never household_id or member_id.
-  notification_settings: [
-    'daily_summary_enabled',
-    'daily_summary_at',
-    'daily_summary_parts',
-    'activities_eve_enabled',
-    'activities_eve_at',
-    'chore_reminders_enabled',
-    'entry_reminders_enabled',
-  ],
+  // Spec 0051: nothing is patched; acknowledged_notices changes only through acknowledge_notices.
+  notification_settings: [],
 } as const satisfies Record<IdTable | 'households', readonly string[]>;
 
 export type WritableTable = keyof typeof WRITABLE_COLUMNS;
@@ -208,6 +235,23 @@ export const PATCH_COLUMNS: Partial<Record<WritableTable, readonly string[]>> = 
   // Spec 0022, REQ-009: name, count, "je Tag" and the link; sent by updatePackingItem itself.
   packing_items: ['name', 'quantity', 'per_day_quantity', 'bag_item_id', 'from_bag'],
   trip_members: [],
+  // Spec 0041: a series keeps its activity, an exception its day.
+  activity_series: [
+    'rule',
+    'starts_on',
+    'ends_on',
+    'slot_id',
+    'starts_at',
+    'note',
+    'eater_ids',
+    'guests',
+    'reminder_day_offset',
+    'reminder_at',
+    'reminder_text',
+  ],
+  activity_series_exceptions: ['series_id', 'moved_to', 'slot_id', 'starts_at'],
+  // Spec 0060: a Dauerposten keeps its article.
+  recurring_items: ['count', 'qty', 'unit', 'note', 'rule', 'starts_on', 'paused'],
 };
 
 /**
@@ -236,12 +280,16 @@ export const CASCADE_CHILDREN: Partial<Record<WritableTable, readonly ChildRefer
   ],
   packing_list_bags: [{ table: 'packing_items', column: 'list_bag_id' }],
   packing_bags: [{ table: 'packing_bag_items', column: 'bag_id' }],
+  // Spec 0041: a series goes with its activity (delete_activity), its exceptions with it.
+  activity_series: [{ table: 'activity_series_exceptions', column: 'series_id' }],
 };
 
 /** `on delete set null`: deleting the parent clears the reference; the diff does not send it. */
 export const SET_NULL_CHILDREN: Partial<Record<WritableTable, readonly ChildReference[]>> = {
   packing_bags: [{ table: 'packing_list_bags', column: 'bag_id' }],
   packing_bag_items: [{ table: 'packing_items', column: 'bag_item_id' }],
+  // Spec 0041, AC-003: deleting a kind keeps its activities, without a kind.
+  activity_kinds: [{ table: 'activities', column: 'kind_id' }],
 };
 
 /**

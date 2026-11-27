@@ -7,6 +7,7 @@ import {
   restaurantVisits,
   routeLinks,
   routeOpening,
+  showsRoute,
 } from './restaurants';
 import type { Activity, MealPlanEntry, Restaurant } from './types';
 
@@ -113,6 +114,7 @@ describe('routeLinks', () => {
       favoriteOf: [],
       ratings: {},
       createdAt: '2026-11-01T12:00:00.000Z',
+      remembered: true,
     };
     expect(routeLinks(eislaufen)).toEqual({
       apple: 'https://maps.apple.com/?daddr=52.55,13.5&q=Eisstadion%20Hohensch%C3%B6nhausen',
@@ -229,5 +231,17 @@ describe('priceLabel', () => {
     expect(priceLabel(2)).toBe('€€');
     expect(priceLabel(4)).toBe('€€€€');
     expect(priceLabel(undefined)).toBe('');
+  });
+});
+
+describe('showsRoute (spec 0036, REQ-011)', () => {
+  it('AC-018: without a map link there is no "Route", also with an address', () => {
+    const bless: Pick<Restaurant, 'address' | 'mapsUrl'> = { address: 'Bergmannstraße 1, Berlin' };
+    expect(showsRoute(bless)).toBe(false);
+    expect(showsRoute({ ...bless, mapsUrl: '  ' })).toBe(false);
+  });
+
+  it('AC-018: with a map link there is "Route"', () => {
+    expect(showsRoute({ mapsUrl: 'https://maps.app.goo.gl/abc' })).toBe(true);
   });
 });

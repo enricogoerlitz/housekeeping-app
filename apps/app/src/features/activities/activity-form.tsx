@@ -1,5 +1,6 @@
 import {
   createActivity,
+  useActivityKindsById,
   readActivityMapsLink,
   removeActivityPhoto,
   resolveActivityShortLink,
@@ -11,16 +12,31 @@ import {
   type ActivityPlace,
 } from '@housekeeping/api';
 import {
+  activityIconOf,
   findDuplicateActivity,
   normalizeWebsite,
   type Activity,
+  type ActivityIcon,
   type GeoPoint,
   type Id,
+  type PlaceValues,
 } from '@housekeeping/core';
-import { Button, Icon, Notice, Row, Sheet, Stack, Text, TextField, toast } from '@housekeeping/ui';
-import { useState } from 'react';
+import {
+  Button,
+  Icon,
+  Notice,
+  Row,
+  Sheet,
+  Stack,
+  SwitchRow,
+  Text,
+  TextField,
+  toast,
+} from '@housekeeping/ui';
+import { useState, type ReactNode } from 'react';
 
 import { useOnlineOnly } from '@/features/shell/offline';
+import { PlaceField } from '@/features/shell/place-field';
 import {
   PhotoChoiceField,
   savePhotoChoice as savePhoto,
@@ -28,8 +44,10 @@ import {
   type PhotoChoice,
 } from '@/features/shell/own-photo';
 
+import { ActivityIconField, ActivityKindField } from './activity-kind-field';
 import { ACTIVITY_ICON } from './activity-photo';
 import { errorMessage, FAILED_MESSAGE } from '@/features/shell/error-message';
+import { usePlaceWebFill, type WebPlace } from '@/features/web-search/place-web-fill';
 
 /** activities_name_length. */
 const ACTIVITY_NAME_MAX_LENGTH = 120;
@@ -47,6 +65,7 @@ const message = (error: unknown) => errorMessage(error, FAILED_MESSAGE);
  */
 export function useActivityForm(activity?: Activity) {
   const activities = useActivities();
+  const kindsById = useActivityKindsById();
   const [name, setNameValue] = useState(activity?.name ?? '');
   const [nameError, setNameError] = useState<string | undefined>();
   const [description, setDescription] = useState(activity?.description ?? '');
@@ -61,6 +80,10 @@ export function useActivityForm(activity?: Activity) {
   const [mapsUrl, setMapsUrl] = useState<string | undefined>(activity?.mapsUrl);
   const [website, setWebsiteValue] = useState(activity?.websiteUrl ?? '');
   const [websiteError, setWebsiteError] = useState<string | undefined>();
+  // Spec 0041: "Art", "Symbol" and "Merken" (on for a new activity, REQ-004).
+  const [kindId, setKindId] = useState<Id | undefined>(activity?.kindId);
+  const [icon, setIcon] = useState<ActivityIcon | undefined>(activity?.icon);
+  const [remembered, setRemembered] = useState(activity?.remembered ?? true);
   const photoChoice = usePhotoChoice(activity?.photoPath);
   const { photo, preparing } = photoChoice;
   const [saving, setSaving] = useState(false);
@@ -163,14 +186,51 @@ export function useActivityForm(activity?: Activity) {
         name: name.trim(),
         description: description.trim() || undefined,
         websiteUrl: checkedWebsite.url,
+        kindId,
+        icon,
+        remembered,
         ...place,
       },
       photo,
     };
   };
 
+  // Spec 0049: what the form shows now, for the Änderungsansicht, and the place found on the web.
+  const webValues = (): PlaceValues => ({
+    name,
+    placeName,
+    address,
+    kind: kindId ? (kindsById[kindId]?.name ?? '') : '',
+    description,
+    websiteUrl: website,
+    mapsUrl: mapsUrl ?? '',
+  });
+  const applyWeb = (web: WebPlace) => {
+    const { values } = web;
+    if (values.name) setName(values.name);
+    if (values.placeName) setPlaceName(values.placeName);
+    if (values.address) setAddress(values.address);
+    if (values.description) setDescription(values.description);
+    if (values.websiteUrl) setWebsite(values.websiteUrl);
+    if (values.kind) {
+      const kind = Object.values(kindsById).find((candidate) => candidate.name === values.kind);
+      if (kind) setKindId(kind.id);
+    }
+    if (values.mapsUrl) {
+      setLink(values.mapsUrl);
+      setReading(undefined);
+      setLinkError(undefined);
+      setLinkPlaceName(undefined);
+      setMapsUrl(values.mapsUrl);
+      setLocation(web.location);
+    }
+    if (web.photo) photoChoice.takePhoto(web.photo);
+  };
+
   return {
     activity,
+    webValues,
+    applyWeb,
     name,
     setName,
     nameError,
@@ -190,6 +250,12 @@ export function useActivityForm(activity?: Activity) {
     website,
     setWebsite,
     websiteError,
+    kindId,
+    setKindId,
+    icon,
+    setIcon,
+    remembered,
+    setRemembered,
     photoChoice,
     photo,
     preparing,
@@ -217,8 +283,14 @@ export function ActivityFormFields(props: {
   onOpenExisting: (activity: Activity) => void;
   openLabel?: string;
   autoFocus?: boolean;
+  /** Right in the field "Name": "Im Web suchen" of a new one (spec 0055, REQ-010). */
+  nameAction?: ReactNode;
+  /** Return in "Name" searches like the magnifier instead of saving (review 0004, N-04). */
+  onNameSearch?: () => void;
 }) {
   const { form } = props;
+  const kindsById = useActivityKindsById();
+  const kindIcon = activityIconOf({ kindId: form.kindId }, kindsById);
   const place = form.reading?.status === 'place' ? form.reading.place : undefined;
   const confirmation = place
     ? [
@@ -239,6 +311,10 @@ export function ActivityFormFields(props: {
           maxLength={ACTIVITY_NAME_MAX_LENGTH}
           autoFocus={props.autoFocus}
           error={form.nameError}
+          right={props.nameAction}
+          onSubmitEditing={props.onNameSearch}
+          returnKeyType={props.onNameSearch ? 'search' : undefined}
+          submitsWindow={props.onNameSearch ? false : undefined}
           testID="activity-name"
         />
         {form.duplicate ? (
@@ -259,6 +335,20 @@ export function ActivityFormFields(props: {
           />
         ) : null}
       </Stack>
+      <ActivityKindField kindId={form.kindId} onChange={form.setKindId} />
+      <ActivityIconField
+        icon={form.icon}
+        fallback={kindIcon}
+        fromKind={form.kindId !== undefined && kindsById[form.kindId] !== undefined}
+        onChange={form.setIcon}
+      />
+      <SwitchRow
+        label="Merken"
+        description="Steht in der Liste unter „Gemerkt“. Aus für Einmaliges – im Kalender steht es trotzdem."
+        value={form.remembered}
+        onValueChange={form.setRemembered}
+        testID="activity-remembered"
+      />
       <TextField
         label="Beschreibung"
         value={form.description}
@@ -269,66 +359,58 @@ export function ActivityFormFields(props: {
       />
       <PhotoChoiceField
         state={form.photoChoice}
-        placeholderIcon={ACTIVITY_ICON}
+        placeholderIcon={form.icon ?? (form.kindId ? kindIcon : ACTIVITY_ICON)}
         testPrefix="activity"
       />
-      <Stack gap={8}>
-        <Text variant="smallStrong">Ort (optional)</Text>
-        <TextField
-          accessibilityLabel="Karten-Link"
-          value={form.link}
-          onChangeText={form.changeLink}
-          placeholder="Link aus Google Maps oder Apple Karten einfügen"
-          error={form.linkError}
-          hint={
-            form.reading
-              ? undefined
-              : 'In der Karten-App auf „Teilen“ tippen und den Link kopieren.'
-          }
-          left={<Icon name="link" size={18} color="muted" />}
-          testID="activity-link"
-        />
-        {confirmation ? (
-          <Row gap={6}>
-            <Icon name="circle-check" size={16} color="success" />
-            <Text
-              variant="small"
-              color="success"
-              testID="activity-link-ok"
-              style={{ flexShrink: 1 }}
-            >
-              {confirmation}
-            </Text>
-          </Row>
-        ) : null}
-        {form.reading?.status === 'short' ? (
-          <Row gap={6}>
-            <Icon name="info" size={16} color="muted" />
-            <Text
-              variant="small"
-              color="muted"
-              testID="activity-link-short"
-              style={{ flexShrink: 1 }}
-            >
-              Kurzlink erkannt – Ort wird beim Speichern abgerufen
-            </Text>
-          </Row>
-        ) : null}
-        <TextField
-          label="Ortsname"
-          value={form.placeName}
-          onChangeText={form.setPlaceName}
-          placeholder="z. B. Eisstadion Hohenschönhausen"
-          testID="activity-place-name"
-        />
-        <TextField
-          label="Adresse"
-          value={form.address}
-          onChangeText={form.setAddress}
-          placeholder="Straße, Ort"
-          testID="activity-address"
-        />
-      </Stack>
+      {/* The place field of restaurants, activities and stores (spec 0042, REQ-001): the
+          activity's place name ("Eisstadion …") also labels "Route". */}
+      <PlaceField
+        title="Ort (optional)"
+        testPrefix="activity"
+        placeName={{
+          value: form.placeName,
+          onChange: form.setPlaceName,
+          placeholder: 'z. B. Eisstadion Wedding',
+        }}
+        link={form.link}
+        onLinkChange={form.changeLink}
+        linkError={form.linkError}
+        linkHint={
+          form.reading ? undefined : 'In Google Maps auf „Teilen“ tippen und den Link kopieren.'
+        }
+        address={{ value: form.address, onChange: form.setAddress }}
+        onWebsite={form.setWebsite}
+        linkStatus={
+          <>
+            {confirmation ? (
+              <Row gap={6}>
+                <Icon name="circle-check" size={16} color="success" />
+                <Text
+                  variant="small"
+                  color="success"
+                  testID="activity-link-ok"
+                  style={{ flexShrink: 1 }}
+                >
+                  {confirmation}
+                </Text>
+              </Row>
+            ) : null}
+            {form.reading?.status === 'short' && !form.linkError ? (
+              <Row gap={6}>
+                <Icon name="info" size={16} color="muted" />
+                <Text
+                  variant="small"
+                  color="muted"
+                  testID="activity-link-short"
+                  style={{ flexShrink: 1 }}
+                >
+                  Kurzlink erkannt – Ort wird beim Speichern abgerufen
+                </Text>
+              </Row>
+            ) : null}
+          </>
+        }
+      />
       <TextField
         label="Webseite"
         value={form.website}
@@ -371,6 +453,9 @@ export function ActivityFormSheet(props: {
           location: values.draft.location,
           mapsUrl: values.draft.mapsUrl,
           websiteUrl: values.draft.websiteUrl,
+          kindId: values.draft.kindId,
+          icon: values.draft.icon,
+          remembered: values.draft.remembered,
         });
         id = editing.id;
       } else {
@@ -383,9 +468,20 @@ export function ActivityFormSheet(props: {
     props.onClose();
     props.onSaved?.(id);
     savePhotoChoice(id, values.photo);
-    toast.show({ message: 'Aktivität gespeichert' });
+    // Review 0004, N-09: the toast says what happened, like the window's "Anlegen".
+    toast.show({ message: editing ? 'Aktivität gespeichert' : 'Aktivität angelegt' });
   };
 
+  // Spec 0049: a new one is filled at once, an existing one shows its changes first.
+  const web = usePlaceWebFill({
+    kind: 'activity',
+    name: form.name,
+    ...(editing ? { current: form.webValues() } : {}),
+    hasPhoto: editing?.photoPath !== undefined,
+    onApply: form.applyWeb,
+    onLink: form.changeLink,
+    testID: 'activity-web',
+  });
   return (
     <Sheet
       visible
@@ -395,7 +491,8 @@ export function ActivityFormSheet(props: {
       size="m"
       actions={{
         primary: {
-          label: 'Speichern',
+          // Spec 0062, REQ-006: a new one is created with "Anlegen" in the window's head.
+          label: editing ? 'Speichern' : 'Anlegen',
           icon: 'check',
           disabled: online.disabled || !!form.duplicate || form.saving || form.preparing,
           hint:
@@ -411,14 +508,20 @@ export function ActivityFormSheet(props: {
             {online.hint}
           </Text>
         ) : null}
+        {/* Spec 0055, REQ-010: a new one searches from the name; an existing one keeps the link. */}
+        {editing ? web.link : null}
         <ActivityFormFields
           form={form}
+          // Only a new one starts typing; an existing one opens calm, without the keyboard coming
+          // up while the window slides in (Nachklick 27.11., Ruckeln).
           autoFocus={!editing}
+          {...(editing ? {} : { nameAction: web.nameButton, onNameSearch: web.searchName })}
           onOpenExisting={(existing) => {
             props.onClose();
             props.onOpenExisting(existing.id);
           }}
         />
+        {web.windows}
       </Stack>
     </Sheet>
   );

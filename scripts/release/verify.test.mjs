@@ -24,6 +24,7 @@ import {
   checkSecurityHeaders,
   checkSeedData,
   checkVersionFile,
+  checkVideoBucket,
   projectRef,
   repoFunctions,
   runChecks,
@@ -231,11 +232,11 @@ describe('AC-044: functions without authorization', () => {
 
   test('404 (function missing) and 500 are FEHLER too', () => {
     assert.equal(
-      checkFunctions([{ name: 'push-send', origin: 'eigene', response: res(404) }]).ok,
+      checkFunctions([{ name: 'media-sweep', origin: 'eigene', response: res(404) }]).ok,
       false,
     );
     assert.equal(
-      checkFunctions([{ name: 'push-send', origin: 'eigene', response: res(500) }]).ok,
+      checkFunctions([{ name: 'media-sweep', origin: 'eigene', response: res(500) }]).ok,
       false,
     );
   });
@@ -246,7 +247,7 @@ describe('AC-044: functions without authorization', () => {
 
   test('the functions of the repository are the folders with an index.ts', () => {
     const names = repoFunctions();
-    assert.ok(names.includes('push-send'));
+    assert.ok(names.includes('media-sweep'));
     assert.ok(names.includes('ai-search'));
     assert.ok(!names.includes('_shared'));
     assert.ok(!names.includes('node_modules'));
@@ -382,6 +383,24 @@ describe('AC-042: no seed data in production', () => {
       true,
     );
     assert.equal(checkSeedData({ ...row, example_accounts: 1 }, 'preview').ok, false);
+  });
+});
+
+describe('spec 0043, decision 8: video bucket', () => {
+  const bucket = { public: false, file_size_limit: 52428800, allowed_mime_types: ['video/mp4'] };
+
+  test('private, 50 MiB, only video/mp4: ok', () => {
+    assert.equal(checkVideoBucket(bucket).ok, true);
+  });
+
+  test('missing (the backup would silently hold no videos), public, larger, another type: FEHLER', () => {
+    assert.match(checkVideoBucket(null).detail, /household-videos fehlt/);
+    assert.match(checkVideoBucket({ ...bucket, public: true }).detail, /öffentlich/);
+    assert.match(checkVideoBucket({ ...bucket, file_size_limit: 104857600 }).detail, /50 MiB/);
+    assert.match(
+      checkVideoBucket({ ...bucket, allowed_mime_types: ['video/mp4', 'video/webm'] }).detail,
+      /video\/mp4/,
+    );
   });
 });
 
@@ -559,6 +578,11 @@ describe('wiring', () => {
               allowed_mime_types: ['image/jpeg'],
             },
             sample_photo: 'c1437b0b/recipes/x.jpg',
+            video_bucket: {
+              public: false,
+              file_size_limit: 52428800,
+              allowed_mime_types: ['video/mp4'],
+            },
           },
         ]),
       };
@@ -630,7 +654,12 @@ describe('wiring', () => {
       },
     };
     const results = await runChecks(options(goodNetwork(), wrapped));
-    for (const name of ['Keine Seed-Daten', 'Foto-Bucket', 'GraphQL ohne net (authenticated)']) {
+    for (const name of [
+      'Keine Seed-Daten',
+      'Foto-Bucket',
+      'Video-Bucket',
+      'GraphQL ohne net (authenticated)',
+    ]) {
       assert.equal(results.find((r) => r.name === name)?.ok, true, name);
     }
   });

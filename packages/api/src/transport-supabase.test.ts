@@ -324,6 +324,39 @@ describe('supabase transport', () => {
     ).toMatchObject({ code: 'ingredient_article_invalid', constraint: undefined });
   });
 
+  it('spec 0037 AC-006: save_recipe_page with its parameters and answer', async () => {
+    const { client, calls } = stubClient([
+      ok({ changed_meanwhile: true, updated_at: '2026-11-26T10:00:00Z' }),
+      ok({ changed_meanwhile: 'ja' }),
+    ]);
+    const transport = createSupabaseTransport(client);
+    const ops = [
+      { kind: 'patch', table: 'recipes', id: 'r1', changes: { title: 'Omas Apfelkuchen' } },
+    ] as const;
+    expect(await transport.saveRecipePage('h1', 'r1', '2026-11-26T09:00:00Z', ops)).toEqual({
+      changedMeanwhile: true,
+      updatedAt: '2026-11-26T10:00:00Z',
+    });
+    await expect(transport.saveRecipePage('h1', 'r1', undefined, ops)).rejects.toMatchObject({
+      code: 'invalid_response',
+    });
+    expect(calls).toEqual([
+      {
+        fn: 'save_recipe_page',
+        args: {
+          p_household_id: 'h1',
+          p_recipe_id: 'r1',
+          p_seen_updated_at: '2026-11-26T09:00:00Z',
+          p_ops: ops,
+        },
+      },
+      {
+        fn: 'save_recipe_page',
+        args: { p_household_id: 'h1', p_recipe_id: 'r1', p_seen_updated_at: null, p_ops: ops },
+      },
+    ]);
+  });
+
   it('spec 0008: delete_recipe and restore_recipe with their parameters and answers', async () => {
     const { client, calls } = stubClient([
       ok({ converted: 3, removed: 2, collections: 1 }),
@@ -359,6 +392,25 @@ describe('supabase transport', () => {
     ]);
   });
 
+  it('spec 0046 AC-012, AC-017: set_recipe_video_poster and remove_recipe_video with their parameters and answers', async () => {
+    const video = { path: 'h/recipes/r/v.mp4', url: 'https://vm.tiktok.com/x/', poster: 'p.jpg' };
+    const { client, calls } = stubClient([ok(true), ok(video), ok(null), ok({ url: 'no path' })]);
+    const transport = createSupabaseTransport(client);
+    expect(await transport.setRecipeVideoPoster('h1', 'r1', video.path, video.poster)).toBe(true);
+    expect(await transport.removeRecipeVideo('h1', 'r1', video.path)).toEqual(video);
+    expect(await transport.removeRecipeVideo('h1', 'r1', video.path)).toBeNull();
+    await expect(transport.removeRecipeVideo('h1', 'r1', video.path)).rejects.toMatchObject({
+      code: 'invalid_response',
+    });
+    const removal = { p_household_id: 'h1', p_recipe_id: 'r1', p_path: video.path };
+    expect(calls).toEqual([
+      { fn: 'set_recipe_video_poster', args: { ...removal, p_poster: video.poster } },
+      { fn: 'remove_recipe_video', args: removal },
+      { fn: 'remove_recipe_video', args: removal },
+      { fn: 'remove_recipe_video', args: removal },
+    ]);
+  });
+
   it('AC-034: delete_restaurant/delete_activity and their restore with parameters and answers', async () => {
     const { client, calls } = stubClient([
       ok({ converted: 1, removed: 1 }),
@@ -387,80 +439,21 @@ describe('supabase transport', () => {
     ]);
   });
 
-  it('spec 0013: the six device RPCs with their parameters; list answers are validated', async () => {
-    const row = {
-      id: 'd1',
-      device_label: 'Mac · Chrome',
-      status: 'active',
-      is_current: true,
-      created_at: '2026-11-21T10:00:00+00:00',
-      last_success_at: null,
-    };
+  it('spec 0051: acknowledge_notices with its parameters; its refusal keeps the code', async () => {
     const { client, calls } = stubClient([
-      ok('d1'),
       ok(null),
-      ok(null),
-      ok(true),
-      ok([row]),
-      ok([]),
-      ok(null),
-      ok([{ ...row, endpoint: 'https://fcm.googleapis.com/x' }]),
-      ok([{ ...row, status: 'weird' }]),
-      { data: null, error: { message: 'invalid_subscription', code: '22023' }, status: 400 },
-      { data: null, error: { message: 'not_found', code: 'P0002' }, status: 500 },
-      { data: null, error: { message: 'push_not_configured', code: 'P0001' }, status: 400 },
-      { data: null, error: { message: 'not_authenticated', code: '42501' }, status: 401 },
+      { data: null, error: { message: 'invalid_notice', code: '22023' }, status: 400 },
     ]);
     const transport = createSupabaseTransport(client);
-    const endpoint = 'https://fcm.googleapis.com/fcm/send/abc';
-    expect(await transport.registerPushSubscription(endpoint, 'Bkey', 'auth', 'Mac · Chrome')).toBe(
-      'd1',
-    );
-    await transport.setPushSubscriptionEnabled(endpoint, false);
-    await transport.unregisterPushSubscription(endpoint);
-    expect(await transport.removePushSubscription('d1')).toBe(true);
-    expect(await transport.listPushSubscriptions(endpoint)).toEqual([row]);
-    expect(await transport.listPushSubscriptions()).toEqual([]);
-    await transport.sendTestPush(endpoint);
-    // An answer with an address is refused: the list must never carry one (ADR-0014).
-    await expect(transport.listPushSubscriptions()).rejects.toMatchObject({
-      code: 'invalid_response',
-    });
-    await expect(transport.listPushSubscriptions()).rejects.toMatchObject({
-      code: 'invalid_response',
-    });
-    await expect(
-      transport.registerPushSubscription('http://127.0.0.1:54321/x', 'Bkey', 'auth', 'Mac'),
-    ).rejects.toMatchObject({ kind: 'permanent', code: 'invalid_subscription' });
-    await expect(transport.setPushSubscriptionEnabled(endpoint, true)).rejects.toMatchObject({
+    await transport.acknowledgeNotices('h1', ['chore:c1:2026-11-20']);
+    await expect(transport.acknowledgeNotices('h1', ['x'])).rejects.toMatchObject({
       kind: 'permanent',
-      code: 'not_found',
+      code: 'invalid_notice',
     });
-    await expect(transport.sendTestPush(endpoint)).rejects.toMatchObject({
-      kind: 'permanent',
-      code: 'push_not_configured',
+    expect(calls[0]).toEqual({
+      fn: 'acknowledge_notices',
+      args: { household_id: 'h1', keys: ['chore:c1:2026-11-20'] },
     });
-    await expect(transport.removePushSubscription('d1')).rejects.toMatchObject({
-      kind: 'permanent',
-      code: 'not_authenticated',
-    });
-    expect(calls.slice(0, 7)).toEqual([
-      {
-        fn: 'register_push_subscription',
-        args: {
-          p_endpoint: endpoint,
-          p_p256dh: 'Bkey',
-          p_auth: 'auth',
-          p_device_label: 'Mac · Chrome',
-        },
-      },
-      { fn: 'set_push_subscription_enabled', args: { p_endpoint: endpoint, p_enabled: false } },
-      { fn: 'unregister_push_subscription', args: { p_endpoint: endpoint } },
-      { fn: 'remove_push_subscription', args: { p_id: 'd1' } },
-      { fn: 'list_push_subscriptions', args: { p_current_endpoint: endpoint } },
-      { fn: 'list_push_subscriptions', args: { p_current_endpoint: null } },
-      { fn: 'send_test_push', args: { p_endpoint: endpoint } },
-    ]);
   });
 
   it('spec 0011, AC-031: already_done keeps who and when from the details; numeric stars stay unrounded', async () => {
@@ -634,6 +627,39 @@ describe('supabase transport', () => {
   });
 });
 
+describe('supabase transport: fetch-image (spec 0039)', () => {
+  it('AC-006: hands the bytes over as a Blob; AC-007: not_an_image and odd answers are refused', async () => {
+    const image = new Blob([new Uint8Array([0xff, 0xd8, 0xff])]);
+    const { client, invoked } = stubClient(
+      [],
+      [
+        { data: image, error: null },
+        {
+          data: null,
+          error: {
+            name: 'FunctionsHttpError',
+            message: 'Edge Function returned a non-2xx status code',
+            context: { status: 422, json: async () => ({ error: 'not_an_image' }) },
+          },
+        },
+        { data: '<html>', error: null },
+      ],
+    );
+    const transport = createSupabaseTransport(client);
+    const request = { householdId: 'h1', url: 'https://example.org/kuchen.jpg' };
+    await expect(transport.fetchImage(request)).resolves.toBe(image);
+    expect(invoked).toEqual([{ name: 'fetch-image', body: request }]);
+    await expect(transport.fetchImage(request)).rejects.toMatchObject({
+      kind: 'permanent',
+      code: 'not_an_image',
+      status: 422,
+    });
+    await expect(transport.fetchImage(request)).rejects.toMatchObject({
+      code: 'invalid_response',
+    });
+  });
+});
+
 describe('supabase transport: AI edge functions', () => {
   const httpError = (status: number, body: unknown) => ({
     data: null,
@@ -742,6 +768,75 @@ describe('supabase transport: AI edge functions', () => {
     expect(invoked[0]).toEqual({ name: 'speech-token', body: {} });
     // The region becomes part of a host name: anything but a plain region name is refused.
     await expect(transport.speechToken()).rejects.toMatchObject({ code: 'invalid_response' });
+  });
+});
+
+describe('supabase transport: recipe videos (spec 0043)', () => {
+  const request = {
+    householdId: 'h1',
+    recipeId: 'r1',
+    url: 'https://vm.tiktok.com/ZGdXoJ8Ay/',
+  };
+
+  it('AC-001: fetch-video answers the stored path; AC-002/003: its codes come through', async () => {
+    const { client, invoked } = stubClient(
+      [],
+      [
+        { data: { videoPath: 'h1/recipes/r1/v.mp4' }, error: null },
+        {
+          data: null,
+          error: {
+            name: 'FunctionsHttpError',
+            message: 'Edge Function returned a non-2xx status code',
+            context: { status: 422, json: async () => ({ error: 'video_too_large' }) },
+          },
+        },
+        { data: { videoPath: '' }, error: null },
+      ],
+    );
+    const transport = createSupabaseTransport(client);
+    await expect(transport.fetchVideo(request)).resolves.toEqual({
+      videoPath: 'h1/recipes/r1/v.mp4',
+    });
+    expect(invoked).toEqual([{ name: 'fetch-video', body: request }]);
+    await expect(transport.fetchVideo(request)).rejects.toMatchObject({
+      kind: 'permanent',
+      code: 'video_too_large',
+    });
+    await expect(transport.fetchVideo(request)).rejects.toMatchObject({
+      code: 'invalid_response',
+    });
+  });
+
+  it('AC-007: downloads past the HTTP cache and AC-009 removes, both in household-videos', async () => {
+    const video = new Blob(['x'], { type: 'video/mp4' });
+    const { client, stored } = stubClient(
+      [],
+      [],
+      [
+        { data: video, error: null },
+        { data: [], error: null },
+        { data: 'odd', error: null },
+      ],
+    );
+    const transport = createSupabaseTransport(client);
+    await expect(transport.downloadVideo('h1/recipes/r1/v.mp4')).resolves.toBe(video);
+    await transport.removeVideos(['h1/recipes/r1/v.mp4']);
+    expect(stored).toEqual([
+      {
+        bucket: 'household-videos',
+        op: 'download',
+        args: [
+          'h1/recipes/r1/v.mp4',
+          {},
+          { cache: 'no-store', signal: expect.any(AbortSignal) as AbortSignal },
+        ],
+      },
+      { bucket: 'household-videos', op: 'remove', args: [['h1/recipes/r1/v.mp4']] },
+    ]);
+    await expect(transport.downloadVideo('h1/recipes/r1/v.mp4')).rejects.toMatchObject({
+      code: 'invalid_response',
+    });
   });
 });
 
@@ -886,5 +981,119 @@ describe('supabase transport: photo storage (spec 0004)', () => {
     failed.settle(apiError('403', 'AccessDenied'));
     await vi.advanceTimersByTimeAsync(0);
     expect(stored.map((entry) => entry.op)).toEqual(['upload', 'remove', 'upload']);
+  });
+});
+
+describe('supabase transport: ai-recipe-draft and ai-image (spec 0040)', () => {
+  const draftReply = {
+    draft: {
+      title: 'Apfelkuchen',
+      servings: 4,
+      description: 'Ein einfacher Apfelkuchen.',
+      course: 'dessert',
+      tags: [{ name: 'backen', isNew: false }],
+      variants: [],
+      ingredients: [{ name: 'Mehl', amount: '250 g' }],
+      steps: [{ text: 'Backen', timerMinutes: 45 }],
+    },
+    sources: [],
+  };
+
+  it('AC-001, AC-012: the replies are checked against the core contract', async () => {
+    const { client, invoked } = stubClient(
+      [],
+      [
+        { data: draftReply, error: null },
+        { data: { draft: { ...draftReply.draft, commands: [] }, sources: [] }, error: null },
+        { data: { images: ['/9j/4AAQ'], failed: 2 }, error: null },
+        { data: { images: [], failed: 3 }, error: null },
+      ],
+    );
+    const transport = createSupabaseTransport(client);
+    const draftRequest = { householdId: 'h1', text: 'Apfelkuchen' };
+    await expect(transport.aiRecipeDraft(draftRequest)).resolves.toEqual(draftReply);
+    await expect(transport.aiRecipeDraft(draftRequest)).rejects.toMatchObject({
+      code: 'invalid_response',
+    });
+    const imageRequest = { householdId: 'h1', prompt: 'Apfelkuchen' };
+    await expect(transport.aiImage(imageRequest)).resolves.toEqual({
+      images: ['/9j/4AAQ'],
+      failed: 2,
+    });
+    await expect(transport.aiImage(imageRequest)).rejects.toMatchObject({
+      code: 'invalid_response',
+    });
+    expect(invoked.map((call) => call.name)).toEqual([
+      'ai-recipe-draft',
+      'ai-recipe-draft',
+      'ai-image',
+      'ai-image',
+    ]);
+  });
+
+  it('AC-005: the draft waits longer than other calls (the server allows the model 60 s)', async () => {
+    vi.useFakeTimers();
+    const { client } = stubClient([]);
+    client.functions.invoke = () => new Promise(() => {});
+    const transport = createSupabaseTransport(client, { timeoutMs: 1000 });
+    let settled = false;
+    const draft = transport
+      .aiRecipeDraft({ householdId: 'h1', text: 'Kuchen' })
+      .catch((error: unknown) => error)
+      .finally(() => {
+        settled = true;
+      });
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(await draft).toMatchObject({ kind: 'transient', code: 'timeout' });
+    const image = transport
+      .aiImage({ householdId: 'h1', prompt: 'Kuchen' })
+      .catch((error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(55_000);
+    expect(await image).toMatchObject({ code: 'timeout' });
+  });
+});
+
+describe('supabase transport: web-search (spec 0049)', () => {
+  it('AC-005, AC-012: search and place preview replies are checked against the contract', async () => {
+    const card = {
+      url: 'https://www.chefkoch.de/rezepte/1/a.html',
+      title: 'Bolognese',
+      source: 'chefkoch.de',
+    };
+    const { client, invoked } = stubClient(
+      [],
+      [
+        { data: { provider: 'serper', query: 'x', results: [card] }, error: null },
+        {
+          data: { provider: 'serper', query: 'x', results: [{ ...card, url: 'http://a.de' }] },
+          error: null,
+        },
+        { data: { proposal: { cuisine: 'Vietnamesisch' } }, error: null },
+        { data: { proposal: { command: 'delete' } }, error: null },
+      ],
+    );
+    const transport = createSupabaseTransport(client);
+    const search = { mode: 'search', householdId: 'h1', kind: 'recipe', query: 'x' } as const;
+    await expect(transport.webSearch(search)).resolves.toEqual({
+      provider: 'serper',
+      query: 'x',
+      results: [card],
+    });
+    await expect(transport.webSearch(search)).rejects.toMatchObject({ code: 'invalid_response' });
+    const place = { mode: 'place', householdId: 'h1', kind: 'restaurant', result: card } as const;
+    await expect(transport.placePreview(place)).resolves.toEqual({
+      proposal: { cuisine: 'Vietnamesisch' },
+    });
+    await expect(transport.placePreview(place)).rejects.toMatchObject({
+      code: 'invalid_response',
+    });
+    expect(invoked.map((call) => call.name)).toEqual([
+      'web-search',
+      'web-search',
+      'web-search',
+      'web-search',
+    ]);
   });
 });

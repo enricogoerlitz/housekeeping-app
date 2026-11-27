@@ -1,7 +1,9 @@
 # Backup of production (spec 0014, REQ-009, plan Task 9, decisions 15 to 18): roles, schema and data
-# through the session pooler with the read-only role backup_reader, the photos of household-media
-# through the S3 interface of Supabase Storage, as one tar.gz encrypted with age to the public key
-# of the environment, plus manifest.json (rows per table, photo count, checksum; no data). Uploaded
+# through the session pooler with the read-only role backup_reader and the photos of
+# household-media through the S3 interface of Supabase Storage, as one tar.gz encrypted with age
+# to the public key of the environment, plus manifest.json (rows per table, photo count, checksum;
+# no data). The recipe videos are not backed up (spec 0048, decision 1: they can be saved again
+# from their TikTok link, and every night all of them would cost egress). Uploaded
 # with the identity of the environment, which may write blobs but not read or delete them; the
 # container keeps every blob immutable for 30 days.
 #
@@ -38,6 +40,7 @@ jobs:
   sicherung:
     name: Sicherung
     runs-on: ubuntu-24.04
+    # Dumps and photos (at most 2 MiB each); 45 minutes stay ample, the dumps are the slow part.
     timeout-minutes: 45
     environment: backup
     permissions:

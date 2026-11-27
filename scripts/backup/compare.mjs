@@ -1,6 +1,9 @@
 #!/usr/bin/env node
-// Restore test (spec 0014, Task 9, AC-056): compares the downloaded archive, the restored
-// throwaway database and the unpacked photos with the companion file written by manifest.mjs.
+// Restore test (spec 0014, Task 9, AC-056; spec 0048): compares the downloaded archive, the
+// restored throwaway database and the unpacked photos with the companion file written by
+// manifest.mjs. Videos are no longer backed up (format 3, spec 0048); backups of format 2 (spec
+// 0043 until 0048) still hold them, their video count is passed over. Format 1 (before 0043) has
+// the fields of format 3.
 // Messages name tables and numbers only, never data from the backup.
 //
 //   node scripts/backup/compare.mjs checksum --manifest <manifest.json> --archive <file.age>
@@ -18,10 +21,12 @@ import { MANIFEST_FORMAT, countFiles, sha256File } from './manifest.mjs';
 const isCount = (n) => Number.isSafeInteger(n) && n >= 0;
 const isName = (s) => typeof s === 'string' && s.length > 0 && !s.includes('\0');
 
-/** The manifest if it has the format manifest.mjs writes; throws otherwise. */
+/** The manifest if it has a format manifest.mjs writes or wrote (1, 2, 3); throws otherwise. */
 export function validateManifest(manifest) {
+  const format = manifest?.format;
   const valid =
-    manifest?.format === MANIFEST_FORMAT &&
+    (format === 1 || format === 2 || format === MANIFEST_FORMAT) &&
+    (format !== 2 || isCount(manifest.videos)) &&
     Array.isArray(manifest.tables) &&
     manifest.tables.length > 0 &&
     manifest.tables.every((t) => isName(t?.schema) && isName(t?.table) && isCount(t?.rows)) &&

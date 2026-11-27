@@ -7,7 +7,17 @@ import {
   type SearchOrCreateResult,
 } from './search-or-create';
 import { normalizeText } from './text';
-import type { Amount, Area, Article, Diet, Id, Recipe, ShoppingItem, ShoppingRule } from './types';
+import type {
+  Amount,
+  Area,
+  Article,
+  Diet,
+  Id,
+  Recipe,
+  RecurringItem,
+  ShoppingItem,
+  ShoppingRule,
+} from './types';
 
 // Rules of the article catalog (spec 0007): what "Suchen oder anlegen" finds for an ingredient,
 // how ingredients get their article without a human choice, and the rules of the page "Artikel".
@@ -64,6 +74,17 @@ export interface ArticleDraft {
 
 function collapse(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * The name "Artikel bearbeiten" saves (spec 0007, AC-057): the typed name, spaces collapsed, when it
+ * differs from the name the window opened with (or saved last); undefined when it does not. The
+ * window compares with what it showed, not with the cache now: a rename on another device that a
+ * delta sync brought while the window was open must not be overwritten by an untouched field.
+ */
+export function changedArticleName(opened: string, typed: string): string | undefined {
+  const name = collapse(typed);
+  return name === collapse(opened) ? undefined : name;
 }
 
 function keysOf(article: { name: string; synonyms?: readonly string[] }): string[] {
@@ -276,6 +297,28 @@ function bestSpelledAlike<T extends { name: string; synonyms: readonly string[] 
   return best?.hit;
 }
 
+function exactHit<T extends Article>(
+  key: string,
+  hits: readonly CatalogHit<T>[],
+): CatalogHit<T> | undefined {
+  return (
+    hits.find((hit) => normalizeText(hit.name) === key) ??
+    hits.find((hit) => hit.synonyms.some((synonym) => normalizeText(synonym) === key))
+  );
+}
+
+/**
+ * The article or available starter entry whose name, else one of whose synonyms, is `name`
+ * (after normalising) — the "sure" match of a pasted line, for one name (spec 0040, AC-002).
+ */
+export function exactCatalogHit<T extends Article>(
+  name: string,
+  articles: readonly T[],
+  catalog: readonly StarterCatalogEntry[],
+): CatalogHit<T> | undefined {
+  return exactHit(normalizeText(name), catalogHits(articles, catalog));
+}
+
 /**
  * Sorts the lines of a pasted block (REQ-002): sure when an article or available starter entry
  * has the name as name or synonym; similar ("Meinst du …?") when one is spelled alike
@@ -290,9 +333,7 @@ export function classifyIngredientLines<T extends Article>(
   const hits = catalogHits(articles, catalog);
   return parseIngredientBlock(text).map((line): IngredientLineClass<T> => {
     const key = normalizeText(line.name);
-    const exact =
-      hits.find((hit) => normalizeText(hit.name) === key) ??
-      hits.find((hit) => hit.synonyms.some((synonym) => normalizeText(synonym) === key));
+    const exact = exactHit(key, hits);
     if (exact) return { status: 'sure', line, hit: exact };
     const similar = bestSpelledAlike(key, hits);
     if (similar) return { status: 'similar', line, suggestion: similar };
@@ -335,8 +376,9 @@ export type ArticleDraftProblem<T extends Article = Article> =
 
 /**
  * Checks name and synonyms of an article being created (no id) or edited (its id) against the
- * other articles: a name or synonym must not be the name or a synonym of another article (after
- * normalising, E6). Empty → "Name fehlt", taken → "Gibt es schon: Kokosmilch", a synonym taken →
+ * other articles: a name must not be the name of another article, a synonym not the name or a
+ * synonym of another article (after normalising, E6; spec 0036 allows a name that is another
+ * article's synonym). Empty → "Name fehlt", taken → "Gibt es schon: Kokosmilch", a synonym taken →
  * "„Möhren“ ist schon ein Artikel"; at most 120 characters, 30 synonyms and 2000 characters in
  * all synonyms (after cleanSynonyms; the keys count too). [] = fine.
  */
@@ -353,7 +395,10 @@ export function validateArticleDraft<T extends Article>(
   } else if (!fits(name)) {
     problems.push({ field: 'name', kind: 'tooLong', message: 'Höchstens 120 Zeichen' });
   } else {
-    const existing = findByKey(normalizeText(name), others);
+    // Only another name takes it: a name may be another article's synonym („Schinken“ next to
+    // Kochschinken, spec 0036, Entscheidung 2); the search puts the exact name first.
+    const key = normalizeText(name);
+    const existing = others.find((article) => normalizeText(article.name) === key);
     if (existing) {
       problems.push({
         field: 'name',
@@ -378,7 +423,13 @@ export function validateArticleDraft<T extends Article>(
       message: 'Höchstens 2000 Zeichen in allen Synonymen',
     });
   }
+  // A synonym the article already has stays, also when another article took it as its name
+  // since (spec 0036, Entscheidung 2); only new synonyms are checked.
+  const kept = new Set(
+    (articles.find((article) => article.id === draft.id)?.synonyms ?? []).map(normalizeText),
+  );
   for (const synonym of synonyms) {
+    if (kept.has(normalizeText(synonym))) continue;
     const existing = findByKey(normalizeText(synonym), others);
     if (!existing) continue;
     problems.push({
@@ -501,14 +552,16 @@ export interface ArticleFilterContext<T extends Article> {
 }
 
 /**
- * Articles in a recipe or open on the list (spec 0025, AC-046): the others are "Unbenutzt" and
- * can be deleted; a checked item goes with the article (M-02).
+ * Articles in a recipe, open on the list or with a Dauerposten (spec 0025, AC-046; spec 0060,
+ * AC-011): the others are "Unbenutzt" and can be deleted; a checked item goes with the article
+ * (M-02).
  */
 export function usedArticleIds(
   recipes: readonly Recipe[],
   items: readonly ShoppingItem[],
+  recurringItems: readonly Pick<RecurringItem, 'articleId'>[] = [],
 ): Set<Id> {
-  const ids = new Set<Id>();
+  const ids = new Set<Id>(recurringItems.map((recurring) => recurring.articleId));
   for (const recipe of recipes) {
     for (const ingredient of recipe.ingredients) ids.add(ingredient.articleId);
   }

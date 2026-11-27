@@ -1,10 +1,13 @@
 import {
   addPlannedToList,
   pantryCheckRows,
+  pantryRecipeFor,
   snapshot,
   useHousehold,
   usePlanEntries,
+  useArticlesById,
   useRecipeBook,
+  useRecurringItems,
   useShoppingItems,
   useToday,
   withPantryAmount,
@@ -18,11 +21,14 @@ import {
   listPickerPreselection,
   listPickerStart,
   parseItemAmount,
+  recurringPickerRows,
   shiftListPickerStart,
   toggleDaySelection,
   type Id,
   type ISODate,
   type Recipe,
+  type RecurringItem,
+  type RecurringPickerRow,
 } from '@housekeeping/core';
 import {
   Button,
@@ -183,6 +189,8 @@ export function PantryCheckSheet(props: PantryCheckSheetProps) {
   const book = useRecipeBook();
   const items = useShoppingItems();
   const household = useHousehold();
+  const recurringItems = useRecurringItems();
+  const articlesById = useArticlesById();
   const slotOrder = household.mealSlots.map((slot) => slot.id);
   const direct = props.recipes !== undefined;
   // Seven days from today; from the calendar from the Monday of the week shown (Decision 2).
@@ -196,9 +204,23 @@ export function PantryCheckSheet(props: PantryCheckSheetProps) {
     () => new Set(direct ? [] : listPickerPreselection(pickerInput(firstStart))),
   );
   const [chosen, setChosen] = useState<ChosenRecipe[]>([]);
+  // Spec 0060, REQ-005: chosen Dauerposten with the day they were shown for; none preselected.
+  const [recurringChosen, setRecurringChosen] = useState<
+    ReadonlyMap<Id, { item: RecurringItem; on: ISODate }>
+  >(new Map());
   const [rows, setRows] = useState<PantryCheckRow[]>(() =>
     direct ? pantryCheckRows([], props.recipes) : [],
   );
+  // "Für N Personen" (spec 0037, REQ-007): one recipe or collection from its page, preset with
+  // the portions it was opened with; the amounts follow at once.
+  const single = props.recipes?.length === 1 ? props.recipes[0] : undefined;
+  const [people, setPeople] = useState(single?.portions ?? 1);
+  const changePeople = (value: number) => {
+    if (!single) return;
+    const next = Math.max(1, value);
+    setPeople(next);
+    setRows(pantryCheckRows([], [pantryRecipeFor(single, next)]));
+  };
   const [kept, setKept] = useState<Set<string>>(() => defaultKept(rows));
   // "Vorrat & Gewürze" starts open, its rows still deselected (spec 0025, AC-026).
   const [showPantry, setShowPantry] = useState(true);
@@ -210,7 +232,22 @@ export function PantryCheckSheet(props: PantryCheckSheetProps) {
     .filter((choice) => choice.selected)
     .map((choice) => ({ recipeId: choice.recipe.id, portions: choice.recipe.servings }));
   const dishes = entryIds.length + chosenRecipes.length;
-  const nextHint = online.hint ?? (dishes === 0 ? PICK_AT_LEAST_ONE : undefined);
+  const recurringRows = recurringPickerRows({ recurringItems, articlesById, items, start });
+  // Only Dauerposten that still exist and are not open on the list meanwhile.
+  const pickedRecurring = [...recurringChosen.values()].filter(
+    ({ item }) =>
+      recurringItems.some((candidate) => candidate.id === item.id) &&
+      !recurringRows.some((row) => row.item.id === item.id && row.onList),
+  );
+  const nothingChosen = dishes === 0 && pickedRecurring.length === 0;
+  const nextHint = online.hint ?? (nothingChosen ? PICK_AT_LEAST_ONE : undefined);
+  const toggleRecurring = (row: RecurringPickerRow) =>
+    setRecurringChosen((current) => {
+      const next = new Map(current);
+      if (next.has(row.item.id)) next.delete(row.item.id);
+      else next.set(row.item.id, { item: row.item, on: row.on });
+      return next;
+    });
 
   const toggleEntry = (entryId: Id) => {
     const next = new Set(selected);
@@ -238,7 +275,7 @@ export function PantryCheckSheet(props: PantryCheckSheetProps) {
     );
 
   const next = () => {
-    const found = pantryCheckRows(entryIds, chosenRecipes);
+    const found = pantryCheckRows(entryIds, chosenRecipes, pickedRecurring);
     setRows(found);
     setKept(defaultKept(found));
     setShowPantry(true);
@@ -318,9 +355,9 @@ export function PantryCheckSheet(props: PantryCheckSheetProps) {
         }
         actions={{
           primary: {
-            label: listPickerContinueLabel(dishes),
+            label: listPickerContinueLabel(dishes, pickedRecurring.length),
             icon: 'arrow-right',
-            disabled: online.disabled || dishes === 0,
+            disabled: online.disabled || nothingChosen,
             hint: nextHint,
             testID: 'pc-next',
             onPress: next,
@@ -334,6 +371,9 @@ export function PantryCheckSheet(props: PantryCheckSheetProps) {
           onToggleDay={(ids) => setSelected(toggleDaySelection(selected, ids))}
           chosen={chosen}
           onToggleChosen={toggleChosen}
+          recurring={recurringRows}
+          selectedRecurring={new Set(recurringChosen.keys())}
+          onToggleRecurring={toggleRecurring}
         />
       </Sheet>
     );
@@ -351,7 +391,13 @@ export function PantryCheckSheet(props: PantryCheckSheetProps) {
         // Selected reads as normal text with a tick; deselected ("haben wir") is faded and struck
         // through (REQ-009).
         strike={!isKept}
-        subtitle={[row.sources.join(' · '), row.onList ? `schon auf der Liste: ${row.onList}` : '']
+        // A pack ("1×") says what the recipes need, so "Für N Personen" shows (spec 0037, AC-020).
+        subtitle={[
+          row.recipeAmount
+            ? `${row.recipeAmount} für ${row.sources.join(' · ')}`
+            : row.sources.join(' · '),
+          row.onList ? `schon auf der Liste: ${row.onList}` : '',
+        ]
           .filter(Boolean)
           .join(' · ')}
         // The row is the checkbox; its amount buttons sit beside it (spec 0031, REQ-028).
@@ -405,6 +451,7 @@ export function PantryCheckSheet(props: PantryCheckSheetProps) {
             },
       }}
     >
+      {single ? <PeopleStepper value={people} onChange={changePeople} /> : null}
       {rows.length === 0 ? (
         <Text color="muted" testID="pc-nothing">
           Für diese Gerichte ist nichts einzukaufen.
@@ -457,6 +504,46 @@ export function PantryCheckSheet(props: PantryCheckSheetProps) {
         </View>
       )}
     </Sheet>
+  );
+}
+
+/** "Für 4 Personen" with − and + at the top of the pantry check (spec 0037, REQ-007). */
+function PeopleStepper(props: { value: number; onChange: (value: number) => void }) {
+  const { value } = props;
+  return (
+    <View
+      style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 12 }}
+      testID="pc-people"
+    >
+      <Text variant="bodyStrong" style={{ flex: 1 }}>
+        {value === 1 ? 'Für 1 Person' : `Für ${value} Personen`}
+      </Text>
+      <IconButton
+        icon="minus"
+        size={44}
+        variant="soft"
+        label="Eine Person weniger"
+        disabled={value <= 1}
+        onPress={() => props.onChange(value - 1)}
+        testID="pc-people-minus"
+      />
+      <Text
+        variant="bodyStrong"
+        style={{ minWidth: 28, textAlign: 'center', fontVariant: ['tabular-nums'] }}
+        testID="pc-people-value"
+      >
+        {value}
+      </Text>
+      <IconButton
+        icon="plus"
+        size={44}
+        variant="soft"
+        label="Eine Person mehr"
+        disabled={value >= 100}
+        onPress={() => props.onChange(value + 1)}
+        testID="pc-people-plus"
+      />
+    </View>
   );
 }
 

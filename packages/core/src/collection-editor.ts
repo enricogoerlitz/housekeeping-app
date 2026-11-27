@@ -59,6 +59,7 @@ export function newRecipe(input: {
     cookedCount: 0,
     createdAt: input.createdAt,
     links: [],
+    videos: [],
   };
   if (input.kind === 'recipe') recipe.course = 'main';
   return recipe;

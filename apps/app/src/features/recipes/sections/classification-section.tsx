@@ -5,9 +5,11 @@ import {
   cuisineValues,
   dietLabel,
   ingredientsForVariant,
+  isNewTag,
   normalizeText,
   unknownDietArticles,
   tagValues,
+  valueOnEnter,
   valueSuggestions,
   type ClassificationDraft,
   type Course,
@@ -19,7 +21,6 @@ import {
   Badge,
   Chip,
   ChoiceChips,
-  EditableSection,
   List,
   ListRow,
   SearchOrCreate,
@@ -37,8 +38,8 @@ import { useOnlineOnly } from '@/features/shell/offline';
 
 import { COURSES } from '../recipe-filter-panel';
 
-import { SectionError, useSectionFrame } from './common';
-import type { SectionEditor } from './use-section-editor';
+import { RecipeSection } from './common';
+import type { PageEditor } from './use-page-editor';
 
 /**
  * Einordnung (REQ-007): Gerichtart, Küche and Schlagworte, and the diet that follows from the
@@ -51,15 +52,14 @@ export function ClassificationSection(props: {
   /** The chip of the shown variant (core recipeDietChip); undefined = no chip. */
   diet: Diet | undefined;
   variantId: Id | undefined;
-  editor: SectionEditor;
+  editor: PageEditor;
 }) {
   const { recipe, diet, editor } = props;
   const [why, setWhy] = useState(false);
-  const frame = useSectionFrame(editor, 'classification', 'Einordnung');
-  const draft = editor.draft?.section === 'classification' ? editor.draft : undefined;
+  const draft = editor.draft?.classification;
   const plant = diet === 'vegan' || diet === 'vegetarian';
   return (
-    <EditableSection {...frame} inline testID="recipe-classification">
+    <RecipeSection title="Einordnung" inline testID="recipe-classification">
       {draft ? (
         <ClassificationFields draft={draft} editor={editor} />
       ) : (
@@ -98,7 +98,7 @@ export function ClassificationSection(props: {
           onClose={() => setWhy(false)}
         />
       ) : null}
-    </EditableSection>
+    </RecipeSection>
   );
 }
 
@@ -172,11 +172,12 @@ function UnknownDietSheet(props: {
   );
 }
 
-function ClassificationFields(props: { draft: ClassificationDraft; editor: SectionEditor }) {
+function ClassificationFields(props: { draft: ClassificationDraft; editor: PageEditor }) {
   const { draft, editor } = props;
   const recipes = useRecipes();
   const set = (patch: Partial<ClassificationDraft>) => editor.change({ ...draft, ...patch });
   const taken = new Set(draft.tags.map(normalizeText));
+  const known = tagValues(recipes);
   return (
     <Stack gap={16}>
       <Field label="Gerichtart">
@@ -222,7 +223,8 @@ function ClassificationFields(props: { draft: ClassificationDraft; editor: Secti
               {draft.tags.map((tag) => (
                 <Chip
                   key={tag}
-                  label={tag}
+                  // Spec 0045, AC-005: a tag no recipe has yet, e.g. one the AI brought.
+                  label={isNewTag(tag, known) ? `${tag} · neu` : tag}
                   removable
                   accessibilityLabel={`Schlagwort ${tag} entfernen`}
                   onPress={() => set({ tags: draft.tags.filter((other) => other !== tag) })}
@@ -234,13 +236,12 @@ function ClassificationFields(props: { draft: ClassificationDraft; editor: Secti
           <ValuePicker
             label="Schlagwort"
             placeholder="Schlagwort suchen oder anlegen"
-            values={tagValues(recipes).filter((tag) => !taken.has(normalizeText(tag)))}
+            values={known.filter((tag) => !taken.has(normalizeText(tag)))}
             onPick={(tag) => set({ tags: addTag(draft.tags, tag) })}
             testID="recipe-edit-tag"
           />
         </Stack>
       </Field>
-      <SectionError editor={editor} testID="recipe-classification-error" />
     </Stack>
   );
 }
@@ -261,7 +262,11 @@ function Field(props: { label: string; error?: string; children: ReactNode }) {
   );
 }
 
-/** "Suchen oder anlegen" over existing values: a hit or „…“ neu anlegen (AC-024). */
+/**
+ * "Suchen oder anlegen" over existing values: a hit or „…“ neu anlegen (AC-024). After a value the
+ * cursor stays in the field; Enter takes an exactly equal value or creates the typed one (spec
+ * 0036, REQ-004).
+ */
 export function ValuePicker(props: {
   label: string;
   placeholder: string;
@@ -289,6 +294,11 @@ export function ValuePicker(props: {
       onSelect={pick}
       createOptions={result.canCreate ? [{ key: 'new', label: `„${name}“ neu anlegen` }] : []}
       onCreate={() => pick(name)}
+      onSubmit={() => {
+        const value = valueOnEnter(query, props.values);
+        if (value) pick(value);
+      }}
+      keepFocus
       brake={
         result.similar
           ? {

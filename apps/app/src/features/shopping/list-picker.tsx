@@ -12,6 +12,7 @@ import {
   type ListPickerPage,
   type Recipe,
   type RecipeBook,
+  type RecurringPickerRow,
 } from '@housekeeping/core';
 import {
   Checkbox,
@@ -71,6 +72,39 @@ function SelectRow(props: {
       }
       onPress={props.onToggle}
       testID={props.testID}
+    />
+  );
+}
+
+/**
+ * A Dauerposten due in the seven days (spec 0060, REQ-005): "Cola 2×", "Sa 28.11."; one already
+ * open on the list is shown but cannot be chosen (AC-026).
+ */
+function RecurringSelectRow(props: {
+  row: RecurringPickerRow;
+  selected: boolean;
+  onToggle: () => void;
+}) {
+  const { row } = props;
+  const title = row.amount ? `${row.title} ${row.amount}` : row.title;
+  const subtitle = row.onList ? `${row.dayLabel} · steht schon auf der Liste` : row.dayLabel;
+  return (
+    <ListRow
+      title={title}
+      subtitle={subtitle}
+      accessibilityLabel={`${title}, ${subtitle}`}
+      disabled={row.onList}
+      leading={
+        <Checkbox
+          checked={props.selected && !row.onList}
+          label={title}
+          disabled={row.onList}
+          onChange={props.onToggle}
+          testID={`pick-recurring-${row.item.id}-check`}
+        />
+      }
+      onPress={row.onList ? undefined : props.onToggle}
+      testID={`pick-recurring-${row.item.id}`}
     />
   );
 }
@@ -136,6 +170,10 @@ export function ListPickerStep(props: {
   onToggleDay: (entryIds: Id[]) => void;
   chosen: ChosenRecipe[];
   onToggleChosen: (recipeId: Id) => void;
+  /** Spec 0060: Dauerposten due in the seven days, and the chosen ones. */
+  recurring: RecurringPickerRow[];
+  selectedRecurring: ReadonlySet<Id>;
+  onToggleRecurring: (row: RecurringPickerRow) => void;
 }) {
   const book = useRecipeBook();
   const entryRow = (row: ListPickerEntry) => (
@@ -150,7 +188,11 @@ export function ListPickerStep(props: {
     />
   );
   const { page } = props;
-  const nothing = page.groups.length === 0 && page.parked.length === 0 && props.chosen.length === 0;
+  const nothing =
+    page.groups.length === 0 &&
+    page.parked.length === 0 &&
+    props.chosen.length === 0 &&
+    props.recurring.length === 0;
   return (
     <View>
       {nothing ? (
@@ -187,6 +229,21 @@ export function ListPickerStep(props: {
           })}
         </View>
       ))}
+      {props.recurring.length > 0 ? (
+        <View testID="pick-recurring">
+          <GroupLabel>Regelmäßig</GroupLabel>
+          <List>
+            {props.recurring.map((row) => (
+              <RecurringSelectRow
+                key={row.item.id}
+                row={row}
+                selected={props.selectedRecurring.has(row.item.id)}
+                onToggle={() => props.onToggleRecurring(row)}
+              />
+            ))}
+          </List>
+        </View>
+      ) : null}
       {props.chosen.length > 0 ? (
         <View testID="pick-without-day">
           <GroupLabel>Ohne Tag</GroupLabel>

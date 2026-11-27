@@ -2,9 +2,12 @@ import {
   tripEndLabel,
   dateRangeLabel,
   dragSourceKey,
+  entryCountRole,
   entryKindRole,
+  lineTooltip,
   stripeText,
   type TripStripe,
+  householdItemTitle,
   type HouseholdRowItem,
   type Id,
   type MealPlanEntry,
@@ -24,9 +27,11 @@ import {
   useTheme,
   withAlpha,
 } from '@housekeeping/ui';
+import { useState } from 'react';
 import { Pressable, View, type ViewStyle } from 'react-native';
 
 import { useChoreCheckWindow } from '@/features/chores/chore-check-list';
+import { DoneEntrySheet } from '@/features/chores/done-entry-sheet';
 import { entryReminderLabels, ReminderBell } from '@/features/meal-plan/reminder-bell';
 import { OFFLINE_EDIT_HINT, useOnlineOnly } from '@/features/shell/offline';
 
@@ -195,6 +200,13 @@ export function EntryLine(props: {
   const title = data.lineTitleOf(entry);
   const kind = entryKindRole(entry, data.recipesById);
   const size = props.compact ? 'compact' : 'row';
+  // Spec 0041: the activity's symbol (AC-005), who is "dabei" (AC-014), a Termin of a series.
+  const series = entry.series !== undefined;
+  const activityIcon = data.activityIconOf(entry);
+  const leading = activityIcon ? (
+    <Icon name={activityIcon} size={props.compact ? 13 : 15} color="muted" />
+  ) : undefined;
+  const people = props.compact ? '' : data.peopleOf(entry);
   const reminder = props.withReminder
     ? entryReminderLabels(entry, title, data.household.timeZone)
     : undefined;
@@ -207,9 +219,15 @@ export function EntryLine(props: {
     guardPress,
   } = useDragSource({
     id: dragSourceKey({ kind: 'entry', entryId: entry.id }),
-    preview: () => <KindLine kind={kind} title={title} size={size} />,
-    disabled: online.disabled,
-    onBlocked: () => toast.show({ message: online.hint ?? OFFLINE_EDIT_HINT }),
+    preview: () => <KindLine kind={kind} title={title} size={size} leading={leading} />,
+    // A Termin of a series moves in its window ("Termin verschieben"), not by dragging.
+    disabled: online.disabled || series,
+    onBlocked: () =>
+      toast.show({
+        message: series
+          ? 'Einen Termin einer Serie verschiebst du in seinem Fenster.'
+          : (online.hint ?? OFFLINE_EDIT_HINT),
+      }),
   });
   return (
     <View ref={ref} {...sourceProps} style={[style, dragging ? { opacity: LIFTED_OPACITY } : null]}>
@@ -218,22 +236,48 @@ export function EntryLine(props: {
         title={title}
         prefix={props.withSlot ? data.slotName(entry.slotId) : undefined}
         size={size}
+        leading={leading}
         detail={
-          reminder ? (
-            <ReminderBell label={reminder.label} testID={`reminder-bell-${entry.id}`} />
+          reminder || people || (series && !props.compact) ? (
+            <View>
+              {people || series ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  {series ? <Icon name="repeat" size={12} color="muted" /> : null}
+                  {people ? (
+                    <Text variant="caption" color="muted" testID={`entry-people-${entry.id}`}>
+                      {people}
+                    </Text>
+                  ) : null}
+                </View>
+              ) : null}
+              {reminder ? (
+                <ReminderBell label={reminder.label} testID={`reminder-bell-${entry.id}`} />
+              ) : null}
+            </View>
           ) : undefined
         }
         onPress={guardPress(() => props.onPress(entry))}
-        accessibilityLabel={props.withSlot ? `${data.slotName(entry.slotId)}: ${spoken}` : spoken}
-        accessibilityAction={{ label: 'Verschieben', onAction: () => openMove(entry) }}
+        accessibilityLabel={withPeople(
+          props.withSlot ? `${data.slotName(entry.slotId)}: ${spoken}` : spoken,
+          data.peopleOf(entry),
+          series,
+        )}
+        accessibilityAction={{
+          label: 'Verschieben',
+          onAction: () => (series ? props.onPress(entry) : openMove(entry)),
+        }}
+        tooltip={lineTooltip(entryCountRole(entry, data.recipesById), title)}
         testID={`entry-${entry.id}`}
       />
     </View>
   );
 }
 
-function choreTitle(item: HouseholdRowItem): string {
-  return item.approximate ? `${item.title}, etwa` : item.title;
+/** "Bouldern · 18:00, mit Enrico + 2, Serie" for screen readers. */
+function withPeople(label: string, people: string, series: boolean): string {
+  return [label, people ? `mit ${people}` : undefined, series ? 'Serie' : undefined]
+    .filter(Boolean)
+    .join(', ');
 }
 
 function People(props: { ids: Id[]; data: CalendarData }) {
@@ -241,7 +285,10 @@ function People(props: { ids: Id[]; data: CalendarData }) {
   return people.length > 0 ? <AvatarStack members={people} size="xs" /> : null;
 }
 
-/** A booked chore: ✓, and a tap on its name opens the chore window while the chore exists. */
+/**
+ * A booked chore: ✓. A tap offers „Zurücknehmen“ or „Im Verlauf öffnen“ (spec 0035, REQ-001) and,
+ * while the chore exists, „Aufgabe öffnen“ for the chore window.
+ */
 function ChoreLine(props: {
   item: HouseholdRowItem;
   data: CalendarData;
@@ -250,24 +297,41 @@ function ChoreLine(props: {
   onOpenChore: (choreId: Id) => void;
 }) {
   const { item } = props;
+  const [doneOpen, setDoneOpen] = useState(false);
   const people = <People ids={item.memberIds} data={props.data} />;
   const choreId = props.data.chores.some((chore) => chore.id === item.choreId)
     ? item.choreId
     : undefined;
+  const onPress =
+    item.eventId !== undefined
+      ? () => setDoneOpen(true)
+      : choreId === undefined
+        ? undefined
+        : () => props.onOpenChore(choreId);
   return (
-    <KindLine
-      kind="chore"
-      title={choreTitle(item)}
-      quiet
-      dashed={item.approximate}
-      size={props.compact ? 'compact' : 'row'}
-      leading={<Icon name="check" size={14} color="muted" />}
-      trailing={props.peopleBelow ? undefined : people}
-      detail={props.peopleBelow ? people : undefined}
-      onPress={choreId === undefined ? undefined : () => props.onOpenChore(choreId)}
-      accessibilityLabel={`Erledigt: ${choreTitle(item)}`}
-      testID={`chore-occ-${item.key}`}
-    />
+    <>
+      <KindLine
+        kind="chore"
+        title={householdItemTitle(item)}
+        quiet
+        dashed={item.approximate}
+        size={props.compact ? 'compact' : 'row'}
+        leading={<Icon name="check" size={14} color="muted" />}
+        trailing={props.peopleBelow ? undefined : people}
+        detail={props.peopleBelow ? people : undefined}
+        onPress={onPress}
+        tooltip={lineTooltip('chore', householdItemTitle(item))}
+        accessibilityLabel={`Erledigt: ${householdItemTitle(item)}`}
+        testID={`chore-occ-${item.key}`}
+      />
+      {doneOpen && item.eventId !== undefined ? (
+        <DoneEntrySheet
+          eventId={item.eventId}
+          onClose={() => setDoneOpen(false)}
+          onOpenChore={choreId === undefined ? undefined : () => props.onOpenChore(choreId)}
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -309,7 +373,7 @@ export function HouseholdDay(props: {
           <RowTransition key={item.key}>
             <KindLine
               kind="chore"
-              title={choreTitle(item)}
+              title={householdItemTitle(item)}
               quiet
               struck={checked}
               dashed={item.approximate}
@@ -326,7 +390,8 @@ export function HouseholdDay(props: {
               trailing={props.peopleBelow ? undefined : people}
               detail={props.peopleBelow ? people : undefined}
               onPress={() => props.onOpenChore(chore.id)}
-              accessibilityLabel={`${choreTitle(item)}, Details`}
+              tooltip={lineTooltip('chore', householdItemTitle(item))}
+              accessibilityLabel={`${householdItemTitle(item)}, Details`}
               testID={`chore-occ-${item.key}`}
             />
           </RowTransition>

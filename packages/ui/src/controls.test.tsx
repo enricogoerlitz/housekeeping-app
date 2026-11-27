@@ -1,4 +1,4 @@
-import { createRef } from 'react';
+import { createRef, useState } from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { HostInstance } from 'react-native';
@@ -17,6 +17,7 @@ import {
   keyboardFocusRing,
   keyboardFocused,
 } from './controls';
+import { ThemeProvider } from './theme-context';
 import { DEFAULT_THEME_ID, getTheme } from './themes';
 import { pointer } from '../test/setup';
 
@@ -128,6 +129,15 @@ describe('keyboard focus ring (spec 0019, REQ-002)', () => {
     matches.mockRestore();
   });
 
+  it('D-07 (review 0004): while a text field has the cursor no button shows a ring', () => {
+    // A button's `focused` may still be true from a window that moved the focus on; the text
+    // field is :focus-visible, but the ring belongs to the field, not to the button.
+    render(<TextField label="Name" testID="name" />);
+    act(() => (screen.getByTestId('name') as HTMLInputElement).focus());
+    expect(keyboardFocused(true)).toBe(false);
+    expect(keyboardFocusRing(theme, true)).toBeNull();
+  });
+
   it('a control focused by keyboard draws the outline', () => {
     render(<Button label="Speichern" />);
     const button = screen.getByRole('button', { name: 'Speichern' });
@@ -199,6 +209,56 @@ describe('IconButton', () => {
     );
     act(() => ref.current?.focus());
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Schließen' }));
+  });
+
+  it('AC-005 (0047): touchFrame keeps a 44 × 44 tap area around a smaller button on the web', () => {
+    const onPress = vi.fn();
+    render(
+      <IconButton
+        icon="share"
+        label="Teilen"
+        variant="soft"
+        size={32}
+        touchFrame
+        onPress={onPress}
+      />,
+    );
+    const button = screen.getByRole('button', { name: 'Teilen' });
+    // react-native-web ignores hitSlop: the button itself is the 44 × 44 frame …
+    expect(button.style.width).toBe('44px');
+    expect(button.style.height).toBe('44px');
+    // … whose negative margin keeps the layout of a 32 pt button …
+    expect(button.style.marginTop).toBe('-6px');
+    expect(button.style.marginLeft).toBe('-6px');
+    // … and the visible circle inside stays 32 pt.
+    const circle = button.firstElementChild as HTMLElement;
+    expect(circle.style.width).toBe('32px');
+    expect(circle.style.height).toBe('32px');
+    fireEvent.click(button);
+    expect(onPress).toHaveBeenCalledTimes(1);
+  });
+
+  it('spec 0058, AC-008: in "Wolke" an icon button sits on a soft bubble', () => {
+    render(
+      <ThemeProvider themeId="wolke" mode="light">
+        <IconButton icon="bell" label="Mitteilungen" />
+      </ThemeProvider>,
+    );
+    const button = screen.getByRole('button', { name: 'Mitteilungen' });
+    expect(button.style.borderTopLeftRadius).toBe('48% 55%');
+    expect(button.style.borderBottomRightRadius).toBe('46% 55%');
+    expect(button.style.backgroundColor).toBe('rgb(248, 220, 227)');
+  });
+
+  it('spec 0058, AC-010: in "Markthalle" a plain icon button stays a circle without fill', () => {
+    render(
+      <ThemeProvider themeId="markthalle" mode="light">
+        <IconButton icon="bell" label="Mitteilungen" />
+      </ThemeProvider>,
+    );
+    const button = screen.getByRole('button', { name: 'Mitteilungen' });
+    expect(button.style.borderTopLeftRadius).toBe('20px');
+    expect(button.style.backgroundColor).toBe('');
   });
 
   it('plain: a fine pointer hovering shades it', () => {
@@ -479,6 +539,19 @@ describe('TextField', () => {
     expect(screen.getByText('Kurz und klar')).toBeTruthy();
   });
 
+  it('D-05 (review 0004): `invalid` marks a narrow field whose message stands below its row', () => {
+    render(
+      <>
+        <TextField label="Menge" value="viel" invalid testID="amount" />
+        <TextField label="Zusatz" value="" testID="note" />
+      </>,
+    );
+    const frame = (id: string) => screen.getByTestId(id).parentElement as HTMLElement;
+    expect(frame('amount').style.borderTopColor).not.toBe(frame('note').style.borderTopColor);
+    expect(screen.getByTestId('amount').getAttribute('aria-invalid')).toBe('true');
+    expect(screen.queryByTestId('amount-error')).toBeNull();
+  });
+
   it('without a label: accessibilityLabel, else the placeholder names it', () => {
     render(
       <>
@@ -488,6 +561,50 @@ describe('TextField', () => {
     );
     expect(screen.getByRole('textbox', { name: 'Suche' })).toBeTruthy();
     expect(screen.getByRole('textbox', { name: 'Notiz' })).toBeTruthy();
+  });
+
+  describe('grow: the composer field (spec 0062, decision 14)', () => {
+    const scrollHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollHeight');
+    afterEach(() => {
+      if (scrollHeight) Object.defineProperty(HTMLElement.prototype, 'scrollHeight', scrollHeight);
+    });
+
+    function Composer(props: { initial?: string }) {
+      const [value, setValue] = useState(props.initial ?? '');
+      return (
+        <TextField
+          accessibilityLabel="Was soll noch anders sein?"
+          value={value}
+          onChangeText={setValue}
+          multiline
+          grow
+          round
+          testID="wish"
+        />
+      );
+    }
+
+    it('AC-033: starts one line high, not as a tall box', () => {
+      render(<Composer />);
+      const input = screen.getByTestId('wish');
+      expect(input.getAttribute('rows')).toBe('1');
+      expect(input.style.height).toBe('46px');
+    });
+
+    it('AC-033: grows with its text and is one line again when emptied', () => {
+      render(<Composer />);
+      const input = screen.getByTestId('wish');
+      Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
+        configurable: true,
+        get: () => 68,
+      });
+      fireEvent.change(input, {
+        target: { value: 'nimm Räuchertofu statt Bohnen und mehr Chili' },
+      });
+      expect(input.style.height).toBe('68px');
+      fireEvent.change(input, { target: { value: '' } });
+      expect(input.style.height).toBe('46px');
+    });
   });
 
   it('spec 0032, AC-010: no autofill from contacts, except for an e-mail address', () => {
@@ -505,6 +622,104 @@ describe('TextField', () => {
     );
     expect(screen.getByTestId('title').getAttribute('autocomplete')).toBe('off');
     expect(screen.getByTestId('mail').getAttribute('autocomplete')).toBe('email');
+  });
+
+  it('spec 0033, AC-014: titles and names carry a name of their own that iOS does not read as a contact', () => {
+    render(
+      <>
+        <TextField label="Name" value="" onChangeText={() => undefined} testID="name" />
+        <TextField label="Titel" value="" onChangeText={() => undefined} testID="title" />
+      </>,
+    );
+    const name = screen.getByTestId('name').getAttribute('name') ?? '';
+    const title = screen.getByTestId('title').getAttribute('name') ?? '';
+    expect(name).toMatch(/^hksearch\d+$/);
+    expect(title).toMatch(/^hksearch\d+$/);
+    expect(name).not.toBe(title);
+    expect(screen.getByTestId('name').getAttribute('id')).toBe(name);
+    expect(screen.getByTestId('name').getAttribute('autocomplete')).toBe('off');
+  });
+
+  describe('on an iPhone (review 0003, N-1)', () => {
+    const userAgent = Object.getOwnPropertyDescriptor(window.navigator, 'userAgent');
+    afterEach(() => {
+      if (userAgent) Object.defineProperty(window.navigator, 'userAgent', userAgent);
+      else Reflect.deleteProperty(window.navigator, 'userAgent');
+    });
+    const asIPhone = () =>
+      Object.defineProperty(window.navigator, 'userAgent', {
+        configurable: true,
+        value: 'Mozilla/5.0 (iPhone; CPU iPhone OS 26_1 like Mac OS X) AppleWebKit/605.1.15',
+      });
+
+    it('spec 0033, AC-014: label, placeholder and accessible name hide their contact words', () => {
+      asIPhone();
+      render(
+        <TextField
+          label="Name"
+          placeholder="z. B. Kuckhoffstraße 12"
+          value=""
+          onChangeText={() => undefined}
+          testID="name"
+        />,
+      );
+      const input = screen.getByTestId('name');
+      expect(input.getAttribute('aria-label')).toBe('N\u2060ame');
+      expect(input.getAttribute('placeholder')).toBe('z. B. Kuckhoffs\u2060traße 12');
+      expect(screen.getByText('N\u2060ame')).toBeTruthy();
+      expect(input.getAttribute('autocomplete')).toBe('off');
+      expect(input.getAttribute('name')).toMatch(/^hksearch\d+$/);
+    });
+
+    it('spec 0033, AC-016: an e-mail field keeps its words', () => {
+      asIPhone();
+      render(
+        <TextField
+          label="E-Mail"
+          value=""
+          keyboardType="email-address"
+          onChangeText={() => undefined}
+          testID="mail"
+        />,
+      );
+      expect(screen.getByTestId('mail').getAttribute('aria-label')).toBe('E-Mail');
+    });
+  });
+
+  it('spec 0033, AC-014: elsewhere the words stay as they are', () => {
+    render(<TextField label="Name" value="" onChangeText={() => undefined} testID="name" />);
+    expect(screen.getByTestId('name').getAttribute('aria-label')).toBe('Name');
+  });
+
+  it('spec 0033, AC-015: a web address opens the URL keyboard', () => {
+    render(
+      <TextField
+        label="Adresse"
+        value=""
+        keyboardType="url"
+        onChangeText={() => undefined}
+        testID="url"
+      />,
+    );
+    const input = screen.getByTestId('url');
+    expect(input.getAttribute('type')).toBe('url');
+    expect(input.getAttribute('inputmode')).toBe('url');
+    expect(input.getAttribute('autocapitalize')).toBe('none');
+    expect(input.getAttribute('autocomplete')).toBe('off');
+  });
+
+  it('spec 0033, AC-016: an e-mail field keeps the suggestions of e-mail addresses', () => {
+    render(
+      <TextField
+        label="E-Mail"
+        value=""
+        keyboardType="email-address"
+        onChangeText={() => undefined}
+        testID="mail"
+      />,
+    );
+    expect(screen.getByTestId('mail').getAttribute('autocomplete')).toBe('email');
+    expect(screen.getByTestId('mail').getAttribute('name')).toBe('email');
   });
 
   it('an error replaces the hint', () => {

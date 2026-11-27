@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { Text } from './primitives';
-import { FilterBar, type FilterBarProps } from './filter-bar';
+import { FilterBar, FilterSection, type FilterBarProps } from './filter-bar';
 
 /** The window width react-native-web reads (jsdom has none, i.e. a phone). */
 function setWindowWidth(width: number) {
@@ -48,6 +48,15 @@ describe('FilterBar (spec 0005, REQ-007)', () => {
     expect(filter).toBe(screen.getByRole('button', { name: 'Filter' }));
     expect(filter.getAttribute('aria-pressed')).toBe('false');
     expect(screen.queryByText('Alle Filterfelder')).toBeNull();
+  });
+
+  it('spec 0038: the view switch stands at the end of the row, outside the chips that scroll', () => {
+    renderBar({ trailing: <Text testID="switch">Ansicht</Text> });
+    const row = screen.getByTestId('bar-row');
+    const end = screen.getByTestId('switch');
+    expect(row.lastElementChild?.contains(end)).toBe(true);
+    expect(row.firstElementChild?.contains(screen.getByText('Vegan'))).toBe(true);
+    expect(row.firstElementChild?.contains(end)).toBe(false);
   });
 
   it('the filter button is highlighted while a filter is on', () => {
@@ -111,5 +120,21 @@ describe('FilterBar (spec 0005, REQ-007)', () => {
       fireEvent.keyDown(document, { key: 'Escape' });
       expect(screen.queryByTestId('bar-panel')).toBeNull();
     });
+  });
+});
+
+describe('FilterSection (spec 0036, REQ-003)', () => {
+  it('AC-005: never wider than the panel, so its chips wrap inside it; never squeezed in a column (spec 0037)', () => {
+    render(
+      <FilterSection title="Küche" testID="part">
+        <Text>Vietnamesisch 1</Text>
+      </FilterSection>,
+    );
+    const part = screen.getByTestId('part');
+    expect(part.textContent).toContain('Küche');
+    expect(getComputedStyle(part).maxWidth).toBe('100%');
+    expect(getComputedStyle(part).flexShrink).toBe('0');
+    const chips = part.lastElementChild as HTMLElement;
+    expect(getComputedStyle(chips).flexWrap).toBe('wrap');
   });
 });

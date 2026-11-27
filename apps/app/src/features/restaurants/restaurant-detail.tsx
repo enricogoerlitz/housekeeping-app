@@ -9,7 +9,15 @@ import {
   useRestaurant,
   useToday,
 } from '@housekeeping/api';
-import { isWebUrl, priceLabel, visitsOf, type Id, type Restaurant } from '@housekeeping/core';
+import {
+  showsRoute,
+  isWebUrl,
+  priceLabel,
+  restaurantImageContext,
+  visitsOf,
+  type Id,
+  type Restaurant,
+} from '@housekeeping/core';
 import {
   Badge,
   Button,
@@ -17,11 +25,11 @@ import {
   Icon,
   IconButton,
   Menu,
-  openExternalLink,
   Row,
   Section,
   Stack,
   Text,
+  openKeyboardNow,
 } from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
@@ -35,6 +43,8 @@ import { useOnlineOnly } from '@/features/shell/offline';
 import { DetailPhotoBlock } from '@/features/shell/own-photo';
 import { useDeletePlace } from '@/features/shell/use-delete-place';
 import { VisitList, VisitsLine, useVisitsJump, type SectionRef } from '@/features/shell/visits';
+import { openLink } from '@/lib/open-link';
+import { shareTarget } from '@/lib/share';
 
 import { EditRestaurantSheet } from './add-restaurant-sheet';
 import { visitsLabel } from './labels';
@@ -109,7 +119,7 @@ function RestaurantDetailBody(props: RestaurantDetailProps & { restaurant: Resta
   const entries = usePlanEntries();
   const today = useToday();
   const [routeOpen, setRouteOpen] = useState(false);
-  // Where "Restaurant bearbeiten" puts the cursor: "Notiz bearbeiten" opens it in "Notiz".
+  // Where "Restaurant bearbeiten" puts the cursor: "Notiz hinzufügen" opens it in "Notiz".
   const [focus, setFocus] = useState<RestaurantFormFocus | undefined>();
   const visitsSection: SectionRef = useRef(null);
   const jumpToVisits = useVisitsJump(visitsSection);
@@ -120,7 +130,11 @@ function RestaurantDetailBody(props: RestaurantDetailProps & { restaurant: Resta
   const meta = [restaurant.cuisine, priceLabel(restaurant.priceLevel)].filter(Boolean).join(' · ');
   const website =
     restaurant.websiteUrl && isWebUrl(restaurant.websiteUrl) ? restaurant.websiteUrl : undefined;
+  // The pencil opens the form calm, without a cursor: the keyboard coming up while the window slid
+  // in made it judder (Nachklick 27.11., Ruckeln). An action aimed at a field ("Notiz
+  // hinzufügen") puts the cursor there, with the keyboard on the iPhone (spec 0033, REQ-006).
   const edit = (at?: RestaurantFormFocus) => {
+    if (at) openKeyboardNow();
     setFocus(at);
     props.onWindow('bearbeiten');
   };
@@ -134,6 +148,21 @@ function RestaurantDetailBody(props: RestaurantDetailProps & { restaurant: Resta
       onPress={() => toggleRestaurantFavorite(restaurant.id)}
     />
   );
+  // "Teilen" (spec 0047, REQ-001): only the link to the page; works offline.
+  const share = () => void shareTarget({ kind: 'restaurant', id: restaurant.id });
+  // Spec 0037 and review 0003 (B-06): editing is the pencil at the top right, as on a recipe.
+  const editButton = (
+    <IconButton
+      icon="pencil"
+      size={44}
+      label="Bearbeiten"
+      disabled={online.disabled}
+      hint={online.hint}
+      onPress={() => edit()}
+      testID="restaurant-edit"
+    />
+  );
+  // "Teilen" stands at the photo, so ⋯ holds only "Löschen" (spec 0054, REQ-003).
   const more = (
     <Menu<'delete'>
       trigger="icon"
@@ -143,7 +172,7 @@ function RestaurantDetailBody(props: RestaurantDetailProps & { restaurant: Resta
       options={[
         { value: 'delete', label: 'Löschen', disabled: online.disabled, hint: online.hint },
       ]}
-      onChange={remove}
+      onChange={() => remove()}
       testID="restaurant-more"
     />
   );
@@ -157,6 +186,7 @@ function RestaurantDetailBody(props: RestaurantDetailProps & { restaurant: Resta
       right={
         <Row gap={4}>
           {favorite}
+          {editButton}
           {more}
         </Row>
       }
@@ -178,6 +208,7 @@ function RestaurantDetailBody(props: RestaurantDetailProps & { restaurant: Resta
             )}
             <Row gap={4}>
               {favorite}
+              {editButton}
               {more}
             </Row>
           </Row>
@@ -186,9 +217,11 @@ function RestaurantDetailBody(props: RestaurantDetailProps & { restaurant: Resta
         <DetailPhotoBlock
           photoPath={restaurant.photoPath}
           name={restaurant.name}
+          aiContext={restaurantImageContext(restaurant)}
           placeholderIcon={RESTAURANT_ICON}
           onChange={(photo) => setRestaurantPhoto(restaurant.id, photo)}
           onRemove={() => removeRestaurantPhoto(restaurant.id)}
+          onShare={share}
           testPrefix="restaurant"
         />
 
@@ -247,18 +280,21 @@ function RestaurantDetailBody(props: RestaurantDetailProps & { restaurant: Resta
             </Text>
           ) : null}
           <Row gap={10} wrap style={{ marginTop: 4 }}>
-            <Button
-              label="Route"
-              icon="map-pin"
-              onPress={() => setRouteOpen(true)}
-              testID="restaurant-route"
-            />
+            {/* Only with a map link (spec 0036, AC-018). */}
+            {showsRoute(restaurant) ? (
+              <Button
+                label="Route"
+                icon="map-pin"
+                onPress={() => setRouteOpen(true)}
+                testID="restaurant-route"
+              />
+            ) : null}
             {website ? (
               <Button
                 label="Webseite"
                 icon="external-link"
                 variant="secondary"
-                onPress={() => openExternalLink(website)}
+                onPress={() => openLink(website)}
                 testID="restaurant-website-open"
               />
             ) : null}
@@ -271,32 +307,27 @@ function RestaurantDetailBody(props: RestaurantDetailProps & { restaurant: Resta
               onPress={() => props.onWindow('einplanen')}
               testID="restaurant-plan"
             />
-            <Button
-              label="Bearbeiten"
-              icon="pencil"
-              variant="secondary"
-              disabled={online.disabled}
-              hint={online.hint}
-              onPress={() => edit()}
-              testID="restaurant-edit"
-            />
           </Row>
         </Stack>
 
         <Section
           title="Notiz"
           testID="restaurant-notes-section"
+          // An existing note is edited with the pencil at the top; an empty one keeps its first
+          // step (spec 0054, REQ-005).
           action={
-            <Button
-              label={restaurant.notes ? 'Notiz bearbeiten' : 'Notiz hinzufügen'}
-              icon="pencil"
-              variant="link"
-              size="sm"
-              disabled={online.disabled}
-              hint={online.hint}
-              onPress={() => edit('notes')}
-              testID="restaurant-notes-edit"
-            />
+            restaurant.notes ? undefined : (
+              <Button
+                label="Notiz hinzufügen"
+                icon="pencil"
+                variant="link"
+                size="sm"
+                disabled={online.disabled}
+                hint={online.hint}
+                onPress={() => edit('notes')}
+                testID="restaurant-notes-edit"
+              />
+            )
           }
         >
           <Text

@@ -42,15 +42,17 @@ import {
   Text,
   toast,
   useBreakpoint,
+  useToastAvoid,
   useTheme,
   type MenuOption,
   expandableA11y,
 } from '@housekeeping/ui';
 import { useIsFocused, useRouter } from 'expo-router';
-import { useState, type ReactNode } from 'react';
-import { Platform, Pressable, View } from 'react-native';
+import { useRef, useState, type ReactNode } from 'react';
+import { Platform, Pressable, View, type HostInstance } from 'react-native';
 
 import { useOpenManageEntry } from '@/features/manage/navigation';
+import { confirmFirst } from '@/features/shell/confirm-dialog';
 import { StartPageActions } from '@/features/shell/profile-button';
 import { OFFLINE_EDIT_HINT, undoAction, useOnlineOnly } from '@/features/shell/offline';
 import { useMissingObject } from '@/lib/addressed';
@@ -60,7 +62,7 @@ import { usePageParams } from '@/lib/url-state';
 import { useDictation } from '@/lib/use-dictation';
 
 import { useActiveShopper } from './active-shopper';
-import { CountStepper, removeWithUndo } from './item-controls';
+import { CountStepper, removeAfterAsking } from './item-controls';
 import { checkOnList, ItemSheet } from './item-sheet';
 import { ClearListSheet, DishesSheet } from './list-sheets';
 import { PantryCheckSheet } from './pantry-check-sheet';
@@ -130,7 +132,9 @@ function ItemRow(props: {
       label="Entfernen"
       enabled={props.swipe}
       onRemove={() =>
-        props.canRemove ? removeWithUndo(item.id, name) : toast.show({ message: OFFLINE_EDIT_HINT })
+        props.canRemove
+          ? removeAfterAsking(item.id, name)
+          : toast.show({ message: OFFLINE_EDIT_HINT })
       }
       rightLabel="Erledigt"
       onSwipeRight={() => checkOnList(item.id, name)}
@@ -179,7 +183,7 @@ interface Dictation {
   items: { index: number; item: DictatedItem }[];
 }
 
-type MoreAction = 'clear-done' | 'clear-list' | 'stores' | 'articles';
+type MoreAction = 'clear-done' | 'clear-list' | 'recurring';
 
 export function ListScreen() {
   const items = useShoppingItems();
@@ -193,6 +197,9 @@ export function ListScreen() {
   const router = useRouter();
   const openManageEntry = useOpenManageEntry();
   const { isPhone, isWide } = useBreakpoint();
+  // A toast ("Milch steht auf der Liste", "3 gekauft …") stands above "Was fehlt?", not on it.
+  const composer = useRef<HostInstance>(null);
+  useToastAvoid(composer);
 
   // The open item and "Vorratscheck" stand in the address (spec 0019, REQ-013): `/liste?posten=…`.
   const address = usePageParams('liste');
@@ -277,14 +284,24 @@ export function ListScreen() {
     setDictation(undefined);
   };
 
+  // "Erledigt leeren" asks first (spec 0036, Entscheidung 1).
   const clearDone = () => {
-    const restore = snapshot();
-    const count = clearCheckedItems();
-    if (count === 0) return;
-    toast.show({
-      message: count === 1 ? '1 erledigter Posten entfernt' : `${count} erledigte Posten entfernt`,
-      actionLabel: 'Rückgängig',
-      onAction: undoAction(restore),
+    if (done.length === 0) return;
+    confirmFirst({
+      title:
+        done.length === 1
+          ? '1 erledigten Posten entfernen?'
+          : `${done.length} erledigte Posten entfernen?`,
+      confirmLabel: 'Entfernen',
+      onConfirm: () => {
+        const count = clearCheckedItems();
+        if (count === 0) return;
+        toast.show({
+          message:
+            count === 1 ? '1 erledigter Posten entfernt' : `${count} erledigte Posten entfernt`,
+        });
+      },
+      testID: 'confirm-clear-done',
     });
   };
   // "Liste leeren …" (AC-035): everything, with "Rückgängig" for all of it.
@@ -316,15 +333,13 @@ export function ListScreen() {
       disabled: online.disabled || items.length === 0,
       hint: online.hint,
     },
-    { value: 'stores', label: 'Märkte & Bereiche' },
-    { value: 'articles', label: 'Artikel' },
+    // Spec 0060, REQ-001. "Artikel" and "Märkte & Bereiche" are under "Verwalten" (spec 0025,
+    // decision 25).
+    { value: 'recurring', label: 'Dauerposten' },
   ];
   const onMore = (action: MoreAction) => {
-    // "‹ Liste" on "Märkte & Bereiche" as on "Artikel" (spec 0031, REQ-036).
-    if (action === 'stores') openManageEntry({ pathname: '/maerkte', params: { von: 'liste' } });
-    // "Zurück" on "Artikel" leads to the list again (spec 0007, AC-021).
-    else if (action === 'articles')
-      openManageEntry({ pathname: '/artikel', params: { von: 'liste' } });
+    if (action === 'recurring')
+      openManageEntry({ pathname: '/dauerposten', params: { von: 'liste' } });
     else if (online.disabled) return;
     else if (action === 'clear-done') clearDone();
     else if (items.length > 0) setConfirmClear(true);
@@ -399,7 +414,8 @@ export function ListScreen() {
         )}
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        {more}
+        {/* On phones "⋯" goes to the end of the button row, so "Einkaufsliste" keeps its room. */}
+        {isPhone ? null : more}
         <StartPageActions />
       </View>
     </View>
@@ -426,6 +442,7 @@ export function ListScreen() {
           testID="list-from-plan"
           onPress={() => setPantryCheck(true)}
         />
+        {isPhone ? <View style={{ marginLeft: 'auto' }}>{more}</View> : null}
       </Row>
     </Stack>
   );
@@ -567,14 +584,20 @@ export function ListScreen() {
       clearFab={false}
       header={header}
       footer={
-        <SmartComposer
-          onDictate={features.ai ? dictate : undefined}
-          dictating={speech.status === 'listening'}
-          dictateDisabled={
-            online.disabled || speech.status === 'starting' || speech.status === 'stopping'
-          }
-          onAssistant={features.ai ? () => assistant.open() : undefined}
-        />
+        <View ref={composer}>
+          <SmartComposer
+            onDictate={features.ai ? dictate : undefined}
+            dictating={speech.status === 'listening'}
+            dictateDisabled={
+              online.disabled || speech.status === 'starting' || speech.status === 'stopping'
+            }
+            onAssistant={features.ai ? () => assistant.open() : undefined}
+            // Feedback as in "Einkaufen": the row may be off screen or merged into one already there.
+            onAdded={(added) =>
+              toast.show({ message: `${added.articleName} steht auf der Liste`, duration: 2500 })
+            }
+          />
+        </View>
       }
     >
       {actions}

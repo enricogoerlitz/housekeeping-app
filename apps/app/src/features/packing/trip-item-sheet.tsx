@@ -1,6 +1,5 @@
 import {
   removePackingItem,
-  snapshot,
   updatePackingItem,
   usePackingBagItems,
   usePackingBags,
@@ -19,7 +18,8 @@ import { Button, Row, Sheet, Stack, SwitchRow, Text, TextField, toast } from '@h
 import { useState } from 'react';
 
 import { Stepper } from '@/features/chores/stepper';
-import { undoAction, useOnlineOnly } from '@/features/shell/offline';
+import { confirmFirst } from '@/features/shell/confirm-dialog';
+import { useOnlineOnly } from '@/features/shell/offline';
 
 import { messageOf } from './packing-labels';
 
@@ -71,19 +71,19 @@ export function TripItemSheet(props: { itemId: Id; onClose: () => void }) {
   };
   const remove = () => {
     if (online.disabled) return;
-    const restore = snapshot();
-    try {
-      removePackingItem(item.id);
-    } catch (caught) {
-      setError(messageOf(caught));
-      return;
-    }
-    props.onClose();
-    toast.show({
-      message: `${item.name} entfernt`,
-      actionLabel: 'Rückgängig',
-      onAction: undoAction(restore),
-      duration: 5000,
+    confirmFirst({
+      title: `„${item.name}“ entfernen?`,
+      confirmLabel: 'Entfernen',
+      onConfirm: () => {
+        try {
+          removePackingItem(item.id);
+        } catch (caught) {
+          return messageOf(caught);
+        }
+        props.onClose();
+        toast.show({ message: `${item.name} entfernt` });
+      },
+      testID: 'confirm-remove-packing-item',
     });
   };
 

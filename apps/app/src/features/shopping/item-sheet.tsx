@@ -39,10 +39,12 @@ import { View } from 'react-native';
 
 import { MergeArticleDialog } from '@/features/articles/merge-article-dialog';
 import { useArticleEditor } from '@/features/articles/article-sheet';
+import { confirmFirst } from '@/features/shell/confirm-dialog';
+import { UnitsHint } from '@/features/shell/units-hint';
 import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 import { AreaPicker } from '@/features/stores/area-picker';
 
-import { CountStepper, removeWithUndo } from './item-controls';
+import { CountStepper, removeAfterAsking } from './item-controls';
 import { errorMessage } from '@/features/shell/error-message';
 
 const NOTE_TOO_LONG = `Höchstens ${ITEM_NOTE_MAX_LENGTH} Zeichen`;
@@ -207,35 +209,33 @@ function ItemEditor(props: {
     props.onClose();
   };
 
-  const removeOrigin = (label: string, ids: Id[]) => {
-    const restore = snapshot();
-    let result: ItemRemoval | null;
-    try {
-      result = removeItemOrigin(item.id, ids);
-    } catch (caught) {
-      setError(errorMessage(caught, FAILED));
-      return;
-    }
-    if (result === null) {
-      props.onGone();
-      return;
-    }
-    if (result.removed) props.onClose();
-    toast.show({
-      message: result.removed ? `${name} entfernt` : `${label} entfernt`,
-      actionLabel: 'Rückgängig',
-      onAction: undoAction(restore),
+  // Taking one origin off asks first (spec 0036, Entscheidung 1).
+  const removeOrigin = (label: string, ids: Id[]) =>
+    confirmFirst({
+      title: `„${label}“ entfernen?`,
+      confirmLabel: 'Entfernen',
+      onConfirm: () => {
+        let result: ItemRemoval | null;
+        try {
+          result = removeItemOrigin(item.id, ids);
+        } catch (caught) {
+          return errorMessage(caught, FAILED);
+        }
+        if (result === null) {
+          props.onGone();
+          return;
+        }
+        if (result.removed) props.onClose();
+        toast.show({ message: result.removed ? `${name} entfernt` : `${label} entfernt` });
+      },
+      testID: 'confirm-remove-origin',
     });
-  };
 
   const markDone = () => {
     props.onClose();
     checkOnList(item.id, name);
   };
-  const remove = () => {
-    props.onClose();
-    removeWithUndo(item.id, name);
-  };
+  const remove = () => removeAfterAsking(item.id, name, props.onClose);
 
   if (step === 'area') {
     return (
@@ -373,6 +373,7 @@ function ItemEditor(props: {
             testID="item-sheet-manual"
           />
         ) : null}
+        {count === undefined ? <UnitsHint testID="item-sheet-units" /> : null}
         <TextField
           label="Zusatz"
           value={note}

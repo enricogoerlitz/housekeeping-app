@@ -2,6 +2,7 @@ import {
   addPresetSlot,
   dayKinds,
   fittingItems,
+  MONTH_MIN_LINES,
   formatLongDate,
   monthGrid,
   parseISODate,
@@ -59,7 +60,6 @@ export interface MonthViewProps {
   onOpenDay: (date: ISODate) => void;
   /** Every day cell registers here, e.g. to get the focus back when the day window closes. */
   registerDay: (date: ISODate, node: HostInstance | null) => void;
-  showHousehold: boolean;
   wide: boolean;
   /** Desktop (from 1100 px): the weekday heads are written out (spec 0030, AC-004). */
   longWeekdays?: boolean;
@@ -221,8 +221,8 @@ function MonthPhone(props: MonthViewProps) {
   const month = props.monthStart.slice(0, 7);
   const first = weeks[0]?.[0] ?? props.monthStart;
   const last = weeks[weeks.length - 1]?.[6] ?? props.monthStart;
-  // With the household row a day with chores carries the dot "Aufgabe" (spec 0021, REQ-017).
-  const chores = props.showHousehold ? data.householdRow(first, last) : {};
+  // A day with chores carries the dot "Aufgabe" (spec 0021, REQ-017; always, spec 0054).
+  const chores = data.householdRow(first, last);
 
   return (
     <View style={{ marginBottom: 22 }} testID="month-phone">
@@ -299,7 +299,7 @@ function MonthGridDesktop(props: MonthViewProps) {
   const month = props.monthStart.slice(0, 7);
   const first = weeks[0]?.[0] ?? props.monthStart;
   const last = weeks[weeks.length - 1]?.[6] ?? props.monthStart;
-  const chores = props.showHousehold ? data.householdRow(first, last) : {};
+  const chores = data.householdRow(first, last);
   const presetSlot = addPresetSlot(data.slots);
   // The day under the mouse: its tile lightens and shows "+".
   const [hovered, setHovered] = useState<ISODate | null>(null);
@@ -333,12 +333,12 @@ function MonthGridDesktop(props: MonthViewProps) {
           const segment = stripeSegment(stripe, weekFirst, weekLast);
           return segment ? [{ stripe, segment }] : [];
         });
-        // At least three lines and "+n weitere" (Decision 1).
+        // At least two lines and "+n weitere" (spec 0035, REQ-004; before three, spec 0021).
         const rowMin =
           2 * ROW_PAD +
           NUMBER_ROW +
           segments.length * STRIPE_ROW +
-          3 * LINE_CHORE +
+          MONTH_MIN_LINES * LINE_CHORE +
           MORE_HEIGHT +
           CELL_END;
         const rowHeight = share === undefined ? undefined : Math.max(share, rowMin);
@@ -448,7 +448,12 @@ function MonthGridDesktop(props: MonthViewProps) {
                   ...entries.map(() => LINE_ENTRY),
                   ...dayChores.map(() => LINE_CHORE),
                 ];
-                const shown = fittingItems(lines, (area ?? 0) - CELL_END, MORE_HEIGHT);
+                const shown = fittingItems(
+                  lines,
+                  (area ?? 0) - CELL_END,
+                  MORE_HEIGHT,
+                  MONTH_MIN_LINES,
+                );
                 const more = lines.length - shown;
                 const shownEntries = entries.slice(0, shown);
                 const shownChores = dayChores.slice(0, Math.max(0, shown - entries.length));

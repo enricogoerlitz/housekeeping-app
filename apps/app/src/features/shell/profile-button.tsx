@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import { Pressable } from 'react-native';
 
 import { MANAGE_ICON } from '@/features/manage/manage-entries';
+import { NoticeBell } from '@/features/notices/notice-bell';
 
 /** The avatar in a screen header: opens the personal settings. */
 function ProfileButton() {
@@ -36,14 +37,15 @@ function ManageButton() {
 }
 
 /**
- * The end of the header on every tab's first page: on phones ⊞ left of the avatar (AC-054); on
- * wider screens nothing, the sidebar has both (AC-013).
+ * The end of the header on every tab's first page: on phones the bell (spec 0051), ⊞ and the
+ * avatar (AC-054); on wider screens nothing, the sidebar has them (AC-013).
  */
 export function StartPageActions() {
   const { isPhone } = useBreakpoint();
   if (!isPhone) return null;
   return (
     <>
+      <NoticeBell />
       <ManageButton />
       <ProfileButton />
     </>

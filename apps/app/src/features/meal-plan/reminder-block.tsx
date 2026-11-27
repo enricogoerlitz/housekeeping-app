@@ -1,12 +1,5 @@
+import { setEntryReminder, useHousehold, useHouseholdClock, useToday } from '@housekeeping/api';
 import {
-  setEntryReminder,
-  useHousehold,
-  useHouseholdClock,
-  useToday,
-  useNotificationSettings,
-} from '@housekeeping/api';
-import {
-  asksForPushPermission,
   MAX_REMINDER_TEXT,
   monthPickerStart,
   offsetFor,
@@ -14,14 +7,12 @@ import {
   reminderDay,
   reminderDayChoices,
   reminderDraftFrom,
-  reminderReachHint,
   reminderSave,
   reminderTextCounter,
   selectableReminderDays,
   suggestedReminder,
   switchedOnDraft,
   timeReminder,
-  thisDeviceRegistered,
   TIME_FIELD_WORDS,
   type EntryReminder,
   type Id,
@@ -30,14 +21,11 @@ import {
   type ReminderSave,
   type TimeOfDay,
 } from '@housekeeping/core';
-import { Button, Chip, Stack, SwitchRow, Text, TextField, TimeField } from '@housekeeping/ui';
+import { Chip, Stack, SwitchRow, Text, TextField, TimeField } from '@housekeeping/ui';
 import { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 
 import { PlanDateCalendar } from '@/lib/plan-date-calendar';
-import { loadDevicePushState, useDevicePushState } from '@/features/notifications/device-store';
-import { useEnsureDevicePush } from '@/features/notifications/use-device-push';
-import { devicePushSupport } from '@/features/notifications/web-push-platform';
 
 import { FieldLabel } from './plan-fields';
 import { entryReminderLabels, ReminderBell } from './reminder-bell';
@@ -91,7 +79,6 @@ export function useReminderForm(options: {
 }): ReminderForm {
   const { entryDate, entryId } = options;
   const clock = useHouseholdClock();
-  const ensureDevicePush = useEnsureDevicePush();
   const [draft, setDraft] = useState<ReminderDraft>(() => reminderDraftFrom(options.stored));
   const [error, setError] = useState<FieldError>();
   // What the server has or was sent last: blur and "Fertig" come before the next render. A new
@@ -151,8 +138,6 @@ export function useReminderForm(options: {
     error,
     stored: options.stored,
     toggle: (on) => {
-      // The browser's question first, inside the tap (spec 0013, AC-007; AC-026).
-      if (asksForPushPermission({ kind: 'switch', on })) ensureDevicePush();
       const { now, timeZone } = clock();
       const suggestion =
         on && options.startsAt
@@ -209,28 +194,14 @@ export function useReminderForm(options: {
   };
 }
 
-/** Whether this device shows notifications, from what it remembers (works offline). */
-function useDeviceRegistered(): boolean {
-  const device = useDevicePushState();
-  useEffect(() => {
-    void loadDevicePushState();
-  }, []);
-  return thisDeviceRegistered({
-    support: devicePushSupport(),
-    wanted: device.wanted,
-    ...(device.endpoint ? { storedEndpoint: device.endpoint } : {}),
-  });
-}
-
 /**
  * The block "Erinnern" in the add window and the entry window. Offline everything is greyed out
- * with `hint` (ADR-0008). `onOpenSettings` closes the window and opens "Benachrichtigungen".
+ * with `hint` (ADR-0008). At its moment the reminder is a notice behind the bell (spec 0051).
  */
 export function ReminderBlock(props: {
   form: ReminderForm;
   disabled: boolean;
   hint: string | undefined;
-  onOpenSettings: () => void;
   /** The entry's name for the bell's screen-reader text, "Lasagne, Erinnerung Freitag 18 Uhr". */
   entryTitle?: string;
   /** Spec 0021, AC-038: the reminder lies after the entry's time. */
@@ -240,17 +211,11 @@ export function ReminderBlock(props: {
   const { form, disabled, testID } = props;
   const { draft, entryDate } = form;
   const household = useHousehold();
-  const settings = useNotificationSettings();
-  const deviceRegistered = useDeviceRegistered();
   const [picking, setPicking] = useState(false);
   const today = useToday();
   const { now } = useHouseholdClock()();
   const range = selectableReminderDays(entryDate, today);
   const chips = reminderDayChoices(entryDate, draft.on ? draft.offsetDays : undefined, today);
-  const reach = reminderReachHint({
-    kindEnabled: settings?.entryRemindersEnabled ?? true,
-    deviceRegistered,
-  });
   const bell = form.stored
     ? entryReminderLabels(
         { date: entryDate, reminder: form.stored },
@@ -291,23 +256,6 @@ export function ReminderBlock(props: {
             size="row"
             testID={`${testID}-bell`}
           />
-        ) : null}
-        {draft.on && reach ? (
-          <View
-            style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 4 }}
-            testID={`${testID}-reach`}
-          >
-            <Text variant="small" color="muted">
-              {reach}
-            </Text>
-            <Button
-              label="Benachrichtigungen"
-              variant="link"
-              size="sm"
-              onPress={props.onOpenSettings}
-              testID={`${testID}-settings`}
-            />
-          </View>
         ) : null}
       </Stack>
       {draft.on ? (

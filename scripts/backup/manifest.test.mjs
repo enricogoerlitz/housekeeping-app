@@ -1,7 +1,7 @@
-// scripts/backup/manifest.mjs (spec 0014, Task 9): the companion file of a backup. Rows per table
-// are counted from the COPY blocks of the data dump, photos from the media folder, the checksum
-// from the encrypted archive. Runs against throwaway files under tmp/ (git-ignored), removed
-// afterwards.
+// scripts/backup/manifest.mjs (spec 0014, Task 9; spec 0048): the companion file of a backup. Rows
+// per table are counted from the COPY blocks of the data dump, photos from the media folder, the
+// checksum from the encrypted archive; videos are no longer backed up (spec 0048, decision 1).
+// Runs against throwaway files under tmp/ (git-ignored), removed afterwards.
 //
 //   node --test scripts/backup/manifest.test.mjs
 import assert from 'node:assert/strict';
@@ -123,7 +123,7 @@ describe('photos and checksum', () => {
 });
 
 describe('manifest', () => {
-  test('AC-052: names rows per table, photo count and checksum, and nothing else', () => {
+  test('AC-002: format 3 names rows per table, photo count and checksum, no videos, nothing else', () => {
     const manifest = buildManifest({
       tables: [{ schema: 'public', table: 'recipes', rows: 3 }],
       photos: 2,
@@ -131,7 +131,7 @@ describe('manifest', () => {
       createdAt: new Date('2026-12-01T02:17:00Z'),
     });
     assert.deepEqual(manifest, {
-      format: 1,
+      format: 3,
       createdAt: '2026-12-01T02:17:00.000Z',
       tables: [{ schema: 'public', table: 'recipes', rows: 3 }],
       photos: 2,
@@ -139,28 +139,33 @@ describe('manifest', () => {
     });
   });
 
-  test('AC-052: the CLI writes manifest.json and prints only numbers, never data', () => {
+  test('AC-052, AC-006: the CLI writes manifest.json and prints only numbers and the photo size', () => {
     const data = path.join(dir, 'data.sql');
     const media = path.join(dir, 'cli-media');
     const archive = path.join(dir, 'backup.tar.gz.age');
     const out = path.join(dir, 'manifest.json');
     writeFileSync(data, DUMP);
-    mkdirSync(media, { recursive: true });
-    writeFileSync(path.join(media, 'foto.jpg'), 'x');
+    mkdirSync(path.join(media, 'hh', 'recipes', 'r'), { recursive: true });
+    writeFileSync(path.join(media, 'foto.jpg'), Buffer.alloc(1_000_000));
+    writeFileSync(path.join(media, 'hh', 'recipes', 'r', 'f.jpg'), Buffer.alloc(500_000));
     writeFileSync(archive, 'age-encrypted');
 
     const result = spawnSync(
       process.execPath,
-      [script, '--data', data, '--media', media, '--archive', archive, '--out', out],
+      [script, ...['--data', data, '--media', media, '--archive', archive, '--out', out]],
       { encoding: 'utf8' },
     );
     const output = `${result.stdout}${result.stderr}`;
     assert.equal(result.status, 0, output);
-    assert.match(output, /3 Tabellen, 5 Zeilen, 1 Fotos/);
-    assert.doesNotMatch(output, /example\.com|Lasagne|recipes/);
+    assert.match(output, /3 Tabellen, 5 Zeilen, 2 Fotos \(1,5 MB\)$/m);
+    assert.doesNotMatch(output, /Videos|example\.com|Lasagne|recipes/);
 
     const manifest = JSON.parse(readFileSync(out, 'utf8'));
-    assert.equal(manifest.photos, 1);
+    assert.equal(manifest.format, 3);
+    assert.equal(manifest.photos, 2);
+    assert.equal('videos' in manifest, false);
+    // The size is only logged; the manifest keeps its fields (AC-006).
+    assert.doesNotMatch(JSON.stringify(manifest), /bytes":1500000/);
     assert.equal(manifest.tables.length, 3);
     assert.equal(manifest.archive.name, 'backup.tar.gz.age');
     assert.equal(manifest.archive.bytes, 'age-encrypted'.length);
@@ -174,6 +179,9 @@ describe('manifest', () => {
   test('the CLI fails with a usage line when an argument is missing', () => {
     const result = spawnSync(process.execPath, [script, '--data', 'x'], { encoding: 'utf8' });
     assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /--data <datei> --media <ordner> --archive <datei> --out <datei>/);
+    assert.match(
+      result.stderr,
+      /--data <datei> --media <ordner> --archive <datei> --out <datei>$/m,
+    );
   });
 });

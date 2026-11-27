@@ -201,8 +201,10 @@ describe('recipe list in the address', () => {
         maxMinutes: 30 as const,
         fitsAll: true,
         rare: true,
+        unfinished: true,
         courses: ['main' as const, 'side' as const],
         cuisines: ['italienisch'],
+        tags: ['ofen'],
         minRating: 4.5 as const,
       },
       sort: 'title' as const,
@@ -220,6 +222,7 @@ describe('restaurant list in the address', () => {
         favorites: true,
         cuisines: ['italienisch'],
         priceLevels: [1, 2] as (1 | 2)[],
+        tags: [],
         minRating: 4 as const,
       },
       sort: 'rating' as const,
@@ -239,6 +242,23 @@ describe('restaurant list in the address', () => {
         .sortierung,
     ).toBeUndefined();
     expect(restaurantListFromParams({ sortierung: 'haeufig' }).sort).toBe('title');
+  });
+});
+
+describe('stored sort as the fallback (spec 0036, REQ-002)', () => {
+  it('AC-003: without "sortierung" the stored sort of the device applies', () => {
+    expect(recipeListFromParams({}, 'title').sort).toBe('title');
+    expect(restaurantListFromParams({}, 'rating').sort).toBe('rating');
+  });
+
+  it('AC-004: a link with "sortierung" wins over the stored sort', () => {
+    expect(recipeListFromParams({ sortierung: 'neu' }, 'title').sort).toBe('new');
+    expect(restaurantListFromParams({ sortierung: 'zuletzt' }, 'rating').sort).toBe('lastVisit');
+  });
+
+  it('pins: without a stored sort the default stays', () => {
+    expect(recipeListFromParams({}).sort).toBe('recent');
+    expect(restaurantListFromParams({}).sort).toBe('title');
   });
 });
 
@@ -301,6 +321,15 @@ describe('resolveAddressedId', () => {
   });
 });
 
+describe('kochen (spec 0057, AC-015)', () => {
+  it('carries the origin of the recipe', () => {
+    expect(readPageParams('kochen', { id: LASAGNE, von: 'uebersicht' }).values).toEqual({
+      id: LASAGNE,
+      von: 'uebersicht',
+    });
+  });
+});
+
 describe('sectionOfOrigin', () => {
   it('AC-018: an unknown origin gives the own section', () => {
     expect(sectionOfOrigin('quatsch', 'essen')).toBe('essen');
@@ -311,22 +340,18 @@ describe('sectionOfOrigin', () => {
 
 describe('sectionOfPath', () => {
   it('AC-018: a detail page belongs to its own section without `von`', () => {
-    expect(sectionOfPath(`/rezept/${LASAGNE}`, undefined)).toBe('essen');
-    expect(sectionOfPath(`/rezept/${LASAGNE}`, 'quatsch')).toBe('essen');
-    expect(sectionOfPath(`/restaurant/${LASAGNE}`, undefined)).toBe('essen');
-    expect(sectionOfPath(`/markt/${LASAGNE}`, undefined)).toBe('verwalten');
-    expect(sectionOfPath('/einkaufen', undefined)).toBe('liste');
-    expect(sectionOfPath('/einstellungen/benachrichtigungen', undefined)).toBe('verwalten');
+    expect(sectionOfPath(`/rezept/${LASAGNE}`)).toBe('essen');
+    expect(sectionOfPath(`/restaurant/${LASAGNE}`)).toBe('essen');
+    expect(sectionOfPath(`/markt/${LASAGNE}`)).toBe('verwalten');
+    expect(sectionOfPath('/einkaufen')).toBe('liste');
+    expect(sectionOfPath('/einstellungen')).toBe('verwalten');
   });
   it('AC-030 (0024): the activities live under "Verwalten", no tab is highlighted', () => {
-    expect(sectionOfPath('/aktivitaeten', undefined)).toBe('verwalten');
-    expect(sectionOfPath(`/aktivitaet/${LASAGNE}`, undefined)).toBe('verwalten');
-  });
-  it('AC-015: with `von` the origin is the section', () => {
-    expect(sectionOfPath(`/rezept/${LASAGNE}`, 'uebersicht')).toBe('uebersicht');
+    expect(sectionOfPath('/aktivitaeten')).toBe('verwalten');
+    expect(sectionOfPath(`/aktivitaet/${LASAGNE}`)).toBe('verwalten');
   });
   it('a start page is always its own section', () => {
-    expect(sectionOfPath('/rezepte', 'uebersicht')).toBe('essen');
+    expect(sectionOfPath('/rezepte')).toBe('essen');
   });
 });
 
@@ -346,6 +371,34 @@ describe('startPageHref', () => {
   });
 });
 
+describe('the recipe quick view on "Essen" (spec 0038)', () => {
+  it('AC-001: the recipe beside the list, its portions, variant and windows stand in the address', () => {
+    const href = pageHref('/rezepte', 'rezepte', {
+      rezept: LASAGNE,
+      portionen: 6,
+      variante: OWN_HOUSEHOLD,
+      fenster: 'vorratscheck',
+    });
+    const read = readPageParams('rezepte', rawOf(href));
+    expect(read.invalid).toEqual([]);
+    expect(read.values).toEqual({
+      rezept: LASAGNE,
+      portionen: 6,
+      variante: OWN_HOUSEHOLD,
+      fenster: 'vorratscheck',
+    });
+    expect(readPageParams('rezepte', { fenster: 'sammlung' }).values.fenster).toBe('sammlung');
+  });
+  it('an id that is no uuid is dropped', () => {
+    expect(readPageParams('rezepte', { rezept: 'apfelkuchen' }).invalid).toEqual(['rezept']);
+  });
+  it('choosing "Essen" again closes the quick view with its portions and variant', () => {
+    expect(
+      startPageHref(`/rezepte?suche=kuchen&rezept=${LASAGNE}&portionen=6&variante=${LASAGNE}`),
+    ).toBe('/rezepte?suche=kuchen');
+  });
+});
+
 describe('sectionOfStartPath', () => {
   it('names the section of a start page and nothing for other pages', () => {
     expect(sectionOfStartPath('/')).toBe('uebersicht');
@@ -359,7 +412,7 @@ describe('sectionOfStartPath', () => {
 });
 
 describe('pages under "Verwalten" (spec 0031, REQ-036)', () => {
-  it.each(['reisen', 'maerkte', 'mitglieder', 'feedback', 'reisetaschen'] as const)(
+  it.each(['reisen', 'maerkte', 'mitglieder', 'feedback', 'reisetaschen', 'dauerposten'] as const)(
     'AC-081: %s reads its origin from `von`, so "Zurück" names it',
     (page) => {
       expect(readPageParams(page, { von: 'kalender' })).toEqual({

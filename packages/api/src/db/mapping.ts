@@ -9,6 +9,8 @@
 //   undefined.
 // - A removed member (`done_by` / `author_id` null) becomes '' in the domain and null again.
 // - `name_key` / `synonym_keys` (articles, activities) are always recomputed with `normalizeText`.
+// - Spec 0037: `updated_at` of a recipe is `Recipe.updatedAt`, written back only to keep the local
+//   view (NEVER_SENT_COLUMNS: a diff never sends it).
 // - Columns the domain does not have are not written back: `updated_at`, `check_seq`,
 //   `profiles.email`, and `created_at` of tables whose domain type has no `createdAt`.
 // - Spec 0011: `updated_at` of a rating row is `ratedAt` of that member (and is written back only
@@ -29,17 +31,27 @@
 //   is "main" as before, a collection has none (null ⇄ undefined). Contained recipes
 //   (`collection_recipes`) keep creation order; core orders them by `sort`.
 // - Spec 0013: times of day are "HH:MM" in the domain and "HH:MM:SS" in the rows, as Postgres
-//   returns a `time` (`due_time`, `starts_at`, `daily_summary_at`, `activities_eve_at`); the rows
-//   write them with ":00", so a diff compares like with like. Of `notification_settings` only
-//   the signed-in member's row is `notificationSettings` (RLS sends no other).
+//   returns a `time` (`due_time`, `starts_at`, `reminder_at`); the rows write them with ":00",
+//   so a diff compares like with like. Of `notification_settings` only the signed-in member's row
+//   is `notificationSettings` (RLS sends no other); spec 0051: only its `acknowledged_notices`
+//   are read, so the setting columns dropped by spec 0053 do no harm in rows cached before.
 // - Spec 0017: a reminder is the three columns `reminder_day_offset`, `reminder_at` ("HH:MM:SS"
 //   like every time) and `reminder_text` ⇄ `MealPlanEntry.reminder` (none = all three null).
-//   `entry_reminders_enabled` missing reads as its column default, on. `households.timezone` is
+//   `households.timezone` is
 //   `Household.timeZone`, read only: the rows never write it back.
+// - Spec 0041: a symbol outside ACTIVITY_ICONS (the database refuses it) reads as none; a kind
+//   without a valid one as the default. A rule the database would refuse makes its series
+//   unreadable: such a series is left out. `remembered` missing reads as its default, on.
 import {
   compareTimestamps,
   normalizeText,
+  isActivityIcon,
+  SeriesRuleSchema,
   type Activity,
+  type ActivityIcon,
+  type ActivityKind,
+  type ActivitySeries,
+  type ActivitySeriesException,
   type Area,
   type Article,
   type Chore,
@@ -55,6 +67,8 @@ import {
   type PackingItem,
   type PackingListBag,
   type Recipe,
+  type RecurringItem,
+  type RecurringRule,
   type Trip,
   type Restaurant,
   type Row,
@@ -84,6 +98,26 @@ export const HOUSEHOLD_TIME_ZONE_DEFAULT = 'Europe/Berlin';
 
 /** Domain jsonb values are plain JSON by construction (no functions, no dates). */
 const json = (value: unknown): NonNullable<Json> => value as NonNullable<Json>;
+
+/**
+ * A recipe's videos (spec 0046): the server's check keeps them well formed; an entry a cache of an
+ * older shape could hold without a path is dropped, so the gallery never shows a broken page.
+ */
+function videosOf(value: unknown): Recipe['videos'] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry: unknown) => {
+    if (typeof entry !== 'object' || entry === null) return [];
+    const { path, url, poster } = entry as Record<string, unknown>;
+    if (typeof path !== 'string') return [];
+    return [
+      {
+        path,
+        ...(typeof url === 'string' ? { url } : {}),
+        ...(typeof poster === 'string' ? { poster } : {}),
+      },
+    ];
+  });
+}
 
 /** "19:00" → "19:00:00", the way Postgres returns a `time`. */
 const toDbTime = (time: TimeOfDay): string => `${time}:00`;
@@ -177,7 +211,9 @@ function recipeRows(householdId: string, recipe: Recipe): HouseholdRows {
         last_cooked_on: recipe.lastCookedOn ?? null,
         cooked_count: recipe.cookedCount,
         links: json(recipe.links),
+        videos: json(recipe.videos),
         ...(recipe.createdAt ? { created_at: recipe.createdAt } : {}),
+        ...(recipe.updatedAt ? { updated_at: recipe.updatedAt } : {}),
       } satisfies Cached<'recipes'>,
     ],
     recipe_favorites: memberRows(householdId, 'recipe_id', recipe.id, recipe.favoriteOf),
@@ -238,6 +274,9 @@ function activityRows(householdId: string, activity: Activity): HouseholdRows {
         maps_url: activity.mapsUrl ?? null,
         website_url: activity.websiteUrl ?? null,
         created_by: activity.createdBy ?? null,
+        kind_id: activity.kindId ?? null,
+        icon: activity.icon ?? null,
+        remembered: activity.remembered,
         ...(activity.createdAt ? { created_at: activity.createdAt } : {}),
       } satisfies Cached<'activities'>,
     ],
@@ -338,6 +377,7 @@ const storeRow = (householdId: string, store: Store) =>
     name: store.name,
     area_order: store.areaOrder,
     hidden_area_ids: store.hiddenAreaIds,
+    maps_url: store.mapsUrl ?? null,
   }));
 
 const planRow = (householdId: string, entry: MealPlanEntry) =>
@@ -366,6 +406,61 @@ const planRow = (householdId: string, entry: MealPlanEntry) =>
     reminder_text: entry.reminder?.text ?? null,
   }));
 
+const activityKindRow = (householdId: string, kind: ActivityKind) =>
+  single('activity_kinds', householdId, kind, () => ({
+    id: kind.id,
+    household_id: householdId,
+    name: kind.name,
+    name_key: normalizeText(kind.name),
+    icon: kind.icon,
+  }));
+
+const activitySeriesRow = (householdId: string, series: ActivitySeries) =>
+  single('activity_series', householdId, series, () => ({
+    id: series.id,
+    household_id: householdId,
+    activity_id: series.activityId,
+    rule: json(series.rule),
+    starts_on: series.startsOn,
+    ends_on: series.endsOn ?? null,
+    slot_id: series.slotId,
+    starts_at: series.startsAt === undefined ? null : toDbTime(series.startsAt),
+    note: series.note ?? null,
+    eater_ids: series.eaterIds,
+    guests: series.guests,
+    reminder_day_offset: series.reminder?.offsetDays ?? null,
+    reminder_at: series.reminder ? toDbTime(series.reminder.at) : null,
+    reminder_text: series.reminder?.text ?? null,
+  }));
+
+const seriesExceptionRow = (householdId: string, exception: ActivitySeriesException) =>
+  single('activity_series_exceptions', householdId, exception, () => ({
+    id: exception.id,
+    household_id: householdId,
+    series_id: exception.seriesId,
+    on_date: exception.on,
+    moved_to: exception.movedTo ?? null,
+    slot_id: exception.slotId ?? null,
+    starts_at: exception.startsAt === undefined ? null : toDbTime(exception.startsAt),
+  }));
+
+const recurringItemRow = (householdId: string, item: RecurringItem) =>
+  single('recurring_items', householdId, item, () => ({
+    id: item.id,
+    household_id: householdId,
+    article_id: item.articleId,
+    count: item.count ?? null,
+    qty: item.qty ?? null,
+    unit: item.unit ?? null,
+    note: item.note ?? null,
+    rule: json(item.rule),
+    starts_on: item.startsOn,
+    paused: item.paused,
+    // The server's (spec 0060, Decision 7): never sent, it is not a writable column.
+    last_added_on: item.lastAddedOn ?? null,
+    ...(item.createdAt ? { created_at: item.createdAt } : {}),
+  }));
+
 const collectionRecipeRow = (householdId: string, row: CollectionRecipe) =>
   single('collection_recipes', householdId, row, () => ({
     id: row.id,
@@ -392,6 +487,7 @@ const choreRow = (householdId: string, chore: Chore) =>
     active_months: chore.activeMonths ?? null,
     due_time: chore.dueTime === undefined ? null : toDbTime(chore.dueTime),
     remind_at_due_time: chore.remindAtDueTime !== false,
+    notice_days_before: chore.noticeDaysBefore ?? null,
   }));
 
 /** The row of one chore as an insert of `apply_changes` takes it (spec 0011: new chores, undo). */
@@ -490,13 +586,7 @@ const settingsRow = (householdId: string, settings: NotificationSettings) =>
     id: settings.id,
     household_id: householdId,
     member_id: settings.memberId,
-    daily_summary_enabled: settings.dailySummaryEnabled,
-    daily_summary_at: toDbTime(settings.dailySummaryAt),
-    daily_summary_parts: settings.dailySummaryParts,
-    activities_eve_enabled: settings.activitiesEveEnabled,
-    activities_eve_at: toDbTime(settings.activitiesEveAt),
-    chore_reminders_enabled: settings.choreRemindersEnabled,
-    entry_reminders_enabled: settings.entryRemindersEnabled,
+    acknowledged_notices: settings.acknowledgedNotices,
   }));
 
 /** The row of a bag of a packing list as an insert of `apply_changes` takes it. */
@@ -536,9 +626,13 @@ export function householdToRows(data: HouseholdData): HouseholdRows {
     ...data.recipes.map((recipe) => recipeRows(householdId, recipe)),
     ...data.collectionRecipes.map((row) => collectionRecipeRow(householdId, row)),
     ...data.restaurants.map((restaurant) => restaurantRows(householdId, restaurant)),
+    ...data.activityKinds.map((kind) => activityKindRow(householdId, kind)),
     ...data.activities.map((activity) => activityRows(householdId, activity)),
+    ...data.activitySeries.map((series) => activitySeriesRow(householdId, series)),
+    ...data.activitySeriesExceptions.map((exception) => seriesExceptionRow(householdId, exception)),
     ...data.planEntries.map((entry) => planRow(householdId, entry)),
     ...data.items.map((item) => itemRows(householdId, item)),
+    ...data.recurringItems.map((item) => recurringItemRow(householdId, item)),
     ...data.chores.map((chore) => choreRow(householdId, chore)),
     ...data.choreEvents.map((event) => choreEventRow(householdId, event)),
     ...data.trips.map((trip) => tripRows(householdId, trip)),
@@ -563,12 +657,18 @@ export function householdToRows(data: HouseholdData): HouseholdRows {
     restaurants: [],
     restaurant_favorites: [],
     restaurant_ratings: [],
+    // Kinds before activities, series after them, exceptions after series (foreign keys).
+    activity_kinds: [],
     activities: [],
     activity_favorites: [],
     activity_ratings: [],
+    activity_series: [],
+    activity_series_exceptions: [],
     meal_plan_entries: [],
     shopping_items: [],
     shopping_contributions: [],
+    // After articles (foreign key), spec 0060.
+    recurring_items: [],
     chores: [],
     chore_events: [],
     trips: [],
@@ -707,7 +807,9 @@ function toRecipe(row: Row, favorites: Row[], ratings: Row[]): Recipe {
     lastCookedOn: opt(r.last_cooked_on),
     cookedCount: r.cooked_count ?? 0,
     createdAt: r.created_at ?? '',
+    updatedAt: opt(r.updated_at),
     links: (r.links ?? []) as unknown as Recipe['links'],
+    videos: videosOf(r.videos),
   };
 }
 
@@ -759,6 +861,70 @@ function toActivity(row: Row, favorites: Row[], ratings: Row[]): Activity {
     ratedAt: ratedAtOf(ratings),
     createdBy: opt(r.created_by),
     createdAt: r.created_at ?? '',
+    kindId: opt(r.kind_id),
+    icon: iconOf(r.icon),
+    remembered: r.remembered !== false,
+  };
+}
+
+function iconOf(value: string | null | undefined): ActivityIcon | undefined {
+  return typeof value === 'string' && isActivityIcon(value) ? value : undefined;
+}
+
+function toActivityKind(row: Row): ActivityKind {
+  const r = row as Cached<'activity_kinds'>;
+  return { id: r.id, name: r.name ?? '', icon: iconOf(r.icon) ?? 'mountain' };
+}
+
+function toActivitySeries(row: Row): ActivitySeries | undefined {
+  const r = row as Cached<'activity_series'>;
+  const rule = SeriesRuleSchema.safeParse(r.rule);
+  if (!rule.success || !r.activity_id || !r.starts_on || !r.slot_id) return undefined;
+  return {
+    id: r.id,
+    activityId: r.activity_id,
+    rule: rule.data,
+    startsOn: r.starts_on,
+    endsOn: opt(r.ends_on),
+    slotId: r.slot_id,
+    startsAt: fromDbTime(r.starts_at),
+    note: opt(r.note),
+    eaterIds: r.eater_ids ?? [],
+    guests: r.guests ?? 0,
+    reminder: toReminder(r),
+  };
+}
+
+/** Spec 0060: a rule the database would refuse (or "jährlich") makes the Dauerposten unreadable. */
+function toRecurringItem(row: Row): RecurringItem | undefined {
+  const r = row as Cached<'recurring_items'>;
+  const rule = SeriesRuleSchema.safeParse(r.rule);
+  if (!rule.success || rule.data.type === 'yearly' || !r.article_id || !r.starts_on)
+    return undefined;
+  return {
+    id: r.id,
+    articleId: r.article_id,
+    count: opt(r.count),
+    qty: opt(r.qty),
+    unit: opt(r.unit),
+    note: opt(r.note),
+    rule: rule.data satisfies RecurringRule,
+    startsOn: r.starts_on,
+    paused: r.paused ?? false,
+    lastAddedOn: opt(r.last_added_on),
+    createdAt: r.created_at ?? '',
+  };
+}
+
+function toSeriesException(row: Row): ActivitySeriesException {
+  const r = row as Cached<'activity_series_exceptions'>;
+  return {
+    id: r.id,
+    seriesId: r.series_id ?? '',
+    on: r.on_date ?? '',
+    movedTo: opt(r.moved_to),
+    slotId: opt(r.slot_id),
+    startsAt: fromDbTime(r.starts_at),
   };
 }
 
@@ -837,6 +1003,7 @@ function toStore(row: Row): Store {
     name: r.name ?? '',
     areaOrder: r.area_order ?? [],
     hiddenAreaIds: r.hidden_area_ids ?? [],
+    mapsUrl: opt(r.maps_url),
   };
 }
 
@@ -866,7 +1033,12 @@ function toPlanEntry(row: Row): MealPlanEntry {
 }
 
 /** The three reminder columns; incomplete ones (the database refuses them) are no reminder. */
-function toReminder(r: Cached<'meal_plan_entries'>): MealPlanEntry['reminder'] {
+function toReminder(
+  r: Pick<
+    Cached<'meal_plan_entries'> | Cached<'activity_series'>,
+    'reminder_at' | 'reminder_day_offset' | 'reminder_text'
+  >,
+): MealPlanEntry['reminder'] {
   const at = fromDbTime(r.reminder_at);
   if (at === undefined || r.reminder_day_offset == null) return undefined;
   return {
@@ -892,6 +1064,7 @@ function toChore(row: Row): Chore {
     dueTime: fromDbTime(r.due_time),
     // Undefined is on, the default (spec 0027, REQ-009).
     remindAtDueTime: r.remind_at_due_time === false ? false : undefined,
+    noticeDaysBefore: opt(r.notice_days_before),
   };
 }
 
@@ -991,13 +1164,9 @@ function toNotificationSettings(row: Row): NotificationSettings {
   return {
     id: r.id,
     memberId: r.member_id ?? '',
-    dailySummaryEnabled: r.daily_summary_enabled === true,
-    dailySummaryAt: fromDbTime(r.daily_summary_at) ?? '07:30',
-    dailySummaryParts: (r.daily_summary_parts ?? []) as NotificationSettings['dailySummaryParts'],
-    activitiesEveEnabled: r.activities_eve_enabled === true,
-    activitiesEveAt: fromDbTime(r.activities_eve_at) ?? '19:00',
-    choreRemindersEnabled: r.chore_reminders_enabled === true,
-    entryRemindersEnabled: r.entry_reminders_enabled !== false,
+    acknowledgedNotices: Array.isArray(r.acknowledged_notices)
+      ? r.acknowledged_notices.filter((key): key is string => typeof key === 'string')
+      : [],
   };
 }
 
@@ -1133,11 +1302,31 @@ export function rowsToHousehold(
     ),
     restaurants: reuse(previous?.restaurants, restaurants),
     activities: reuse(previous?.activities, activities),
+    activityKinds: reuse(
+      previous?.activityKinds,
+      plain(tables, 'activity_kinds', 'created', toActivityKind),
+    ),
+    activitySeries: reuse(
+      previous?.activitySeries,
+      rowsOfTable(tables, 'activity_series', 'created').flatMap(
+        (row) => cached(row, [], () => toActivitySeries(row)) ?? [],
+      ),
+    ),
+    activitySeriesExceptions: reuse(
+      previous?.activitySeriesExceptions,
+      plain(tables, 'activity_series_exceptions', 'created', toSeriesException),
+    ),
     planEntries: reuse(
       previous?.planEntries,
       plain(tables, 'meal_plan_entries', 'created', toPlanEntry),
     ),
     items: reuse(previous?.items, items),
+    recurringItems: reuse(
+      previous?.recurringItems,
+      rowsOfTable(tables, 'recurring_items', 'created').flatMap(
+        (row) => cached(row, [], () => toRecurringItem(row)) ?? [],
+      ),
+    ),
     chores: reuse(previous?.chores, plain(tables, 'chores', 'created', toChore)),
     choreEvents: reuse(
       previous?.choreEvents,

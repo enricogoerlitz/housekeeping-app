@@ -15,6 +15,7 @@ import {
   tid,
   tidPrefix,
   toastMessage,
+  tripRow,
 } from './helpers';
 import { seedIds } from './seed-ids';
 
@@ -50,7 +51,7 @@ function tripBag(page: Page, name: string): Locator {
 async function openMallorca(page: Page): Promise<void> {
   await open(page, '/');
   await openManaged(page, 'trips');
-  await tid(page, `trip-${MALLORCA}-open`).click();
+  await tid(page, `trip-${MALLORCA}`).click();
   await expect(tid(page, 'trip-window-title')).toHaveText('Urlaub Mallorca');
 }
 
@@ -95,7 +96,7 @@ test('AC-001 / AC-003 / AC-005 / AC-007: the bags list, a new bag with items, su
   await expect(tid(page, 'bag-detail')).toContainText('Badehose · 2 je Tag');
 });
 
-test('AC-008 / AC-009: duplicating "Camping" and deleting the copy with "Rückgängig"', async ({
+test('AC-008 / AC-009: duplicating "Camping" and deleting the copy asks first (spec 0036: asks first)', async ({
   page,
 }) => {
   await open(page, '/');
@@ -107,11 +108,17 @@ test('AC-008 / AC-009: duplicating "Camping" and deleting the copy with "Rückg�
   await expect(tid(page, 'bag-detail')).toContainText('Sonnencreme');
   await tid(page, 'bag-menu').click();
   await tid(page, 'bag-menu-delete').click();
+  await expect(tid(page, 'confirm-delete-bag')).toBeVisible();
+  await tid(page, 'confirm-delete-bag-cancel').click();
+  await expect(tid(page, 'confirm-delete-bag')).toBeHidden();
+  await expect(tid(page, 'bag-screen-title')).toHaveText('Camping (Kopie)');
+  await tid(page, 'bag-menu').click();
+  await tid(page, 'bag-menu-delete').click();
+  await tid(page, 'confirm-delete-bag-confirm').click();
   await expect(tid(page, 'bags-screen')).toBeVisible();
   await expect(toastMessage(page)).toHaveText('„Camping (Kopie)“ gelöscht');
+  await expect(tid(page, 'toast-action')).toHaveCount(0);
   await expect(tid(page, 'bags-list')).not.toContainText('Camping (Kopie)');
-  await tid(page, 'toast-action').click();
-  await expect(tid(page, 'bags-list')).toContainText('Camping (Kopie)');
 });
 
 test('AC-002: the household "Test" has no bags yet', async ({ page }) => {
@@ -119,7 +126,7 @@ test('AC-002: the household "Test" has no bags yet', async ({ page }) => {
   await switchHousehold(page, seedIds['hh-test']);
   await openManaged(page, 'packing-bags');
   await expect(tid(page, 'bags-empty')).toContainText('Noch keine Reisetaschen');
-  await expect(tid(page, 'bag-new')).toHaveText(/Reisetasche anlegen/);
+  await expect(tid(page, 'bags-empty-new')).toHaveText(/Reisetasche anlegen/);
 });
 
 test('AC-011 / AC-012 / AC-013: the trip window attaches bags; the button counts the items', async ({
@@ -148,9 +155,7 @@ test('AC-011 / AC-012 / AC-013: the trip window attaches bags; the button counts
   await tid(page, 'trip-save').click();
   await expect(tid(page, 'trip-sheet')).toBeHidden();
 
-  const row = tid(page, 'trips-upcoming')
-    .locator('[data-testid^="trip-"][data-testid$="-open"]')
-    .filter({ hasText: 'Zeltwochenende' });
+  const row = tripRow(page, 'Zeltwochenende');
   await row.click();
   await expect(tid(page, 'trip-window-title')).toHaveText('Zeltwochenende');
   await expect(tid(page, 'trip-progress')).toHaveText('Packliste · 0 von 12 gepackt');
@@ -214,7 +219,7 @@ test('AC-026 / AC-028 / AC-029: "Alles einpacken" with "Rückgängig"; resetting
   await expect(tid(page, 'trip-progress')).toHaveText('Packliste · 0 von 21 gepackt');
 });
 
-test('AC-031 / AC-033 / AC-034: an item, a bag added and a bag removed with "Rückgängig"', async ({
+test('AC-031 / AC-033 / AC-034: an item, a bag added and a bag removed after asking (spec 0036: asks first)', async ({
   page,
 }) => {
   await openMallorca(page);
@@ -233,15 +238,20 @@ test('AC-031 / AC-033 / AC-034: an item, a bag added and a bag removed with "Rü
   const technik = tripBag(page, 'Technik');
   await technik.locator('[data-testid$="-more"]').first().click();
   await tidPrefix(page, 'trip-bag-').and(page.locator('[data-testid$="-more-remove"]')).click();
-  await expect(tidPrefix(page, 'trip-bag-').filter({ hasText: 'Technik' })).toHaveCount(0);
-  await tid(page, 'toast-action').click();
+  await expect(tid(page, 'confirm-remove-bag')).toBeVisible();
+  await tid(page, 'confirm-remove-bag-cancel').click();
   await expect(tripBag(page, 'Technik')).toBeVisible();
+  await technik.locator('[data-testid$="-more"]').first().click();
+  await tidPrefix(page, 'trip-bag-').and(page.locator('[data-testid$="-more-remove"]')).click();
+  await tid(page, 'confirm-remove-bag-confirm').click();
+  await expect(tidPrefix(page, 'trip-bag-').filter({ hasText: 'Technik' })).toHaveCount(0);
+  await expect(tid(page, 'toast-action')).toHaveCount(0);
 });
 
 test('AC-019: "Dienstreise Hamburg" has no packing list yet', async ({ page }) => {
   await open(page, '/');
   await openManaged(page, 'trips');
-  await tid(page, `trip-${HAMBURG}-open`).click();
+  await tid(page, `trip-${HAMBURG}`).click();
   await expect(tid(page, `trip-empty-${HAMBURG}`)).toContainText('Noch keine Packliste');
   await expect(tid(page, `trip-add-bag-open-${HAMBURG}`)).toBeVisible();
   await tid(page, 'trip-window-close').click();

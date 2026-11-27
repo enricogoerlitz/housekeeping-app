@@ -9,6 +9,7 @@ import { after, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import {
+  BUCKETS,
   checkEnvironment,
   checkLinked,
   dataSql,
@@ -113,20 +114,36 @@ describe('--data-only (spec 0028, decision 3, way D of 23.11.2026)', () => {
     assert.doesNotMatch(sql, /cron\./);
   });
 
-  test('accounts with their profiles and devices stay', () => {
-    assert.match(sql, /tablename not in \('profiles', 'push_subscriptions'\)/);
+  test('accounts with their profiles stay', () => {
+    assert.match(sql, /tablename not in \('profiles'\)/);
     assert.doesNotMatch(sql, /\b(auth|vault|storage)\./);
   });
 });
 
-describe('the photos (storage)', () => {
+describe('the photos and videos (storage)', () => {
   test('each top-level folder of the bucket is removed, never the bucket itself', () => {
-    assert.deepEqual(mediaTargets({ paths: ['hh1/', 'hh2/', 'stray.jpg'] }), [
+    assert.deepEqual(mediaTargets({ paths: ['hh1/', 'hh2/', 'stray.jpg'] }, 'household-media'), [
       'ss:///household-media/hh1',
       'ss:///household-media/hh2',
       'ss:///household-media/stray.jpg',
     ]);
-    assert.deepEqual(mediaTargets({ paths: [] }), []);
-    assert.deepEqual(mediaTargets({ paths: ['', '/'] }), []);
+    assert.deepEqual(mediaTargets({ paths: [] }, 'household-media'), []);
+    assert.deepEqual(mediaTargets({ paths: ['', '/'] }, 'household-media'), []);
+  });
+
+  test('spec 0043, decision 8: the photo and the video bucket are emptied, in this order', () => {
+    assert.deepEqual(BUCKETS, ['household-media', 'household-videos']);
+    assert.deepEqual(mediaTargets({ paths: ['hh1/'] }, 'household-videos'), [
+      'ss:///household-videos/hh1',
+    ]);
+  });
+
+  test('a bucket that does not exist yet lists nothing and removes nothing', () => {
+    // `supabase storage ls` of a missing bucket answers `{ "paths": [] }` (CLI 3.2.0, local).
+    assert.deepEqual(mediaTargets({ paths: [], message: '' }, 'household-videos'), []);
+  });
+
+  test('only the two app buckets, never another one', () => {
+    assert.throws(() => mediaTargets({ paths: ['x/'] }, 'avatars'), /Unbekannter Bucket/);
   });
 });

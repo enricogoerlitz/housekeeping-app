@@ -30,13 +30,14 @@ import {
   updateIngredientRow,
   updateStepText,
   validateSectionDraft,
+  cuisineValues,
+  valueOnEnter,
   valueSuggestions,
   type IngredientsDraft,
   type RecipeSectionDraft,
   type SectionPatchContext,
 } from './recipe-editor';
 import { ingredientLine } from './recipes';
-import { draftAfterRefusal } from './section-editor';
 import {
   articles,
   articlesById,
@@ -178,6 +179,29 @@ describe('classification section (REQ-007)', () => {
     makeRecipe({ id: 'b', title: 'B', cuisine: 'Italienisch', tags: ['Ofen'] }),
     makeRecipe({ id: 'shak', title: 'Shakshuka' }),
   ];
+
+  it('spec 0036, AC-007: Enter takes the exact value ("ofen" → Ofen)', () => {
+    expect(valueOnEnter('ofen', ['Ofen', 'Familie'])).toBe('Ofen');
+    expect(valueOnEnter('  OFEN ', ['Ofen'])).toBe('Ofen');
+  });
+
+  it('spec 0036, AC-008: Enter creates a value that does not exist, also next to a look-alike', () => {
+    expect(valueOnEnter('Grillen', ['Ofen'])).toBe('Grillen');
+    expect(valueOnEnter('  Grillen   im  Garten ', ['Ofen'])).toBe('Grillen im Garten');
+    expect(valueOnEnter('Ofn', ['Ofen'])).toBe('Ofn');
+  });
+
+  it('spec 0036, AC-009: "Viet" suggests the cuisine of a restaurant', () => {
+    const restaurants = [{ cuisine: 'Vietnamesisch' }, { cuisine: 'Vietnamesisch' }, {}];
+    expect(cuisineValues(restaurants)).toEqual(['Vietnamesisch']);
+    expect(
+      valueSuggestions('Viet', cuisineValues(restaurants)).matches.map((m) => m.item.name),
+    ).toEqual(['Vietnamesisch']);
+  });
+
+  it('spec 0036: Enter in an empty field takes nothing', () => {
+    expect(valueOnEnter('   ', ['Ofen'])).toBeUndefined();
+  });
 
   it('AC-024: "italienisch" finds "Italienisch" without "neu anlegen"', () => {
     const result = valueSuggestions('italienisch', ['Italienisch']);
@@ -757,41 +781,20 @@ describe('the page around the sections (T7)', () => {
     expect(moveIngredientAmong(draft, 'i-reis', 2, shown)).toBe(draft);
     expect(moveIngredientAmong(draft, 'unknown', 0, shown)).toBe(draft);
   });
-
-  it('E7: a refused section opens again with its draft when nothing else is open', () => {
-    const refused = { ...sectionDraft(lasagne, 'notes'), notes: 'Neu' };
-    expect(draftAfterRefusal(undefined, refused, undefined)).toBe(refused);
-  });
-
-  it('E7, AC-032: the section left open with its orange rows gets the refused draft back', () => {
-    const refused = addIngredientRows(sectionDraft(mangoCurry, 'ingredients'), [
-      { ...newIngredientRow('orange'), name: 'Bockshornklee' },
-    ]);
-    const reopened = addIngredientRows(sectionDraft(mangoCurry, 'ingredients'), [
-      { ...newIngredientRow('orange'), name: 'Bockshornklee' },
-    ]);
-    expect(draftAfterRefusal(reopened, refused, reopened)).toBe(refused);
-  });
-
-  it('E7: a section opened or changed since then stays as it is', () => {
-    const refused = { ...sectionDraft(lasagne, 'notes'), notes: 'Neu' };
-    const other = sectionDraft(lasagne, 'head');
-    expect(draftAfterRefusal(other, refused, undefined)).toBe(other);
-    const reopened = sectionDraft(mangoCurry, 'ingredients');
-    const edited = removeIngredient(reopened, 'i-salz');
-    expect(draftAfterRefusal(edited, refused, reopened)).toBe(edited);
-  });
 });
 
 describe('Sammlungen (spec 0009, REQ-002, REQ-004)', () => {
   const leer = { ...grillabend, ingredients: [] };
   const grillContext = (): SectionPatchContext => ({ ...context(), articles: grillArticles });
 
-  it('AC-015: the head of a collection saves 10 portions, never a time', () => {
+  it('AC-015: the head of a collection saves 10 portions and, since spec 0037 (AC-016), a time', () => {
     const draft = { ...sectionDraft(grillabend, 'head'), servings: '10', totalMinutes: '30' };
     expect(draft.kind).toBe('collection');
     expect(validateSectionDraft(draft)).toEqual([]);
-    expect(sectionPatch(grillabend, draft, context()).recipe).toEqual({ servings: 10 });
+    expect(sectionPatch(grillabend, draft, context()).recipe).toEqual({
+      servings: 10,
+      totalMinutes: 30,
+    });
   });
 
   it('AC-017: 0 portions is "1 bis 100 Portionen", and 6 stay stored', () => {

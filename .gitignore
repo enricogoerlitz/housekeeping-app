@@ -50,3 +50,6 @@ tmp/
 .DS_Store
 npm-debug.*
 *.orig.*
+
+# Recipe drafts: pictures stay local (they live in Supabase Storage after the import)
+docs/recipes/pictures/

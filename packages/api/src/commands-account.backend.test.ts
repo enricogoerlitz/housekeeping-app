@@ -18,7 +18,6 @@ import {
   updateProfile,
   withdrawInvitation,
 } from './commands-household';
-import { updateNotificationSettings } from './commands-notifications';
 import { setItemChecked } from './commands-shopping';
 import { ENRICO, NADJA } from './seed/demo';
 import { getData, getState, OfflineError } from './store';
@@ -280,30 +279,5 @@ describe('Jetzt abgleichen (REQ-010)', () => {
     expect(engine.getSyncState().lastSyncedAt).toBe(before);
     engine.setSimulatedOffline(true);
     await expect(syncNow()).rejects.toBeInstanceOf(OfflineError);
-  });
-});
-
-describe('Benachrichtigungen je Haushalt (REQ-008)', () => {
-  it('AC-032: a switch changes only the row of the chosen household; the app stays where it is', async () => {
-    await fx.startEnrico();
-    const wg = await createHousehold('WG Köln');
-    const homeBefore = getState().households[H]?.notificationSettings;
-    fx.clearCalls();
-    updateNotificationSettings({ dailySummaryEnabled: true }, wg);
-    expect(getState().activeHouseholdId).toBe(H);
-    expect(getState().households[wg]?.notificationSettings?.dailySummaryEnabled).toBe(true);
-    await fx.settle();
-    expect(fx.calls).toHaveLength(1);
-    expect(fx.calls[0]?.args[0]).toBe(wg);
-    expect(getState().households[H]?.notificationSettings).toEqual(homeBefore);
-    expect(getState().households[wg]?.notificationSettings?.dailySummaryEnabled).toBe(true);
-    expect(getState().activeHouseholdId).toBe(H);
-  });
-
-  it('AC-034: an unknown household changes nothing', async () => {
-    await fx.startEnrico();
-    expect(() => updateNotificationSettings({ dailySummaryEnabled: true }, 'fremd')).toThrow();
-    await fx.settle();
-    expect(fx.calls).toEqual([]);
   });
 });

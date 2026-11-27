@@ -2,6 +2,7 @@ import { portionsFor, changeEaters, type PortionContext, type PortionState } fro
 import { withNote } from './meal-plan';
 import type {
   Activity,
+  Course,
   Id,
   ISODate,
   MealPlanEntry,
@@ -71,7 +72,14 @@ export type AddEntryAction =
   | { type: 'setTab'; tab: AddEntryTab }
   | { type: 'setQuery'; query: string }
   /** `eaterIds`: everyone at home that day (defaultEaterIds). */
-  | { type: 'choose'; choice: AddEntryChoice; eaterIds: Id[]; context: AddEntryContext }
+  | {
+      type: 'choose';
+      choice: AddEntryChoice;
+      eaterIds: Id[];
+      context: AddEntryContext;
+      /** The household's first Tageszeit, for breakfast (I-16). */
+      firstSlotId?: Id;
+    }
   | { type: 'backToSearch' }
   | { type: 'startCreating'; kind: AddEntryCreating }
   | { type: 'stopCreating' }
@@ -121,6 +129,14 @@ export function initialAddEntryState(
   };
 }
 
+/**
+ * Which Tageszeit a recipe opens with when none was tapped: the first ("Vormittag") for
+ * breakfast, else the last ("Abend") (iPhone click-through, review 0003, I-16).
+ */
+export function slotSideFor(course: Course | undefined): 'first' | 'last' {
+  return course === 'breakfast' ? 'first' : 'last';
+}
+
 const recipeOf = (choice: AddEntryChoice | undefined): Recipe | undefined =>
   choice?.kind === 'recipe' ? choice.recipe : undefined;
 
@@ -133,11 +149,16 @@ export function addEntryReducer(state: AddEntryState, action: AddEntryAction): A
     case 'choose': {
       // Spec 0031, AC-056: a new choice starts from the window's Tageszeit and everyone at home.
       const recipe = recipeOf(action.choice);
+      // Added to a day as a whole: breakfast starts in the first Tageszeit (I-16).
+      const breakfastFirst =
+        state.target.slotChosen === false &&
+        action.firstSlotId !== undefined &&
+        slotSideFor(recipe?.course) === 'first';
       return {
         ...state,
         choice: action.choice,
         creating: undefined,
-        slotId: state.target.slotId,
+        slotId: breakfastFirst ? (action.firstSlotId ?? state.target.slotId) : state.target.slotId,
         slotChosen: state.target.slotChosen !== false,
         portions: portionsFor(action.eaterIds, 0, { ...action.context, recipe }),
         startsAt: undefined,
@@ -292,7 +313,9 @@ export function addEntryRequest(state: AddEntryState, atHome: Id[]): AddEntryReq
           slotId,
           kind: 'activity',
           activityId: choice.activity.id,
-          eaterIds: atHome,
+          // Spec 0041, REQ-005: "Wer ist dabei?" and "Gäste", like who eats along.
+          eaterIds,
+          guests,
           ...extras,
         },
       };

@@ -133,6 +133,9 @@ export const PAGE_PARAMS = {
     tag: one(Day),
     fenster: one(oneOf(['tag', 'neu-eintrag', 'neu-reise', 'aus-kalender'])),
     eintrag: one(Uuid),
+    /** A Termin of a series: the series and the day the rule gives it (spec 0041, REQ-003). */
+    serie: one(Uuid),
+    termin: one(Day),
     zeit: one(Time),
     reise: one(Uuid),
     /** The chore window of a chore in the calendar (spec 0021, REQ-016). */
@@ -145,17 +148,28 @@ export const PAGE_PARAMS = {
     art: one(oneOf(values(KIND_SLUGS))),
     favoriten: one(Flag),
     ernaehrung: one(oneOf(values(DIET_SLUGS))),
-    dauer: one(oneOf(['15', '30', '60'])),
+    dauer: one(oneOf(['15', '30', '60', '120'])),
     'fuer-alle': one(Flag),
     selten: one(Flag),
+    /** Only unfinished recipes (spec 0061, REQ-002). */
+    unfertig: one(Flag),
     gang: many(oneOf(values(COURSE_SLUGS))),
     kueche: many(Text),
+    /** Tag keys, all of them must fit (spec 0037, REQ-006). */
+    schlagwort: many(Text),
     bewertung: one(oneOf(['4', '4.5'])),
     preis: many(oneOf(['1', '2', '3', '4'])),
     sortierung: one(oneOf([...values(RECIPE_SORT_SLUGS), ...RESTAURANT_SORT_SLUGS])),
-    // "bearbeiten" and "einplanen" for the restaurant chosen next to the list (spec 0024).
-    fenster: one(oneOf(['neu', 'neu-restaurant', 'bearbeiten', 'einplanen'])),
+    // "bearbeiten" and "einplanen" for the restaurant chosen next to the list (spec 0024);
+    // "einplanen", "sammlung" and "vorratscheck" for the recipe there (spec 0038).
+    fenster: one(
+      oneOf(['neu', 'neu-restaurant', 'bearbeiten', 'einplanen', 'sammlung', 'vorratscheck']),
+    ),
     restaurant: one(Uuid),
+    /** The recipe in the quick view beside the list, with its page's portions and variant. */
+    rezept: one(Uuid),
+    portionen: one(PositiveInt),
+    variante: one(Uuid),
     link: one(z.string().max(2000)),
     name: one(Text),
     von: Von,
@@ -169,6 +183,8 @@ export const PAGE_PARAMS = {
   },
   kochen: {
     id: one(Uuid),
+    // The recipe's origin, so the highlight stays there while cooking (spec 0057, AC-015).
+    von: Von,
     schritt: one(PositiveInt),
     variante: one(Uuid),
     portionen: one(PositiveInt),
@@ -183,7 +199,8 @@ export const PAGE_PARAMS = {
     favoriten: one(Flag),
     sortierung: one(oneOf(['name', 'bewertung', 'zuletzt']), 'name'),
     aktivitaet: one(Uuid),
-    fenster: one(oneOf(['neu-aktivitaet', 'einplanen', 'bearbeiten'])),
+    // "arten": the kinds under "Verwalten" (spec 0041, REQ-001).
+    fenster: one(oneOf(['neu-aktivitaet', 'einplanen', 'bearbeiten', 'arten'])),
     von: Von,
   },
   aktivitaet: {
@@ -251,12 +268,11 @@ export const PAGE_PARAMS = {
     von: Von,
   },
   verwalten: {},
+  // Spec 0060: "Dauerposten" under "Verwalten", also from the list's ⋯.
+  dauerposten: { von: Von },
   einstellungen: {
-    abschnitt: one(oneOf(['profil', 'darstellung', 'ki', 'benachrichtigungen'])),
+    abschnitt: one(oneOf(['profil', 'darstellung', 'ki'])),
     fenster: one(oneOf(['profil'])),
-  },
-  benachrichtigungen: {
-    'fuer-haushalt': one(Uuid),
   },
   mitglieder: {
     fenster: one(oneOf(['umbenennen'])),
@@ -382,20 +398,28 @@ const DIET_OF = invert(DIET_SLUGS);
 const KIND_OF = invert(KIND_SLUGS);
 const COURSE_OF = invert(COURSE_SLUGS);
 
-/** Search, filter and sort of "Essen → Rezepte" from the address (AC-032, AC-034). */
-export function recipeListFromParams(values: PageParams<'rezepte'>): RecipeListAddressState {
+/**
+ * Search, filter and sort of "Essen → Rezepte" from the address (AC-032, AC-034). Without a sort
+ * in the address the one stored on the device applies (spec 0036, REQ-002).
+ */
+export function recipeListFromParams(
+  values: PageParams<'rezepte'>,
+  storedSort: RecipeListSort = DEFAULT_RECIPE_SORT,
+): RecipeListAddressState {
   const sortSlug = values.sortierung;
   const sort: RecipeListSort =
     sortSlug !== undefined && sortSlug in RECIPE_SORT_OF
       ? RECIPE_SORT_OF[sortSlug as keyof typeof RECIPE_SORT_OF]
-      : DEFAULT_RECIPE_SORT;
+      : storedSort;
   const filter: RecipeListFilter = {
     ...EMPTY_RECIPE_LIST_FILTER,
     favorites: values.favoriten === '1',
     fitsAll: values['fuer-alle'] === '1',
     rare: values.selten === '1',
+    unfinished: values.unfertig === '1',
     courses: (values.gang ?? []).map((slug) => COURSE_OF[slug]),
     cuisines: values.kueche ?? [],
+    tags: values.schlagwort ?? [],
   };
   if (values.art) filter.kind = KIND_OF[values.art];
   if (values.ernaehrung) filter.diet = DIET_OF[values.ernaehrung];
@@ -412,11 +436,15 @@ export function recipeListToParams(state: RecipeListAddressState): PageParams<'r
     art: filter.kind ? KIND_SLUGS[filter.kind] : undefined,
     favoriten: filter.favorites ? '1' : undefined,
     ernaehrung: filter.diet ? DIET_SLUGS[filter.diet] : undefined,
-    dauer: filter.maxMinutes ? (String(filter.maxMinutes) as '15' | '30' | '60') : undefined,
+    dauer: filter.maxMinutes
+      ? (String(filter.maxMinutes) as '15' | '30' | '60' | '120')
+      : undefined,
     'fuer-alle': filter.fitsAll ? '1' : undefined,
     selten: filter.rare ? '1' : undefined,
+    unfertig: filter.unfinished ? '1' : undefined,
     gang: filter.courses.map((course) => COURSE_SLUGS[course]),
     kueche: [...filter.cuisines],
+    schlagwort: [...filter.tags],
     bewertung: filter.minRating ? (String(filter.minRating) as '4' | '4.5') : undefined,
     sortierung: state.sort === DEFAULT_RECIPE_SORT ? undefined : RECIPE_SORT_SLUGS[state.sort],
   };
@@ -446,18 +474,23 @@ const RESTAURANT_SORT_SLUG: Record<RestaurantListSort, (typeof RESTAURANT_SORT_S
 /** Search, filter and sort of "Essen → Restaurants" from the address (AC-043). */
 export function restaurantListFromParams(
   values: PageParams<'rezepte'>,
+  storedSort: RestaurantListSort = DEFAULT_RESTAURANT_SORT,
 ): RestaurantListAddressState {
   const filter: RestaurantListFilter = {
     ...EMPTY_RESTAURANT_LIST_FILTER,
     favorites: values.favoriten === '1',
     cuisines: values.kueche ?? [],
+    tags: values.schlagwort ?? [],
     priceLevels: (values.preis ?? []).map((level) => Number(level) as PriceLevel),
   };
   if (values.bewertung) filter.minRating = Number(values.bewertung) as MinRating;
   return {
     query: values.suche ?? '',
     filter,
-    sort: RESTAURANT_SORT_OF[values.sortierung ?? ''] ?? DEFAULT_RESTAURANT_SORT,
+    sort:
+      values.sortierung === undefined
+        ? storedSort
+        : (RESTAURANT_SORT_OF[values.sortierung] ?? DEFAULT_RESTAURANT_SORT),
   };
 }
 
@@ -468,6 +501,7 @@ export function restaurantListToParams(state: RestaurantListAddressState): PageP
     suche: state.query.trim() === '' ? undefined : state.query,
     favoriten: filter.favorites ? '1' : undefined,
     kueche: [...filter.cuisines],
+    schlagwort: [...filter.tags],
     bewertung: filter.minRating ? (String(filter.minRating) as '4' | '4.5') : undefined,
     preis: filter.priceLevels.map((level) => String(level) as '1' | '2' | '3' | '4'),
     sortierung:
@@ -484,8 +518,10 @@ export const FOOD_LIST_CLEARED: PageParams<'rezepte'> = {
   dauer: undefined,
   'fuer-alle': undefined,
   selten: undefined,
+  unfertig: undefined,
   gang: undefined,
   kueche: undefined,
+  schlagwort: undefined,
   bewertung: undefined,
   preis: undefined,
   sortierung: undefined,
@@ -555,17 +591,17 @@ const OWN_SECTION: readonly [prefix: string, section: Origin][] = [
 ];
 
 /**
- * The section a page highlights in the tab bar and the sidebar (REQ-006): a start page its own,
- * a detail page its origin from `von`, or without one the section it lives in. Pages under
- * "Verwalten" (articles, stores, bags, members, feedback, settings) belong to "Verwalten".
+ * The section a page highlights in the tab bar and the sidebar: always the section of the page
+ * itself, a start page its own, a detail page the section it lives in (spec 0035, REQ-002; `von`
+ * only names the target of "Zurück", spec 0019 REQ-006). Pages under "Verwalten" (activities,
+ * articles, stores, bags, members, feedback, settings) belong to "Verwalten".
  */
-export function sectionOfPath(pathname: string, von: string | undefined): Origin {
-  const start = sectionOfStartPath(pathname);
-  if (start) return start;
-  const own =
+export function sectionOfPath(pathname: string): Origin {
+  return (
+    sectionOfStartPath(pathname) ??
     OWN_SECTION.find(([prefix]) => pathname === prefix || pathname.startsWith(prefix))?.[1] ??
-    'verwalten';
-  return sectionOfOrigin(von, own);
+    'verwalten'
+  );
 }
 
 /**
@@ -579,6 +615,7 @@ export const OBJECT_PARAMS = [
   'posten',
   'artikel',
   'restaurant',
+  'rezept',
   'aktivitaet',
   'markt',
   'tasche',
@@ -589,6 +626,9 @@ const OPENING_PARAMS = new Set<string>([
   ...OBJECT_PARAMS,
   'fenster',
   'zeit',
+  // What the recipe in the quick view shows (spec 0038).
+  'portionen',
+  'variante',
   'link',
   'name',
   'haushalt',

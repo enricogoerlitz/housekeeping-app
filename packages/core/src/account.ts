@@ -3,8 +3,8 @@ import { householdClock } from './reminder';
 import type { DietPreference, FeedbackEntry, Id, Member } from './types';
 
 // Spec 0027 "Verwalten und Konto": the words and checks of invitations, the own profile, renaming
-// and deleting a household, the own feedback, the household of "Benachrichtigungen" and
-// "Jetzt abgleichen". The server checks the same (supabase migration manage_household_and_account).
+// and deleting a household, the own feedback and "Jetzt abgleichen"
+// (spec 0051: the household of "Benachrichtigungen" is gone with Web Push). The server checks the same (supabase migration manage_household_and_account).
 
 // ---------- Invitations (REQ-001, REQ-002) ----------
 
@@ -194,22 +194,6 @@ export function feedbackDeletePrompt(
 export const FEEDBACK_STATUS_NOTE =
   'Den Status setzt der Entwickler der App, wenn er ein Feedback bearbeitet hat.';
 
-// ---------- Notifications per household (REQ-008) ----------
-
-/** AC-032, AC-034: the household of `fuer-haushalt` when it is one of mine, else the active. */
-export function notificationsHouseholdId(
-  requested: Id | undefined,
-  ownIds: readonly Id[],
-  activeId: Id,
-): Id {
-  return requested !== undefined && ownIds.includes(requested) ? requested : activeId;
-}
-
-/** Under the choice (AC-032). */
-export function kindsScopeNote(householdName: string): string {
-  return `Gilt für „${householdName}“ auf allen deinen Geräten.`;
-}
-
 // ---------- "Jetzt abgleichen" (REQ-010) ----------
 
 /** "16:58", "9:30" in the given zone. */
@@ -218,13 +202,16 @@ function clockTime(time: string): string {
   return `${Number(hour)}:${minute}`;
 }
 
-/** The row "Zuletzt abgeglichen" as a button (AC-039, AC-041). */
+/**
+ * The row "Zuletzt abgeglichen" (AC-039, AC-041): the status in grey and "Jetzt abgleichen" as the
+ * only link (review 0003, B-13); the link's screen-reader name carries the status.
+ */
 export function syncRow(input: {
   lastSyncedAt: string | undefined;
   syncing: boolean;
   now: Date;
   timeZone: string;
-}): { label: string; accessibilityLabel: string } {
+}): { status: string; action: string; accessibilityLabel: string } {
   let when: string | undefined;
   if (input.lastSyncedAt) {
     const at = householdClock(new Date(input.lastSyncedAt), input.timeZone);
@@ -236,11 +223,9 @@ export function syncRow(input: {
   const accessibilityLabel = when
     ? `Jetzt abgleichen, zuletzt abgeglichen ${when}`
     : 'Jetzt abgleichen, noch nicht abgeglichen';
-  if (input.syncing) return { label: 'Wird abgeglichen …', accessibilityLabel };
   return {
-    label: when
-      ? `Zuletzt abgeglichen: ${when} · Jetzt abgleichen`
-      : 'Noch nicht abgeglichen · Jetzt abgleichen',
+    status: when ? `Zuletzt abgeglichen: ${when}` : 'Noch nicht abgeglichen',
+    action: input.syncing ? 'Wird abgeglichen …' : 'Jetzt abgleichen',
     accessibilityLabel,
   };
 }

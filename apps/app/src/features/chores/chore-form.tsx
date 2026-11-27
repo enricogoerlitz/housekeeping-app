@@ -1,10 +1,11 @@
-import { useNotificationSettings } from '@housekeeping/api';
 import {
+  CHORE_NOTICE_OPTIONS,
   choreRemindHint,
   draftNextAssignee,
   draftNextDueOn,
   hasNextDueField,
   monthName,
+  offersChoreNotice,
   rhythmPatch,
   seasonLabel,
   seasonMonths,
@@ -351,12 +352,20 @@ export interface ChoreTime {
   set: (time: TimeOfDay | undefined) => void;
   remind: boolean;
   setRemind: (remind: boolean) => void;
+  /** „Vorwarnung“ in days, 0 = none (spec 0059, REQ-004). */
+  notice: number;
+  setNotice: (days: number) => void;
   reset: () => void;
 }
 
-export function useChoreTime(initial: TimeOfDay | undefined, initialRemind = true): ChoreTime {
+export function useChoreTime(
+  initial: TimeOfDay | undefined,
+  initialRemind = true,
+  initialNotice = 0,
+): ChoreTime {
   const [value, setValue] = useState(initial);
   const [remind, setRemind] = useState(initialRemind);
+  const [notice, setNotice] = useState(initialNotice);
   return {
     value,
     // Without a time „Erinnern“ is on, so a time chosen again reminds (AC-038).
@@ -366,24 +375,49 @@ export function useChoreTime(initial: TimeOfDay | undefined, initialRemind = tru
     },
     remind,
     setRemind,
+    notice,
+    setNotice,
     reset: () => {
       setValue(initial);
       setRemind(initialRemind);
+      setNotice(initialNotice);
     },
   };
 }
 
 /**
+ * „Vorwarnung“ (spec 0059, REQ-004): from so many days before the Termin the chore stands in the
+ * bell. Only for a rhythm with a fixed Termin (AC-023); offline greyed out with the hint.
+ */
+function ChoreNoticeField(props: { time: ChoreTime; offlineHint?: string }) {
+  const { time } = props;
+  // A stored Vorwarnung outside the chips (written elsewhere) stays selectable as it is.
+  const options = CHORE_NOTICE_OPTIONS.some((option) => option.value === time.notice)
+    ? CHORE_NOTICE_OPTIONS
+    : [...CHORE_NOTICE_OPTIONS, { value: time.notice, label: `${time.notice} Tage` }];
+  return (
+    <Field label="Vorwarnung">
+      <ChoiceChips
+        label="Vorwarnung"
+        value={String(time.notice)}
+        onChange={(days) => time.setNotice(Number(days))}
+        options={options.map((option) => ({ value: String(option.value), label: option.label }))}
+        disabled={props.offlineHint !== undefined}
+        hint={props.offlineHint ?? 'Steht so lange vor dem Termin in der Glocke.'}
+        testID="chore-notice"
+      />
+    </Field>
+  );
+}
+
+/**
  * The field „Uhrzeit (optional)“ with ✕ and, with a time, the switch „Erinnern“ for the whole
- * household; its hint says whether it reminds and whether the own setting „Aufgaben mit Uhrzeit“
- * keeps it from you (AC-035, AC-037). Offline both are greyed out with the hint.
+ * household; its hint says whether whoever is up gets a notice in the app (AC-035; spec 0051).
+ * Offline both are greyed out with the hint.
  */
 function ChoreTimeField(props: { time: ChoreTime; offlineHint?: string }) {
-  const settings = useNotificationSettings();
   const { time } = props;
   const offline = props.offlineHint !== undefined;
-  // Without the settings row yet, the server's default counts: chore reminders are on (D36).
-  const ownOn = settings?.choreRemindersEnabled ?? true;
   return (
     <Stack gap={4}>
       <TimeField
@@ -401,7 +435,7 @@ function ChoreTimeField(props: { time: ChoreTime; offlineHint?: string }) {
       {time.value ? (
         <SwitchRow
           label="Erinnern"
-          description={choreRemindHint(time.remind, ownOn)}
+          description={choreRemindHint(time.remind)}
           value={time.remind}
           onValueChange={time.setRemind}
           disabled={offline}
@@ -465,6 +499,9 @@ export function ChoreFormFields(props: {
       />
       <AssignmentField draft={draft} update={update} members={props.members} />
       <ChoreTimeField time={props.time} offlineHint={props.offlineHint} />
+      {offersChoreNotice(draft.rhythm) ? (
+        <ChoreNoticeField time={props.time} offlineHint={props.offlineHint} />
+      ) : null}
       <Field label="Aufwand">
         <ChoiceChips<ChoreEffortChoice>
           label="Aufwand"

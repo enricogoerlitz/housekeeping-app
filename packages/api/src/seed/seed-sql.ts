@@ -95,9 +95,12 @@ const JSON_COLUMNS = new Set([
   'steps',
   'lead_time',
   'links',
+  // Spec 0046: the recipe's videos, a jsonb list.
+  'videos',
   'source',
   'recurrence',
   'assignment',
+  'rule',
 ]);
 const DATE_COLUMNS = new Set([
   'last_cooked_on',
@@ -107,6 +110,11 @@ const DATE_COLUMNS = new Set([
   'done_on',
   'from_on',
   'to_on',
+  // Spec 0041.
+  'starts_on',
+  'ends_on',
+  'on_date',
+  'moved_to',
 ]);
 const TIMESTAMP_COLUMNS = new Set(['created_at', 'checked_at', 'packed_at']);
 /** Tables the app lists newest first: ties in created_at must keep the demo's order there too. */
@@ -338,6 +346,11 @@ function householdSql(householdId: string, data: HouseholdData, context: Context
       if (table === 'households') delete copy.default_store_id;
       return prepareRow(table, copy, index, context, data);
     });
+    // The households' trigger created the default kinds with ids of its own (spec 0041); the
+    // demo's take their place, so activities can name them.
+    if (table === 'activity_kinds') {
+      parts.push(`delete from public.activity_kinds where household_id = ${quote(householdId)};\n`);
+    }
     parts.push(insert(table, prepared));
     if (table === 'stores') {
       // The default store exists now (composite foreign key).

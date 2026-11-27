@@ -82,7 +82,12 @@ const ratedNow = (ratings: Record<string, number>) =>
 function normalised(data: HouseholdData): HouseholdData {
   return {
     ...data,
-    recipes: data.recipes.map((recipe) => ({ ...recipe, ratedAt: ratedNow(recipe.ratings) })),
+    // Spec 0037: a recipe carries the server's updated_at (AC-006).
+    recipes: data.recipes.map((recipe) => ({
+      ...recipe,
+      ratedAt: ratedNow(recipe.ratings),
+      updatedAt: SERVER_TIME,
+    })),
     restaurants: data.restaurants.map((restaurant) => ({
       ...restaurant,
       ratedAt: ratedNow(restaurant.ratings),
@@ -225,6 +230,9 @@ describe('mapping between domain and rows', () => {
       website_url: null,
       created_by: ENRICO,
       created_at: expect.any(String),
+      kind_id: 'kind-sport',
+      icon: null,
+      remembered: true,
     });
     expect(rows.activity_ratings).toContainEqual({
       id: `act-eislaufen:${NADJA}`,
@@ -268,6 +276,114 @@ describe('mapping between domain and rows', () => {
     expect(domain.activities.find((activity) => activity.id === 'act-bouldern')?.photoPath).toBe(
       'hh-demo/activities/act-bouldern/b.jpg',
     );
+  });
+
+  it('spec 0046: the videos survive a round trip; a broken entry is dropped', () => {
+    const { data, members } = demo();
+    const videos = [
+      {
+        path: 'hh-demo/recipes/rec-lasagne/v.mp4',
+        url: 'https://vm.tiktok.com/x/',
+        poster: 'p.jpg',
+      },
+      { path: 'hh-demo/recipes/rec-lasagne/w.mp4' },
+    ];
+    const withVideo: HouseholdData = {
+      ...data,
+      recipes: data.recipes.map((recipe) =>
+        recipe.id === 'rec-lasagne' ? { ...recipe, videos } : recipe,
+      ),
+    };
+    const rows = householdToRows(withVideo);
+    expect(rows.recipes?.find((row) => row.id === 'rec-lasagne')).toMatchObject({ videos });
+    expect(rows.recipes?.find((row) => row.id !== 'rec-lasagne')).toMatchObject({ videos: [] });
+    const lasagne = rows.recipes?.find((row) => row.id === 'rec-lasagne');
+    if (lasagne) lasagne.videos = [...videos, { url: 'no path' }, 'x', null];
+    const { tables, small } = asServerTables({ ...rows, ...membersToRows(members) });
+    const domain = rowsToHousehold(tables, small, DEMO_HOUSEHOLD_ID);
+    expect(domain.recipes.find((recipe) => recipe.id === 'rec-lasagne')?.videos).toEqual(videos);
+    expect(domain.recipes.find((recipe) => recipe.id !== 'rec-lasagne')?.videos).toEqual([]);
+  });
+
+  it('spec 0041: kinds, series and exceptions survive a round trip; unknown symbols and rules are dropped', () => {
+    const { data, members } = demo();
+    const withSeries: HouseholdData = {
+      ...data,
+      activities: data.activities.map((activity) =>
+        activity.id === 'act-bouldern'
+          ? { ...activity, icon: 'mountain', remembered: false }
+          : activity,
+      ),
+      activitySeries: [
+        {
+          id: 'series-1',
+          activityId: 'act-bouldern',
+          rule: { type: 'weekly', every: 2, weekdays: [2, 4] },
+          startsOn: '2026-12-01',
+          endsOn: '2027-03-31',
+          slotId: 'slot-abend',
+          startsAt: '18:00',
+          note: 'Halle Nord',
+          eaterIds: [ENRICO],
+          guests: 2,
+        },
+        {
+          id: 'series-2',
+          activityId: 'act-eislaufen',
+          rule: { type: 'yearly' },
+          startsOn: '2027-03-14',
+          slotId: 'slot-abend',
+          eaterIds: [],
+          guests: 0,
+        },
+      ],
+      activitySeriesExceptions: [
+        { id: 'x-1', seriesId: 'series-1', on: '2026-12-08' },
+        {
+          id: 'x-2',
+          seriesId: 'series-1',
+          on: '2026-12-15',
+          movedTo: '2026-12-16',
+          startsAt: '19:00',
+        },
+      ],
+    };
+    const rows = householdToRows(withSeries);
+    expect(rows.activity_series?.[0]).toMatchObject({
+      starts_at: '18:00:00',
+      ends_on: '2027-03-31',
+    });
+    const { tables, small } = asServerTables({ ...rows, ...membersToRows(members) });
+    const back = rowsToHousehold(tables, small, DEMO_HOUSEHOLD_ID);
+    expect(back.activityKinds).toEqual(withSeries.activityKinds);
+    expect(back.activitySeries).toEqual(withSeries.activitySeries);
+    expect(back.activitySeriesExceptions).toEqual(withSeries.activitySeriesExceptions);
+    expect(back.activities.find((activity) => activity.id === 'act-bouldern')).toMatchObject({
+      icon: 'mountain',
+      remembered: false,
+      kindId: 'kind-sport',
+    });
+
+    const series = tables.activity_series?.['series-2'];
+    const bouldern = tables.activities?.['act-bouldern'];
+    const kind = tables.activity_kinds?.['kind-sport'];
+    if (!series || !bouldern || !kind) throw new Error('fixture');
+    tables.activity_series = {
+      ...tables.activity_series,
+      [series.id]: { ...series, rule: { type: 'daily' } },
+    };
+    tables.activities = {
+      ...tables.activities,
+      [bouldern.id]: { ...bouldern, icon: 'skull', remembered: null },
+    };
+    tables.activity_kinds = { ...tables.activity_kinds, [kind.id]: { ...kind, icon: 'skull' } };
+    const odd = rowsToHousehold(tables, small, DEMO_HOUSEHOLD_ID);
+    expect(odd.activitySeries.map((entry) => entry.id)).toEqual(['series-1']);
+    expect(odd.activities.find((activity) => activity.id === 'act-bouldern')).toMatchObject({
+      icon: undefined,
+      remembered: true,
+    });
+    expect(odd.activityKinds.find((entry) => entry.id === 'kind-sport')?.icon).toBe('mountain');
   });
 
   it('a removed member (null done_by / author_id) becomes an empty id', () => {
@@ -593,6 +709,7 @@ describe('spec 0009: collections in the rows', () => {
           cookedCount: 0,
           createdAt: '2026-11-01T10:00:00.000Z',
           links: [],
+          videos: [],
         },
         ...data.recipes,
       ],
@@ -726,13 +843,11 @@ describe('spec 0013: notification settings, times and reservation in the rows', 
   const settingsRow = (overrides: Row = { id: 'ns-enrico' }): Row => ({
     household_id: DEMO_HOUSEHOLD_ID,
     member_id: ENRICO,
+    // Spec 0053, AC-006: a row cached before the push settings were dropped still carries them;
+    // they are left alone, so the cache needs no new version.
     daily_summary_enabled: false,
     daily_summary_at: '07:30:00',
-    daily_summary_parts: ['meals', 'activities', 'chores', 'prep'],
-    activities_eve_enabled: false,
-    activities_eve_at: '19:00:00',
-    chore_reminders_enabled: true,
-    entry_reminders_enabled: true,
+    acknowledged_notices: ['chore:c-muell:2026-11-20'],
     created_at: SERVER_TIME,
     updated_at: SERVER_TIME,
     ...overrides,
@@ -745,61 +860,55 @@ describe('spec 0013: notification settings, times and reservation in the rows', 
     return { tables, small };
   }
 
-  it('AC-011: the own row reads as the domain settings, the database times "HH:MM:SS" as "HH:MM"', () => {
+  it('spec 0051, REQ-005 and spec 0053, AC-006: the own row reads as the acknowledged notices; missing or broken as none', () => {
     const { tables, small } = withSettings([settingsRow()]);
     const back = rowsToHousehold(tables, small, DEMO_HOUSEHOLD_ID, { memberId: ENRICO });
     expect(back.notificationSettings).toEqual({
       id: 'ns-enrico',
       memberId: ENRICO,
-      dailySummaryEnabled: false,
-      dailySummaryAt: '07:30',
-      dailySummaryParts: ['meals', 'activities', 'chores', 'prep'],
-      activitiesEveEnabled: false,
-      activitiesEveAt: '19:00',
-      choreRemindersEnabled: true,
-      entryRemindersEnabled: true,
+      acknowledgedNotices: ['chore:c-muell:2026-11-20'],
     });
+    const old = withSettings([settingsRow({ id: 'ns-enrico', acknowledged_notices: undefined })]);
+    expect(
+      rowsToHousehold(old.tables, old.small, DEMO_HOUSEHOLD_ID, { memberId: ENRICO })
+        .notificationSettings?.acknowledgedNotices,
+    ).toEqual([]);
+    const broken = withSettings([
+      settingsRow({ id: 'ns-enrico', acknowledged_notices: [1, 'a:b:2026-11-20'] }),
+    ]);
+    expect(
+      rowsToHousehold(broken.tables, broken.small, DEMO_HOUSEHOLD_ID, { memberId: ENRICO })
+        .notificationSettings?.acknowledgedNotices,
+    ).toEqual(['a:b:2026-11-20']);
   });
 
   it('AC-013: only the signed-in member’s row is her settings; without one there are none', () => {
     const { tables, small } = withSettings([
-      settingsRow({ id: 'ns-nadja', member_id: NADJA, daily_summary_enabled: true }),
+      settingsRow({
+        id: 'ns-nadja',
+        member_id: NADJA,
+        acknowledged_notices: ['cook:x:2026-11-20'],
+      }),
     ]);
     expect(
       rowsToHousehold(tables, small, DEMO_HOUSEHOLD_ID, { memberId: ENRICO }).notificationSettings,
     ).toBeUndefined();
     expect(
       rowsToHousehold(tables, small, DEMO_HOUSEHOLD_ID, { memberId: NADJA }).notificationSettings
-        ?.dailySummaryEnabled,
-    ).toBe(true);
+        ?.acknowledgedNotices,
+    ).toEqual(['cook:x:2026-11-20']);
   });
 
-  it('AC-012: a change of the settings is one patch of only the changed columns, times with seconds', () => {
+  it('spec 0051: acknowledging is no diff the client may send (only acknowledge_notices writes it)', () => {
     const { tables, small } = withSettings([settingsRow()]);
     const before = rowsToHousehold(tables, small, DEMO_HOUSEHOLD_ID, { memberId: ENRICO });
     const settings = before.notificationSettings;
     if (!settings) throw new Error('fixture');
     const after: HouseholdData = {
       ...before,
-      notificationSettings: {
-        ...settings,
-        dailySummaryEnabled: true,
-        dailySummaryAt: '06:45',
-        dailySummaryParts: ['meals', 'chores'],
-      },
+      notificationSettings: { ...settings, acknowledgedNotices: ['cook:y:2026-11-20'] },
     };
-    expect(diffHousehold(before, after, { mode: 'send' }).send).toEqual([
-      {
-        kind: 'patch',
-        table: 'notification_settings',
-        id: 'ns-enrico',
-        changes: {
-          daily_summary_enabled: true,
-          daily_summary_at: '06:45:00',
-          daily_summary_parts: ['meals', 'chores'],
-        },
-      },
-    ]);
+    expect(() => diffHousehold(before, after, { mode: 'send' })).toThrow();
   });
 
   it('AC-013: a diff never inserts, deletes or moves a settings row', () => {
@@ -951,42 +1060,6 @@ describe('spec 0017: entry reminders in the rows', () => {
         table: 'meal_plan_entries',
         id: ENTRY,
         changes: { reminder_day_offset: null, reminder_at: null },
-      },
-    ]);
-  });
-
-  it('REQ-007: "Erinnerungen an Einträgen" reads from the own row, on when the column is missing', () => {
-    const { data } = demo();
-    const { tables, small } = asServerTables(householdToRows(data));
-    const row = {
-      id: 'ns-enrico',
-      household_id: DEMO_HOUSEHOLD_ID,
-      member_id: ENRICO,
-      daily_summary_enabled: false,
-      daily_summary_at: '07:30:00',
-      daily_summary_parts: ['meals'],
-      activities_eve_enabled: false,
-      activities_eve_at: '19:00:00',
-      chore_reminders_enabled: true,
-    };
-    tables.notification_settings = { 'ns-enrico': row };
-    const before = rowsToHousehold(tables, small, DEMO_HOUSEHOLD_ID, { memberId: ENRICO });
-    expect(before.notificationSettings?.entryRemindersEnabled).toBe(true);
-    tables.notification_settings = { 'ns-enrico': { ...row, entry_reminders_enabled: false } };
-    const off = rowsToHousehold(tables, small, DEMO_HOUSEHOLD_ID, { memberId: ENRICO });
-    const settings = off.notificationSettings;
-    if (!settings) throw new Error('fixture');
-    expect(settings.entryRemindersEnabled).toBe(false);
-    const on: HouseholdData = {
-      ...off,
-      notificationSettings: { ...settings, entryRemindersEnabled: true },
-    };
-    expect(diffHousehold(off, on, { mode: 'send' }).send).toEqual([
-      {
-        kind: 'patch',
-        table: 'notification_settings',
-        id: 'ns-enrico',
-        changes: { entry_reminders_enabled: true },
       },
     ]);
   });

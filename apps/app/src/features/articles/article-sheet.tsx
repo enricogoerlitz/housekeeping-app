@@ -1,16 +1,18 @@
 import {
   confirmArticle,
   deleteArticle,
-  snapshot,
   updateArticle,
   useAreas,
   useArticles,
   useRecipes,
+  useRecurringItems,
   useShoppingItems,
 } from '@housekeeping/api';
 import {
   articleUsage,
+  seriesRuleLabel,
   mergeTargets,
+  changedArticleName,
   validateArticleDraft,
   type Article,
   type Id,
@@ -34,12 +36,15 @@ import {
   TextField,
   toast,
   type SheetAction,
+  type SheetActions,
 } from '@housekeeping/ui';
 import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 
 import { useOpenRecipe } from '@/features/recipes/navigation';
-import { undoAction, useOnlineOnly } from '@/features/shell/offline';
+import { confirmFirst } from '@/features/shell/confirm-dialog';
+import { useOnlineOnly } from '@/features/shell/offline';
+import { useRecurringForm } from '@/features/recurring/recurring-form';
 import { AreaPicker } from '@/features/stores/area-picker';
 
 import { DIET_OPTIONS, RULE_OPTIONS, type RuleChoice } from './labels';
@@ -57,7 +62,7 @@ export interface ArticleEditorProps {
   onMerge: (targetId: Id) => void;
 }
 
-type Step = 'main' | 'area' | 'merge';
+type Step = 'main' | 'area' | 'merge' | 'recurring';
 
 /** A label above a field that is not a TextField. */
 function FieldLabel(props: { children: string }) {
@@ -117,20 +122,40 @@ function MergeStep(props: { article: Article; onPick: (targetId: Id) => void }) 
 export function useArticleEditor(props: ArticleEditorProps): {
   title: string;
   body: ReactNode;
+  /** The buttons below the body, where there is no window (the right column, the item's step). */
   footer: ReactNode;
-  /** "Fertig" of the main step; a window shows it among its actions instead of `footer`. */
-  done?: SheetAction;
+  /**
+   * A window's head instead (spec 0054, REQ-007): "Fertig" of the main step; "Zurück ·
+   * Regelmäßig kaufen · Anlegen" (or "Speichern" of an existing one) of the Dauerposten (I-05,
+   * review 0004), with `windowFooter`.
+   */
+  actions?: SheetActions;
+  windowFooter?: ReactNode;
 } {
   const articles = useArticles();
   const areas = useAreas();
   const recipes = useRecipes();
   const items = useShoppingItems();
+  const recurringItems = useRecurringItems();
   const online = useOnlineOnly();
   const openRecipe = useOpenRecipe();
   const article = articles.find((candidate) => candidate.id === props.articleId);
+  // Spec 0060, REQ-002: at most one Dauerposten per article.
+  const recurring = recurringItems.find((item) => item.articleId === props.articleId);
 
   const [step, setStep] = useState<Step>('main');
+  // Every opening of "Regelmäßig kaufen" starts from what is stored (useRecurringForm `session`).
+  const [recurringSession, setRecurringSession] = useState(0);
+  const recurringForm = useRecurringForm({
+    recurringId: recurring?.id,
+    articleId: props.articleId,
+    onDone: () => setStep('main'),
+    onOpen: () => setStep('recurring'),
+    session: recurringSession,
+  });
   const [name, setName] = useState(article?.name ?? '');
+  // The name the window opened with or saved last: only a change against it is saved (AC-057).
+  const [shownName, setShownName] = useState(name);
   const [synonym, setSynonym] = useState('');
   const [synonymError, setSynonymError] = useState<string | undefined>();
   const [error, setError] = useState<string | undefined>();
@@ -148,14 +173,21 @@ export function useArticleEditor(props: ArticleEditorProps): {
     }
   };
 
-  const nameProblem = validateArticleDraft(
-    { id: article.id, name, synonyms: article.synonyms },
-    articles,
-  ).find((problem) => problem.field === 'name');
+  const newName = changedArticleName(shownName, name);
+  const nameProblem =
+    newName === undefined
+      ? undefined
+      : validateArticleDraft(
+          { id: article.id, name: newName, synonyms: article.synonyms },
+          articles,
+        ).find((problem) => problem.field === 'name');
+  // Blur, Enter and "Fertig" write nothing without a change (AC-057).
   const saveName = (): boolean => {
+    if (newName === undefined) return true;
     if (nameProblem) return false;
-    if (collapse(name) === article.name) return true;
-    return write(() => updateArticle(article.id, { name }));
+    if (!write(() => updateArticle(article.id, { name: newName }))) return false;
+    setShownName(newName);
+    return true;
   };
   const done = () => {
     if (online.disabled || saveName()) props.onClose();
@@ -183,16 +215,20 @@ export function useArticleEditor(props: ArticleEditorProps): {
     );
 
   const usage = articleUsage(article.id, recipes, items);
-  const remove = () => {
-    const restore = snapshot();
-    if (!write(() => deleteArticle(article.id))) return;
-    props.onClose();
-    toast.show({
-      message: `„${article.name}“ gelöscht`,
-      actionLabel: 'Rückgängig',
-      onAction: undoAction(restore),
+  // Asks first (spec 0036, Entscheidung 1).
+  const remove = () =>
+    confirmFirst({
+      title: `„${article.name}“ löschen?`,
+      // Spec 0060, AC-012: its Dauerposten goes with it.
+      message: recurring ? 'Der Dauerposten wird mit gelöscht.' : undefined,
+      confirmLabel: 'Löschen',
+      onConfirm: () => {
+        if (!write(() => deleteArticle(article.id))) return;
+        props.onClose();
+        toast.show({ message: `„${article.name}“ gelöscht` });
+      },
+      testID: 'confirm-delete-article',
     });
-  };
 
   const area = areas.find((candidate) => candidate.id === article.areaId);
   // Text fields and choice chips have no greyed-out look of their own; offline they get one.
@@ -219,6 +255,30 @@ export function useArticleEditor(props: ArticleEditorProps): {
           testID="article-step-back"
         />
       ),
+    };
+  }
+  if (step === 'recurring') {
+    const back: SheetAction = {
+      label: 'Zurück',
+      icon: 'chevron-left',
+      onPress: () => setStep('main'),
+      testID: 'article-step-back',
+    };
+    const remove = recurringForm.remove ? (
+      <Button {...recurringForm.remove} variant="ghost" />
+    ) : null;
+    return {
+      title: recurring ? 'Dauerposten bearbeiten' : 'Regelmäßig kaufen',
+      body: recurringForm.body,
+      footer: (
+        <Row gap={10} wrap style={{ justifyContent: 'flex-end' }}>
+          <Button {...back} variant="secondary" />
+          {remove}
+          <Button {...recurringForm.save} />
+        </Row>
+      ),
+      actions: { primary: recurringForm.save, cancel: back },
+      windowFooter: remove,
     };
   }
   if (step === 'merge') {
@@ -375,6 +435,38 @@ export function useArticleEditor(props: ArticleEditorProps): {
           onValueChange={(isPantry) => write(() => updateArticle(article.id, { isPantry }))}
           testID="article-pantry"
         />
+        {/* Spec 0060, REQ-002: "Regelmäßig kaufen ›" or the rhythm of its Dauerposten. */}
+        <List>
+          <ListRow
+            title={recurring ? 'Regelmäßig' : 'Regelmäßig kaufen'}
+            trailing={
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1 }}>
+                {recurring ? (
+                  <Text color="muted" numberOfLines={1} testID="article-recurring-rule">
+                    {recurring.paused
+                      ? 'pausiert'
+                      : seriesRuleLabel(recurring.rule, recurring.startsOn)}
+                  </Text>
+                ) : null}
+                <Icon name="chevron-right" size={18} color="muted" />
+              </View>
+            }
+            accessibilityLabel={
+              recurring
+                ? `Regelmäßig: ${
+                    recurring.paused
+                      ? 'pausiert'
+                      : seriesRuleLabel(recurring.rule, recurring.startsOn)
+                  }`
+                : 'Regelmäßig kaufen'
+            }
+            onPress={() => {
+              setRecurringSession((session) => session + 1);
+              setStep('recurring');
+            }}
+            testID="article-recurring"
+          />
+        </List>
       </View>
 
       <View style={offlineGrey} pointerEvents={online.disabled ? 'none' : 'auto'}>
@@ -482,7 +574,7 @@ export function useArticleEditor(props: ArticleEditorProps): {
         <Button {...doneAction} />
       </Row>
     ),
-    done: doneAction,
+    actions: { primary: doneAction },
   };
 }
 
@@ -495,8 +587,8 @@ export function ArticleSheet(props: ArticleEditorProps & { visible: boolean }) {
       size="m"
       title={editor.title}
       onClose={props.onClose}
-      footer={editor.done ? undefined : editor.footer}
-      actions={editor.done ? { primary: editor.done } : undefined}
+      footer={editor.actions ? editor.windowFooter : editor.footer}
+      actions={editor.actions}
       testID="article-sheet"
     >
       {editor.body}

@@ -6,7 +6,7 @@ Schreiben geht online, nur Einkaufen im Markt und Packen funktionieren auch ohne
 
 Funktionen: Übersicht, Kalender mit Reisen, Rezepte mit Kochmodus, Restaurants, Aktivitäten,
 Einkaufsliste und Einkaufen im Markt (Laufreihenfolge), Haushaltsaufgaben, Reisetaschen mit
-Packlisten, Benachrichtigungen (Web Push). Anmeldung nur mit Google, nur auf Einladung; die Daten
+Packlisten, Mitteilungen in der App (Glocke mit Zähler, Spec 0051). Anmeldung nur mit Google, nur auf Einladung; die Daten
 sind je Haushalt getrennt.
 
 Betrieb: Supabase (Postgres, Auth, Storage, Edge Functions) und Azure Static Web Apps, mit einer
@@ -27,6 +27,7 @@ TypeScript · pnpm + Turborepo · Vitest, pgTAP, Playwright.
 ## Loslegen
 
 Voraussetzungen: **Node 24** (`.nvmrc`), pnpm 11, Docker (für die lokale Supabase).
+Optional für UI-Prüfungen im iPhone-Simulator (einmalig pro Maschine): Xcode 27, `brew trust facebook/fb && brew install idb-companion`, `pip install fb-idb`; Details in `.claude/skills/ui-verify/references/ios-simulator.md`.
 
 ```bash
 pnpm install
@@ -76,7 +77,7 @@ Coding-Agents; der Ablauf steht in [AGENTS.md](AGENTS.md).
 
 `.github/workflows/checks.yml` läuft bei jedem Pull Request nach `develop` oder `main` und nach
 jedem Merge auf `develop`. Jobs: Änderungen, Konventionen, Geheimnisse, Migrationen, Prüfungen
-(Format, `pnpm check`, Web-Build), Datenbank (pgTAP), Integration (API), Deno-Lock.
+(Format, `pnpm check`, Web-Build), Datenbank (pgTAP), Integration (API).
 
 ### Branches und Release
 
@@ -90,7 +91,7 @@ Release und Wiederherstellung: [docs/architecture/betrieb.md](docs/architecture/
 | ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
 | Plugins (in `.claude/settings.json` aktiviert)         | Superpowers, Expo, impeccable, UI UX Pro Max                                                                                            |
 | Eingecheckte Skills (festgelegt in `skills-lock.json`) | Supabase, Emil Kowalski (Animation, Gesten, Apple-Design), Vercel (React Native, Web-Design-Guidelines), Addy Osmani (Barrierefreiheit) |
-| Eigene Skills                                          | `spec`, `db-change`, `ui-verify`, `adr`, `glossary`, `security-check`                                                                   |
+| Eigene Skills                                          | `spec`, `db-change`, `ui-verify`, `adr`, `glossary`, `security-check`, `recipe-crud`                                                    |
 | Subagents (`.claude/agents/`)                          | `spec-auditor`, `security-auditor`                                                                                                      |
 | Regeln (`.claude/rules/`)                              | werden je nach Dateipfad automatisch geladen                                                                                            |
 

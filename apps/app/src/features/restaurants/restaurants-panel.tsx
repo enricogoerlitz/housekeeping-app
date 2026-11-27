@@ -2,6 +2,7 @@ import { useCurrentMember, usePlanEntries, useRestaurants, useToday } from '@hou
 import {
   applyRestaurantListFilter,
   cuisineFacets,
+  tagFacets,
   EMPTY_RESTAURANT_LIST_FILTER,
   filterButtonLabel,
   removeRestaurantFilterChip,
@@ -15,18 +16,19 @@ import {
   restaurantVisits,
   sortRestaurantList,
   toggleRestaurantFavorites,
+  quickViewOrigin,
   type Id,
-  type RecipeKind,
   type Restaurant,
   type RestaurantListSort,
 } from '@housekeeping/core';
 import {
   Button,
   Chip,
+  CreateButton,
   EmptyState,
+  FieldClearButton,
   FilterBar,
   Icon,
-  IconButton,
   InfiniteList,
   ListDetail,
   Menu,
@@ -40,18 +42,18 @@ import {
   useBreakpoint,
   useTheme,
   type TabSwipe,
+  openKeyboardNow,
 } from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Pressable, View } from 'react-native';
+import { type ComponentRef, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { Pressable, View, type TextInput } from 'react-native';
 
-import { useOpenRecipe } from '@/features/recipes/navigation';
-import { afterWindowClosed, usePageParams } from '@/lib/url-state';
-import { NewRecipeSheet } from '@/features/recipes/new-recipe-sheet';
-import { FoodNewMenu, type FoodNewKind } from '@/features/recipes/new-menu';
+import { rememberBrowseOrder } from '@/lib/browse-order';
+import { afterWindowClosed, useOriginBack, usePageParams } from '@/lib/url-state';
 import { StartPageActions } from '@/features/shell/profile-button';
 import { useOnlineOnly } from '@/features/shell/offline';
 import { OwnPhoto } from '@/features/shell/own-photo';
+import { ListViewSwitch, PlaceTile, TILE_MIN_WIDTH, useListView } from '@/features/shell/list-view';
 
 import { AddRestaurantSheet, type AddRestaurantSheetProps } from './add-restaurant-sheet';
 import { lastVisitLabel, restaurantMeta } from './labels';
@@ -80,6 +82,7 @@ function sortShortLabel(sort: RestaurantListSort): string {
  * and the random order stay while the app runs (E14).
  */
 export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }) {
+  const searchInput = useRef<ComponentRef<typeof TextInput>>(null);
   const router = useRouter();
   const address = usePageParams('rezepte');
   const { params } = address;
@@ -90,18 +93,22 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
   const today = useToday();
   const me = useCurrentMember();
   const list = useRestaurantListState();
-  const openRecipe = useOpenRecipe();
+  // "Kacheln" open the restaurant's page, "Liste" beside the list on wide screens (spec 0038).
+  const listView = useListView('restaurants');
 
-  // Where "Restaurant hinzufügen" puts the cursor; the window itself stands in the address.
-  const [focus, setFocus] = useState<SheetRequest['focus']>('link');
-  const [newRecipe, setNewRecipe] = useState<{ open: boolean; kind: RecipeKind }>({
-    open: false,
-    kind: 'recipe',
-  });
+  // Where "Restaurant hinzufügen" puts the cursor: a new restaurant starts with its name; only
+  // "Link einfügen" in the empty state starts with the link. The window stands in the address.
+  const [focus, setFocus] = useState<SheetRequest['focus']>('name');
 
   // On wide screens the chosen restaurant stands in the address and replaces the entry (spec 0019,
   // REQ-014, AC-043); on phones the same address opens its page, with the list underneath (AC-044).
-  const selectedId = isWide ? params.restaurant : undefined;
+  const selectedId = listView.quick ? params.restaurant : undefined;
+  // Opened from another section ("Öffnen" in the calendar): "‹ Kalender" and ✕ lead back there,
+  // as for activities (spec 0035, REQ-002).
+  const origin = useOriginBack(params.von, 'essen');
+  const fromOther = selectedId !== undefined && quickViewOrigin(params.von, 'essen') !== undefined;
+  const closeDetail = () =>
+    fromOther ? origin.back() : address.replace({ restaurant: undefined, fenster: undefined });
   const addressed = params.restaurant;
   const replace = address.replace;
   useEffect(() => {
@@ -117,12 +124,13 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
       ? { initialText: params.link, initialName: params.name, focus: shared ? 'name' : focus }
       : undefined;
   const setSheet = (request: { focus: SheetRequest['focus'] }) => {
+    openKeyboardNow();
     setFocus(request.focus);
     address.open({ fenster: 'neu-restaurant' });
   };
 
   const open = (restaurantId: Id) => {
-    if (isWide) address.replace({ restaurant: restaurantId });
+    if (listView.quick) address.replace({ restaurant: restaurantId });
     else router.push({ pathname: '/restaurant/[id]', params: { id: restaurantId } });
   };
   // The window closes first (back one entry); the restaurant opens after that, not under it.
@@ -132,6 +140,7 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
   const { query, filter, sort } = list;
   const shuffle = list.shuffleFor(restaurants.map((restaurant) => restaurant.id));
   const cuisines = useMemo(() => cuisineFacets(restaurants), [restaurants]);
+  const tags = useMemo(() => tagFacets(restaurants), [restaurants]);
   const visitsById = useMemo(
     () =>
       new Map(
@@ -148,18 +157,30 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
     return sortRestaurantList(filtered, sort, { me: me.id, entries, today, shuffle });
   }, [query, restaurants, filter, me.id, sort, entries, today, shuffle]);
 
-  const onNew = (kind: FoodNewKind) => {
-    if (kind === 'recipe' || kind === 'collection') setNewRecipe({ open: true, kind });
-    else setSheet({ focus: 'link' });
+  // From the list: the restaurant's page swipes through it in this order (spec 0034, REQ-008).
+  const openFromList = (restaurantId: Id) => {
+    rememberBrowseOrder(
+      'restaurants',
+      results.map((restaurant) => restaurant.id),
+    );
+    open(restaurantId);
   };
 
-  // The same "+" as on "Essen → Rezepte" (spec 0008, AC-003): one header for both views.
+  // On "Restaurants" the "+" creates a restaurant at once (spec 0054, REQ-002).
   const header = (
     <ScreenHeader
       title="Essen"
+      backLabel={fromOther ? origin.label : undefined}
+      onBack={fromOther ? origin.back : undefined}
       right={
         <>
-          <FoodNewMenu onNew={onNew} />
+          <CreateButton
+            label="Restaurant anlegen"
+            disabled={online.disabled}
+            hint={online.hint}
+            onPress={() => setSheet({ focus: 'name' })}
+            testID="restaurant-new"
+          />
           <StartPageActions />
         </>
       }
@@ -171,25 +192,15 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
     </Text>
   ) : null;
 
-  const sheets = (
-    <>
-      {sheetRequest ? (
-        <AddRestaurantSheet
-          key={`${sheetRequest.initialText ?? ''}|${sheetRequest.initialName ?? ''}`}
-          {...sheetRequest}
-          onClose={closeSheet}
-          onCreated={openFromSheet}
-          onOpenExisting={openFromSheet}
-        />
-      ) : null}
-      <NewRecipeSheet
-        visible={newRecipe.open}
-        kind={newRecipe.kind}
-        onClose={() => setNewRecipe({ ...newRecipe, open: false })}
-        onCreated={openRecipe}
-      />
-    </>
-  );
+  const sheets = sheetRequest ? (
+    <AddRestaurantSheet
+      key={`${sheetRequest.initialText ?? ''}|${sheetRequest.initialName ?? ''}`}
+      {...sheetRequest}
+      onClose={closeSheet}
+      onCreated={openFromSheet}
+      onOpenExisting={openFromSheet}
+    />
+  ) : null;
 
   // Nothing created yet: no search and no filter row, only the first step (AC-018).
   if (restaurants.length === 0) {
@@ -232,6 +243,11 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
   }
 
   const ids = restaurants.map((restaurant) => restaurant.id);
+  // Spec 0038, AC-005: "Kacheln" close the restaurant beside the list; the tiles fill the width.
+  const changeView = (next: typeof listView.view) => {
+    if (selectedId) address.replace({ restaurant: undefined, fenster: undefined });
+    listView.setView(next);
+  };
   const filterCount = restaurantFilterCount(filter);
   const sortLabel = sortShortLabel(sort);
   const toolbar = (
@@ -239,6 +255,7 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
       search={
         <TextField
           round
+          inputRef={searchInput}
           value={query}
           onChangeText={list.setQuery}
           placeholder="Restaurants suchen …"
@@ -247,10 +264,10 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
           left={<Icon name="search" size={19} color="muted" />}
           right={
             query ? (
-              <IconButton
-                icon="x"
+              <FieldClearButton
                 label="Suche leeren"
-                onPress={() => list.setQuery('')}
+                onClear={() => list.setQuery('')}
+                inputRef={searchInput}
                 testID="restaurant-search-clear"
               />
             ) : undefined
@@ -281,7 +298,7 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
               testID="restaurant-reshuffle"
             />
           ) : null}
-          {restaurantFilterChips(filter, cuisines).map((chip) => (
+          {restaurantFilterChips(filter, cuisines, tags).map((chip) => (
             <Chip
               key={`${chip.kind}-${chip.value}`}
               label={chip.label}
@@ -303,12 +320,20 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
       }
       panelTitle="Filter"
       panel={
-        <RestaurantFilterPanel filter={filter} onChange={list.setFilter} cuisines={cuisines} />
+        <RestaurantFilterPanel
+          filter={filter}
+          onChange={list.setFilter}
+          cuisines={cuisines}
+          tags={tags}
+        />
       }
       resetLabel="Zurücksetzen"
       onReset={() => list.setFilter(EMPTY_RESTAURANT_LIST_FILTER)}
       applyLabel={restaurantShowLabel(results.length)}
       collapseLabel="Einklappen"
+      trailing={
+        <ListViewSwitch value={listView.view} onChange={changeView} testID="restaurant-view" />
+      }
       testID="restaurant-filters"
     />
   );
@@ -332,28 +357,41 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
   );
 
   const split = selectedId !== undefined;
+  const tiles = listView.view === 'tiles';
+  const layout = tiles ? 'tiles' : split ? 'column' : 'grid';
   const restaurantList = (
     <InfiniteList<Restaurant>
       // A new round (filter, sort, mixing) starts at the top; its place is kept per round. The
-      // grid and the narrow list column keep separate places.
-      key={`${split ? 'column' : 'grid'}-${list.round}`}
-      restoreKey={`restaurants-${split ? 'column' : 'grid'}-${list.round}`}
+      // tiles, the grid and the narrow list column keep separate places.
+      key={`${layout}-${list.round}`}
+      restoreKey={`restaurants-${layout}-${list.round}`}
       data={results}
       keyExtractor={(restaurant) => restaurant.id}
-      renderItem={(restaurant) => (
-        // The grid spaces its rows itself; the plain column needs the gap per card.
-        <View style={split ? { marginBottom: 12 } : { flexGrow: 1 }}>
-          <RestaurantCard
+      renderItem={(restaurant) =>
+        tiles ? (
+          <RestaurantTile
             restaurant={restaurant}
             myRating={restaurant.ratings[me.id] ?? 0}
             isFavorite={restaurant.favoriteOf.includes(me.id)}
             lastVisit={lastVisitLabel(visitsById.get(restaurant.id)?.daysSince)}
-            selected={restaurant.id === selectedId}
-            onPress={() => open(restaurant.id)}
+            onPress={() => openFromList(restaurant.id)}
           />
-        </View>
-      )}
-      minColumnWidth={split ? undefined : CARD_MIN_WIDTH}
+        ) : (
+          // The grid spaces its rows itself; the plain column needs the gap per card.
+          <View style={split ? { marginBottom: 12 } : { flexGrow: 1 }}>
+            <RestaurantCard
+              restaurant={restaurant}
+              myRating={restaurant.ratings[me.id] ?? 0}
+              isFavorite={restaurant.favoriteOf.includes(me.id)}
+              lastVisit={lastVisitLabel(visitsById.get(restaurant.id)?.daysSince)}
+              selected={restaurant.id === selectedId}
+              onPress={() => openFromList(restaurant.id)}
+            />
+          </View>
+        )
+      }
+      minColumnWidth={tiles ? TILE_MIN_WIDTH : split ? undefined : CARD_MIN_WIDTH}
+      minColumns={tiles ? 2 : undefined}
       ListHeaderComponent={
         <View style={{ gap: 6, marginBottom: 12 }}>
           {offlineHint}
@@ -387,7 +425,7 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
           detail={
             <RestaurantDetail
               restaurantId={selectedId}
-              onClose={() => address.replace({ restaurant: undefined, fenster: undefined })}
+              onClose={closeDetail}
               window={
                 params.fenster === 'bearbeiten' || params.fenster === 'einplanen'
                   ? params.fenster
@@ -410,6 +448,66 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
       )}
       {sheets}
     </Screen>
+  );
+}
+
+type RestaurantEntryProps = {
+  restaurant: Restaurant;
+  myRating: number;
+  isFavorite: boolean;
+  lastVisit?: string;
+  onPress: () => void;
+};
+
+/** Favourite, own rating and last visit, below the name of a card or a tile. */
+function RestaurantSignals(props: RestaurantEntryProps) {
+  const id = props.restaurant.id;
+  if (!props.isFavorite && !props.myRating && !props.lastVisit) return null;
+  return (
+    <Row gap={8} wrap>
+      {props.isFavorite ? (
+        <View
+          testID={`restaurant-${id}-favorite`}
+          accessibilityLabel="Favorit"
+          accessibilityRole="image"
+        >
+          <Icon name="heart" size={15} color="accent" filled />
+        </View>
+      ) : null}
+      {props.myRating ? (
+        <Stars value={props.myRating} size={13} testID={`restaurant-${id}-stars`} />
+      ) : null}
+      {props.lastVisit ? (
+        <Text variant="caption" color="muted" testID={`restaurant-${id}-last`}>
+          {props.lastVisit}
+        </Text>
+      ) : null}
+    </Row>
+  );
+}
+
+/** "Kacheln" (spec 0038, REQ-001): the own photo big in 4:3, else the cutlery. */
+function RestaurantTile(props: RestaurantEntryProps) {
+  const { restaurant } = props;
+  const meta = restaurantMeta(restaurant);
+  return (
+    <PlaceTile
+      testID={`restaurant-${restaurant.id}`}
+      name={restaurant.name}
+      photoPath={restaurant.photoPath}
+      placeholderIcon={RESTAURANT_ICON}
+      meta={
+        <View style={{ gap: 4 }}>
+          {meta ? (
+            <Text variant="caption" color="muted" numberOfLines={1}>
+              {meta}
+            </Text>
+          ) : null}
+          <RestaurantSignals {...props} />
+        </View>
+      }
+      onPress={props.onPress}
+    />
   );
 }
 

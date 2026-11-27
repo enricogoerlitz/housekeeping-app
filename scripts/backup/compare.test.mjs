@@ -1,6 +1,7 @@
-// scripts/backup/compare.mjs (spec 0014, Task 9): the restore test compares the restored throwaway
-// database and the unpacked photos with the companion file. Messages name tables and numbers only,
-// never data. Runs against throwaway files under tmp/ (git-ignored), removed afterwards.
+// scripts/backup/compare.mjs (spec 0014, Task 9; spec 0048): the restore test compares the restored
+// throwaway database and the unpacked photos with the companion file; videos are no longer backed up
+// (spec 0048), those in older backups (format 2) are passed over. Messages name tables and numbers
+// only, never data. Runs against throwaway files under tmp/ (git-ignored), removed afterwards.
 //
 //   node --test scripts/backup/compare.test.mjs
 import assert from 'node:assert/strict';
@@ -26,8 +27,9 @@ const dir = mkdtempSync(path.join(root, 'tmp', 'backup-compare-test-'));
 after(() => rmSync(dir, { recursive: true, force: true }));
 
 const ARCHIVE = 'age-encrypted-bytes';
+/** What manifest.mjs writes since spec 0048: no videos. */
 const MANIFEST = {
-  format: 1,
+  format: 3,
   createdAt: '2026-12-01T02:17:00.000Z',
   tables: [
     { schema: 'auth', table: 'users', rows: 2 },
@@ -41,15 +43,27 @@ const MANIFEST = {
     sha256: createHash('sha256').update(ARCHIVE).digest('hex'),
   },
 };
+/** Spec 0043 until spec 0048: the archive also holds videos, the manifest counts them. */
+const MANIFEST_V2 = { ...MANIFEST, format: 2, videos: 1 };
+/** Before spec 0043: same fields as format 3. */
+const MANIFEST_V1 = { ...MANIFEST, format: 1 };
 
 describe('manifest', () => {
-  test('accepts the format manifest.mjs writes', () => {
+  test('AC-002: accepts the format manifest.mjs writes (3, no videos)', () => {
     assert.deepEqual(validateManifest(structuredClone(MANIFEST)), MANIFEST);
   });
 
-  test('rejects a manifest of another format or with broken fields', () => {
+  test('AC-004: still accepts older backups (format 2 with videos, format 1 without)', () => {
+    assert.deepEqual(validateManifest(structuredClone(MANIFEST_V2)), MANIFEST_V2);
+    assert.deepEqual(validateManifest(structuredClone(MANIFEST_V1)), MANIFEST_V1);
+  });
+
+  test('AC-005: rejects a manifest of another format or with broken fields', () => {
     const broken = [
+      { ...MANIFEST, format: 4 },
+      { ...MANIFEST, format: 0 },
       { ...MANIFEST, format: 2 },
+      { ...MANIFEST_V2, videos: -1 },
       { ...MANIFEST, tables: [] },
       { ...MANIFEST, tables: [{ schema: 'public', table: 'x', rows: -1 }] },
       { ...MANIFEST, tables: [{ schema: '', table: 'x', rows: 1 }] },
@@ -94,9 +108,16 @@ describe('row counts', () => {
     assert.throws(() => parseCounts('0|2\nkaputt\n'), /Zählung unlesbar/);
   });
 
-  test('AC-056: everything equal → green', () => {
+  test('AC-056, AC-003: everything equal → green', () => {
     const counts = parseCounts('0|2\n1|26\n2|0\n');
     assert.equal(compareCounts(MANIFEST, counts, 2), null);
+  });
+
+  test('AC-004: older backups compare rows and photos; videos of format 2 are passed over', () => {
+    const counts = parseCounts('0|2\n1|26\n2|0\n');
+    assert.equal(compareCounts(MANIFEST_V2, counts, 2), null);
+    assert.equal(compareCounts(MANIFEST_V1, counts, 2), null);
+    assert.match(compareCounts(MANIFEST_V2, counts, 1), /Abweichung bei den Fotos/);
   });
 
   test('AC-056: one table short → the first deviation, tables and numbers only', () => {
@@ -132,7 +153,9 @@ describe('CLI', () => {
   const manifest = path.join(dir, 'manifest.json');
   const archive = path.join(dir, 'backup.tar.gz.age');
   const media = path.join(dir, 'media');
+  const manifestV2 = path.join(dir, 'manifest-v2.json');
   writeFileSync(manifest, JSON.stringify(MANIFEST));
+  writeFileSync(manifestV2, JSON.stringify(MANIFEST_V2));
   writeFileSync(archive, ARCHIVE);
   mkdirSync(path.join(media, 'h'), { recursive: true });
   writeFileSync(path.join(media, 'h', '1.jpg'), '1');
@@ -153,23 +176,41 @@ describe('CLI', () => {
     assert.equal(result.stdout.trim(), countQuery(MANIFEST));
   });
 
-  test('AC-056: counts → green with a summary of numbers, red with the first deviation', () => {
+  test('AC-056, AC-003: counts → green with a summary of numbers, red with the first deviation', () => {
     const good = path.join(dir, 'good.txt');
     const bad = path.join(dir, 'bad.txt');
     writeFileSync(good, '0|2\n1|26\n2|0\n');
     writeFileSync(bad, '0|1\n1|25\n2|0\n');
 
-    const ok = run('counts', '--manifest', manifest, '--counts', good, '--media', media);
+    const counts = (file, list) => [
+      'counts',
+      ...['--manifest', file, '--counts', list, '--media', media],
+    ];
+    const ok = run(...counts(manifest, good));
     assert.equal(ok.status, 0, ok.output);
-    assert.match(ok.output, /3 Tabellen, 28 Zeilen, 2 Fotos/);
+    assert.match(ok.output, /3 Tabellen, 28 Zeilen, 2 Fotos$/m);
 
-    const red = run('counts', '--manifest', manifest, '--counts', bad, '--media', media);
+    const red = run(...counts(manifest, bad));
     assert.equal(red.status, 1);
     assert.match(
       red.output,
       /::error::Abweichung in auth\.users: Begleitdatei 2 Zeilen, Wiederherstellung 1/,
     );
     assert.doesNotMatch(red.output, /public\.recipes/);
+  });
+
+  test('AC-004: a format-2 backup is green without a videos folder, its videos passed over', () => {
+    const good = path.join(dir, 'good-v2.txt');
+    writeFileSync(good, '0|2\n1|26\n2|0\n');
+    const old = run('counts', '--manifest', manifestV2, '--counts', good, '--media', media);
+    assert.equal(old.status, 0, old.output);
+    assert.match(old.output, /3 Tabellen, 28 Zeilen, 2 Fotos$/m);
+  });
+
+  test('AC-003: counts needs no videos folder; its usage line names none', () => {
+    const result = run('counts', '--manifest', manifest);
+    assert.equal(result.status, 2);
+    assert.match(result.output, /counts --manifest <datei> --counts <datei> --media <ordner>$/m);
   });
 
   test('an unknown mode fails with a usage line', () => {

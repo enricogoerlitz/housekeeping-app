@@ -18,13 +18,20 @@ export interface Dictation {
   dismissError(): void;
 }
 
-/** Dictation (web): microphone → Azure Speech, interim transcript shown live. */
-export function useDictation(): Dictation {
+/**
+ * Dictation (web): microphone → Azure Speech, interim transcript shown live. `onStopWord` runs
+ * when the person says „Ende“ on its own (spec 0040, decision 7), e.g. to finish like a second tap.
+ */
+export function useDictation(options?: { onStopWord?: () => void }): Dictation {
   const [status, setStatus] = useState<DictationStatus>('idle');
   const [transcript, setTranscript] = useState('');
   const [error, setError] = useState<string | undefined>();
   const session = useRef<SpeechSession | undefined>(undefined);
   const mounted = useRef(true);
+  const onStopWord = useRef(options?.onStopWord);
+  useEffect(() => {
+    onStopWord.current = options?.onStopWord;
+  });
 
   useEffect(() => {
     mounted.current = true;
@@ -43,6 +50,9 @@ export function useDictation(): Dictation {
     startSpeech({
       onTranscript: (text) => {
         if (mounted.current) setTranscript(text);
+      },
+      onStopWord: () => {
+        if (mounted.current) onStopWord.current?.();
       },
       onError: (message) => {
         session.current?.cancel();

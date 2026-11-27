@@ -12,3 +12,11 @@ nodeLinker: hoisted
 # re-checks that binary, so it stays off.
 allowBuilds:
   esbuild: false
+
+# Dependabot (spec 0036, REQ-013): GHSA-3g3m-2fjr-6pw4 (glob >=9 <=14.0.1, only through
+# workbox-build 7.4.1, its latest) and GHSA-g3hv-75wg-m249 (minimatch >=7 <11.0.1, through
+# @expo/fingerprint and glob). Only the affected ranges move up, within their API (globSync,
+# minimatch()); minimatch 3 and 5 (eslint, jake) are outside the advisory and stay.
+overrides:
+  'glob@>=9.0.0 <14.0.2': ^14.0.6
+  'minimatch@>=7.0.0 <11.0.1': ^11.0.9

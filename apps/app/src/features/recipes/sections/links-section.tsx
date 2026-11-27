@@ -3,6 +3,7 @@ import {
   LINK_LIMIT_HINT,
   linkDisplay,
   MAX_LINKS,
+  offersVideo,
   validateLink,
   type LinksDraft,
   type Recipe,
@@ -10,7 +11,6 @@ import {
 } from '@housekeeping/core';
 import {
   Button,
-  EditableSection,
   Icon,
   List,
   ListRow,
@@ -19,13 +19,20 @@ import {
   Stack,
   Text,
   TextField,
-  openExternalLink,
+  openKeyboardNow,
+  toast,
 } from '@housekeeping/ui';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { View } from 'react-native';
 
-import { SectionError, useSectionFrame } from './common';
-import type { SectionEditor } from './use-section-editor';
+import { RecipeSection } from './common';
+import type { PageEditor } from './use-page-editor';
+import { discardFirst } from '@/features/shell/confirm-dialog';
 import { errorMessage } from '@/features/shell/error-message';
+import { useOnlineOnly } from '@/features/shell/offline';
+import { openLink } from '@/lib/open-link';
+
+import { SaveVideoButton, useSaveVideo } from '../recipe-video';
 
 type LinkAction = 'edit' | 'up' | 'down' | 'remove';
 
@@ -33,30 +40,95 @@ type LinkAction = 'edit' | 'up' | 'down' | 'remove';
  * "Links" under "Notizen" of a recipe or a collection (spec 0023, REQ-009): at most 10, each row
  * the label over the host (or the host alone) with the symbol "öffnet extern"; a tap opens the page
  * in a new tab and the app stays. The app never loads the page. A link that fails the check on the
- * device is plain text. Read and open offline; editing online only.
+ * device is plain text. Read and open offline; editing online only. A TikTok link of a recipe
+ * whose video is not saved yet has the save button at its right end (spec 0046, REQ-002). "+ Link"
+ * in the read view opens the window "Link" and saves at once (spec 0056, REQ-001; replaces spec
+ * 0047, AC-011).
  */
-export function LinksSection(props: { recipe: Recipe; editor: SectionEditor }) {
+export function LinksSection(props: { recipe: Recipe; editor: PageEditor }) {
   const { recipe, editor } = props;
-  const frame = useSectionFrame(editor, 'links', 'Links');
-  const draft = editor.draft?.section === 'links' ? editor.draft : undefined;
+  const draft = editor.draft?.links;
+  const video = useSaveVideo(recipe);
+  const online = useOnlineOnly();
+  const full = recipe.links.length >= MAX_LINKS;
+  // "+ Link" saves at once (spec 0056, REQ-001): the window works on the links as stored.
+  const [adding, setAdding] = useState<LinksDraft | undefined>();
+  const saveAdded = (base: LinksDraft, links: RecipeLink[]) => {
+    const hint = editor.saveNow({ ...base, links });
+    if (hint) toast.show({ message: hint });
+    else setAdding(undefined);
+  };
+  const add = (
+    <View style={{ flexDirection: 'row' }}>
+      <Button
+        label="Link"
+        icon="plus"
+        variant="link"
+        disabled={online.disabled || full}
+        hint={online.hint ?? (full ? LINK_LIMIT_HINT : undefined)}
+        onPress={() => {
+          openKeyboardNow();
+          setAdding(editor.stored().links);
+        }}
+        testID="recipe-read-add-link"
+      />
+      {adding ? (
+        <LinkSheet
+          links={adding.links}
+          onApply={(links) => saveAdded(adding, links)}
+          onClose={() => setAdding(undefined)}
+        />
+      ) : null}
+    </View>
+  );
   return (
-    <EditableSection {...frame} testID="recipe-links">
+    <RecipeSection title="Links" testID="recipe-links">
       {draft ? (
         <LinksFields draft={draft} editor={editor} />
       ) : recipe.links.length === 0 ? (
-        <Text color="muted">Noch keine Links.</Text>
+        <Stack gap={8}>
+          <Text color="muted">Noch keine Links.</Text>
+          {add}
+        </Stack>
       ) : (
-        <List>
-          {recipe.links.map((link, index) => (
-            <LinkRow key={link.url} link={link} testID={`recipe-link-${index}`} />
-          ))}
-        </List>
+        <Stack gap={8}>
+          <List>
+            {recipe.links.map((link, index) => (
+              <LinkRow
+                key={link.url}
+                link={link}
+                testID={`recipe-link-${index}`}
+                controls={
+                  offersVideo(recipe, link.url) ? (
+                    <SaveVideoButton
+                      link={link}
+                      video={video}
+                      testID={`recipe-link-video-${index}`}
+                    />
+                  ) : undefined
+                }
+              />
+            ))}
+          </List>
+          {video.error ? (
+            <Text variant="small" color="warn" testID="recipe-link-video-error">
+              {video.error}
+            </Text>
+          ) : null}
+          {add}
+        </Stack>
       )}
-    </EditableSection>
+    </RecipeSection>
   );
 }
 
-function LinkRow(props: { link: RecipeLink; testID: string; trailing?: ReactNode }) {
+function LinkRow(props: {
+  link: RecipeLink;
+  testID: string;
+  trailing?: ReactNode;
+  /** Buttons of their own beside the row (spec 0046: the save button of a TikTok link). */
+  controls?: ReactNode;
+}) {
   const shown = linkDisplay(props.link);
   const href = shown.href;
   return (
@@ -68,18 +140,26 @@ function LinkRow(props: { link: RecipeLink; testID: string; trailing?: ReactNode
           ? `${shown.title}${shown.subtitle ? `, ${shown.subtitle}` : ''}, öffnet extern`
           : undefined
       }
-      onPress={href && !props.trailing ? () => openExternalLink(href) : undefined}
+      onPress={href && !props.trailing ? () => openLink(href) : undefined}
       trailing={
         props.trailing ?? (href ? <Icon name="external-link" size={18} color="muted" /> : undefined)
       }
+      controls={props.controls}
       testID={props.testID}
     />
   );
 }
 
-function LinksFields(props: { draft: LinksDraft; editor: SectionEditor }) {
+function LinksFields(props: { draft: LinksDraft; editor: PageEditor }) {
   const { draft, editor } = props;
-  const [editing, setEditing] = useState<{ index?: number } | undefined>();
+  // "+ Link" in the read view opened the edit mode with the window (spec 0047, AC-011).
+  const [editing, setEditing] = useState<{ index?: number } | undefined>(() =>
+    editor.intent?.kind === 'link' ? {} : undefined,
+  );
+  const { intent, clearIntent } = editor;
+  useEffect(() => {
+    if (intent?.kind === 'link') clearIntent();
+  }, [intent, clearIntent]);
   const set = (links: RecipeLink[]) => editor.change({ ...draft, links });
   const full = draft.links.length >= MAX_LINKS;
   const move = (index: number, to: number) => {
@@ -105,8 +185,11 @@ function LinksFields(props: { draft: LinksDraft; editor: SectionEditor }) {
                   label="Mehr"
                   accessibilityLabel={`Mehr zu ${linkDisplay(link).title}`}
                   onChange={(action) => {
-                    if (action === 'edit') setEditing({ index });
-                    else if (action === 'remove') set(draft.links.filter((_, at) => at !== index));
+                    if (action === 'edit') {
+                      openKeyboardNow();
+                      setEditing({ index });
+                    } else if (action === 'remove')
+                      set(draft.links.filter((_, at) => at !== index));
                     else move(index, index + (action === 'up' ? -1 : 1));
                   }}
                   options={[
@@ -137,7 +220,10 @@ function LinksFields(props: { draft: LinksDraft; editor: SectionEditor }) {
         variant="link"
         disabled={full}
         hint={full ? LINK_LIMIT_HINT : undefined}
-        onPress={() => setEditing({})}
+        onPress={() => {
+          openKeyboardNow();
+          setEditing({});
+        }}
         testID="recipe-links-add"
       />
       {full ? (
@@ -145,7 +231,6 @@ function LinksFields(props: { draft: LinksDraft; editor: SectionEditor }) {
           {LINK_LIMIT_HINT}
         </Text>
       ) : null}
-      <SectionError editor={editor} testID="recipe-links-error" />
       {editing ? (
         <LinkSheet
           links={draft.links}
@@ -163,7 +248,8 @@ function LinksFields(props: { draft: LinksDraft; editor: SectionEditor }) {
 
 /**
  * The window "Link": "Adresse" (required) and "Bezeichnung (freiwillig)", checked like the
- * database checks (core validateLink). "Übernehmen" only changes the draft.
+ * database checks (core validateLink). "Übernehmen" changes the draft of the edit mode, or in the
+ * read view saves at once (spec 0056).
  */
 function LinkSheet(props: {
   links: RecipeLink[];
@@ -200,7 +286,13 @@ function LinkSheet(props: {
       visible
       size="s"
       title="Link"
-      onClose={props.onClose}
+      onClose={() =>
+        discardFirst(
+          url.trim() !== (current?.url ?? '').trim() ||
+            label.trim() !== (current?.label ?? '').trim(),
+          props.onClose,
+        )
+      }
       testID="recipe-link-sheet"
       actions={{
         primary: {

@@ -10,18 +10,22 @@ import {
   normalizeText,
   parseItemAmount,
   parseSmartInput,
+  RECURRING_LABEL,
   recipeSource,
+  recurringSource,
   replacePlannedOnList,
   summarizeItem,
   weekdayShort,
   type Article,
   type Id,
+  type ISODate,
   type ItemAmount,
   type MealPlanEntry,
   type PlanEntryVariant,
   type PlannedContribution,
   type Recipe,
   type RecipeBook,
+  type RecurringItem,
   type ShoppingContribution,
   type ShoppingItem,
 } from '@housekeeping/core';
@@ -442,6 +446,11 @@ export interface PantryCheckRow {
   count?: number;
   /** "schon auf der Liste: 1×": the article's open item on the list (spec 0025, AC-027). */
   onList?: string;
+  /**
+   * "500 ml": what the recipes ask for where the list takes packs ("1×"), so "Für N Personen"
+   * visibly changes the row (spec 0037, AC-020). Undefined when the amount itself is shown.
+   */
+  recipeAmount?: string;
   /** From a recipe chosen directly, `entryId` is empty: there is no plan entry. */
   contributions: PlannedContribution[];
 }
@@ -450,18 +459,34 @@ export interface PantryCheckRow {
 function rowAmount(row: Pick<PantryCheckRow, 'articleId' | 'contributions'>): {
   amount: string;
   count?: number;
+  recipeAmount?: string;
 } {
-  const preview: ShoppingItem = {
+  const preview = (contributions: ShoppingContribution[]): ShoppingItem => ({
     id: 'preview',
     articleId: row.articleId,
-    contributions: row.contributions.map((contribution, index) =>
-      toContribution(contribution, `preview-${index}`),
-    ),
+    contributions,
     checked: false,
     createdAt: '',
+  });
+  const item = preview(
+    row.contributions.map((contribution, index) =>
+      toContribution(contribution, `preview-${index}`),
+    ),
+  );
+  const count = itemCount(item);
+  // The recipes' amounts, added up like on the list: "250 ml" + "250 ml" → "500 ml".
+  const needed = row.contributions.flatMap((contribution, index) =>
+    contribution.recipeAmount
+      ? [{ id: `need-${index}`, source: { kind: 'manual' as const }, ...contribution.recipeAmount }]
+      : [],
+  );
+  const recipeAmount =
+    count !== undefined && needed.length > 0 ? summarizeItem(preview(needed)).amount : '';
+  return {
+    amount: summarizeItem(item).amount,
+    ...(count === undefined ? {} : { count }),
+    ...(recipeAmount ? { recipeAmount } : {}),
   };
-  const count = itemCount(preview);
-  return { amount: summarizeItem(preview).amount, ...(count === undefined ? {} : { count }) };
 }
 
 /**
@@ -474,7 +499,7 @@ export function withPantryAmount(row: PantryCheckRow, amount: ItemAmount): Pantr
     const { count: _count, qty: _qty, unit: _unit, ...origin } = contribution;
     return index === 0 ? { ...origin, ...amount } : origin;
   });
-  const { count: _old, ...rest } = row;
+  const { count: _old, recipeAmount: _need, ...rest } = row;
   return { ...rest, contributions, ...rowAmount({ articleId: row.articleId, contributions }) };
 }
 
@@ -488,6 +513,22 @@ export interface PantryRecipe {
   portions: number;
   /** Portions per variant, like a plan entry; empty or missing = the default variant. */
   variants?: PlanEntryVariant[];
+}
+
+/**
+ * "Für N Personen" in the pantry check (spec 0037, REQ-007): the recipe for `portions`, at least
+ * 1; the portions of each variant follow in the same ratio.
+ */
+export function pantryRecipeFor(recipe: PantryRecipe, portions: number): PantryRecipe {
+  const to = Math.max(1, Math.round(portions));
+  const next: PantryRecipe = { recipeId: recipe.recipeId, portions: to };
+  if (recipe.variants) {
+    next.variants = recipe.variants.map((variant) => ({
+      ...variant,
+      portions: Math.max(1, Math.round((variant.portions * to) / recipe.portions)),
+    }));
+  }
+  return next;
 }
 
 /**
@@ -547,6 +588,7 @@ function recipeContributions(
 export function pantryCheckRows(
   entryIds: Id[],
   recipes: readonly PantryRecipe[] = [],
+  recurring: readonly { item: RecurringItem; on: ISODate }[] = [],
 ): PantryCheckRow[] {
   const data = getData();
   const articlesById = indexById(data.articles);
@@ -567,6 +609,24 @@ export function pantryCheckRows(
     planned.push(...contributionsFromEntry(entry, recipe, articlesById, dayLabel));
   }
   for (const chosen of recipes) planned.push(...recipeContributions(chosen, data, book));
+  // Spec 0060, AC-024: chosen under "Regelmäßig"; kept like what is needed, never "Vorrat".
+  for (const { item, on } of recurring) {
+    const article = articlesById[item.articleId];
+    if (!article) continue;
+    planned.push({
+      articleId: article.id,
+      name: article.name,
+      count: item.count,
+      qty: item.qty,
+      unit: item.unit,
+      note: item.note,
+      isPantry: false,
+      recipeId: '',
+      entryId: '',
+      label: RECURRING_LABEL,
+      recurring: { recurringItemId: item.id, on },
+    });
+  }
 
   const rows = new Map<Id, PantryCheckRow>();
   for (const contribution of planned) {
@@ -582,6 +642,9 @@ export function pantryCheckRows(
       contributions: [],
     };
     row.contributions.push(contribution);
+    // Vorrat only when every contribution is: a chosen Dauerposten keeps the row selected, also
+    // when a dish needs the same Vorrat article (spec 0060, AC-024).
+    row.isPantry = row.isPantry && contribution.isPantry;
     if (!row.sources.includes(contribution.label)) row.sources.push(contribution.label);
     rows.set(article.id, row);
   }
@@ -598,14 +661,16 @@ export function pantryCheckRows(
 function toContribution(planned: PlannedContribution, id: Id): ShoppingContribution {
   return {
     id,
-    source: planned.entryId
-      ? {
-          kind: 'recipe',
-          recipeId: planned.recipeId,
-          entryId: planned.entryId,
-          label: planned.label,
-        }
-      : { kind: 'recipe', recipeId: planned.recipeId, label: planned.label },
+    source: planned.recurring
+      ? recurringSource({ id: planned.recurring.recurringItemId }, planned.recurring.on)
+      : planned.entryId
+        ? {
+            kind: 'recipe',
+            recipeId: planned.recipeId,
+            entryId: planned.entryId,
+            label: planned.label,
+          }
+        : { kind: 'recipe', recipeId: planned.recipeId, label: planned.label },
     count: planned.count,
     qty: planned.qty,
     unit: planned.unit,

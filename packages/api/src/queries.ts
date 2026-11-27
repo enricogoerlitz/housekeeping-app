@@ -3,6 +3,7 @@ import {
   householdTime,
   resolveShoppingStore,
   type Activity,
+  type ActivityKind,
   type Article,
   type CollectionContent,
   type CollectionRecipe,
@@ -53,7 +54,14 @@ export const useRestaurants = () => useDataSelector((data) => data.restaurants);
 /** Newest first. */
 export const useActivities = () => useDataSelector((data) => data.activities);
 export const usePlanEntries = () => useDataSelector((data) => data.planEntries);
+/** Spec 0041: "Aktivitätsarten" in creation order, series and their exceptions. */
+export const useActivityKinds = () => useDataSelector((data) => data.activityKinds);
+export const useActivitySeries = () => useDataSelector((data) => data.activitySeries);
+export const useActivitySeriesExceptions = () =>
+  useDataSelector((data) => data.activitySeriesExceptions);
 export const useShoppingItems = () => useDataSelector((data) => data.items);
+/** Spec 0060: "Dauerposten" in creation order. */
+export const useRecurringItems = () => useDataSelector((data) => data.recurringItems);
 export const useChores = () => useDataSelector((data) => data.chores);
 export const useChoreEvents = () => useDataSelector((data) => data.choreEvents);
 /** Spec 0022: trips with their people, in creation order (core tripStripes). */
@@ -66,14 +74,12 @@ export const usePackingBagItems = () => useDataSelector((data) => data.packingBa
 export const usePackingListBags = () => useDataSelector((data) => data.packingListBags);
 export const usePackingItems = () => useDataSelector((data) => data.packingItems);
 /**
- * Spec 0013: the signed-in member's own notification settings in the active household; undefined
- * until the first pull brought the row. "Deine Geräte" is not here: it is online only
- * (listPushDevices).
+ * Spec 0051: the keys of the notices the signed-in member acknowledged in the active household
+ * (her own row of notification_settings); empty until the first pull brought the row.
  */
-export const useNotificationSettings = () => useDataSelector((data) => data.notificationSettings);
-/** Spec 0027, REQ-008: the own settings of another household of mine (from the cache). */
-export const useNotificationSettingsOf = (householdId: string) =>
-  useAppSelector((state) => state.households[householdId]?.notificationSettings);
+export const useAcknowledgedNotices = (): readonly string[] =>
+  useDataSelector((data) => data.notificationSettings?.acknowledgedNotices ?? NONE_ACKNOWLEDGED);
+const NONE_ACKNOWLEDGED: readonly string[] = [];
 
 export interface PackingList {
   listBags: PackingListBag[];
@@ -134,6 +140,9 @@ export function useRestaurant(id: Id | undefined): Restaurant | undefined {
 }
 export function useActivitiesById(): Record<Id, Activity> {
   return indexById(useActivities());
+}
+export function useActivityKindsById(): Record<Id, ActivityKind> {
+  return indexById(useActivityKinds());
 }
 export function useActivity(id: Id | undefined): Activity | undefined {
   const activities = useActivitiesById();

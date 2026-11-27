@@ -10,14 +10,17 @@ export * from './commands-articles';
 export * from './commands-stores';
 export * from './commands-recipes';
 export * from './commands-collections';
+export * from './commands-recipe-page';
 export * from './commands-plan';
 export * from './commands-shopping';
 export * from './commands-chores';
 export * from './commands-restaurants';
 export * from './commands-activities';
+export * from './commands-activity-series';
+export * from './commands-recurring';
 export * from './commands-places';
 export * from './commands-packing';
-export * from './commands-notifications';
+export * from './commands-notices';
 export * from './assistant';
 export * from './ai';
 export { photoSource, useRecipeImage } from './photos';
@@ -32,6 +35,15 @@ export {
   setRestaurantPhoto,
   usePhoto,
 } from './photos-remote';
+export { checkImageFile, loadPhotoFromAddress } from './photo-sources';
+export {
+  loadRecipeVideo,
+  removeRecipeVideo,
+  saveRecipeVideo,
+  saveVideoPoster,
+  VIDEO_LOAD_FAILED_MESSAGE,
+  VIDEO_SAVE_FAILED_MESSAGE,
+} from './recipe-video';
 export { snapshot, OfflineError } from './store';
 export { useAddressedObject, type AddressedKind } from './addressed';
 export { useAppVersionState } from './app-version';
@@ -52,5 +64,7 @@ export {
   useAuth,
 } from './auth';
 export { TEST_ACCOUNTS, type TestAccountKey } from './dev-accounts';
-export { useHouseholdInvitations, useMyInvitations } from './households';
+export { useHouseholdInvitations, useHouseholdOwnerId, useMyInvitations } from './households';
 export { starterCatalogEntries } from './starter/entries';
+export * from './ai-recipes';
+export * from './web-search';

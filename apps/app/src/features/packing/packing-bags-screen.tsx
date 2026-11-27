@@ -3,6 +3,7 @@ import { bagSummary, orderedBags, type Id } from '@housekeeping/core';
 import {
   Avatar,
   Button,
+  CreateButton,
   EmptyState,
   Icon,
   List,
@@ -12,6 +13,7 @@ import {
   ScreenHeader,
   Text,
   useBreakpoint,
+  openKeyboardNow,
 } from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
@@ -28,30 +30,18 @@ import { PackingBagPanel } from './packing-bag-detail';
 import { BagNameSheet } from './packing-bag-sheets';
 
 /**
- * The household's Reisetaschen (AC-001, AC-002): "+ Neue Reisetasche" on top, then each bag with
- * "12 Packstücke" and the avatar of the person it is for. A bag opens as a page on phones and in
- * the right column on wide screens.
+ * The household's Reisetaschen (AC-001, AC-002): each bag with "12 Packstücke" and the avatar of
+ * the person it is for. A bag opens as a page on phones and in the right column on wide screens.
+ * "Reisetasche anlegen" stands in the page's header (spec 0054, REQ-001).
  */
-function BagsList(props: { selectedId?: Id; onSelect: (bagId: Id) => void }) {
+function BagsList(props: { selectedId?: Id; onSelect: (bagId: Id) => void; onCreate: () => void }) {
   const bags = orderedBags(usePackingBags());
   const items = usePackingBagItems();
   const membersById = useMembersById();
   const online = useOnlineOnly();
   const { isPhone } = useBreakpoint();
-  const [creating, setCreating] = useState(false);
 
   const countOf = (bagId: Id) => items.filter((item) => item.bagId === bagId).length;
-  const newButton = (primary: boolean, label: string) => (
-    <Button
-      label={label}
-      icon="plus"
-      variant={primary ? 'primary' : 'secondary'}
-      disabled={online.disabled}
-      hint={online.hint}
-      onPress={() => setCreating(true)}
-      testID="bag-new"
-    />
-  );
 
   return (
     <View testID="bags-list">
@@ -68,13 +58,17 @@ function BagsList(props: { selectedId?: Id; onSelect: (bagId: Id) => void }) {
           text="Pack einmal zusammen, was in eine Tasche gehört, z. B. „Strand“ oder „Kulturbeutel“. Beim Eintragen einer Reise wird daraus die Packliste."
           testID="bags-empty"
         >
-          {newButton(true, 'Reisetasche anlegen')}
+          <Button
+            label="Reisetasche anlegen"
+            icon="plus"
+            disabled={online.disabled}
+            hint={online.hint}
+            onPress={props.onCreate}
+            testID="bags-empty-new"
+          />
         </EmptyState>
       ) : (
         <>
-          <View style={{ marginBottom: 16, alignItems: 'flex-start' }}>
-            {newButton(false, 'Neue Reisetasche')}
-          </View>
           <List>
             {bags.map((bag) => {
               const member = bag.memberId ? membersById[bag.memberId] : undefined;
@@ -109,19 +103,6 @@ function BagsList(props: { selectedId?: Id; onSelect: (bagId: Id) => void }) {
           </List>
         </>
       )}
-      {creating ? (
-        <BagNameSheet
-          onSaved={(bagId) => {
-            setCreating(false);
-            props.onSelect(bagId);
-          }}
-          onOpenExisting={(bagId) => {
-            setCreating(false);
-            props.onSelect(bagId);
-          }}
-          onClose={() => setCreating(false)}
-        />
-      ) : null}
     </View>
   );
 }
@@ -149,6 +130,8 @@ export function PackingBagsScreen() {
 
   // On wide screens a bag is always shown: the chosen one, else the first.
   const selected = bags.find((bag) => bag.id === chosenId) ?? bags[0];
+  const online = useOnlineOnly();
+  const [creating, setCreating] = useState(false);
   const select = (bagId: Id) => {
     if (isPhone) router.push({ pathname: '/reisetasche/[id]', params: { id: bagId } });
     else replace({ tasche: bagId });
@@ -163,6 +146,18 @@ export function PackingBagsScreen() {
           title="Reisetaschen"
           backLabel={back.label}
           onBack={back.back}
+          right={
+            <CreateButton
+              label="Reisetasche anlegen"
+              disabled={online.disabled}
+              hint={online.hint}
+              onPress={() => {
+                openKeyboardNow();
+                setCreating(true);
+              }}
+              testID="bag-new"
+            />
+          }
           testID="bags-title"
         />
       }
@@ -170,12 +165,25 @@ export function PackingBagsScreen() {
       style={isPhone ? undefined : { flex: 1, paddingBottom: 0 }}
     >
       {isPhone ? (
-        <BagsList onSelect={select} />
+        <BagsList
+          onSelect={select}
+          onCreate={() => {
+            openKeyboardNow();
+            setCreating(true);
+          }}
+        />
       ) : (
         <ListDetail
           list={
             <ScrollColumn>
-              <BagsList selectedId={selected?.id} onSelect={select} />
+              <BagsList
+                selectedId={selected?.id}
+                onSelect={select}
+                onCreate={() => {
+                  openKeyboardNow();
+                  setCreating(true);
+                }}
+              />
             </ScrollColumn>
           }
           detail={
@@ -197,6 +205,19 @@ export function PackingBagsScreen() {
           testID="bags-split"
         />
       )}
+      {creating ? (
+        <BagNameSheet
+          onSaved={(bagId) => {
+            setCreating(false);
+            select(bagId);
+          }}
+          onOpenExisting={(bagId) => {
+            setCreating(false);
+            select(bagId);
+          }}
+          onClose={() => setCreating(false)}
+        />
+      ) : null}
       <TripWindowHost page="reisetaschen" />
     </Screen>
   );

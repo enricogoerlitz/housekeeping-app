@@ -40,23 +40,33 @@ test('AC-001, AC-003: "Bearbeiten" changes the cuisine; without a name the windo
   await tid(page, 'restaurant-save').click();
   await expect(tid(page, 'restaurant-edit-sheet')).toContainText('Name fehlt');
   await tid(page, 'restaurant-name').fill('Pho Saigon');
-  await tid(page, 'restaurant-cuisine').fill('Griechisch');
+  // „Küche“ suggests the household's cuisines; Enter takes the typed one (spec 0036, AC-008).
+  const chosenCuisine = tid(page, 'restaurant-cuisine-chosen');
+  if (await chosenCuisine.isVisible()) await chosenCuisine.click();
+  await tid(page, 'restaurant-cuisine-input').fill('Griechisch');
+  await tid(page, 'restaurant-cuisine-input').press('Enter');
   await tid(page, 'restaurant-save').click();
   await expect(toastMessage(page)).toHaveText('Restaurant gespeichert');
   await expect(tid(page, 'restaurant-meta')).toContainText('Griechisch');
 });
 
-test('AC-006, AC-007: the note is read only, "Notiz bearbeiten" opens the window in "Notiz"', async ({
+test('AC-006, AC-007 / AC-014, AC-015 (0054): the note is read only; the pencil edits it, "Notiz hinzufügen" opens the window in "Notiz"', async ({
   page,
 }) => {
   await open(page, `/restaurant/${ENZO}`);
   await expect(tid(page, 'restaurant-notes-text')).toContainText('Trüffelpasta!');
-  await tid(page, 'restaurant-notes-edit').click();
-  await expect(tid(page, 'restaurant-notes')).toBeFocused();
+  // Spec 0054, AC-014: an existing note has no second way to the form.
+  await expect(tid(page, 'restaurant-notes-edit')).toHaveCount(0);
+  await tid(page, 'restaurant-edit').click();
+  await expect(tid(page, 'restaurant-edit-sheet')).toBeVisible();
+  // Nachklick 27.11., Ruckeln: the pencil opens the form without a cursor.
+  await expect(tid(page, 'restaurant-name')).not.toBeFocused();
   await page.keyboard.press('Escape');
   await open(page, `/restaurant/${PHO}`);
   await expect(tid(page, 'restaurant-notes-text')).toHaveText('Noch keine Notiz');
   await expect(tid(page, 'restaurant-notes-edit')).toHaveText('Notiz hinzufügen');
+  await tid(page, 'restaurant-notes-edit').click();
+  await expect(tid(page, 'restaurant-notes')).toBeFocused();
 });
 
 test('AC-008, AC-009: the website gets "https://"; other schemes and no host are refused', async ({
@@ -158,19 +168,25 @@ test('AC-033: the old addresses show "Nicht gefunden"; offline the page reads', 
   await expect(tid(page, 'activity-add')).toBeDisabled();
 });
 
-test('AC-034, AC-035: "Löschen" with the notice, "Rückgängig" brings everything back', async ({
+test('AC-034, AC-035: "Löschen" asks first, then names the entry that goes, without undo (spec 0036: asks first)', async ({
   page,
 }) => {
   await open(page, `/restaurant/${ENZO}`);
   await tid(page, 'restaurant-more').click();
   await page.getByRole('menuitem', { name: 'Löschen' }).click();
+  await expect(tid(page, 'confirm-delete-restaurant')).toContainText('Trattoria Da Enzo');
+  await tid(page, 'confirm-delete-restaurant-cancel').click();
+  await expect(tid(page, 'confirm-delete-restaurant')).toBeHidden();
+  await expect(tid(page, 'restaurant-title')).toHaveText('Trattoria Da Enzo');
+  await tid(page, 'restaurant-more').click();
+  await page.getByRole('menuitem', { name: 'Löschen' }).click();
+  await tid(page, 'confirm-delete-restaurant-confirm').click();
   await expect(toastMessage(page)).toHaveText(
     'Trattoria Da Enzo gelöscht · 1 geplanter Eintrag entfällt',
   );
-  await page.getByRole('button', { name: 'Rückgängig' }).click();
+  await expect(tid(page, 'toast-action')).toHaveCount(0);
   await open(page, `/kalender?tag=${TODAY}`);
-  await open(page, `/kalender?eintrag=${ENZO_LATER}`);
-  await expect(tid(page, 'entry-sheet')).toContainText('Trattoria Da Enzo');
+  await expect(tid(page, `entry-${ENZO_LATER}`)).toHaveCount(0);
 });
 
 const BURGER = seedIds['rest-burger'];
@@ -223,6 +239,9 @@ test.describe('desktop', () => {
   test('AC-027: a new name shows left and right, the search stays', async ({ page }) => {
     await open(page, `/aktivitaeten?suche=eis&aktivitaet=${EISLAUFEN}`);
     await tid(page, 'activity-edit').click();
+    // Nachklick 27.11., Ruckeln: the pencil opens the form without a cursor.
+    await expect(tid(page, 'activity-sheet')).toBeVisible();
+    await expect(tid(page, 'activity-name')).not.toBeFocused();
     await tid(page, 'activity-name').fill('Eislaufen Neuss');
     await tid(page, 'activity-save').click();
     await expect(tid(page, 'activity-title')).toHaveText('Eislaufen Neuss');
@@ -240,6 +259,7 @@ test.describe('desktop', () => {
     await nadja.page.goto(`/restaurant/${BURGER}`);
     await tid(nadja.page, 'restaurant-more').click();
     await nadja.page.getByRole('menuitem', { name: 'Löschen' }).click();
+    await tid(nadja.page, 'confirm-delete-restaurant-confirm').click();
     await expect(toastMessage(nadja.page)).toContainText('gelöscht');
     await nadja.context.close();
     await page.reload();

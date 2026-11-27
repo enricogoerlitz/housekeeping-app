@@ -310,7 +310,7 @@ describe('spec 0013: times in the sample household', () => {
     ]);
   });
 
-  it('has no notification settings: the server creates them for every member', () => {
+  it('has no row of notification_settings: the server creates it for every member', () => {
     expect(data().notificationSettings).toBeUndefined();
     expect(testHousehold().notificationSettings).toBeUndefined();
   });

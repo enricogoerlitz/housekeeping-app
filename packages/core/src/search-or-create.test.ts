@@ -25,6 +25,14 @@ describe('matchSearchOrCreate', () => {
     expect(names('Kokos')).toEqual(['Kokosmilch', 'Kokosmilch light']);
   });
 
+  it('spec 0050, AC-002: a rank orders hits of equal quality, never a worse hit before a better', () => {
+    const rank = (item: SearchOrCreateItem) => (item.id === 'kokosmilch-light' ? 5 : 0);
+    const ranked = (query: string) =>
+      matchSearchOrCreate(query, items, { rank }).matches.map((match) => match.item.name);
+    expect(ranked('Kokos')).toEqual(['Kokosmilch light', 'Kokosmilch']);
+    expect(ranked('Kokosmilch')).toEqual(['Kokosmilch', 'Kokosmilch light']);
+  });
+
   it('AC-033: an unknown name offers "neu anlegen" without a brake', () => {
     const result = matchSearchOrCreate('Drachenfrucht', items);
     expect(result.matches).toEqual([]);
@@ -72,11 +80,44 @@ describe('matchSearchOrCreate', () => {
     expect(result.similar).toBeUndefined();
   });
 
-  it('AC-035: a synonym typed in full is an exact hit: no "neu anlegen"', () => {
+  it('AC-035: a synonym typed in full is an exact hit; since spec 0036 "neu anlegen" stays', () => {
     const result = matchSearchOrCreate('karotten', items);
     expect(result.exact?.name).toBe('Möhren');
-    expect(result.canCreate).toBe(false);
+    expect(result.canCreate).toBe(true);
+    expect(result.similar).toBeUndefined();
     expect(result.matches.map((match) => match.item.name)).toEqual(['Möhren']);
+  });
+
+  describe('a name that is only a synonym of another article (spec 0036, REQ-005)', () => {
+    const kochschinken = { id: 'kochschinken', name: 'Kochschinken', synonyms: ['Schinken'] };
+
+    it('AC-010: "Schinken" finds Kochschinken via its synonym and offers "neu anlegen"', () => {
+      const result = matchSearchOrCreate('Schinken', [kochschinken]);
+      expect(result.matches[0]?.item.name).toBe('Kochschinken');
+      expect(result.matches[0]?.matchedSynonym).toBe('Schinken');
+      expect(result.canCreate).toBe(true);
+    });
+
+    it('AC-011: the article named "Schinken" comes first, before the synonym', () => {
+      const long = { id: 'schinken', name: 'Schinken (vom Metzger)' };
+      const exact = { id: 'schinken', name: 'Schinken' };
+      expect(names('schinken', [kochschinken, exact])).toEqual(['Schinken', 'Kochschinken']);
+      expect(matchSearchOrCreate('schinken', [kochschinken, exact]).exact?.name).toBe('Schinken');
+      // By rank, not by length: a longer exact name still beats the synonym.
+      const ranked = matchSearchOrCreate('schinken (vom metzger)', [
+        { ...kochschinken, synonyms: ['Schinken (vom Metzger)'] },
+        long,
+      ]);
+      expect(ranked.matches.map((match) => match.item.name)).toEqual([
+        'Schinken (vom Metzger)',
+        'Kochschinken',
+      ]);
+    });
+
+    it('AC-012: when the article "Schinken" exists there is no "neu anlegen"', () => {
+      const result = matchSearchOrCreate('schinken', [kochschinken, { id: 's', name: 'Schinken' }]);
+      expect(result.canCreate).toBe(false);
+    });
   });
 
   it('AC-035: an empty or blank query has neither hits nor "neu anlegen"', () => {

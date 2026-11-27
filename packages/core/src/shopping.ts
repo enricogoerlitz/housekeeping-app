@@ -1,4 +1,4 @@
-import { buyableQty, formatAmount, formatQty } from './amounts';
+import { buyableQty, formatAmount, formatQty, scaleAmount } from './amounts';
 import { createdTime } from './dates';
 import { defaultVariantId } from './recipe-variants';
 import type {
@@ -6,6 +6,7 @@ import type {
   Article,
   ContributionSource,
   Id,
+  ISODate,
   MealPlanEntry,
   Recipe,
   ShoppingContribution,
@@ -28,6 +29,13 @@ export interface PlannedContribution {
   entryId: Id;
   /** e.g. "Mango-Curry (Mi)". */
   label: string;
+  /**
+   * The recipe's own amount, scaled, where the list takes a pack instead ("1× Milch" for
+   * "500 ml"): the pantry check shows it beside the count (spec 0037, AC-020).
+   */
+  recipeAmount?: { qty: number; unit: string };
+  /** Spec 0060: a Dauerposten chosen in "Aus Kalender …" for its day (recipeId, entryId empty). */
+  recurring?: { recurringItemId: Id; on: ISODate };
 }
 /**
  * What a planned recipe needs from the shop: one contribution per ingredient, not merged.
@@ -81,10 +89,15 @@ export function contributionsFromEntry(
     };
 
     const amount = ingredient.amount;
+    const factor = recipe.servings > 0 ? portions / recipe.servings : 1;
     if (ingredient.shoppingRule === 'count' || amount?.qty === undefined) {
       contribution.count = 1;
+      if (amount?.qty !== undefined) {
+        const scaled = scaleAmount(amount, factor);
+        // Without a unit the recipe counts pieces ("2" Eier).
+        contribution.recipeAmount = { qty: scaled.qty ?? amount.qty, unit: amount.unit ?? 'Stück' };
+      }
     } else {
-      const factor = recipe.servings > 0 ? portions / recipe.servings : 1;
       if (amount.unit === undefined) {
         // The small tolerance keeps float noise (2.0000000000000004) from adding a whole piece.
         contribution.count = Math.max(1, Math.ceil(amount.qty * factor - 1e-9));
@@ -114,9 +127,12 @@ function formatSum(qty: number, unit: string): string {
     : formatAmount(qty, unit);
 }
 
-/** The Herkunft of one contribution: the stored recipe label or "von Hand". */
+/** The Herkunft of one contribution: the stored recipe label, "von Hand" or "regelmäßig". */
 export function originLabel(source: ContributionSource): string {
-  return source.kind === 'manual' ? 'von Hand' : source.label;
+  if (source.kind === 'manual') return 'von Hand';
+  // Spec 0060: RECURRING_LABEL in recurring-items.ts (which imports this module).
+  if (source.kind === 'recurring') return 'regelmäßig';
+  return source.label;
 }
 
 function distinct(values: string[]): string[] {

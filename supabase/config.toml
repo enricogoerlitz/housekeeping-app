@@ -433,15 +433,16 @@ FOUNDRY_LLM_DEPLOYMENT = "env(FOUNDRY_LLM_DEPLOYMENT)"
 FOUNDRY_SPEECH_REGION = "env(FOUNDRY_SPEECH_REGION)"
 FOUNDRY_STT_LANGUAGE = "env(FOUNDRY_STT_LANGUAGE)"
 FOUNDRY_STT_MODEL = "env(FOUNDRY_STT_MODEL)"
+# ai-image (spec 0040, ADR-0016): the FLUX.2-pro deployment of the same Foundry resource.
+FOUNDRY_IMAGE_DEPLOYMENT = "env(FOUNDRY_IMAGE_DEPLOYMENT)"
+# web-search (spec 0049): Serper.dev first, the Brave Search API as fallback.
+SERPER_API_KEY = "env(SERPER_API_KEY)"
+BRAVE_SEARCH_API_KEY = "env(BRAVE_SEARCH_API_KEY)"
 # Not a secret: the browser origins of the local web app and the e2e server.
 ALLOWED_ORIGINS = "http://localhost:8081,http://127.0.0.1:8081,http://127.0.0.1:8790"
-# push-send (spec 0013, ADR-0014): VAPID key pair and the shared secret; the database signs each
-# request with it (HMAC, x-push-signature), the secret itself is never sent. Values come from .env (`node scripts/push-keys.mjs`); never print them.
-VAPID_PUBLIC_KEY = "env(VAPID_PUBLIC_KEY)"
-VAPID_PRIVATE_KEY = "env(VAPID_PRIVATE_KEY)"
-PUSH_SEND_SECRET = "env(PUSH_SEND_SECRET)"
-# Not a secret: the VAPID `sub` claim for the local stack (production: the https web origin).
-VAPID_SUBJECT = "https://localhost"
+# media-sweep (spec 0039): the shared secret the database signs the nightly sweep with (Vault
+# media_sweep_secret). Never print it.
+MEDIA_SWEEP_SECRET = "env(MEDIA_SWEEP_SECRET)"
 
 # Every function verifies the JWT itself (getClaims + role = authenticated, so the anon key gets
 # 401). The gateway check adds nothing (the anon key passes it) and would answer CORS preflights
@@ -462,11 +463,33 @@ import_map = "./functions/deno.json"
 verify_jwt = false
 import_map = "./functions/deno.json"
 
-# push-send is called by pg_net, not by the app: no JWT, it checks the shared secret itself.
-# Its own import map, so the web push library stays out of the other functions.
-[functions.push-send]
+[functions.fetch-image]
 verify_jwt = false
-import_map = "./functions/push-send/deno.json"
+import_map = "./functions/deno.json"
+
+# Spec 0043: "Video speichern" (TikTok only, uploads as the caller).
+[functions.fetch-video]
+verify_jwt = false
+import_map = "./functions/deno.json"
+
+# Spec 0040: "Mit KI ausfüllen" and the tab "KI" of the photo window (6 MB bodies with photos).
+[functions.ai-recipe-draft]
+verify_jwt = false
+import_map = "./functions/deno.json"
+
+[functions.ai-image]
+verify_jwt = false
+import_map = "./functions/deno.json"
+
+# Spec 0049: "Websuche" (Serper/Brave, recipe pages, place preview).
+[functions.web-search]
+verify_jwt = false
+import_map = "./functions/deno.json"
+
+# media-sweep is called by pg_net, not by the app: no JWT, it checks the shared secret itself.
+[functions.media-sweep]
+verify_jwt = false
+import_map = "./functions/deno.json"
 
 [analytics]
 enabled = true

@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-// Writes the companion file of a backup (spec 0014, Task 9, AC-052): rows per table counted from
-// the COPY blocks of the data dump, the number of photo files in the archive and the SHA-256 of
-// the encrypted archive. Counting from the dump, not from the live database, keeps the restore
-// test independent of writes between dump and count. The file holds no data, and the CLI prints
-// only numbers.
+// Writes the companion file of a backup (spec 0014, Task 9, AC-052; spec 0048): rows per table
+// counted from the COPY blocks of the data dump, the number of photo files in the archive and the
+// SHA-256 of the encrypted archive. Counting from the dump, not from the live database, keeps the
+// restore test independent of writes between dump and count. The file holds no data, and the CLI
+// prints only numbers (with the photo size, to watch the egress: spec 0048, AC-006).
 //
 //   node scripts/backup/manifest.mjs --data <data.sql> --media <dir> --archive <file.age> --out <manifest.json>
 //
@@ -15,7 +15,10 @@ import { createInterface } from 'node:readline';
 import { parseArgs } from 'node:util';
 import { fileURLToPath } from 'node:url';
 
-export const MANIFEST_FORMAT = 1;
+// Format 3 (spec 0048): no videos, they are no longer backed up; same fields as format 1, its own
+// number so a backup shows the videos are left out on purpose. Format 2 (spec 0043) counted them.
+// compare.mjs reads all three.
+export const MANIFEST_FORMAT = 3;
 
 // One identifier: "quoted ""with"" quotes" or a plain name.
 const IDENT = String.raw`(?:"(?:[^"]|"")+"|[A-Za-z_][\w$]*)`;
@@ -66,8 +69,8 @@ export async function countCopyRows(lines) {
   return tables;
 }
 
-/** Number of regular files below `dir`, nested folders included. */
-export function countFiles(dir) {
+/** The regular files below the photo folder `dir`, nested folders included. */
+function photoFiles(dir) {
   let stats;
   try {
     stats = statSync(dir);
@@ -75,11 +78,20 @@ export function countFiles(dir) {
     throw new Error(`Fotoordner fehlt: ${dir}`);
   }
   if (!stats.isDirectory()) throw new Error(`Fotoordner fehlt: ${dir}`);
-  let count = 0;
-  for (const entry of readdirSync(dir, { withFileTypes: true, recursive: true })) {
-    if (entry.isFile()) count += 1;
-  }
-  return count;
+  return readdirSync(dir, { withFileTypes: true, recursive: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => path.join(entry.parentPath, entry.name));
+}
+
+/** Number of regular files below `dir`, nested folders included. */
+export function countFiles(dir) {
+  return photoFiles(dir).length;
+}
+
+/** Total size of the files below `dir` in MB (10^6 bytes), one decimal, German comma. */
+function megabytes(dir) {
+  const bytes = photoFiles(dir).reduce((sum, file) => sum + statSync(file).size, 0);
+  return `${(bytes / 1e6).toFixed(1).replace('.', ',')} MB`;
 }
 
 /** Hex SHA-256 of a file, streamed. */
@@ -135,7 +147,9 @@ async function main() {
     });
     writeFileSync(values.out, `${JSON.stringify(manifest, null, 2)}\n`);
     const rows = tables.reduce((sum, t) => sum + t.rows, 0);
-    console.log(`Begleitdatei: ${tables.length} Tabellen, ${rows} Zeilen, ${photos} Fotos`);
+    console.log(
+      `Begleitdatei: ${tables.length} Tabellen, ${rows} Zeilen, ${photos} Fotos (${megabytes(values.media)})`,
+    );
   } catch (error) {
     console.log(`::error::${error.message}`);
     process.exit(1);

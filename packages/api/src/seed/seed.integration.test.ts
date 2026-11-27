@@ -29,8 +29,12 @@ function withoutTimestamps(value: unknown): unknown {
   if (typeof value === 'object' && value !== null) {
     return Object.fromEntries(
       Object.entries(value)
-        // ratedAt (spec 0011) is the server's updated_at of the rating row.
-        .filter(([field]) => !['createdAt', 'checkedAt', 'ratedAt', 'packedAt'].includes(field))
+        // ratedAt (spec 0011) is the server's updated_at of the rating row; updatedAt (spec 0037)
+        // is the recipe row's, read for the edit-mode conflict hint.
+        .filter(
+          ([field]) =>
+            !['createdAt', 'checkedAt', 'ratedAt', 'packedAt', 'updatedAt'].includes(field),
+        )
         .map(([field, item]) => [field, withoutTimestamps(item)]),
     );
   }

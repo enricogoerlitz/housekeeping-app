@@ -4,7 +4,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { FOCUS_RING_ROOM } from './controls';
 import { InfiniteList } from './infinite-list';
 import { Text } from './primitives';
+import { scrollShownToTop } from './scroll-top';
 import { PageScrollContext } from './shell';
+import { TabPreviewContext } from './tab-preview';
 
 type Row = { id: string; header?: boolean };
 const rows = (count: number): Row[] =>
@@ -49,6 +51,25 @@ describe('InfiniteList (AC-029)', () => {
     );
     expect(screen.getByRole('heading', { name: 'Obst' })).toBeTruthy();
     expect(screen.getByText('Birne')).toBeTruthy();
+  });
+
+  it('spec 0057 AC-009: a list that scrolls the page goes to the top on a tap on the active tab', () => {
+    const probe = measurable();
+    try {
+      render(
+        <PageScrollContext.Provider value={{ inset: 0, onScroll: () => undefined }}>
+          <InfiniteList
+            data={rows(5)}
+            keyExtractor={(row) => row.id}
+            renderItem={(row) => <Text>{row.id}</Text>}
+          />
+        </PageScrollContext.Provider>,
+      );
+      expect(scrollShownToTop(true)).toBe(1);
+      expect(probe.calls[0]?.top).toBe(0);
+    } finally {
+      probe.restore();
+    }
   });
 });
 
@@ -101,6 +122,25 @@ describe('InfiniteList as a grid (spec 0008, REQ-004)', () => {
     expect(grid.style.opacity).toBe('0');
     layout(grid, 400, 600);
     expect(grid.style.opacity).toBe('');
+  });
+
+  it('AC-015 (0034): a grid measured before under its restoreKey shows at once, e.g. after a tab swipe', () => {
+    const Kept = () => (
+      <InfiniteList
+        testID="kept"
+        data={tiles(3)}
+        keyExtractor={(row) => row.id}
+        renderItem={(row) => <Text>{row.id}</Text>}
+        minColumnWidth={100}
+        restoreKey="kept-grid"
+      />
+    );
+    const first = render(<Kept />);
+    layout(screen.getByTestId('kept'), 400, 600);
+    first.unmount();
+    render(<Kept />);
+    expect(screen.getByTestId('kept').style.opacity).toBe('');
+    expect(gridRows(screen.getByTestId('kept'))[0]).toHaveLength(3);
   });
 
   it('draws as many columns as fit; the last row keeps the column width', () => {
@@ -223,6 +263,28 @@ describe('InfiniteList scrolling', () => {
     expect(list.scrollTop).toBe(0);
   });
 
+  it('AC-015 (0034): beside a tab swipe it shows the remembered place and leaves it as it was', () => {
+    const first = render(<List restoreKey="neighbour" />);
+    scrollTo(screen.getByTestId('list'), 500);
+    first.unmount();
+
+    const preview = render(
+      <TabPreviewContext.Provider value={{ top: 0, inset: 0 }}>
+        <List restoreKey="neighbour" />
+      </TabPreviewContext.Provider>,
+    );
+    const shown = screen.getByTestId('list');
+    layout(contentOf(shown), 400, 3000);
+    expect(shown.scrollTop).toBe(500);
+    scrollTo(shown, 40);
+    preview.unmount();
+
+    render(<List restoreKey="neighbour" />);
+    const list = screen.getByTestId('list');
+    layout(contentOf(list), 400, 3000);
+    expect(list.scrollTop).toBe(500);
+  });
+
   it('without restoreKey it starts at the top', () => {
     const first = render(<List />);
     scrollTo(screen.getByTestId('list'), 500);
@@ -248,3 +310,22 @@ describe('InfiniteList scrolling', () => {
     expect(list.scrollTop).toBe(0);
   });
 });
+
+/** Lets every element report a box (jsdom has no layout) and records `scroll` calls. */
+function measurable(): { calls: { el: Element; top: unknown }[]; restore: () => void } {
+  const calls: { el: Element; top: unknown }[] = [];
+  const proto = HTMLElement.prototype as unknown as Record<string, unknown>;
+  const rects = proto.getClientRects;
+  const scroll = proto.scroll;
+  proto.getClientRects = () => [{}];
+  proto.scroll = function (this: Element, options: { top?: unknown }) {
+    calls.push({ el: this, top: options.top });
+  };
+  return {
+    calls,
+    restore: () => {
+      proto.getClientRects = rects;
+      proto.scroll = scroll;
+    },
+  };
+}

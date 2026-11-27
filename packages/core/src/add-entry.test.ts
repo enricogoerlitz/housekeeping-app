@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  slotSideFor,
   addEntryDate,
   addEntryReducer,
   addEntryRequest,
@@ -33,6 +34,7 @@ const bouldern: Activity = {
   favoriteOf: [],
   ratings: {},
   createdAt: '2026-10-01T12:00:00.000Z',
+  remembered: true,
 };
 const lasagne: MealPlanEntry = {
   id: 'entry-lasagne',
@@ -51,6 +53,52 @@ const start = (target: AddEntryTarget = { date: DAY, slotId: SLOT_DINNER }) =>
   initialAddEntryState(target, { servings: 4 });
 const run = (state: AddEntryState, ...actions: AddEntryAction[]) =>
   actions.reduce(addEntryReducer, state);
+
+describe('addEntryReducer: the Tageszeit for breakfast (iPhone click-through, I-16)', () => {
+  const SLOT_MORNING = 'slot-vormittag';
+  const breakfast = {
+    ...mangoCurry,
+    id: 'r-brot',
+    title: 'Avocado-Ei-Brot',
+    course: 'breakfast' as const,
+  };
+  const choose = (recipe: typeof mangoCurry) => ({
+    type: 'choose' as const,
+    choice: { kind: 'recipe' as const, recipe },
+    eaterIds: everyone,
+    context,
+    firstSlotId: SLOT_MORNING,
+  });
+
+  it('added to a day as a whole, a breakfast recipe starts in the first Tageszeit', () => {
+    const state = run(
+      start({ date: DAY, slotId: SLOT_DINNER, slotChosen: false }),
+      choose(breakfast),
+    );
+    expect(state.slotId).toBe(SLOT_MORNING);
+  });
+
+  it('any other recipe keeps the last one ("Abend")', () => {
+    const state = run(
+      start({ date: DAY, slotId: SLOT_DINNER, slotChosen: false }),
+      choose(mangoCurry),
+    );
+    expect(state.slotId).toBe(SLOT_DINNER);
+  });
+
+  it('a Tageszeit the user tapped ("+" in the Mittag row) stays, also for breakfast', () => {
+    const state = run(start({ date: DAY, slotId: SLOT_LUNCH }), choose(breakfast));
+    expect(state.slotId).toBe(SLOT_LUNCH);
+  });
+});
+
+describe('slotSideFor (iPhone click-through, I-16)', () => {
+  it('breakfast opens with the first Tageszeit, everything else with the last', () => {
+    expect(slotSideFor('breakfast')).toBe('first');
+    expect(slotSideFor('main')).toBe('last');
+    expect(slotSideFor(undefined)).toBe('last');
+  });
+});
 
 describe('addEntryReducer (spec 0031, REQ-023)', () => {
   it('AC-056: a restaurant chosen after a recipe carries no portions, time or Tageszeit of it', () => {
@@ -213,7 +261,7 @@ describe('addEntryRequest (spec 0031, REQ-023)', () => {
     });
   });
 
-  it('a restaurant takes its time, an activity everyone at home', () => {
+  it('a restaurant takes its time, an activity who is "dabei" (spec 0041, AC-014)', () => {
     const restaurant = run(
       start(),
       {
@@ -230,16 +278,22 @@ describe('addEntryRequest (spec 0031, REQ-023)', () => {
       eaterIds: [enrico.id],
       startsAt: '19:30',
     });
-    const activity = run(start(), {
-      type: 'choose',
-      choice: { kind: 'activity', activity: bouldern },
-      eaterIds: [],
-      context,
-    });
+    const activity = run(
+      start(),
+      {
+        type: 'choose',
+        choice: { kind: 'activity', activity: bouldern },
+        eaterIds: everyone,
+        context,
+      },
+      { type: 'setEaters', eaterIds: [enrico.id], context },
+      { type: 'setGuests', guests: 2, context },
+    );
     expect(addEntryRequest(activity, everyone)?.input).toMatchObject({
       kind: 'activity',
       activityId: bouldern.id,
-      eaterIds: everyone,
+      eaterIds: [enrico.id],
+      guests: 2,
     });
   });
 

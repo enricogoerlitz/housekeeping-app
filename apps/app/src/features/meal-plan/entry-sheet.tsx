@@ -3,7 +3,6 @@ import {
   NOTE_MAX_LENGTH,
   removePlanEntry,
   saveEntry,
-  snapshot,
   updatePlanEntry,
   useActivitiesById,
   useHousehold,
@@ -17,7 +16,9 @@ import {
   type EntryFields,
 } from '@housekeeping/api';
 import {
+  showsRoute,
   canMarkNotDone,
+  changedEntryFields,
   checkEntryNote,
   checkEntryText,
   entryListShare,
@@ -27,6 +28,9 @@ import {
   monthPickerStart,
   moveBounds,
   offersReminder,
+  planEntryCalendarEvent,
+  calendarSlotIndex,
+  planEntryPhoto,
   reminderAfterStart,
   startOfWeek,
   TIME_FIELD_WORDS,
@@ -34,9 +38,11 @@ import {
   weekDates,
   weekdayShort,
   type DropTarget,
+  type EntryDraft,
   type Id,
   type ISODate,
   type TimeOfDay,
+  type MealPlanEntry,
 } from '@housekeeping/core';
 import {
   Button,
@@ -51,24 +57,34 @@ import {
   TimeField,
   toast,
 } from '@housekeeping/ui';
-import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 
-import { hasPlace } from '@/features/activities/labels';
+import { AddToCalendar, appLink } from '@/features/calendar/add-to-calendar';
 import { useMoveEntry } from '@/features/calendar/move-entry';
 import { PlanDateCalendar } from '@/lib/plan-date-calendar';
 import { useOpenActivity } from '@/features/activities/navigation';
 import { useOpenRecipe } from '@/features/recipes/navigation';
 import { useOpenRestaurant } from '@/features/restaurants/navigation';
 import { RouteSheet, type RouteTarget } from '@/features/restaurants/route-sheet';
-import { undoAction, useOnlineOnly } from '@/features/shell/offline';
+import { confirmFirst } from '@/features/shell/confirm-dialog';
+import { useOnlineOnly } from '@/features/shell/offline';
 
+import { EntryPhoto } from './entry-photo';
 import { entryTitle } from './labels';
 import { EaterPicker, PortionFields, usePortions } from './plan-fields';
 import { ReminderBlock, useReminderForm } from './reminder-block';
 import { entryReminderLabels, ReminderBell } from './reminder-bell';
 import { errorMessage } from '@/features/shell/error-message';
+
+/** The example in "Zusatz", fitting the kind of entry (review 0003, browser click-through). */
+const NOTE_EXAMPLE: Record<MealPlanEntry['kind'], string> = {
+  recipe: 'z. B. doppelte Menge',
+  leftovers: 'z. B. mit Salat',
+  text: 'z. B. mit Salat',
+  restaurant: 'z. B. Tisch draußen',
+  activity: 'z. B. Hohenschönhausen',
+};
 
 function Label(props: { children: string }) {
   return (
@@ -90,8 +106,10 @@ const zutaten = (count: number) => (count === 1 ? '1 Zutat' : `${count} Zutaten`
  * mit?", guests, portions and variants, day and Tageszeit, "Wer kocht?" and "Erinnern". Day,
  * Tageszeit, cook and the switch, day and time of the reminder are saved at once and the window
  * stays open (REQ-010); everything else is saved in one call when it closes, however it closes
- * (REQ-009), and the shopping list follows the portions (REQ-007). An invalid field keeps it open
- * with its reason; a second ✕ closes it with what is valid. Offline it only closes.
+ * (REQ-009), and the shopping list follows the portions (REQ-007). Only what was changed since
+ * the window opened is sent, so a draft from a stale cache never overwrites newer server state
+ * (Entscheidung 24). An invalid field keeps it open with its reason; a second ✕ closes it with
+ * what is valid. Offline it only closes.
  */
 export function EntrySheet(props: {
   entryId: Id;
@@ -100,7 +118,6 @@ export function EntrySheet(props: {
   /** "Verschieben" first: the screen reader's way to move an entry (spec 0016, platforms). */
   moveFirst?: boolean;
 }) {
-  const router = useRouter();
   const entries = usePlanEntries();
   const recipesById = useRecipesById();
   const restaurantsById = useRestaurantsById();
@@ -126,16 +143,11 @@ export function EntrySheet(props: {
   const entry = current ?? last;
   const recipe = entry?.recipeId ? recipesById[entry.recipeId] : undefined;
 
-  // The typed fields (REQ-008, REQ-013), saved on closing.
-  const [text, setText] = useState(entry?.text ?? '');
-  const [note, setNote] = useState(entry?.note ?? '');
-  const [startsAt, setStartsAt] = useState<TimeOfDay | undefined>(entry?.startsAt);
-  const [errors, setErrors] = useState<Partial<Record<TypedField, string>>>({});
-  const [refused, setRefused] = useState<string>();
-  const [saving, setSaving] = useState(false);
-  // A second ✕ after a hint closes with what is valid (REQ-009, AC-026).
-  const hinted = useRef(false);
-  const portions = usePortions(recipe?.kind === 'recipe' ? recipe : undefined, () => ({
+  // What the window opened with: closing sends only what differs from it (AC-049).
+  const [opened] = useState<EntryDraft>(() => ({
+    text: entry?.text ?? '',
+    note: entry?.note ?? '',
+    startsAt: entry?.startsAt,
     eaterIds: entry?.eaterIds ?? [],
     guests: entry?.guests ?? 0,
     portions: entry?.portions ?? 0,
@@ -143,6 +155,22 @@ export function EntrySheet(props: {
       recipe?.kind === 'recipe'
         ? variantRows(recipe, entry?.variants ?? [], entry?.portions ?? 0)
         : [],
+    reminderText: entry?.reminder?.text ?? '',
+  }));
+  // The typed fields (REQ-008, REQ-013), saved on closing.
+  const [text, setText] = useState(opened.text);
+  const [note, setNote] = useState(opened.note);
+  const [startsAt, setStartsAt] = useState<TimeOfDay | undefined>(opened.startsAt);
+  const [errors, setErrors] = useState<Partial<Record<TypedField, string>>>({});
+  const [refused, setRefused] = useState<string>();
+  const [saving, setSaving] = useState(false);
+  // A second ✕ after a hint closes with what is valid (REQ-009, AC-026).
+  const hinted = useRef(false);
+  const portions = usePortions(recipe?.kind === 'recipe' ? recipe : undefined, () => ({
+    eaterIds: opened.eaterIds,
+    guests: opened.guests,
+    portions: opened.portions,
+    variants: opened.variants,
   }));
   const reminder = useReminderForm({
     entryDate: entry?.date ?? today,
@@ -167,11 +195,13 @@ export function EntrySheet(props: {
     entry.kind === 'restaurant' && entry.restaurantId
       ? restaurantsById[entry.restaurantId]
       : undefined;
+  // Spec 0047, REQ-004: the photo on top, only where there is one.
+  const photo = planEntryPhoto(entry, { recipesById, restaurantsById, activitiesById });
   const timed = entry.kind === 'restaurant' || entry.kind === 'activity';
   const eats = entry.kind === 'recipe' || entry.kind === 'restaurant';
-  // "Route" only where there is a place (plan, Decision 11): a map link or an address.
+  // "Route" only with a map link (spec 0036, AC-018; before plan Decision 11: or an address).
   const routeTarget: RouteTarget | undefined = activity
-    ? hasPlace(activity)
+    ? showsRoute(activity)
       ? {
           name: activity.name,
           address: activity.address,
@@ -179,7 +209,7 @@ export function EntrySheet(props: {
           placeName: activity.placeName,
         }
       : undefined
-    : restaurant && (restaurant.location || restaurant.address)
+    : restaurant && showsRoute(restaurant)
       ? restaurant
       : undefined;
 
@@ -194,35 +224,34 @@ export function EntrySheet(props: {
     return <RouteSheet restaurant={routeTarget} visible onClose={() => setRouteOpen(false)} />;
   }
 
-  /** The typed fields that changed, and the hint of each invalid one. */
+  /**
+   * The fields changed since the window opened (AC-049; "Wer ist dabei?" and "Gäste" of an
+   * activity: spec 0041, REQ-005), and the hint of each invalid one.
+   */
   const collect = (): { fields: EntryFields; invalid: Partial<Record<TypedField, string>> } => {
-    const fields: EntryFields = {};
+    const fields: EntryFields = changedEntryFields(entry.kind, opened, {
+      text,
+      note,
+      startsAt,
+      ...portions.state,
+      reminderText: reminder.draft.on ? reminder.draft.text : opened.reminderText,
+    });
     const invalid: Partial<Record<TypedField, string>> = {};
-    if (entry.kind === 'text' && text.trim() !== (entry.text ?? '')) {
-      const check = checkEntryText(text);
-      if (check.ok) fields.text = text;
-      else invalid.text = check.error;
+    if (fields.text !== undefined) {
+      const check = checkEntryText(fields.text);
+      if (!check.ok) {
+        invalid.text = check.error;
+        delete fields.text;
+      }
     }
-    if (note.trim() !== (entry.note ?? '')) {
-      const check = checkEntryNote(note);
-      if (check.ok) fields.note = note;
-      else invalid.note = check.error;
+    if (fields.note !== undefined) {
+      const check = checkEntryNote(fields.note);
+      if (!check.ok) {
+        invalid.note = check.error;
+        delete fields.note;
+      }
     }
-    if (timed && startsAt !== entry.startsAt) fields.startsAt = startsAt ?? null;
-    const state = portions.state;
-    if (eats) {
-      fields.eaterIds = state.eaterIds;
-      fields.guests = state.guests;
-      fields.portions = state.portions;
-      if (state.variants.length > 0) fields.variants = state.variants;
-    }
-    if (
-      reminder.draft.on &&
-      entry.reminder &&
-      reminder.draft.text !== (entry.reminder.text ?? '')
-    ) {
-      fields.reminderText = reminder.draft.text;
-    }
+    if (!entry.reminder) delete fields.reminderText;
     return { fields, invalid };
   };
 
@@ -273,10 +302,13 @@ export function EntrySheet(props: {
       setErrors(invalid);
       return;
     }
-    send(fields, () => {
+    const finish = () => {
       props.onClose();
       if (names.length > 0) toast.show({ message: `Nicht gespeichert: ${names.join(', ')}` });
-    });
+    };
+    // Nothing changed: no write at all (AC-049).
+    if (Object.keys(fields).length === 0) finish();
+    else send(fields, finish);
   };
 
   /** Enter saves one field at once (REQ-009); the window stays open. */
@@ -311,7 +343,6 @@ export function EntrySheet(props: {
 
   const share = entryListShare(items, entry.id);
   const remove = (withList: boolean) => {
-    const restore = snapshot();
     const taken = removePlanEntry(entry.id, { withList });
     setConfirmRemove(false);
     props.onClose();
@@ -320,10 +351,19 @@ export function EntrySheet(props: {
         taken > 0
           ? `${title} entfernt · ${zutaten(taken)} von der Liste genommen`
           : `„${title}“ entfernt`,
-      actionLabel: 'Rückgängig',
-      onAction: undoAction(restore),
     });
   };
+  // Without list ingredients the plain question; with them the window below (spec 0036,
+  // Entscheidung 1; spec 0021, REQ-015).
+  const askRemove = () =>
+    share
+      ? setConfirmRemove(true)
+      : confirmFirst({
+          title: `„${title}“ entfernen?`,
+          confirmLabel: 'Entfernen',
+          onConfirm: () => remove(false),
+          testID: 'confirm-remove-entry',
+        });
 
   const setField = (field: TypedField, value: string) => {
     if (field === 'text') setText(value);
@@ -410,6 +450,7 @@ export function EntrySheet(props: {
       }
     >
       <Stack gap={20}>
+        {photo ? <EntryPhoto photo={photo} name={title} /> : null}
         {props.moveFirst ? moveSection : null}
         {online.hint ? (
           <Text variant="small" color="warn">
@@ -473,8 +514,9 @@ export function EntrySheet(props: {
             testID="entry-text-input"
           />
         ) : null}
-        {eats ? (
+        {eats || entry.kind === 'activity' ? (
           <EaterPicker
+            label={entry.kind === 'activity' ? 'Wer ist dabei?' : undefined}
             members={members}
             eaterIds={portions.state.eaterIds}
             guests={portions.state.guests}
@@ -521,7 +563,7 @@ export function EntrySheet(props: {
           value={note}
           onChangeText={(value) => setField('note', value)}
           maxLength={NOTE_MAX_LENGTH}
-          placeholder="z. B. doppelte Menge"
+          placeholder={NOTE_EXAMPLE[entry.kind]}
           editable={!online.disabled}
           error={errors.note}
           hint="Steht im Kalender in Klammern hinter dem Namen."
@@ -534,10 +576,6 @@ export function EntrySheet(props: {
             form={reminder}
             disabled={online.disabled}
             hint={online.hint}
-            onOpenSettings={() => {
-              props.onClose();
-              router.push('/einstellungen/benachrichtigungen');
-            }}
             entryTitle={title}
             afterStart={entry.reminder ? reminderAfterStart(entry.reminder, startsAt) : false}
             testID="entry-reminder"
@@ -603,6 +641,19 @@ export function EntrySheet(props: {
             testID="entry-not-done"
           />
         ) : null}
+        {entry.date ? (
+          <AddToCalendar
+            event={planEntryCalendarEvent({
+              entry: { ...entry, startsAt },
+              title,
+              slotName: household.mealSlots.find((slot) => slot.id === entry.slotId)?.name ?? '',
+              slotIndex: calendarSlotIndex(household.mealSlots, entry.slotId),
+              location: restaurant?.address ?? activity?.address ?? activity?.placeName,
+              link: appLink({ screen: 'calendar', day: entry.date, entryId: entry.id }),
+            })}
+            testID="entry-calendar"
+          />
+        ) : null}
         <Button
           label="Aus dem Plan nehmen"
           icon="trash"
@@ -610,7 +661,7 @@ export function EntrySheet(props: {
           disabled={online.disabled}
           hint={online.hint}
           testID="entry-remove"
-          onPress={() => (share ? setConfirmRemove(true) : remove(false))}
+          onPress={askRemove}
         />
       </Stack>
       {confirmRemove && share ? (

@@ -52,6 +52,7 @@ insert into lint_private_functions_for_authenticated values
   ('private.set_activity_favorite(uuid,boolean)'),
   ('private.set_activity_rating(uuid,numeric)'),
   ('private.media_household_id(text)'), -- used by the storage.objects policies (spec 0004)
+  ('private.video_household_id(text)'), -- the same for household-videos (spec 0043)
   ('private.set_feedback_vote(uuid,boolean)'),
   ('private.set_shopping_item_checked(uuid,boolean,integer,boolean)'),
   ('private.set_shopping_item_not_available(uuid,boolean)'),
@@ -78,14 +79,16 @@ insert into lint_private_functions_for_authenticated values
   ('private.restore_packing_items(uuid,jsonb)'),    -- spec 0012: domain op of apply_changes, undo of removing
   ('private.assert_restorable_size(jsonb)'), -- security invoker, a size check without data access
   ('private.is_five_minute_time(time without time zone)'), -- spec 0013: used by check constraints, no data access
+  ('private.is_activity_icon(text)'), -- spec 0041: used by check constraints, no data access
+  ('private.is_series_rule(jsonb)'), -- spec 0041: used by check constraints, no data access
+  ('private.assert_meal_slot(uuid,uuid)'), -- spec 0041: security invoker, called by slot-check triggers
   ('private.is_web_url(text)'),          -- spec 0023: used by check constraints, no data access
   ('private.recipe_links_valid(jsonb)'), -- spec 0023: used by check constraints, no data access
-  ('private.register_push_subscription(text,text,text,text)'), -- spec 0013: push subscriptions (ADR-0014)
-  ('private.set_push_subscription_enabled(text,boolean)'),
-  ('private.unregister_push_subscription(text)'),
-  ('private.remove_push_subscription(uuid)'),
-  ('private.list_push_subscriptions(text)'),     -- online-only read of the own devices, never synced
-  ('private.send_test_push(text)');
+  ('private.recipe_videos_valid(jsonb,text,uuid,uuid)'), -- spec 0046: used by check constraints, no data access
+  ('private.add_recipe_video(uuid,uuid,jsonb)'),           -- spec 0046: the only ways to write recipes.videos
+  ('private.set_recipe_video_poster(uuid,uuid,text,text)'),
+  ('private.remove_recipe_video(uuid,uuid,text)'),
+  ('private.acknowledge_notices(uuid,text[])'); -- spec 0051: the only way to acknowledge notices
 
 create temp view lint_public_tables as
   select c.oid, c.relname as name, c.relrowsecurity as rls

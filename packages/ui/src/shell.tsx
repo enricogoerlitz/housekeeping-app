@@ -1,9 +1,17 @@
-import { createContext, useContext, useRef, useState, type ReactNode } from 'react';
+import {
+  createContext,
+  useContext,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import {
   Platform,
   Pressable,
   ScrollView,
   View,
+  type HostInstance,
   type LayoutChangeEvent,
   type ScrollViewInstance,
   type StyleProp,
@@ -12,6 +20,7 @@ import {
 import Animated, {
   useAnimatedScrollHandler,
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -21,12 +30,16 @@ import { bottomInset } from './bottom-inset';
 import { IconButton, keyboardFocusRing } from './controls';
 import { useKeyboard } from './keyboard';
 import { useHover } from './pointer';
+import { scrollableNode, useTopScroller } from './scroll-top';
 import { tabSwipeTouchAction, type TabSwipe } from './tab-swipe';
-import { TabSwipeArea } from './tab-swipe-area';
+import { TabPreviewContext } from './tab-preview';
+import { TabSwipeArea, arrivingChrome } from './tab-swipe-area';
 import { icons, type IconName } from './icons';
 import { Divider, Icon, Text } from './primitives';
-import { AreaToneContext, ToneContext, useBreakpoint, useTheme } from './theme-context';
+import { AreaToneContext, ToneContext, pageFill, useBreakpoint, useTheme } from './theme-context';
 import type { Tone } from './themes';
+import { useTitleFit } from './use-title-fit';
+import { bottomEdge, largeTitleUnder } from './large-title';
 
 export const TAB_BAR_HEIGHT = 62;
 
@@ -48,8 +61,27 @@ export const WIDE_GUTTER = 36;
 const COLLAPSE_AT = 56;
 const EXPAND_AT = 8;
 
-/** Whether the phone header is shrunk to its narrow bar; read by ScreenHeader. */
-const ScreenChromeContext = createContext({ collapsed: false });
+/**
+ * Whether the phone header is shrunk to its narrow bar, and whether the page's own big title has
+ * scrolled under it (undefined without one, or where it cannot be measured); read by ScreenHeader.
+ */
+const ScreenChromeContext = createContext<{ collapsed: boolean; titleUnder?: boolean }>({
+  collapsed: false,
+});
+
+/** Set by a phone's Screen: the big title of its page registers here (spec 0056, REQ-009). */
+const LargeTitleContext = createContext<((node: unknown) => void) | undefined>(undefined);
+
+/**
+ * For the big title of a page with a `titleOnScroll` header (the recipe page): put the returned
+ * ref on it, and on phones the bar shows the title once this one has scrolled under the bar.
+ */
+export function useLargeTitle(): ((node: unknown) => void) | undefined {
+  return useContext(LargeTitleContext);
+}
+
+/** In place of a tab swipe that was switched off: nothing to swipe to. */
+const NO_SWIPE: TabSwipe = { index: 0, count: 1, onStep: () => undefined };
 
 /**
  * Set by a Screen with `scroll={false}` for the list that scrolls the page instead (InfiniteList):
@@ -81,6 +113,11 @@ export const PageScrollControlContext = createContext<PageScrollControl | undefi
  * the page gets that much room at its end.
  */
 export const AsideInsetContext = createContext<((height: number) => void) | undefined>(undefined);
+
+/** The scroll of a neighbour tab drawn during a swipe moves nothing on the page. */
+function ignoreScroll(_y: number) {
+  'worklet';
+}
 
 export interface ScreenProps {
   children?: ReactNode;
@@ -132,10 +169,13 @@ export interface ScreenProps {
  * a fine line under them appears once content scrolls underneath (spec 0005, REQ-002).
  */
 export function Screen(props: ScreenProps) {
+  // Drawn beside another tab during a swipe: only the content, in that page's frame.
+  const preview = useContext(TabPreviewContext);
   const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const { isPhone } = useBreakpoint();
+  const { isPhone, height } = useBreakpoint();
   const c = theme.colors;
+  const fill = pageFill(theme, height);
   const gutter = isPhone ? theme.shape.gutter : WIDE_GUTTER;
   const inner: ViewStyle = {
     width: '100%',
@@ -149,21 +189,57 @@ export function Screen(props: ScreenProps) {
   const overlay = isPhone && hasChrome;
 
   const [collapsed, setCollapsed] = useState(false);
-  const [chrome, setChrome] = useState<{ expanded?: number; narrow?: number; now: number }>({
-    now: 0,
-  });
-  const [toolbarHeight, setToolbarHeight] = useState(0);
+  // A page that mounts anew after a tab swipe starts in the frame of the one it replaces.
+  const [arrived] = useState(arrivingChrome);
+  const [chrome, setChrome] = useState<{ expanded?: number; narrow?: number; now: number }>(() =>
+    arrived
+      ? { expanded: arrived.expanded, narrow: arrived.narrow, now: arrived.expanded ?? 0 }
+      : { now: 0 },
+  );
+  const [toolbarHeight, setToolbarHeight] = useState(arrived?.toolbar ?? 0);
   const [asideInset, setAsideInset] = useState(0);
+  // Once it swiped, the page keeps its swipe area, switched off while there is no swipe: taking
+  // the wrapper away (the edit mode turns the swipe off) mounted the whole page anew, and its
+  // photo stood empty for a few frames (spec 0056, AC-038).
+  const [swipeArea, setSwipeArea] = useState(props.tabSwipe !== undefined);
+  if (props.tabSwipe && !swipeArea) setSwipeArea(true);
 
   const scrollY = useSharedValue(0);
   const isCollapsed = useSharedValue(false);
   const toolbarShift = useSharedValue(0);
   const toolbarMax = useSharedValue(0);
 
+  // Spec 0056, REQ-009: the page's big title and the fixed part above the content, measured on
+  // every scroll while a big title is there.
+  const [titleUnder, setTitleUnder] = useState<boolean | undefined>();
+  const hasLargeTitle = useSharedValue(false);
+  const chromeNode = useRef<HostInstance>(null);
+  const [largeTitle] = useState(() => {
+    let node: unknown = null;
+    const check = () =>
+      setTitleUnder(largeTitleUnder(bottomEdge(node), bottomEdge(chromeNode.current)));
+    return {
+      check,
+      register: (next: unknown) => {
+        node = next;
+        hasLargeTitle.set(next !== null);
+        if (next === null) setTitleUnder(undefined);
+        else check();
+      },
+    };
+  });
+
+  // Also after each render: the bar is laid out after the title registered, and the page may
+  // have changed under it.
+  useLayoutEffect(() => {
+    if (hasLargeTitle.get()) largeTitle.check();
+  });
+
   const onPageScroll = (y: number) => {
     'worklet';
     const delta = y - scrollY.get();
     scrollY.set(y);
+    if (hasLargeTitle.get()) scheduleOnRN(largeTitle.check);
     if (overlay) {
       if (!isCollapsed.get() && y > COLLAPSE_AT) {
         isCollapsed.set(true);
@@ -191,6 +267,14 @@ export function Screen(props: ScreenProps) {
       else view.measureInWindow((x, y, width, height) => done({ x, y, width, height }));
     },
   }));
+  // A second tap on the active tab brings the page to the top (spec 0057, REQ-002).
+  useTopScroller(
+    {
+      node: () => scrollableNode(scrollView.current),
+      toTop: (animated) => scrollView.current?.scrollTo({ y: 0, animated }),
+    },
+    props.scroll !== false && !preview,
+  );
   const scrollHandler = useAnimatedScrollHandler({
     onScroll: (event) => {
       onPageScroll(event.contentOffset.y);
@@ -221,7 +305,11 @@ export function Screen(props: ScreenProps) {
 
   // Once the narrow bar was measured the scroll area starts below it, so sticky group headings
   // stick under the bar instead of behind it; only the rest of the header lies over the content.
-  const top = overlay ? (chrome.narrow ?? 0) : 0;
+  // Never lower than the header itself: a bar that grew while scrolled left the page that much
+  // further down with a negative inset the browser ignored — the gap above the recipe photo
+  // (spec 0056, AC-037).
+  const narrow = chrome.narrow ?? 0;
+  const top = overlay ? Math.min(narrow, chrome.expanded ?? narrow) : 0;
   // Spec 0030, REQ-007: under a tab swipe the scroll area pans only vertically (iOS).
   const touch = tabSwipeTouchAction(props.tabSwipe !== undefined, Platform.OS);
   const inset = overlay ? (chrome.expanded ?? 0) + toolbarHeight - top : 0;
@@ -238,7 +326,9 @@ export function Screen(props: ScreenProps) {
         props.style,
       ]}
     >
-      {props.children}
+      <LargeTitleContext.Provider value={overlay ? largeTitle.register : undefined}>
+        {props.children}
+      </LargeTitleContext.Provider>
     </View>
   );
   const scrolling =
@@ -262,8 +352,44 @@ export function Screen(props: ScreenProps) {
         </PageScrollControlContext.Provider>
       </Animated.ScrollView>
     );
-  const body = props.tabSwipe ? (
-    <TabSwipeArea swipe={props.tabSwipe}>{scrolling}</TabSwipeArea>
+  if (preview) {
+    return (
+      <AreaToneContext.Provider value={props.tone}>
+        <View style={[{ flex: 1, overflow: 'hidden' }, fill]}>
+          {props.scroll === false ? (
+            <View style={{ flex: 1, marginTop: preview.top }}>
+              <PageScrollContext.Provider value={{ inset: preview.inset, onScroll: ignoreScroll }}>
+                {content}
+              </PageScrollContext.Provider>
+            </View>
+          ) : (
+            // A scroller of its own, so a page that opens at a place (the calendar at today)
+            // stands there; nobody touches it.
+            <ScrollView
+              style={{ flex: 1, marginTop: preview.top }}
+              contentContainerStyle={{ paddingTop: preview.inset }}
+              showsVerticalScrollIndicator={false}
+            >
+              {content}
+            </ScrollView>
+          )}
+        </View>
+      </AreaToneContext.Provider>
+    );
+  }
+  const body = swipeArea ? (
+    <TabSwipeArea
+      swipe={props.tabSwipe ?? NO_SWIPE}
+      disabled={!props.tabSwipe}
+      frame={{ top, inset }}
+      chrome={
+        chrome.expanded === undefined
+          ? undefined
+          : { expanded: chrome.expanded, narrow: chrome.narrow, toolbar: toolbarHeight }
+      }
+    >
+      {scrolling}
+    </TabSwipeArea>
   ) : (
     scrolling
   );
@@ -276,7 +402,9 @@ export function Screen(props: ScreenProps) {
     backgroundColor: c.border,
   };
   const header = props.header ? (
-    <ScreenChromeContext.Provider value={{ collapsed: overlay && collapsed }}>
+    <ScreenChromeContext.Provider
+      value={{ collapsed: overlay && collapsed, titleUnder: overlay ? titleUnder : undefined }}
+    >
       <View style={inner}>{props.header}</View>
     </ScreenChromeContext.Provider>
   ) : null;
@@ -288,10 +416,7 @@ export function Screen(props: ScreenProps) {
   if (!overlay) {
     return (
       <AreaToneContext.Provider value={props.tone}>
-        <View
-          testID={props.testID}
-          style={{ flex: 1, backgroundColor: c.bg, paddingTop: insets.top }}
-        >
+        <View testID={props.testID} style={[{ flex: 1, paddingTop: insets.top }, fill]}>
           {hasChrome ? (
             <View style={{ zIndex: 1, paddingTop: 8 }}>
               {header}
@@ -318,7 +443,7 @@ export function Screen(props: ScreenProps) {
 
   return (
     <AreaToneContext.Provider value={props.tone}>
-      <View testID={props.testID} style={{ flex: 1, backgroundColor: c.bg }}>
+      <View testID={props.testID} style={[{ flex: 1 }, fill]}>
         <View style={{ flex: 1, overflow: 'hidden' }}>
           {body}
           {props.toolbar ? (
@@ -332,8 +457,8 @@ export function Screen(props: ScreenProps) {
                   right: 0,
                   paddingTop: 8,
                   paddingBottom: 8,
-                  backgroundColor: c.bg,
                 },
+                pageFill(theme, height, chrome.now),
                 toolbarStyle,
               ]}
             >
@@ -342,15 +467,12 @@ export function Screen(props: ScreenProps) {
             </Animated.View>
           ) : null}
           <View
+            ref={chromeNode}
             onLayout={onChromeLayout}
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              paddingTop: insets.top,
-              backgroundColor: c.bg,
-            }}
+            style={[
+              { position: 'absolute', top: 0, left: 0, right: 0, paddingTop: insets.top },
+              fill,
+            ]}
           >
             {header}
             {tabs}
@@ -380,8 +502,10 @@ export interface ScreenHeaderProps {
   backLabel?: string;
   /**
    * For a page that shows its title big in its own content (spec 0008, AC-019, AC-020): one bar
-   * with "‹ Back", the title small and the buttons. On phones the title only appears once the
-   * page is scrolled; wider screens show it from the start.
+   * with "‹ Back", the title small and the buttons. On phones the title appears once the page is
+   * scrolled; with a big title on the page (`useLargeTitle`) it fades in, one line in the row,
+   * once that one has scrolled under the bar (spec 0056, REQ-009). Wider screens show it from the
+   * start.
    */
   titleOnScroll?: boolean;
   testID?: string;
@@ -393,8 +517,16 @@ export interface ScreenHeaderProps {
  */
 export function ScreenHeader(props: ScreenHeaderProps) {
   const { isPhone } = useBreakpoint();
-  const { collapsed } = useContext(ScreenChromeContext);
-  if (props.titleOnScroll) return <TitleBar {...props} showTitle={!isPhone || collapsed} />;
+  const { collapsed, titleUnder } = useContext(ScreenChromeContext);
+  if (props.titleOnScroll) {
+    return (
+      <TitleBar
+        {...props}
+        fade={isPhone && titleUnder !== undefined}
+        showTitle={!isPhone || (titleUnder ?? collapsed)}
+      />
+    );
+  }
   return (
     <View
       style={{
@@ -442,49 +574,106 @@ export function ScreenHeader(props: ScreenHeaderProps) {
   );
 }
 
-/** The one-row header of `titleOnScroll`: back, the title once `showTitle`, the buttons. */
-function TitleBar(props: ScreenHeaderProps & { showTitle: boolean }) {
-  return (
-    <View
-      style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 12,
-        minHeight: 44,
-        paddingTop: 8,
-        paddingBottom: 8,
-      }}
+const TITLE_BAR_GAP = 12;
+
+/**
+ * The header of `titleOnScroll`: back, the title once `showTitle`, the buttons. With `fade` (a
+ * phone page with its own big title) the title always stands in the row, one line cut with "…",
+ * and only fades in and out: the bar keeps its height, so nothing below it moves and no frame
+ * shows the title big (spec 0056, REQ-009). Otherwise, when the buttons leave the title too little
+ * room (the edit mode's "Abbrechen" and "Speichern" on a phone), the title takes a line of its own
+ * below them instead of shrinking to "Q…" (review 0003).
+ */
+function TitleBar(props: ScreenHeaderProps & { showTitle: boolean; fade: boolean }) {
+  const reduced = useReducedMotion();
+  const {
+    ownLine: titleBelow,
+    onRow,
+    titleRef,
+    onTitle,
+    onAction,
+  } = useTitleFit({ padding: 0, gap: TITLE_BAR_GAP, actions: 2 });
+  const text = (
+    <Text
+      ref={titleRef}
+      variant="cardTitle"
+      heading
+      numberOfLines={1}
+      testID={props.testID ?? 'screen-title'}
     >
-      {props.onBack ? (
-        props.backLabel ? (
-          // BackLink aligns itself to the start; the wrapper centres it in the row.
-          <View>
-            <BackLink label={props.backLabel} onPress={props.onBack} />
-          </View>
-        ) : (
-          <View style={{ marginLeft: -8 }}>
-            <IconButton icon="arrow-left" label="Zurück" onPress={props.onBack} testID="back" />
-          </View>
-        )
-      ) : null}
-      <View style={{ flex: 1, minWidth: 0 }}>
-        {props.showTitle ? (
-          <Text
-            variant="cardTitle"
-            heading
-            numberOfLines={1}
-            testID={props.testID ?? 'screen-title'}
-          >
-            {props.title}
-          </Text>
-        ) : null}
+      {props.title}
+    </Text>
+  );
+  const fading = props.fade ? (
+    <View
+      key="title"
+      aria-hidden={!props.showTitle}
+      pointerEvents={props.showTitle ? 'auto' : 'none'}
+      style={[
+        { flex: 1, minWidth: 0, opacity: props.showTitle ? 1 : 0 },
+        reduced ? null : TITLE_FADE,
+      ]}
+    >
+      {text}
+    </View>
+  ) : null;
+  const title =
+    !props.fade && props.showTitle ? (
+      // Keyed by the text: a new title is measured anew, even where its box keeps its size.
+      <View key={`title-${props.title}`} style={{ flex: 1, minWidth: 0 }} onLayout={onTitle}>
+        {text}
       </View>
-      {props.right ? (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>{props.right}</View>
-      ) : null}
+    ) : null;
+  const ownLine = title !== null && titleBelow;
+  return (
+    <View style={{ paddingTop: 8, paddingBottom: 8, gap: 4 }}>
+      <View
+        onLayout={onRow}
+        style={{ flexDirection: 'row', alignItems: 'center', gap: TITLE_BAR_GAP, minHeight: 44 }}
+      >
+        <View onLayout={onAction(0)}>
+          {props.onBack ? (
+            props.backLabel ? (
+              // BackLink aligns itself to the start; the wrapper centres it in the row.
+              <View>
+                <BackLink label={props.backLabel} onPress={props.onBack} />
+              </View>
+            ) : (
+              <View style={{ marginLeft: -8 }}>
+                <IconButton icon="arrow-left" label="Zurück" onPress={props.onBack} testID="back" />
+              </View>
+            )
+          ) : null}
+        </View>
+        {fading ??
+          (ownLine ? (
+            <View key="spacer" style={{ flex: 1 }} />
+          ) : (
+            (title ?? <View key="spacer" style={{ flex: 1 }} />)
+          ))}
+        <View onLayout={onAction(1)}>
+          {props.right ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              {props.right}
+            </View>
+          ) : null}
+        </View>
+      </View>
+      {ownLine ? <View style={{ flexDirection: 'row' }}>{title}</View> : null}
     </View>
   );
 }
+
+/** On the web: the bar's title fades, short and only in opacity (spec 0056, REQ-009). */
+const TITLE_FADE = (
+  Platform.OS === 'web'
+    ? {
+        transitionProperty: 'opacity',
+        transitionDuration: '150ms',
+        transitionTimingFunction: 'ease-out',
+      }
+    : null
+) as ViewStyle | null;
 
 /** "‹ Kalender": back with the name of the page it leads to (spec 0010, AC-025, AC-039). */
 function BackLink(props: { label: string; onPress: () => void }) {

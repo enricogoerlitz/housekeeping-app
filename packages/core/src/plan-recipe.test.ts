@@ -5,6 +5,7 @@ import {
   householdEaters,
   pagePlanChoice,
   planButtonLabel,
+  seriesPlanButtonLabel,
   refreshPlanEaters,
   plannedNotice,
   addedNotice,
@@ -164,5 +165,22 @@ describe('spec 0023 REQ-013: the plan window', () => {
   it('returns the same choice when nothing changes', () => {
     const choice = defaultPlanChoice(today, slots, [enrico, nadja]);
     expect(refreshPlanEaters(choice, false, [enrico, nadja])).toBe(choice);
+  });
+});
+
+describe('seriesPlanButtonLabel: the button names the series (spec 0041, REQ-003; review 0003, B-11)', () => {
+  it('weekly, every 2 weeks, monthly and yearly from the first day', () => {
+    expect(seriesPlanButtonLabel({ type: 'weekly', every: 1, weekdays: [2] }, '2026-12-01')).toBe(
+      'Wöchentlich ab Di 1.12. einplanen',
+    );
+    expect(
+      seriesPlanButtonLabel({ type: 'weekly', every: 2, weekdays: [1, 4] }, '2026-12-03'),
+    ).toBe('Alle 2 Wochen ab Do 3.12. einplanen');
+    expect(seriesPlanButtonLabel({ type: 'monthly', day: 15 }, '2026-12-15')).toBe(
+      'Monatlich ab Di 15.12. einplanen',
+    );
+    expect(seriesPlanButtonLabel({ type: 'yearly' }, '2027-03-14')).toBe(
+      'Jährlich ab So 14.3. einplanen',
+    );
   });
 });

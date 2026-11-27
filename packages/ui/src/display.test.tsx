@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { AccessibilityInfo } from 'react-native';
+import { AccessibilityInfo, Animated } from 'react-native';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { pointer } from '../test/setup';
@@ -12,6 +12,7 @@ import {
   EmptyState,
   KindDot,
   KindLine,
+  LoadingLines,
   MediaCard,
   Notice,
   OfflineBanner,
@@ -110,9 +111,61 @@ describe('Photo', () => {
     expect(screen.getByLabelText('Curry im Topf')).toBeTruthy();
   });
 
+  it('AC-010: while the photo loads a calm surface of the same size stands, without the symbol', () => {
+    render(<Photo testID="photo" placeholderIcon="leaf" loading width={80} height={60} />);
+    const surface = screen.getByTestId('photo');
+    expect(surface.querySelector('svg')).toBeNull();
+    expect(getComputedStyle(surface).width).toBe('80px');
+    expect(getComputedStyle(surface).height).toBe('60px');
+  });
+
   it('without alt the picture is decorative', () => {
     render(<Photo testID="photo" source={PHOTO} />);
     expect(screen.queryByLabelText(/./)).toBeNull();
+  });
+
+  it('spec 0045 AC-015: while it is generated the tile pulses as a progress indicator with a symbol', async () => {
+    vi.spyOn(AccessibilityInfo, 'isReduceMotionEnabled').mockResolvedValue(false);
+    const loop = vi.spyOn(Animated, 'loop');
+    const { unmount } = render(
+      <Photo testID="photo" generating="Foto wird erzeugt" aspectRatio={1} width={80} />,
+    );
+    await act(async () => undefined);
+    const tile = screen.getByRole('progressbar', { name: 'Foto wird erzeugt' });
+    expect(tile.querySelector('svg')).toBeTruthy();
+    expect(loop).toHaveBeenCalled();
+    unmount();
+  });
+
+  it('spec 0045 AC-016: reduced motion: the tile stands still', async () => {
+    vi.spyOn(AccessibilityInfo, 'isReduceMotionEnabled').mockResolvedValue(true);
+    const loop = vi.spyOn(Animated, 'loop');
+    render(<Photo testID="photo" generating="Foto wird erzeugt" aspectRatio={1} width={80} />);
+    await act(async () => undefined);
+    expect(screen.getByRole('progressbar', { name: 'Foto wird erzeugt' })).toBeTruthy();
+    expect(loop).not.toHaveBeenCalled();
+  });
+});
+
+describe('LoadingLines (spec 0055, REQ-003)', () => {
+  it('AC-010: placeholder lines pulse under one progress indicator with the status', async () => {
+    vi.spyOn(AccessibilityInfo, 'isReduceMotionEnabled').mockResolvedValue(false);
+    const loop = vi.spyOn(Animated, 'loop');
+    render(<LoadingLines label="Das Rezept wird gelesen …" lines={4} testID="lines" />);
+    await act(async () => undefined);
+    const indicator = screen.getByRole('progressbar', { name: 'Das Rezept wird gelesen …' });
+    expect(indicator).toBeTruthy();
+    expect(screen.getAllByTestId(/^lines-line-/)).toHaveLength(4);
+    expect(loop).toHaveBeenCalled();
+  });
+
+  it('AC-012: reduced motion: the lines stand still', async () => {
+    vi.spyOn(AccessibilityInfo, 'isReduceMotionEnabled').mockResolvedValue(true);
+    const loop = vi.spyOn(Animated, 'loop');
+    render(<LoadingLines label="Der Ort wird eingeordnet …" testID="lines" />);
+    await act(async () => undefined);
+    expect(screen.getByRole('progressbar', { name: 'Der Ort wird eingeordnet …' })).toBeTruthy();
+    expect(loop).not.toHaveBeenCalled();
   });
 });
 
@@ -542,9 +595,23 @@ describe('KindLine (spec 0010, D19)', () => {
     expect(screen.getByText('Bad putzen').style.textDecorationLine).toBe('line-through');
   });
 
-  it('REQ-033: the title hyphenates', () => {
+  it('N-18 (review 0004): a row never breaks a word right before its hyphen ("Kichererbsen|-Eintopf")', () => {
+    render(
+      <>
+        <KindLine kind="recipe" title="Kichererbsen-Eintopf" />
+        <KindLine kind="recipe" title="Mango-Curry" size="compact" />
+      </>,
+    );
+    const row = screen.getByText('Kichererbsen-Eintopf');
+    expect(row.style.getPropertyValue('overflow-wrap')).toBe('normal');
+    expect(parseFloat(row.style.getPropertyValue('padding-right'))).toBeGreaterThan(0);
+    // The month's one line stays as it is.
+    expect(screen.getByText('Mango-Curry').style.getPropertyValue('padding-right')).toBe('');
+  });
+
+  it('spec 0057 AC-024: the title breaks between words, without automatic hyphenation', () => {
     render(<KindLine kind="restaurant" title="Gasthausbesuch" />);
-    expect(screen.getByText('Gasthausbesuch').style.getPropertyValue('hyphens')).toBe('auto');
+    expect(screen.getByText('Gasthausbesuch').style.getPropertyValue('hyphens')).toBe('manual');
   });
 
   it('with a mouse it still presses while hovered', () => {

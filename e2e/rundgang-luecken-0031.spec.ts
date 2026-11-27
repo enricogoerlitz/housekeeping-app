@@ -30,6 +30,10 @@ const HOUSEHOLD = seedIds['hh-demo'];
 const OFFLINE_HINT = 'Offline – zum Bearbeiten brauchst du Netz';
 const SIGN_IN_FAILED = 'Anmelden hat nicht geklappt – bitte noch einmal versuchen.';
 
+/** No movement: no transform, or the identity matrix Reanimated leaves at rest. */
+const unmoved = (transform: string) =>
+  transform === 'none' || transform === 'matrix(1, 0, 0, 1, 0, 0)';
+
 /**
  * Samples the window `id` on every frame for `ms` after `start` ran: its CSS transform and the
  * opacity of the window and its scrim (spec 0029, REQ-001).
@@ -200,14 +204,14 @@ test.describe('reduced motion (0029, REQ-001)', () => {
     await tid(page, 'list-from-plan').click();
     const opened = await opening;
     expect(opened.length).toBeGreaterThan(3);
-    expect(opened.every((sample) => sample.transform === 'none')).toBe(true);
+    expect(opened.every((sample) => unmoved(sample.transform))).toBe(true);
     expect(opened[0]?.opacity ?? 1).toBeLessThan(1);
     expect(opened.at(-1)?.opacity).toBe(1);
 
     const closing = sampleSheet(page, 'pantry-check-sheet', 300);
     await tid(page, 'pantry-check-sheet-close').click();
     const closed = await closing;
-    expect(closed.every((sample) => sample.transform === 'none')).toBe(true);
+    expect(closed.every((sample) => unmoved(sample.transform))).toBe(true);
     expect(closed.some((sample) => sample.opacity < 1)).toBe(true);
     await expect(page.locator('[data-testid="pantry-check-sheet"]')).toHaveCount(0);
   });

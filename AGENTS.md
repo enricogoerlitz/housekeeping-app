@@ -46,15 +46,14 @@ Use `expo install` for anything native so versions match the Expo SDK.
 3. **Tests first, red first.** Show the failing run before writing the implementation.
 4. **Read offline, write online.** The UI reads only from the local cache. Writes go to Supabase
    and are disabled offline — except the store-mode actions and packing (ADR-0008 addendum,
-   ADR-0013). Two reads are online-only: the signed-in person's own push subscriptions ("Deine
-   Geräte", ADR-0014) and the version check (`/version.json`, `min_app_version`, ADR-0015).
-   See `docs/architecture/sync.md`.
+   ADR-0013). One read is online-only: the version check (`/version.json`, `min_app_version`,
+   ADR-0015). Notices behind the bell come from the cache (ADR-0017). See
+   `docs/architecture/sync.md`.
 5. **Every table is tenant-scoped and synced.** `household_id`, Row Level Security, explicit
    grants, a pgTAP isolation test, server-set `updated_at` and a delete trigger — always together.
    Use the `db-change` skill. Reviewed exceptions live in the `private` schema with RLS and no
    grants, are never synced and are reached only through `security definer` functions:
-   per-person data (push subscriptions) and server-owned logs (notification deliveries,
-   ADR-0014).
+   server-owned logs such as the AI quota (`ai_usage`) and deletion snapshots (`deletions`).
 6. **Never read `.env` or secret files.** The Supabase `service_role` key never enters the app.
    Cloud changes go through migrations and the pipeline by default (`10-security.md`).
 7. **Smallest change that fully solves the task.** No speculative abstractions, no unused options.
@@ -76,6 +75,7 @@ Use `expo install` for anything native so versions match the Expo SDK.
 | Architecture decisions                                       | `docs/adr/`                                          |
 | System overview, sync concept                                | `docs/architecture/`                                 |
 | Look and feel                                                | `docs/design/DESIGN.md`                              |
+| Published claude.ai artifacts (concepts, visualisations)     | `docs/ARTIFACTS.md` — add every new artifact link    |
 | Domain vocabulary                                            | `.agents/glossary.md`                                |
 | Scratch work (git-ignored)                                   | `tmp/<topic>/`                                       |
 
@@ -104,7 +104,7 @@ dependency bumps, typos). Say that you are making one.
 
 | Group            | Skills                                                                                      |
 | ---------------- | ------------------------------------------------------------------------------------------- |
-| Own              | `spec`, `db-change`, `ui-verify`, `adr`, `glossary`, `security-check`                       |
+| Own              | `spec`, `db-change`, `ui-verify`, `adr`, `glossary`, `security-check`, `recipe-crud`        |
 | Process (plugin) | `superpowers`                                                                               |
 | Expo (plugin)    | `expo-router`, `expo-native-ui`, `expo-design-system`, `expo-animation`, `expo-ui`, `eas-*` |
 | Design (plugins) | `impeccable`, `ui-ux-pro-max`                                                               |

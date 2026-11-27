@@ -15,6 +15,7 @@ import {
 import {
   ACTIVE,
   contentReady,
+  uprightTouch,
   SLOT_DINNER,
   SLOT_LUNCH,
   SLOT_MORNING,
@@ -59,7 +60,14 @@ interface Box {
 
 async function boxOf(locator: Locator): Promise<Box> {
   await expect(locator).toBeVisible();
-  const box = await locator.boundingBox();
+  // A view that just switched may still replace the element between the two calls.
+  let box: Box | null = null;
+  await expect
+    .poll(async () => {
+      box = await locator.boundingBox();
+      return box !== null;
+    })
+    .toBe(true);
   if (!box) throw new Error('not laid out');
   return box;
 }
@@ -90,17 +98,11 @@ async function showMonth(page: Page): Promise<void> {
   await expect(tid(page, `month-day-${TODAY}`)).toBeVisible();
 }
 
-async function householdRowInMonth(page: Page): Promise<void> {
-  await tid(page, 'calendar-more').click();
-  await tid(page, 'calendar-more-household-row').click();
-}
-
 /** A finger on the page through CDP touch events, so the browser sends touch pointer events. */
 async function finger(page: Page) {
   // The first touch right after a load misses the remounting content.
   await contentReady(page);
-  const cdp = await page.context().newCDPSession(page);
-  await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 2 });
+  const cdp = await uprightTouch(page);
   const send = (
     type: 'touchStart' | 'touchMove' | 'touchEnd',
     points: { x: number; y: number }[],
@@ -305,14 +307,12 @@ test.describe('desktop', () => {
     await expect(box).toHaveCount(0, { timeout: 6000 });
   });
 
-  test('AC-044: with the household row the month shows the day’s chores as lines under the entries', async ({
+  test('AC-044 / AC-012 (0054): the month always shows the day’s chores as lines under the entries', async ({
     page,
   }) => {
     // Tall enough that today's three entries and two chores fit (six week rows, REQ-001).
     await page.setViewportSize({ width: 1440, height: 1700 });
     await showMonth(page);
-    await expect(tid(page, `month-chores-${TODAY}`)).toHaveCount(0);
-    await householdRowInMonth(page);
     await expect(tid(page, `month-chores-${TODAY}`)).toContainText('Bad putzen');
     await expect(tid(page, `month-cell-${TODAY}`)).toContainText('Lasagne');
   });
@@ -367,9 +367,11 @@ test.describe('phone', () => {
       .toBeLessThan(nav.y + nav.height + 40);
     await tid(page, 'week-next').click();
     const monday = addDays(startOfWeek(TODAY), 7);
+    // Right under the tabs: under the line "Was kochen wir?" above the week (spec 0063).
+    const line = await boxOf(tid(page, 'week-menu-open'));
     await expect
       .poll(async () => (await boxOf(tid(page, `day-${monday}`))).y)
-      .toBeLessThan(nav.y + nav.height + 60);
+      .toBeLessThan(line.y + line.height + 60);
   });
 
   test('AC-011: the year opens at the current month; the next year at January', async ({
@@ -446,8 +448,15 @@ test.describe('phone', () => {
     page,
   }) => {
     await open(page, '/kalender');
-    const prev = await boxOf(tid(page, 'week-prev'));
-    const next = await boxOf(tid(page, 'week-next'));
+    // Within the nav row: the whole header moves when the large title collapses on scrolling
+    // to today (spec 0057), the arrows must not move inside it.
+    const inNav = async (id: string) => {
+      const nav = await boxOf(tid(page, 'calendar-phone-nav'));
+      const box = await boxOf(tid(page, id));
+      return { ...box, y: box.y - nav.y };
+    };
+    const prev = await inNav('week-prev');
+    const next = await inNav('week-next');
     const week = startOfWeek(TODAY);
     await expect(tid(page, 'calendar-title')).toHaveText(periodNavLabel('week', week, TODAY).label);
     await expect(tid(page, 'calendar-today-hint')).toHaveCount(0);
@@ -458,8 +467,8 @@ test.describe('phone', () => {
       periodNavLabel('week', following, TODAY).label,
     );
     await expect(tid(page, 'calendar-today-hint')).toHaveText('Heute ›');
-    expect(await boxOf(tid(page, 'week-prev'))).toEqual(prev);
-    expect(await boxOf(tid(page, 'week-next'))).toEqual(next);
+    expect(await inNav('week-prev')).toEqual(prev);
+    expect(await inNav('week-next')).toEqual(next);
 
     await expect(tid(page, 'week-today')).toHaveAttribute('aria-label', 'Zurück zu heute');
     await tid(page, 'week-today').click();

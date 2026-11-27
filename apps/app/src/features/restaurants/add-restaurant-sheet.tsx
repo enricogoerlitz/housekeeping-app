@@ -3,6 +3,7 @@ import type { Id, Restaurant } from '@housekeeping/core';
 import { Sheet, Stack, Text, toast } from '@housekeeping/ui';
 
 import { useOnlineOnly } from '@/features/shell/offline';
+import { usePlaceWebFill } from '@/features/web-search/place-web-fill';
 
 import {
   RestaurantFormFields,
@@ -27,7 +28,7 @@ export interface AddRestaurantSheetProps {
 }
 
 /**
- * "Restaurant hinzufügen": a map link at the top fills the form; only the name is required.
+ * "Restaurant anlegen": a map link at the top fills the form; only the name is required.
  * Mount it fresh for every opening so the initial text is read again.
  */
 export function AddRestaurantSheet(props: AddRestaurantSheetProps) {
@@ -43,7 +44,8 @@ export function AddRestaurantSheet(props: AddRestaurantSheetProps) {
       props.onClose();
       props.onCreated(id);
       saveRestaurantPhoto(id, form.photo);
-      toast.show({ message: 'Restaurant gespeichert' });
+      // Review 0004, N-09: a new one is "angelegt", like the window and its button say.
+      toast.show({ message: 'Restaurant angelegt' });
     } catch (caught) {
       form.fail(caught);
     }
@@ -51,7 +53,7 @@ export function AddRestaurantSheet(props: AddRestaurantSheetProps) {
 
   return (
     <RestaurantFormSheet
-      title="Restaurant hinzufügen"
+      title="Restaurant anlegen"
       form={form}
       focus={props.focus}
       onSave={() => void save()}
@@ -62,9 +64,9 @@ export function AddRestaurantSheet(props: AddRestaurantSheetProps) {
 }
 
 /**
- * "Restaurant bearbeiten" (spec 0024, REQ-001): the form of "Restaurant hinzufügen", prefilled.
+ * "Restaurant bearbeiten" (spec 0024, REQ-001): the form of "Restaurant anlegen", prefilled.
  * "Speichern" sends every field (a cleared one is cleared, an emptied map link takes the
- * coordinates with it) → "Restaurant gespeichert"; ✕ discards. "Notiz bearbeiten" opens it with
+ * coordinates with it) → "Restaurant gespeichert"; ✕ discards. "Notiz hinzufügen" opens it with
  * the keyboard in "Notiz" (REQ-002).
  */
 export function EditRestaurantSheet(props: {
@@ -126,6 +128,16 @@ function RestaurantFormSheet(props: {
 }) {
   const online = useOnlineOnly();
   const { form } = props;
+  // Spec 0049: a new one is filled at once, an existing one shows its changes first.
+  const web = usePlaceWebFill({
+    kind: 'restaurant',
+    name: form.name,
+    ...(form.restaurant ? { current: form.webValues() } : {}),
+    hasPhoto: form.restaurant?.photoPath !== undefined,
+    onApply: form.applyWeb,
+    onLink: form.changeLink,
+    testID: 'restaurant-web',
+  });
   return (
     <Sheet
       visible
@@ -135,7 +147,8 @@ function RestaurantFormSheet(props: {
       size="m"
       actions={{
         primary: {
-          label: 'Speichern',
+          // Spec 0062, REQ-006: a new one is created with "Anlegen" in the window's head.
+          label: form.restaurant ? 'Speichern' : 'Anlegen',
           icon: 'check',
           disabled: online.disabled || !!form.duplicate || form.saving,
           hint:
@@ -151,14 +164,18 @@ function RestaurantFormSheet(props: {
             {online.hint}
           </Text>
         ) : null}
+        {/* Spec 0055, REQ-010: a new one searches from the name; an existing one keeps the link. */}
+        {form.restaurant ? web.link : null}
         <RestaurantFormFields
           form={form}
+          {...(form.restaurant ? {} : { nameAction: web.nameButton, onNameSearch: web.searchName })}
           focus={props.focus}
           onOpenExisting={(existing) => {
             props.onClose();
             props.onOpenExisting(existing.id);
           }}
         />
+        {web.windows}
       </Stack>
     </Sheet>
   );

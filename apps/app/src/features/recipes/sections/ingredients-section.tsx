@@ -2,7 +2,6 @@ import {
   addIngredientToList,
   OfflineError,
   removeRecipeIngredient,
-  saveIngredient,
   snapshot,
   useArticles,
   useArticlesById,
@@ -13,16 +12,17 @@ import {
   chooseRowArticle,
   groupIngredients,
   ingredientLine,
+  ingredientSections,
   ingredientsForVariant,
   keepDuplicateRow,
   moveIngredientAmong,
   openRows,
+  readViewSave,
   removeIngredient,
   removeVariant,
   renameVariant,
   rowArticleName,
   scaleAmount,
-  sectionDraft,
   servingsLabel,
   setDefaultVariant,
   validateSectionDraft,
@@ -36,7 +36,6 @@ import {
 import {
   Button,
   ChoiceChips,
-  EditableSection,
   GroupLabel,
   Icon,
   IconButton,
@@ -49,21 +48,24 @@ import {
   Text,
   toast,
   type ReorderListLabels,
+  openKeyboardNow,
 } from '@housekeeping/ui';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 
 import { ArticleSheet } from '@/features/articles/article-sheet';
 import { MergeArticleDialog } from '@/features/articles/merge-article-dialog';
+import { confirmFirst } from '@/features/shell/confirm-dialog';
 import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 
 import { IngredientSheet } from '../ingredient-sheet';
 import { IngredientsPasteSheet } from '../ingredients-paste-sheet';
 
-import { SectionError, useSectionFrame } from './common';
+import { CopyIngredientsSheet } from './copy-ingredients-sheet';
+import { RecipeSection } from './common';
 import { OpenRows } from './open-rows';
 import { TextSheet } from './text-sheet';
-import type { SectionEditor } from './use-section-editor';
+import type { PageEditor } from './use-page-editor';
 
 type RowAction = 'edit' | 'article' | 'up' | 'down' | 'remove';
 type ReadAction = 'ingredient' | 'article' | 'remove';
@@ -79,9 +81,11 @@ const ROW_LABELS: ReorderListLabels = {
 /**
  * Zutaten (REQ-008) with the portions stepper (display only, AC-028) and the variant choice. Read:
  * the ingredients without group, then each group under its heading (spec 0023, REQ-004); "Ist
- * alle" and ⋯ "Zutat bearbeiten", "Artikel bearbeiten", "Entfernen" per ingredient, saved at once
- * with "Rückgängig" (spec 0023, REQ-002). Edited as a whole: a flat list of rows with ≡, Menge,
- * Artikel and ⋯, "+ Zutat", "Mehrere einfügen" and "+ Variante" (E9).
+ * alle" and ⋯ "Zutat bearbeiten" (opens the edit mode with the row, spec 0037), "Artikel
+ * bearbeiten", "Entfernen" per ingredient; "+ Zutat" and "Mehrere einfügen" save at once (spec
+ * 0056, REQ-001, REQ-002; replaces spec 0037, AC-002). In the edit mode: the rows by variant and group
+ * (Nachklick 27.11., N-01) with ≡, Menge, Artikel and ⋯,
+ * "+ Zutat", "Mehrere einfügen", "Aus Rezept übernehmen" (REQ-003) and "+ Variante" (E9).
  */
 export function IngredientsSection(props: {
   recipe: Recipe;
@@ -90,34 +94,35 @@ export function IngredientsSection(props: {
   servings: number;
   /** The portions stepper; a collection has none (its portions are set in the head). */
   onServings?: (value: number) => void;
-  editor: SectionEditor;
+  editor: PageEditor;
   /** "Eigene Zutaten" for a collection (spec 0009, E13). */
   title?: string;
 }) {
   const { editor, onServings } = props;
-  const frame = useSectionFrame(editor, 'ingredients', props.title ?? 'Zutaten');
-  const draft = editor.draft?.section === 'ingredients' ? editor.draft : undefined;
+  const draft = editor.draft?.ingredients;
+  const servings = Number(editor.draft?.head.servings) || props.recipe.servings;
   return (
-    <EditableSection
-      {...frame}
+    <RecipeSection
+      title={props.title ?? 'Zutaten'}
       accessory={
-        onServings ? <ServingsStepper value={props.servings} onChange={onServings} /> : undefined
+        onServings && !draft ? (
+          <ServingsStepper value={props.servings} onChange={onServings} />
+        ) : undefined
       }
       testID="recipe-ingredients"
     >
       {draft ? (
-        <IngredientsFields draft={draft} editor={editor} />
+        <IngredientsFields draft={draft} editor={editor} servings={servings} />
       ) : (
         <IngredientsRead
           recipe={props.recipe}
           variantId={props.variantId}
           onVariant={props.onVariant}
           servings={props.servings}
-          frame={frame}
           editor={editor}
         />
       )}
-    </EditableSection>
+    </RecipeSection>
   );
 }
 
@@ -126,53 +131,61 @@ function IngredientsRead(props: {
   variantId: Id | undefined;
   onVariant: (id: Id) => void;
   servings: number;
-  frame: ReturnType<typeof useSectionFrame>;
-  editor: SectionEditor;
+  editor: PageEditor;
 }) {
-  const { recipe, variantId, frame, editor } = props;
+  const { recipe, variantId, editor } = props;
+  const articles = useArticles();
   const articlesById = useArticlesById();
   const online = useOnlineOnly();
+  // "+ Zutat" and "Mehrere einfügen" save at once (spec 0056, REQ-001, REQ-002): the window works
+  // on the section as stored when it opened.
+  const [adding, setAdding] = useState<
+    { kind: 'row' | 'paste'; base: IngredientsDraft } | undefined
+  >();
   // ⋯ → "Artikel bearbeiten" (spec 0007, AC-007) and, from there, "Zusammenführen" (REQ-007).
   const [articleFor, setArticleFor] = useState<Id | undefined>();
   const [merging, setMerging] = useState<{ sourceId: Id; targetId: Id } | undefined>();
-  // ⋯ → "Zutat bearbeiten": the window over the section as stored (spec 0023, REQ-002).
-  const [editing, setEditing] = useState<
-    { ingredientId: Id; draft: IngredientsDraft } | undefined
-  >();
   const ingredients = ingredientsForVariant(recipe, variantId);
   const factor = props.servings / recipe.servings;
   const nameOf = (ingredient: RecipeIngredient) => articlesById[ingredient.articleId]?.name ?? '';
 
+  // ⋯ → "Zutat bearbeiten" opens the edit mode with the window (spec 0037, AC-002); the window's
+  // field gets the keyboard with the tap (spec 0033, REQ-006).
   const edit = (ingredient: RecipeIngredient) => {
-    // An open other section is saved first, like another pen (E7).
-    editor.flush();
-    setEditing({ ingredientId: ingredient.id, draft: sectionDraft(recipe, 'ingredients') });
+    openKeyboardNow();
+    editor.start({ kind: 'ingredient', key: ingredient.id });
   };
-  const save = (next: IngredientsDraft, key: string) => {
-    setEditing(undefined);
-    const row = next.rows.find((candidate) => candidate.key === key);
-    if (!row) return;
-    try {
-      const saved = saveIngredient(recipe.id, row);
-      if (!saved) return;
-      toast.show({ message: 'Zutat gespeichert', actionLabel: 'Rückgängig', onAction: saved.undo });
-    } catch (error) {
-      if (!(error instanceof OfflineError)) throw error;
-    }
+  const add = (kind: 'row' | 'paste') => {
+    openKeyboardNow();
+    setAdding({ kind, base: editor.stored().ingredients });
   };
+  // The rows that can be saved go at once; orange ones open the edit mode afterwards (AC-008).
+  // A hint (offline) keeps the window open with what was typed (AC-003).
+  const saveAdded = (next: IngredientsDraft, base: IngredientsDraft) => {
+    const { section, open } = readViewSave(next, articles);
+    const hint = editor.saveNow(section, {
+      open,
+      saved: section.rows.length - base.rows.length,
+    });
+    if (hint) toast.show({ message: hint });
+    else setAdding(undefined);
+  };
+  // ⋯ → "Entfernen" asks first; "Rückgängig" afterwards is gone (spec 0036, Entscheidung 1).
   const remove = (ingredient: RecipeIngredient) => {
-    editor.flush();
-    try {
-      const removed = removeRecipeIngredient(recipe.id, ingredient.id);
-      if (!removed) return;
-      toast.show({
-        message: `${nameOf(ingredient)} entfernt`,
-        actionLabel: 'Rückgängig',
-        onAction: removed.undo,
-      });
-    } catch (error) {
-      if (!(error instanceof OfflineError)) throw error;
-    }
+    confirmFirst({
+      title: `„${nameOf(ingredient)}“ entfernen?`,
+      confirmLabel: 'Entfernen',
+      onConfirm: () => {
+        try {
+          if (removeRecipeIngredient(recipe.id, ingredient.id)) {
+            toast.show({ message: `${nameOf(ingredient)} entfernt` });
+          }
+        } catch (error) {
+          if (!(error instanceof OfflineError)) throw error;
+        }
+      },
+      testID: 'confirm-remove-ingredient',
+    });
   };
   const onAction = (action: ReadAction, ingredient: RecipeIngredient) => {
     if (action === 'article') setArticleFor(ingredient.articleId);
@@ -205,21 +218,7 @@ function IngredientsRead(props: {
         </View>
       ) : null}
       {ingredients.length === 0 ? (
-        <Stack gap={8}>
-          <Text color="muted">Noch keine Zutaten.</Text>
-          {/* An empty collection invites its own ingredients (spec 0009, AC-001): opens the section. */}
-          {recipe.kind === 'collection' ? (
-            <Button
-              label="Zutat"
-              icon="plus"
-              variant="link"
-              onPress={frame.onEdit}
-              disabled={frame.disabled}
-              hint={frame.hint}
-              testID="collection-add-ingredient"
-            />
-          ) : null}
-        </Stack>
+        <Text color="muted">Noch keine Zutaten.</Text>
       ) : (
         groupIngredients(ingredients).map((part) => (
           <View
@@ -297,13 +296,43 @@ function IngredientsRead(props: {
           </View>
         ))
       )}
-      {editing ? (
+      <Row gap={16} wrap style={{ marginTop: 8 }}>
+        <Button
+          label="Zutat"
+          icon="plus"
+          variant="link"
+          onPress={() => add('row')}
+          disabled={online.disabled}
+          hint={online.hint}
+          testID={
+            recipe.kind === 'collection'
+              ? 'collection-add-ingredient'
+              : 'recipe-read-add-ingredient'
+          }
+        />
+        <Button
+          label="Mehrere einfügen"
+          icon="clipboard-list"
+          variant="link"
+          onPress={() => add('paste')}
+          disabled={online.disabled}
+          hint={online.hint}
+          testID="recipe-read-paste-ingredients"
+        />
+      </Row>
+      {adding?.kind === 'row' ? (
         <IngredientSheet
-          draft={editing.draft}
-          rowKey={editing.ingredientId}
+          draft={adding.base}
           servingsNote={`für ${servingsLabel(recipe.servings)}`}
-          onApply={save}
-          onClose={() => setEditing(undefined)}
+          savesAtOnce
+          onApply={(next) => saveAdded(next, adding.base)}
+          onClose={() => setAdding(undefined)}
+        />
+      ) : null}
+      {adding?.kind === 'paste' ? (
+        <IngredientsPasteSheet
+          onPaste={(rows) => saveAdded(addPastedRows(adding.base, rows), adding.base)}
+          onClose={() => setAdding(undefined)}
         />
       ) : null}
       {articleFor ? (
@@ -329,12 +358,12 @@ function IngredientsRead(props: {
   );
 }
 
-/** What a row of the open section says under its name: variant, group, Hinweis, Zusatz, new. */
-function rowDetail(row: IngredientRow, draft: IngredientsDraft): string | undefined {
-  const variant = draft.variants.find((candidate) => candidate.id === row.variantId);
+/**
+ * What a row of the open section says under its name: Hinweis, Zusatz, new. Variant and group
+ * are the headings it stands under (Nachklick 27.11., N-01).
+ */
+function rowDetail(row: IngredientRow): string | undefined {
   const parts = [
-    variant ? variant.name.trim() || 'Ohne Namen' : undefined,
-    row.group.trim() || undefined,
     row.prepNote.trim() || undefined,
     row.shoppingNote.trim() ? `Liste: ${row.shoppingNote.trim()}` : undefined,
     row.article?.kind === 'new' || row.article?.kind === 'hit' ? 'neu' : undefined,
@@ -342,7 +371,7 @@ function rowDetail(row: IngredientRow, draft: IngredientsDraft): string | undefi
   return parts.filter(Boolean).join(' · ') || undefined;
 }
 
-/** The household article of a row; undefined while it is created only with "Fertig". */
+/** The household article of a row; undefined while it is created only with "Speichern". */
 function householdArticleId(draft: IngredientsDraft, key: string): Id | undefined {
   const article = draft.rows.find((row) => row.key === key)?.article;
   if (article?.kind === 'article') return article.articleId;
@@ -353,13 +382,33 @@ function rowName(row: IngredientRow, articlesById: Record<Id, Article>): string 
   return [row.amountText.trim(), rowArticleName(row, articlesById)].filter(Boolean).join(' ');
 }
 
-function IngredientsFields(props: { draft: IngredientsDraft; editor: SectionEditor }) {
+type FieldsSheet =
+  | { kind: 'row'; key?: string }
+  | { kind: 'paste' }
+  | { kind: 'copy' }
+  | { kind: 'variant'; id?: Id };
+
+/** The window the edit mode opened with ("+ Zutat", ⋯ "Zutat bearbeiten" in the read view). */
+function sheetOf(intent: PageEditor['intent']): FieldsSheet | undefined {
+  if (intent?.kind === 'ingredient')
+    return intent.key ? { kind: 'row', key: intent.key } : { kind: 'row' };
+  if (intent?.kind === 'copy') return { kind: 'copy' };
+  return undefined;
+}
+
+function IngredientsFields(props: {
+  draft: IngredientsDraft;
+  editor: PageEditor;
+  servings: number;
+}) {
   const { draft, editor } = props;
   const articles = useArticles();
   const articlesById = useArticlesById();
-  const [sheet, setSheet] = useState<
-    { kind: 'row'; key?: string } | { kind: 'paste' } | { kind: 'variant'; id?: Id } | undefined
-  >();
+  const [sheet, setSheet] = useState<FieldsSheet | undefined>(() => sheetOf(editor.intent));
+  const { clearIntent, intent } = editor;
+  useEffect(() => {
+    if (intent?.kind === 'ingredient' || intent?.kind === 'copy') clearIntent();
+  }, [intent, clearIntent]);
   // ⋯ → "Artikel bearbeiten" of a row whose household article exists already (spec 0023, AC-007).
   const [articleFor, setArticleFor] = useState<Id | undefined>();
   const [merging, setMerging] = useState<{ sourceId: Id; targetId: Id } | undefined>();
@@ -368,8 +417,7 @@ function IngredientsFields(props: { draft: IngredientsDraft; editor: SectionEdit
   const open = openRows(draft, articles);
   const openKeys = new Set(open.map((row) => row.key));
   const ready = draft.rows.filter((row) => !openKeys.has(row.key));
-  const shownKeys = ready.map((row) => row.key);
-  const move = (key: string, toIndex: number) =>
+  const move = (key: string, toIndex: number, shownKeys: readonly string[]) =>
     set(moveIngredientAmong(draft, key, toIndex, shownKeys));
 
   const variantProblem = (id: Id) => editor.problem('variant', id);
@@ -406,8 +454,10 @@ function IngredientsFields(props: { draft: IngredientsDraft; editor: SectionEdit
                     label="Mehr"
                     accessibilityLabel={`Mehr zu Variante ${variant.name}`}
                     onChange={(action) => {
-                      if (action === 'rename') setSheet({ kind: 'variant', id: variant.id });
-                      else if (action === 'default') set(setDefaultVariant(draft, variant.id));
+                      if (action === 'rename') {
+                        openKeyboardNow();
+                        setSheet({ kind: 'variant', id: variant.id });
+                      } else if (action === 'default') set(setDefaultVariant(draft, variant.id));
                       else set(removeVariant(draft, variant.id));
                     }}
                     options={[
@@ -427,49 +477,78 @@ function IngredientsFields(props: { draft: IngredientsDraft; editor: SectionEdit
       {/* Orange rows first: they keep the section open (AC-032). */}
       <OpenRows
         rows={open}
-        notice={editor.notice}
         onChoose={(key, article) => set(chooseRowArticle(draft, key, article))}
         onRemove={(key) => set(removeIngredient(draft, key))}
         onKeep={(key) => set(keepDuplicateRow(draft, key))}
       />
       {ready.length > 0 ? (
-        <ReorderList
-          items={ready.map((row) => ({
-            key: row.key,
-            name: rowName(row, articlesById),
-            subtitle: rowDetail(row, draft),
-          }))}
-          onMove={move}
-          labels={ROW_LABELS}
-          trailing={(item, index) => (
-            <Menu<RowAction>
-              trigger="icon"
-              icon="ellipsis"
-              label="Mehr"
-              accessibilityLabel={`Mehr zu ${item.name}`}
-              onChange={(action) => {
-                if (action === 'edit') setSheet({ kind: 'row', key: item.key });
-                else if (action === 'article') setArticleFor(householdArticleId(draft, item.key));
-                else if (action === 'remove') set(removeIngredient(draft, item.key));
-                else move(item.key, index + (action === 'up' ? -1 : 1));
-              }}
-              options={[
-                { value: 'edit', label: 'Zutat bearbeiten' },
-                // Greyed out while the article is created only with "Fertig".
-                {
-                  value: 'article',
-                  label: 'Artikel bearbeiten',
-                  disabled: householdArticleId(draft, item.key) === undefined,
-                },
-                { value: 'up', label: 'Nach oben', disabled: index === 0 },
-                { value: 'down', label: 'Nach unten', disabled: index === ready.length - 1 },
-                { value: 'remove', label: 'Entfernen' },
-              ]}
-              testID={`recipe-row-menu-${item.key}`}
-            />
-          )}
-          testID="recipe-rows"
-        />
+        // Nachklick 27.11., N-01: split by variant and group like the recipe page; a row moves
+        // within its part, ⋯ "Zutat bearbeiten" changes its variant or group.
+        ingredientSections(ready, draft.variants).map((section) => (
+          <View
+            key={section.variantId ?? ''}
+            style={{ gap: 8 }}
+            testID={`recipe-rows-part-${section.variantId ?? 'all'}`}
+          >
+            {section.title ? (
+              <Text variant="smallStrong" color="muted">
+                {section.title}
+              </Text>
+            ) : null}
+            {section.groups.map((part) => {
+              const keys = part.items.map((row) => row.key);
+              return (
+                <View key={part.group ?? ''}>
+                  {part.group ? <GroupLabel>{part.group}</GroupLabel> : null}
+                  <ReorderList
+                    items={part.items.map((row) => ({
+                      key: row.key,
+                      name: rowName(row, articlesById),
+                      subtitle: rowDetail(row),
+                    }))}
+                    onMove={(key, toIndex) => move(key, toIndex, keys)}
+                    labels={ROW_LABELS}
+                    trailing={(item, index) => (
+                      <Menu<RowAction>
+                        trigger="icon"
+                        icon="ellipsis"
+                        label="Mehr"
+                        accessibilityLabel={`Mehr zu ${item.name}`}
+                        onChange={(action) => {
+                          if (action === 'edit') {
+                            openKeyboardNow();
+                            setSheet({ kind: 'row', key: item.key });
+                          } else if (action === 'article')
+                            setArticleFor(householdArticleId(draft, item.key));
+                          else if (action === 'remove') set(removeIngredient(draft, item.key));
+                          else move(item.key, index + (action === 'up' ? -1 : 1), keys);
+                        }}
+                        options={[
+                          { value: 'edit', label: 'Zutat bearbeiten' },
+                          // Greyed out while the article is created only with "Speichern".
+                          {
+                            value: 'article',
+                            label: 'Artikel bearbeiten',
+                            disabled: householdArticleId(draft, item.key) === undefined,
+                          },
+                          { value: 'up', label: 'Nach oben', disabled: index === 0 },
+                          {
+                            value: 'down',
+                            label: 'Nach unten',
+                            disabled: index === part.items.length - 1,
+                          },
+                          { value: 'remove', label: 'Entfernen' },
+                        ]}
+                        testID={`recipe-row-menu-${item.key}`}
+                      />
+                    )}
+                    testID="recipe-rows"
+                  />
+                </View>
+              );
+            })}
+          </View>
+        ))
       ) : open.length === 0 ? (
         <Text color="muted">Noch keine Zutaten.</Text>
       ) : null}
@@ -485,15 +564,29 @@ function IngredientsFields(props: { draft: IngredientsDraft; editor: SectionEdit
           label="Zutat"
           icon="plus"
           variant="link"
-          onPress={() => setSheet({ kind: 'row' })}
+          onPress={() => {
+            openKeyboardNow();
+            setSheet({ kind: 'row' });
+          }}
           testID="recipe-add-ingredient"
         />
         <Button
           label="Mehrere einfügen"
           icon="clipboard-list"
           variant="link"
-          onPress={() => setSheet({ kind: 'paste' })}
+          onPress={() => {
+            // The window's field has the cursor at once: the keyboard comes with the tap (iPhone).
+            openKeyboardNow();
+            setSheet({ kind: 'paste' });
+          }}
           testID="recipe-paste-ingredients"
+        />
+        <Button
+          label="Aus Rezept übernehmen"
+          icon="copy"
+          variant="link"
+          onPress={() => setSheet({ kind: 'copy' })}
+          testID="recipe-copy-ingredients"
         />
         {/* A collection's own ingredients have no variants (spec 0009, AC-012). */}
         {draft.kind === 'collection' ? null : (
@@ -501,17 +594,31 @@ function IngredientsFields(props: { draft: IngredientsDraft; editor: SectionEdit
             label="Variante"
             icon="plus"
             variant="link"
-            onPress={() => setSheet({ kind: 'variant' })}
+            onPress={() => {
+              openKeyboardNow();
+              setSheet({ kind: 'variant' });
+            }}
             testID="recipe-add-variant"
           />
         )}
       </Row>
-      <SectionError editor={editor} testID="recipe-ingredients-error" />
 
+      {sheet?.kind === 'copy' ? (
+        <CopyIngredientsSheet
+          draft={draft}
+          servings={props.servings}
+          onApply={(next) => {
+            set(next);
+            setSheet(undefined);
+          }}
+          onClose={() => setSheet(undefined)}
+        />
+      ) : null}
       {sheet?.kind === 'row' ? (
         <IngredientSheet
           draft={draft}
           rowKey={sheet.key}
+          servingsNote={`für ${servingsLabel(props.servings)}`}
           onApply={(next) => {
             set(next);
             setSheet(undefined);

@@ -1,37 +1,120 @@
 # Edge Functions
 
-Server side of the AI features, the map-link resolver (spec 0003, ADR-0009) and the delivery of
-notifications (spec 0013, ADR-0014). Deno in the Supabase Edge Runtime; unit-tested with vitest
+Server side of the AI features, the map-link resolver (spec 0003, ADR-0009), photo and video handling
+and the nightly media sweep. Deno in the Supabase Edge Runtime; unit-tested with vitest
 under Node.
 
-| Function            | Input (contract)          | Quota     | Calls                                |
-| ------------------- | ------------------------- | --------- | ------------------------------------ |
-| `ai-assistant`      | `AssistantRequestSchema`  | `request` | Foundry LLM (structured output)      |
-| `ai-search`         | `AiSearchRequestSchema`   | `request` | Foundry LLM (structured output)      |
-| `speech-token`      | empty body                | `speech`  | Azure STS `issueToken` (short token) |
-| `resolve-maps-link` | `ResolveMapsLinkRequest…` | none      | Google short links only, manual hops |
-| `push-send`         | `{ messages: [...] }`     | none      | known push services only (Web Push)  |
+| Function            | Input (contract)           | Quota     | Calls                                                |
+| ------------------- | -------------------------- | --------- | ---------------------------------------------------- |
+| `ai-assistant`      | `AssistantRequestSchema`   | `request` | Foundry LLM (structured output)                      |
+| `ai-search`         | `AiSearchRequestSchema`    | `request` | Foundry LLM (structured output)                      |
+| `speech-token`      | empty body                 | `speech`  | Azure STS `issueToken` (short token)                 |
+| `resolve-maps-link` | `ResolveMapsLinkRequest…`  | none      | Google short links only, manual hops                 |
+| `fetch-image`       | `FetchImageRequestSchema`  | none      | any public https address (SSRF-safe)                 |
+| `ai-recipe-draft`   | `RecipeDraftRequestSchema` | none      | recipe pages, TikTok, Foundry LLM                    |
+| `ai-image`          | `AiImageRequestSchema`     | none      | Foundry LLM (1 call), FLUX.2-pro (3 in parallel)     |
+| `fetch-video`       | `FetchVideoRequestSchema`  | none      | TikTok and its CDNs only, then Storage as the caller |
+| `web-search`        | `WebSearchRequestSchema`   | none      | Serper.dev, else Brave; recipe pages; Foundry LLM    |
+| `media-sweep`       | `{ names, videos? }`       | none      | Storage API (deletes orphan photos and videos)       |
 
 Every function: CORS allowlist → POST only → JWT verified with `auth.getClaims()` and
-`role = authenticated` (the anon key gets 401) → body ≤ 64 KB and zod contract → quota via
+`role = authenticated` (the anon key gets 401) → body ≤ 64 KB (6 MB for `ai-recipe-draft` and
+`ai-image`; more is 413 `payload_too_large`) and zod contract → quota via
 `consume_ai_quota` with the caller's own client → work. Errors are `{ "error": code }`
-(`ErrorReplySchema` in `packages/core/src/ai-contract.ts`). No service-role key is used anywhere;
+(`ErrorReplySchema` in `packages/core/src/ai-contract.ts`). No service-role key is used (except by `media-sweep`, below);
 all database reads run under the caller's RLS.
 
-**Exception `push-send`:** called by `pg_net` from the notification tick, not by the app. No JWT
-and no CORS answers: POST only (else 405) → `x-push-timestamp` (Unix seconds, at most 5 minutes
-old and at most 1 minute ahead, else 401) → body ≤ 128 KB (else 413) → `x-push-signature`, the hex
-HMAC-SHA256 of `<timestamp>.<body>` with `PUSH_SEND_SECRET`, compared in constant time (else 401;
-the database computes it in `private.post_push_bundle`, so the secret never sits in pg_net's
-queue, which every database role can read) → zod (1 to 50 messages, else 400) →
-every endpoint checked again against the known push services (`_shared/push-endpoint.ts`, the same
-pattern as `private.is_push_endpoint`) → encrypted (RFC 8291) and VAPID-signed (RFC 8292) by
-`jsr:@negrel/webpush` 0.5.0, at most 5 at a time, 10 s per message, 15 s per batch. Answer
-`{ "results": [{ "id", "status" }] }` with the push service's HTTP status (any 2xx as 201, because
-the library hides the exact one), `null` (no answer in time, network error) or `"rejected"`
-(unknown endpoint, nothing sent). No database, no Supabase client, no service-role key
-(`push-send/no-db-access.test.ts`). The library and its import map (`push-send/deno.json`) belong
-to this function only.
+**`fetch-image`** (spec 0039, ADR-0016): the common path above, then membership of
+`householdId` under the caller's RLS (else 403 `forbidden`), then `_shared/fetch-public.ts`:
+https on port 443 only, no credentials, no single-label host; DNS (A and AAAA) resolved before the
+first request and every redirect, refused if any address is not public (private, loopback,
+link-local, CGNAT, multicast, reserved, IPv6 outside 2000::/3, IPv4-mapped, NAT64, 6to4, Teredo);
+at most 3 redirects, 10 s for everything, 15 MB read with a byte limit, `image/*` and an image
+signature (JPEG, PNG, GIF, WebP, AVIF; never SVG). Every failure is 422 `not_an_image`. Answer:
+the bytes as `application/octet-stream` (`Cache-Control: no-store`). Rest risk: DNS rebinding
+between our lookup and fetch's own (ADR-0016). Spec 0040 reuses `fetchPublic` for recipe pages.
+
+**`ai-recipe-draft`** (spec 0040, "Mit KI ausfüllen"): the common path with a 6 MB body (up to 4
+photos, shrunk by the app to 1280 px, as JPEG data URLs; nothing goes to the bucket), no quota
+(Entscheidung 2), membership of `householdId` (403). Up to 3 links in parallel, each through
+`fetchPublic` (html/xhtml/plain, 2 MB, 10 s, 3 redirects) and `_shared/page-text.ts` (JSON-LD
+first, then visible text, 20 000 characters). A TikTok link (`_shared/tiktok.ts`) stays on TikTok
+and its CDNs (`allowHost`, 5 redirects): the page JSON `__UNIVERSAL_DATA_FOR_REHYDRATION__` gives
+`desc`, the cover and the subtitles (German, else English WebVTT, 64 KB, 5 s); no video is loaded.
+A link that cannot be read is `read: false` and the draft comes from the rest; a TikTok link keeps
+the address it resolved to. Context under the caller's RLS (select only): article names and
+synonyms (up to 1000), cuisines and tags in use. Everything but the person's own sentence goes to
+the model as JSON data (`inhalt_nur_daten`, `haushalt_nur_daten`), photos as `input_image`; the
+answer must fit the strict `RecipeDraftSchema` — recipe fields only, no command. 60 s and one more
+try on 429/5xx (Entscheidung 4), else 503 `ai_unavailable`. Answer `{ draft, sources }`; nothing
+is written.
+
+**`ai-image`** (spec 0040, tab "KI" of the photo window; spec 0052): 6 MB body ("Aus diesem
+Foto" sends the photo, at most 1024 px), no quota, membership (403). Request: `prompt` (the wish,
+≤ 1000), `styles?`, `image?`, `extra?` ("Was soll anders sein?", ≤ 300) and `context?` —
+`{ kind: 'recipe' | 'collection' | 'restaurant' | 'activity', title, ingredients? (≤ 8),
+description?, category? (cuisine or kind of activity), place? }`. **One** Foundry LLM call
+(`ai-image/prompts.ts`: wish and context as JSON data, strict output `{ scene, shots: [3] }`,
+`reasoning.effort = none`, 600 output tokens, one attempt, 6 s) gives three English prompts
+(scene + shot), each ending with "No text, letters, logos or watermarks."; the photo itself does
+not go to the LLM. Any failure of that step falls back to the direct prompt of spec 0040 (neutral
+photographic style, no text or people, the style chips as phrases, the extra behind the wish; with
+a photo the edit wording "same subject, remove text and overlays"). Then three `_shared/flux.ts`
+calls in parallel (FLUX.2-pro over the BFL path of the Foundry resource, 1024 px JPEG, 45 s and one
+more try on 429/5xx each). Once one variant is ready, the answer goes out 30 s after the request at
+the latest (AC-012, the LLM step included); a variant still running then counts as failed and
+keeps running until its own 45 s (cost accepted, spec "Risiken"). Answer
+`{ images: [base64, …], failed }`; no variant at all is 503. Variants are never stored: only
+"Übernehmen" in the app uploads one through the normal photo path.
+
+**`web-search`** (spec 0049, "Websuche"): the common path (64 KB), no quota, membership of
+`householdId` (403) before any provider is asked. `mode: 'search'`: a text of more than 4 words or
+with "Bild/Foto" first goes to the Foundry LLM as data (`text_nur_daten`, strict
+`SearchIntentSchema`: `query` and an optional `imageWish`; 12 s, one try; failing it the text is
+searched as typed). `_shared/web-search.ts` asks Serper.dev (`/search`, places from `/maps` with
+`ll` at zoom 11, key `SERPER_API_KEY` in `X-API-KEY`) and, when Serper fails, is out of credits or
+answers in an unknown shape, the Brave Search API (`BRAVE_SEARCH_API_KEY` in
+`X-Subscription-Token`); 8 s each, one try; both failing is 503 `search_unavailable`. Recipe hits
+that can be single recipes (`web-results.gen.ts`) are loaded through `fetchPublic` (html, 3 MB,
+6 s, 3 redirects, at most 6) and only pages with a schema.org Recipe become cards
+(`_shared/page-meta.ts`); well rated chefkoch.de first. Places become cards with rating, address,
+category, hours, price, maps link (`?cid=`) and thumbnail. `mode: 'place'`: the card (sent back by
+the app, checked by the contract) and the website's text (`fetchPublic`, 6000 characters) go to the
+LLM as data with the household's cuisines and tags or activity kinds (select under RLS); the
+answer is `PlaceProposalSchema` (name, cuisine/tags or kind/description), a kind only if the
+household has it. Logs carry provider and status, never a key, a query or an address. The recipe
+preview is `ai-recipe-draft` with the card's link.
+
+**`fetch-video`** (spec 0043, spec 0046, "Video speichern"): the common path, membership of
+`householdId` (403), the recipe under the caller's RLS (a collection or a recipe she cannot see is
+403), the `url` must be an https TikTok link the recipe has (else 422 `not_a_tiktok_link`, before
+anything is fetched) and the recipe must not have that link's video or ten videos already (409
+`video_exists`). `_shared/tiktok.ts`
+reads the page like `ai-recipe-draft` (TikTok and its CDNs only, 5 redirects, 2 MB, 10 s) and
+loads `playAddr` through `fetchPublic` with the cookies that page set and `Referer:
+https://www.tiktok.com/` (TikTok's video hosts answer 403 without either): `video/mp4`, at most
+50 MiB (by the page's `size`, the header or while reading: 422 `video_too_large`), 60 s, 3
+redirects, an `ftyp` box; anything else is 422 `video_unavailable`. The file goes into the
+private bucket `household-videos` as `<household>/recipes/<recipe>/<uuid>.mp4` with the
+**caller's** key (the storage policies decide; a 413 of the bucket is `video_too_large`), then
+`add_recipe_video` appends `{ path, url }` to the recipe's `videos`, also as the caller; when that
+is refused the file is removed again (`false`, the same link saved meanwhile: 409
+`video_exists`). Answer `{ videoPath, coverUrl? }`: the cover's https address on TikTok's hosts,
+which the app loads through `fetch-image` as the video's poster. No server key, no quota. Nothing
+about the link or the video is logged.
+
+**Exception `media-sweep`** (spec 0039, REQ-005): called nightly by pg_net from
+`private.run_media_orphan_sweep()` (job `media-orphan-sweep`, 02:30 UTC), signed with an HMAC
+(`x-sweep-timestamp`, `x-sweep-signature`, secret `MEDIA_SWEEP_SECRET`; `_shared/signature.ts`).
+No JWT, no CORS: POST only (405) → fresh timestamp and valid HMAC (401) → body ≤ 128 KB (413) →
+zod: up to 500 names, each `<household>/<activities|recipes|restaurants>/<id>/<uuid>.jpg`, and up
+to 500 `videos` (spec 0043), each `<household>/recipes/<id>/<uuid>.mp4`, at least one in all
+(400) → `storage.from('household-media').remove()`, then `storage.from('household-videos')`, in
+chunks of 100. Answer `{ removed }`, or 502
+`storage_failed` with what was removed before. The **only** function that reads the server key
+(`SUPABASE_SECRET_KEYS`, else `SUPABASE_SERVICE_ROLE_KEY`): only it may delete across households,
+and a direct delete in `storage.objects` would leave the file in the storage backend. Names are
+never logged.
 
 ## Layout
 
@@ -39,14 +122,15 @@ to this function only.
 - `<name>/handler.ts` — logic with injected deps (`fetch`, `env`, `createUserClient`, `now`).
 - `_shared/` — auth, CORS, errors, quota, Foundry client with retries, strict JSON schema helper,
   database reads (`context.ts`), map-link parsing (`maps-link.gen.ts`, generated from core `maps-link.ts` by `pnpm gen:edge`).
-- `_shared/contract.gen.ts` — generated by `pnpm gen:edge`; never edit by hand.
-- `push-send/web-push.ts` — adapter to `jsr:@negrel/webpush` (keys, options, status); its tests
-  pin the library against the RFC 8291 Appendix A and RFC 8292 §2.4 vectors.
+- `_shared/contract.gen.ts`, `_shared/image-source.gen.ts` — generated by `pnpm gen:edge`; never
+  edit by hand.
+- `_shared/fetch-public.ts` — loading a user-supplied public address (SSRF guard, ADR-0016).
+- `_shared/page-text.ts`, `_shared/tiktok.ts` — a recipe page and a TikTok link as text (spec 0040).
+- `_shared/flux.ts` — the image model client (FLUX.2-pro, BFL path); `_shared/membership.ts` — the
+  household membership check of `fetch-image`, `ai-recipe-draft` and `ai-image`.
+- `_shared/signature.ts` — the HMAC check of requests the database sends through pg_net.
 - `deno.json` — import map for Deno (`zod`, `@supabase/supabase-js`, same pins as `package.json`).
   Source files use relative `.ts` imports and these two bare specifiers only.
-- `push-send/deno.json` — import map of `push-send` only (`zod`, `@negrel/webpush`). Under Node the
-  library comes from `package.json` as `jsr:0.5.0` (pnpm's JSR protocol, locked in
-  `pnpm-lock.yaml`).
 
 ## Commands
 
@@ -61,15 +145,17 @@ node scripts/edge-smoke.mjs                  # against a running local stack, se
 
 Read by the functions (names only; values live in `.env`, never in the app):
 
-- `FOUNDRY_API_KEY`, `FOUNDRY_OPENAI_BASE_URL`, `FOUNDRY_LLM_DEPLOYMENT` — LLM.
+- `FOUNDRY_API_KEY`, `FOUNDRY_OPENAI_BASE_URL`, `FOUNDRY_LLM_DEPLOYMENT` — LLM (also the prompt
+  step of `ai-image`).
+- `FOUNDRY_IMAGE_DEPLOYMENT` — the FLUX.2-pro deployment (`ai-image`); the resource is the first
+  label of `FOUNDRY_OPENAI_BASE_URL`'s host, the key `FOUNDRY_API_KEY`.
 - `FOUNDRY_SPEECH_REGION`, `FOUNDRY_STT_LANGUAGE`, `FOUNDRY_STT_MODEL` (optional) — speech token.
 - `ALLOWED_ORIGINS` — comma-separated browser origins, e.g. `http://localhost:8081`.
 - `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEYS` (or legacy `SUPABASE_ANON_KEY`) — set by Supabase.
-- `push-send` reads only `PUSH_SEND_SECRET`, `VAPID_PUBLIC_KEY` (base64url of the 65-byte
-  uncompressed P-256 key, the same value as `EXPO_PUBLIC_VAPID_PUBLIC_KEY`), `VAPID_PRIVATE_KEY`
-  (base64url of the 32-byte private scalar) and `VAPID_SUBJECT` (`https:` or `mailto:` URI; locally
-  `https://localhost` in `config.toml`). Secrets: function secrets and Vault only, set by the owner
-  (`node scripts/push-keys.mjs`); agents never generate, read or print them.
+- `media-sweep` reads only `MEDIA_SWEEP_SECRET`, `SUPABASE_URL` and the server key
+  (`SUPABASE_SECRET_KEYS`, else `SUPABASE_SERVICE_ROLE_KEY`, both injected by Supabase). The
+  owner creates the secret and sets it as a function secret and in the Vault
+  (`media_sweep_secret`, plus `media_sweep_url`); without the Vault entries the job only warns.
 
 A missing variable fails the request with `500 internal` and logs the variable name.
 
@@ -101,7 +187,7 @@ value makes the function answer `500 internal` and log the variable name.
 `SUPABASE_URL` (`http://kong:8000` inside Docker) and `SUPABASE_ANON_KEY` (the legacy anon JWT)
 are injected by the CLI; `_shared/live.ts` uses `SUPABASE_PUBLISHABLE_KEYS` when present, else
 `SUPABASE_ANON_KEY`. The runtime also injects `SUPABASE_SERVICE_ROLE_KEY` and `SUPABASE_DB_URL`;
-the code never reads them.
+only `media-sweep` reads the service-role (or secret) key, nothing reads the database URL.
 
 `[functions.<name>]` sets `verify_jwt = false` (each function verifies the JWT itself and answers
 the anon key with 401; the gateway check would let the anon key through anyway) and
@@ -131,8 +217,6 @@ contract reply and without the API key in it; `resolve-maps-link` with a long Go
 with `https://evil.example/` → 422; `ai-search` and `ai-assistant` → 200 with replies that pass
 the contract schemas (`packages/core/src/ai-contract.ts`); a household the caller cannot see →
 400; daily request quota used up (`ai_usage.requests = 200`) → 429 before any Foundry call.
-`push-send` (only when `PUSH_SEND_SECRET` is set in the shell): no signature, a signature with
-the wrong key or one older than 5 minutes → 401, no messages → 400, an internal address → `rejected`, a made-up FCM address → 200 with FCM's status.
 
 Cost per run: two Foundry LLM calls and one Azure speech token. Output: status codes, reply keys
 and timings only — never tokens or keys.

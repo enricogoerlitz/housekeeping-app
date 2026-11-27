@@ -54,7 +54,8 @@ mit dessen Angaben (Spec 0007). Gepflegt wird er auf der Seite „Artikel“ unt
 
 Markierung an einem Artikel, der für eine Zutat ohne Wahl eines Menschen neu entstanden ist, weil
 kein Artikel des Haushalts und kein Eintrag des Starter-Katalogs zum Namen passte: bei Vorschlägen
-des Assistenten und in den Beispieldaten (Spec 0007, E1; es gibt keine Migration). Starter-Rezepte
+des Assistenten, in den Beispieldaten und für Zutaten eines KI-Entwurfs, denen die KI Bereich und
+Ernährung vorschlägt (Spec 0007, E1; Spec 0055, REQ-009; es gibt keine Migration). Starter-Rezepte
 gibt es nicht mehr (Spec 0023, REQ-011). Die Seite „Artikel“ zeigt diese zum Prüfen und
 Zusammenführen. Die Markierung fällt weg, sobald jemand den Artikel speichert, bestätigt („Passt
 so“), zusammenführt oder löscht (Spec 0007, Offene Frage 1).
@@ -85,6 +86,29 @@ jedes Rezept, das sie enthält; die gespeicherten Werte sind die Vorgeschichte (
   `recipes.kind`); gekocht `lastCookedOn`, `cookedCount`, aus dem Kalender `cookingHistory`,
   `withCookingHistory`
 - **Siehe auch:** [Sammlung](#sammlung), [Küche](#küche), [Schlagwort](#schlagwort)
+
+### Rezeptvideo
+
+Ein Video aus einem TikTok-Link eines Rezepts, im Speicher des Haushalts gesichert (Spec 0043).
+Ein Rezept hat bis zu zehn, eines je Link, in der Reihenfolge des Speicherns (Spec 0046). Es
+steht in der **Galerie** am Foto des Rezepts mit seinem **Vorschaubild** (TikToks Titelbild, wie
+ein Foto gespeichert) und spielt nur im Vollbild.
+
+- **Im Code:** `RecipeVideo`, `Recipe.videos`, `recipes.videos`; Vorschaubild `poster`; Galerie
+  `MediaGallery`, `galleryItems`
+- **Nicht verwenden:** Clip, Film (für das gespeicherte Video), Thumbnail, Karussell
+
+### Unfertiges Rezept
+
+Ein Rezept (Art „Rezept“) ohne Zutaten und ohne Schritte, meist schnell nur mit dem Namen
+angelegt; Foto, Links oder Beschreibung machen es nicht fertig, eine Sammlung ist nie unfertig.
+**Ausarbeiten** heißt: die Seite im Bearbeitungsmodus öffnen, „Mit KI ausfüllen“ sucht den Titel
+im Web, man übernimmt, prüft und speichert; „Weiter zum nächsten“ führt zum nächsten unfertigen
+Rezept (Spec 0061). Berechnet, nicht gespeichert.
+
+- **Im Code:** `isUnfinishedRecipe`, `nextUnfinished`, Filterwert `RecipeListFilter.unfinished`,
+  Adresse `unfertig=1`; Ausarbeiten `useWorkOut`, `EditIntent` `{ kind: 'ai' }`
+- **Nicht verwenden:** Entwurf (das ist der Vorschlag der KI), unbearbeitet, leeres Rezept
 
 ### Küche
 
@@ -197,9 +221,8 @@ wählt den Tag, darunter stehen die [Vorbereitungszeilen](#vorbereitungszeile) u
 - **Nicht verwenden:** Heute (für den Tab oder die Seite), Start, Dashboard, Home
 - **Abgrenzung:** „Heute“ bleibt das Wort für den heutigen Tag: der Knopf „Heute“ führt in der
   Übersicht und im Kalender zum heutigen Tag zurück; „Heute geplant“ ist ein Abschnitt. Das
-  _Layout „Übersicht“_ (Spec 0005) ist das Desktop-Layout dieser Seite, kein zweiter Begriff. Der
-  _Tagesüberblick_ ist eine Benachrichtigung (Spec 0013).
-- **Siehe auch:** [Kalender](#kalender), [Tagesüberblick](#tagesüberblick)
+  _Layout „Übersicht“_ (Spec 0005) ist das Desktop-Layout dieser Seite, kein zweiter Begriff.
+- **Siehe auch:** [Kalender](#kalender), [Mitteilung](#mitteilung)
 
 ### Tagesleiste
 
@@ -219,7 +242,7 @@ Anfang gestern bis heute + 5 („heutiger Abschnitt“). Die Leiste springt um g
 
 - **Im Code:** kein eigener Typ
 - **Nicht verwenden:** Woche (für diesen Zeitraum), Seite
-- **Abgrenzung:** Nicht der _Abschnitt der Rezeptseite_ und nicht die Gruppen der Seiten „Heute
+- **Abgrenzung:** Nicht der _Bearbeitungsmodus_ der Rezeptseite und nicht die Gruppen der Seiten „Heute
   geplant“, „Noch offen“ usw.
 
 ### Kochbeginn
@@ -279,7 +302,7 @@ vorher nur die gezeigte Woche). Gilt in Symbol und Farbe als Rezept, wird nicht 
 
 Die dünne, graue Zeile im Kalender über den Tageszeiten mit den Aufgaben eines Tages: an
 vergangenen Tagen die Erledigungen, heute das Fällige zum Abhaken, an künftigen Tagen die
-berechneten Termine (bei flexiblem Rhythmus gestrichelt mit „etwa“). Standard: Woche an, Monat aus,
+berechneten Termine (bei flexiblem Rhythmus gestrichelt mit „· ungefähr“). Standard: Woche an, Monat aus,
 Jahr nie; die Wahl liegt auf dem Gerät (Spec 0010, D18).
 
 - **Im Code (vorläufig):** `HouseholdRow` (Baustein); künftige Termine berechnet `packages/core`
@@ -336,6 +359,35 @@ stehen. Andere Arten haben keine Uhrzeit (Spec 0021, REQ-013).
 - **Abgrenzung:** Die _Uhrzeit (Aufgabe)_ gehört einer Aufgabe. Die _Tageszeit_ ist der Platz im Tag
   (Vormittag, Mittag, Abend), keine Uhrzeit.
 
+### Aktivitätsart
+
+Die Art einer Aktivität, z. B. Geburtstag, Sport, Ausflug, Kultur, Essen gehen, Treffen, Reise oder
+Sonstiges, jeweils mit einem Symbol aus einer festen Auswahl. Gilt für den ganzen Haushalt; jeder
+Haushalt beginnt mit diesen acht, weitere legt man beim Anlegen einer Aktivität an („„Wellness“ neu
+anlegen“), umbenannt und gelöscht wird unter „Verwalten“ → „Aktivitäten“ → „Arten“. Eine Aktivität
+hat höchstens eine Art; wird die Art gelöscht, bleibt die Aktivität ohne Art (Spec 0041).
+
+- **Im Code:** `ActivityKind`, `activity_kinds`, `Activity.kindId`/`activities.kind_id`; Symbol
+  `ActivityIcon` aus `ACTIVITY_ICONS`; in der Oberfläche heißt sie „Art“
+- **Nicht verwenden:** Kategorie, Typ, Gruppe
+- **Abgrenzung:** Die _Art_ eines Rezepts („Rezept“ oder „Sammlung“, `RecipeKind`) ist etwas anderes.
+  Das eigene Symbol einer Aktivität (`Activity.icon`) geht dem Symbol ihrer Art vor.
+
+### Serie
+
+Eine Aktivität, die mit einem [Rhythmus](#rhythmus) eingeplant ist: wöchentlich an Wochentagen,
+alle N Wochen, monatlich an einem Tag oder jährlich am Datum des Starts, ab einem Start bis zu
+einem Datum oder dauerhaft, mit Tageszeit, Uhrzeit, Zusatz und wer dabei ist. Ihre **Termine**
+werden für den sichtbaren Zeitraum berechnet, nicht als Einträge gespeichert. Einen einzelnen
+Termin kann man absagen oder verschieben (eine Ausnahme); „Serie bearbeiten“ ändert nur die Termine
+ab heute, die vergangenen bleiben (Spec 0041).
+
+- **Im Code:** `ActivitySeries`, `activity_series`; Termin `SeriesOccurrence` bzw. ein berechneter
+  `MealPlanEntry` mit `series`; Ausnahme `ActivitySeriesException`, `activity_series_exceptions`
+- **Nicht verwenden:** Wiederholung, Serientermin (für die Serie), Abo
+- **Abgrenzung:** Ein Eintrag im Wochenplan (`meal_plan_entries`) steht an genau einem Tag; eine
+  Serie hat keinen eigenen Eintrag. Der Rhythmus einer _Aufgabe_ ist keine Serie.
+
 ### Einkaufsliste
 
 Die Liste der Einkaufsposten des Haushalts. **Genau eine je Haushalt** (Spec 0006, D25): Sie ist
@@ -361,10 +413,11 @@ Ein Artikel auf der Einkaufsliste, eine Zeile je Artikel. Setzt sich aus **Beitr
 Woher ein Beitrag eines Einkaufspostens kommt, wie es beim Antippen steht: „Lasagne (Fr): 1× · von
 Hand: 1×“. Ein Beitrag aus dem Kalender trägt den Wochentag in Klammern, einer direkt von der
 Rezeptseite oder über „Rezept wählen …“ steht ohne Tag („Mango-Curry“); aus einer Sammlung
-„Grillabend“ bzw. „Grillabend · Kartoffelsalat“ (Spec 0006, Spec 0009).
+„Grillabend“ bzw. „Grillabend · Kartoffelsalat“ (Spec 0006, Spec 0009); ein Beitrag eines
+[Dauerpostens](#dauerposten) heißt „regelmäßig“ (Spec 0060).
 
 - **Im Code:** `ShoppingContribution.source` (`ContributionSource`: `manual` · `recipe` mit
-  `label`; `recurring` entfällt, Spec 0025)
+  `label` · `recurring` mit `recurringItemId` und dem Tag `on`, Spec 0060)
 - **Nicht verwenden:** Quelle (in der Oberfläche), Ursprung
 
 ### Zusatz
@@ -527,17 +580,21 @@ an die Standardvariante ab (Spec 0008).
   (`{ variantId, portions }`)
 - **Nicht verwenden:** Version, Abwandlung, Option
 
-### Abschnitt der Rezeptseite
+### Bearbeitungsmodus
 
-Ein Block der Rezeptseite, der für sich bearbeitet und gespeichert wird: Kopf, Einordnung, Zutaten,
-Zubereitung, Notizen. Höchstens einer ist zugleich offen; „Fertig“, ein anderer Stift oder das
-Verlassen der Seite speichert ihn und schickt nur seine Felder (Spec 0008, REQ-007).
+Der Zustand der Rezept- oder Sammlungsseite, in dem alle Blöcke (Kopf, Einordnung, Zutaten,
+Zubereitung, Notizen, Links, bei Sammlungen „Enthält“) zugleich bearbeitet werden. Der Stift oben
+rechts öffnet ihn, „Speichern“ sichert alle geänderten Blöcke in einem Schritt, „Abbrechen“ fragt
+„Änderungen verwerfen?“. Im Lesemodus hat die Seite keine Stifte in den Blöcken (Spec 0037,
+REQ-001; ersetzt den „Abschnitt der Rezeptseite“ aus Spec 0008, REQ-007).
 
-- **Im Code:** `RecipeSection` (`'head' | 'classification' | 'ingredients' | 'steps' | 'notes'`),
-  Entwurf `RecipeSectionDraft`, in der App `useSectionEditor`, Baustein `EditableSection`
-- **Nicht verwenden:** Karte, Bereich (ist der Gang im Markt), Formular
+- **Im Code:** `PageDraft`, `pageEditorReducer` (`packages/core`, `page-editor.ts`), Block-Entwurf
+  `RecipeSectionDraft` mit `RecipeSection`, Speichern `saveRecipePage` / `save_recipe_page`, in
+  der App `usePageEditor`
+- **Nicht verwenden:** Abschnitt der Rezeptseite, Formular, Editiermodus
 - **Abgrenzung:** Die Abschnitte der _Packliste_ (`packingSections`) und „Heute geplant“ auf der
-  _Übersicht_ sind Gruppen zum Lesen, keine Abschnitte der Rezeptseite.
+  _Übersicht_ sind Gruppen zum Lesen. Ein Fenster („Neue Zutat“) im Bearbeitungsmodus speichert
+  nichts selbst.
 
 ### Gerichtart
 
@@ -556,10 +613,13 @@ dem Tag, an dem man spätestens anfangen muss (nicht mehr nur am Vortag).
 
 ### Dauerposten
 
-Ein Artikel, der nach einem eigenen Rhythmus von selbst auf die Einkaufsliste kommt, z. B. „Milch
-montags“. **Nicht gebaut** (Spec 0025: Keine Dauerposten; die Herkunft `recurring` entfällt).
+Ein Artikel mit Menge, Zusatz und Rhythmus (wöchentlich an Wochentagen, alle N Wochen, oder
+monatlich am Tag X), der am fälligen Tag von selbst auf die Einkaufsliste kommt, z. B. „Cola 2×,
+wöchentlich Sa“ — als Beitrag mit der Herkunft „regelmäßig“, höchstens einmal je Tag und nicht,
+solange er noch offen draufsteht. Pausiert kommt er nicht. Höchstens einer je Artikel; gehört zum
+Haushalt (Spec 0060, ändert Spec 0025).
 
-- **Im Code:** keiner; der frühere Entwurf `RecurringItem`, `recurring_items` besteht nicht
+- **Im Code:** `RecurringItem`, `recurring_items`; der Zeitplaner `private.add_due_recurring_items`
 - **Nicht verwenden:** Abo, Standardposten
 
 ### Sammlung
@@ -604,7 +664,8 @@ flexibel (z. B. etwa alle zwei Wochen nach der letzten Erledigung) oder **bei Be
 steht nur unter „Alle“ und wird in „Was anderes erledigt?“ gefunden (Spec 0011, D27).
 
 - **Im Code:** `Recurrence`; „bei Bedarf“ `type: 'asNeeded'` (eigener Topf `asNeeded` in
-  `choreBucket`)
+  `choreBucket`). Der Rhythmus einer [Serie](#serie) ist `SeriesRule`: die wöchentliche und
+  monatliche Form von `Recurrence` und zusätzlich „jährlich“ (`type: 'yearly'`, Spec 0041)
 - **Nicht verwenden:** Intervall, Turnus, Wiederholung; für „bei Bedarf“ auch: spontan, ohne
   Termin
 
@@ -724,16 +785,17 @@ bedienbar, ab 700 px steht es rechts neben dem Raster (Spec 0016, REQ-006, Entwu
 
 ### Erinnerung
 
-Eine Benachrichtigung, die jemand an einem einzelnen Planeintrag einschaltet, mit Tag und Uhrzeit;
-ohne Einschalten kommt keine (Spec 0017). Sie geht mit, wenn der Eintrag verschoben wird. Die Art
-auf der Seite „Benachrichtigungen“ heißt „Erinnerungen an Einträgen“.
+Was jemand an einem einzelnen Planeintrag einschaltet, mit Tag und Uhrzeit; ohne Einschalten gibt
+es keine (Spec 0017). Sie geht mit, wenn der Eintrag verschoben wird. Zu ihrem Zeitpunkt wird sie
+eine [Mitteilung](#mitteilung) an der Glocke (Spec 0051).
 
 - **Im Code:** Spalten `reminder_day_offset`, `reminder_at`, `reminder_text` an `meal_plan_entries`;
-  Einstellung `entry_reminders_enabled`; Art `entry_reminder`; core `reminder.ts`
+  core `reminder.ts`; als Mitteilung Art `entryReminder`
+- **An Serien (Spec 0059):** „Erinnern“ in „Serie bearbeiten“ gilt für jeden Termin der Serie (am
+  Tag, 1, 3 oder 7 Tage vorher); dieselben Spalten an `activity_series`, `ActivitySeries.reminder`
 - **Abgrenzung:** Eine eigene _Reservierungs-Erinnerung_ („Erinnern 2 h vorher“, Spec 0013) gibt es
   seit Spec 0021 nicht mehr; sie geht in diese Erinnerung auf (Uhrzeit am Eintrag setzen schaltet sie
-  ein, 2 Stunden vorher). Der _Tagesüberblick_ und „Aktivitäten am Vortag“
-  sind Arten von Benachrichtigungen je Person, keine Erinnerungen an einem Eintrag.
+  ein, 2 Stunden vorher).
 - **Nicht verwenden:** Alarm, Wecker, Termin
 
 ### Reise-Streifen
@@ -828,6 +890,23 @@ Ein Vorschlag, der als gestrichelte Zeile direkt in einer Liste oder im Wochenpl
 Konzept auch „Geisterzeile“ genannt.
 
 - **Im Code:** `GhostRow`
+
+### Planvorschlag
+
+Ein Rezept, das die App beim Planen für einen Abend oder eine Woche anbietet, mit Grund und
+Fakten (Spec 0063). Auf dem Gerät berechnet, nie gespeichert, ohne KI; erst ein Tipp plant es ein.
+In der Oberfläche „Vorschläge für Donnerstagabend“.
+
+- **Im Code:** `PlanSuggestion`, `slotSuggestions` (plan-suggestions.ts)
+- **Nicht verwenden:** Empfehlung, Tipp
+- **Abgrenzung:** Ein Vorschlag (`Proposal`) kommt vom Assistenten und ändert etwas Bestehendes.
+
+### Wochenkarte
+
+Das Fenster „Was kochen wir?“ (Spec 0063): eine kurze Auswahl an Gerichten für die freien Abende
+einer Woche; die App verteilt, was man antippt.
+
+- **Im Code:** `weekMenu`, `distributeWeek`, `WeekMenuSheet`
 
 ### Haushaltsgedächtnis
 
@@ -928,8 +1007,8 @@ jeder Tab-Startseite (Spec 0005, D2, D30).
 
 ### Einstellungen
 
-Die persönlichen Einstellungen hinter dem Avatar: Profil, Darstellung, ab Spec 0013
-Benachrichtigungen, Abmelden. Alles, was den Haushalt betrifft, steht unter „Verwalten“ (Spec
+Die persönlichen Einstellungen hinter dem Avatar: Profil, Darstellung, KI, Abmelden (die Seite
+„Benachrichtigungen“ von Spec 0013 ist mit Spec 0051 entfallen). Alles, was den Haushalt betrifft, steht unter „Verwalten“ (Spec
 0005, D28).
 
 - **Im Code:** Adresse `/einstellungen`
@@ -950,81 +1029,60 @@ und Packstücke sofort beim Tipp (Spec 0006; Spec 0012, Offene Frage 3), Aufgabe
 - **Nicht verwenden:** Verzögerung, Debounce (außer im Code), Rückgängig-Fenster
 - **Abgrenzung:** Im Vorratscheck ist der Haken eine Auswahl, kein Abhaken.
 
-### Tagesüberblick
+### Mitteilung
 
-Die eine Benachrichtigung am Morgen mit dem eigenen Teil des Tages: Essen (Rezepte, Sammlungen,
-Restaurants), Aktivitäten, fällige und überfällige Aufgaben, Vorbereitung für morgen; je Person
-Uhrzeit (Standard 7:30) und Teile wählbar, am Anfang aus. Kommt nur, wenn es etwas gibt (Spec 0013,
-D37).
+Was für die angemeldete Person gerade ansteht, an der Glocke oben gezählt (roter Kreis mit Zahl,
+ab 10 „9+“) und im Fenster „Mitteilungen“ gelistet (Spec 0051): fällige Erinnerungen an Einträgen,
+Aufgaben mit Uhrzeit ab der Uhrzeit für wer dran ist, heutiger Vorlauf, „Du kochst“ heute,
+Aktivitäten ab 19 Uhr am Vortag, die [Vorwarnung](#vorwarnung) an Aufgaben und am Vorabend einer
+Reise ab 18 Uhr „Morgen geht's los · 12 von 30 gepackt“ (Spec 0059). Entsteht auf dem Gerät aus dem
+lokalen Speicher; während einer eigenen Reise gibt es keine. Ein Tipp öffnet den Eintrag, die
+Aufgabe oder die Reise.
 
-- **Im Code:** Art `dailySummary` (`NotificationKind`); Felder `dailySummaryEnabled`,
-  `dailySummaryAt`, `dailySummaryParts` (`DailySummaryPart`: `meals`, `activities`, `chores`,
-  `prep`), Spalten `daily_summary_*`
-- **Nicht verwenden:** Tageszusammenfassung (Feature-Konzept F1), Morgen-Nachricht, Digest
+- **Im Code:** `Notice`, `dueNotices` (core `notices.ts`), Arten `NoticeKind`; Glocke `NoticeBell`
+  (`features/notices`), Zähler `WithBadge`
+- **Nicht verwenden:** Benachrichtigung, Push, Notification (in der Oberfläche)
 
-### Benachrichtigungs-Einstellungen
+### Vorwarnung
 
-Was eine Person wann bekommt: je Art an/aus, Uhrzeiten, beim Tagesüberblick die Teile. Gilt je
-Mitglied und Haushalt auf allen Geräten der Person; je Gerät gibt es nur „an“ oder „aus“ (Spec
-0013, D38). Nur die Person selbst liest und schreibt sie; synchronisiert.
+Wie viele Tage vor dem Termin einer Aufgabe sie schon in der Glocke steht („Keine“, „3 Tage“,
+„1 Woche“, „2 Wochen“, „1 Monat“), z. B. „Handyvertrag kündigen · fällig in 18 Tagen“; nur bei
+festem Termin (nicht „Flexibel“, nicht „Bei Bedarf“), bis einschließlich des Termins (Spec 0059).
 
-- **Im Code:** `NotificationSettings` (Zod-Schema `NotificationSettingsSchema`),
-  `notification_settings`; Arten `NotificationKind`
-- **Nicht verwenden:** Push-Einstellungen, Profil-Einstellungen
+- **Im Code:** `chores.notice_days_before`, `Chore.noticeDaysBefore`; Mitteilungsart `deadline`
+- **Abgrenzung:** Nicht der [Vorlauf](#vorlauf) eines Rezepts und nicht die
+  [Erinnerung](#erinnerung) an einem Planeintrag.
+- **Nicht verwenden:** Frist (als Feldname), Deadline (in der Oberfläche)
 
-### Push-Abo
+### In meinen Kalender
 
-Die Anmeldung eines Geräts bzw. Browsers für Web Push: Push-Adresse, Schlüssel, Gerätename,
-an/aus, letzter Erfolg. Gehört einer Person, nicht einem Haushalt, und wird nicht synchronisiert
-(Ausnahme von Regel 5, Spec 0013). In der Oberfläche „Deine Geräte“. Mit Spec 0015 (Entwurf) ist
-auch die Anmeldung einer [nativen App](#native-app) über ihr Expo-Push-Token ein Push-Abo, mit
-Gerätename „Android · native App“ bzw. „iPhone · native App“.
+Ein Termin der App (Planeintrag mit Tag, Termin einer Serie, Reise, Aufgabe mit Termin) als Kopie
+im eigenen Kalender: „Als Datei (.ics)“ für iPhone, Mac und Outlook oder „In Google Kalender“ als
+Link (Spec 0059). Änderungen in der App kommen nicht mit; ein Abo gibt es nicht.
 
-- **Im Code:** Tabelle `private.push_subscriptions`; die eigene Liste ohne Push-Adresse und
-  Schlüssel `OwnPushSubscription` (aus `list_push_subscriptions`). Nicht `PushSubscription`: Das
-  ist der Typ des Browsers.
-- **Nicht verwenden:** Abo (allein, das meint nichts), Gerät (für den Datensatz), Token
+- **Im Code:** core `calendar-export.ts` (`toICalendar`, `googleCalendarUrl`), App `AddToCalendar`
+- **Nicht verwenden:** Export, Sync, Abo, Kalender-Feed
 
-### Zustell-Protokoll
+### Bestätigen (Mitteilung)
 
-Ein Eintrag je zugestellter Nachricht und Gerät mit eindeutigem Schlüssel, Zeitpunkt und Status;
-verhindert doppelte Nachrichten. 30 Tage aufbewahrt, nur für den Zeitplaner, nie aus der App
-lesbar (Spec 0013).
+Eine Mitteilung als gesehen markieren („✓“) oder alle auf einmal („Alle bestätigen“); sie
+verschwindet dann auf allen Geräten der Person. Online (Spec 0051). Gespeichert wird nur der
+Schlüssel `<art>:<id>[:<zusatz>]:<tag>`; Bestätigungen von Tagen vor mehr als 14 Tagen fallen weg.
 
-- **Im Code:** `private.notification_deliveries`
-- **Nicht verwenden:** Log, Versandliste
+- **Im Code:** `acknowledgeNotices`, RPC `acknowledge_notices`, Spalte
+  `notification_settings.acknowledged_notices` (`NotificationSettings.acknowledgedNotices`)
+- **Nicht verwenden:** Gelesen, Erledigt (das ist Abhaken einer Aufgabe), Wegklicken
 
-### Zeitplaner
+### Entfallen mit Spec 0051
 
-Die Datenbankfunktion, die `pg_cron` alle 5 Minuten startet („Takt“): Sie findet fällige
-Nachrichten in der Zeitzone des Haushalts, schreibt sie ins Zustell-Protokoll und gibt sie per
-`pg_net` an die Edge Function `push-send`, die nur zustellt und keinen Datenbankzugang hat (Spec
-0013, D40).
-
-- **Im Code:** `private.run_notification_tick` (`pg_cron`-Job `notification-tick`), Kandidaten aus
-  `private.notification_candidates`; Edge Function `push-send`
-- **Nicht verwenden:** Cronjob (für das Ganze), Scheduler (in der Oberfläche)
-
-### Takt
-
-Ein Lauf des Zeitplaners, alle 5 Minuten zur vollen 5. Minute. Eine Nachricht kommt in dem Takt,
-der ihre Uhrzeit erreicht; was mehr als 30 Minuten zu spät käme, entfällt (Spec 0013).
-
-- **Im Code:** `private.run_notification_tick(p_now)`
-- **Nicht verwenden:** Tick (in der Oberfläche), Durchlauf
-
-### Probe
-
-Eine Nachricht „Probe: So sehen deine Benachrichtigungen aus.“, die „Probe senden“ sofort an
-dieses Gerät schickt, und nur an dieses (Spec 0013, REQ-003). Höchstens 3 in 10 Minuten.
-
-- **Im Code:** `send_test_push`; Art `test` im Zustell-Protokoll
-- **Nicht verwenden:** Test-Nachricht (in der Oberfläche), Ping
+_Tagesüberblick_, _Benachrichtigungs-Einstellungen_, _Push-Abo_, _Zustell-Protokoll_,
+_Zeitplaner_, _Takt_ und _Probe_ gehörten zu Web Push (Spec 0013, ADR-0014) und sind mit ADR-0017
+entfernt. Die Tabelle `notification_settings` bleibt als Zeile der [Bestätigungen](#bestätigen-mitteilung).
 
 ### Uhrzeit (Aufgabe)
 
-Die optionale Uhrzeit einer Aufgabe, zu der am Fälligkeitstag erinnert wird, wer dran ist („Müll
-rausbringen · 19:00“). In 5-Minuten-Schritten, Ortszeit des Haushalts; ✕ entfernt sie (Spec 0013,
+Die optionale Uhrzeit einer Aufgabe, ab der am Fälligkeitstag eine Mitteilung erinnert, wer dran
+ist („Müll rausbringen · 19:00“, Spec 0051). In 5-Minuten-Schritten, Ortszeit des Haushalts; ✕ entfernt sie (Spec 0013,
 D42). Rezepte und Sammlungen haben keine Uhrzeit; Restaurants und Aktivitäten haben die _Uhrzeit
 (Eintrag)_. Mit dem Schalter „Erinnern“ je Aufgabe (Spec 0027, REQ-009) lässt sich die Erinnerung
 ausschalten; die Uhrzeit wird dann nur angezeigt.
@@ -1051,7 +1109,7 @@ Veröffentlichung aus `main`; nie Seed, nie Reset, keine Testkonten (Spec 0014, 
 
 Die eine Umgebung, die immer den neuesten Stand von `develop` zeigt, zum Ausprobieren auf dem Handy
 vor der Freigabe: eigene Static Web App und eigenes Supabase-Projekt, bei jedem Vorschau-Lauf neu
-aufgesetzt mit Beispieldaten ohne Testkonten, Anmeldung nur mit Google und Einladung, Push aus
+aufgesetzt mit Beispieldaten ohne Testkonten, Anmeldung nur mit Google und Einladung
 (Spec 0014). Feature-Zweige und PRs haben keine eigene Vorschau.
 
 - **Im Code:** GitHub-Umgebung `preview`, Variablen `PREVIEW_*`, Workflow `preview.yml`, Static
@@ -1133,7 +1191,7 @@ AC-025, ADR-0015).
 ### Sicherung
 
 Die nächtliche, mit `age` verschlüsselte Kopie von Datenbank (Rollen, Schema, Daten) und allen
-Fotos im Azure-Storage-Konto, mit einer Begleitdatei ohne Daten (Zeilen je Tabelle, Fotoanzahl,
+Fotos im Azure-Storage-Konto (ohne Rezeptvideos, Spec 0048), mit einer Begleitdatei ohne Daten (Zeilen je Tabelle, Fotoanzahl,
 Prüfsumme). Zusätzlich vor jeder Veröffentlichung. 30 Tage unveränderlich; tägliche bleiben 30
 Tage, die vom Monatsersten 12 Monate (Spec 0014, REQ-009).
 
@@ -1208,3 +1266,43 @@ Annahme).
 - **Nicht verwenden:** Sideload (in deutschen Texten), Beta, Testkanal (meint die Play Console)
 - **Abgrenzung:** Der _interne Testkanal der Play Console_ ist ein anderer Weg (Spec 0015, Offene
   Frage 4 B).
+
+### Websuche
+
+Das Suchen eines Rezepts, Restaurants oder einer Aktivität im Web aus „Mit KI ausfüllen“ bzw. „Im
+Web suchen“ (Spec 0049): 3 bis 5 Treffer als Karten, eine Vorschau, „Übernehmen“. Nichts wird
+gespeichert, bevor die Person „Speichern“ tippt.
+
+- **Im Code:** `webSearchAsync`, `web-search` (Edge Function), `WebResult`
+- **Nicht verwenden:** Google-Suche, Internetsuche, KI-Suche (das ist die Suche in den eigenen
+  Rezepten, Spec 0003)
+
+### Prompt (Reiter)
+
+Der Reiter von „Mit KI ausfüllen“ neben „Websuche“ (früher „Eigene Angaben“, Spec 0055): ein Wunsch
+in eigenen Worten, Links und Fotos; beim Bearbeiten geht das Rezept mit, auf Wunsch mit einer
+Websuche als Hintergrund. Unter der Änderungsansicht bessert „Was soll noch anders sein?“ den
+Vorschlag nach.
+
+- **Im Code:** `AiFillTab` `'prompt'`, `AiFillFields`, `RecipeDraftRequest.current`, `webQuery`
+- **Nicht verwenden:** Eigene Angaben, Chat
+
+### Änderungsansicht
+
+Was ein Vorschlag (Websuche oder KI-Entwurf) an einem vorhandenen Eintrag ändern würde: neue,
+geänderte und entfernte Felder und Zeilen, jede mit ihrem Wort und einzeln zurückzunehmen
+(Spec 0049).
+
+- **Im Code:** `ChangeProposal`, `ProposalSheet`, `recipeProposal`, `placeProposal`
+- **Nicht verwenden:** Diff, Vergleich, Änderungsprotokoll
+
+### Mit KI ändern
+
+✨ auf der lesenden Rezeptseite (Spec 0062): ein Wunsch („Prompt“, mit „Web“ und „Bild“) oder ein
+Rezept aus der Websuche führt in die Änderungsansicht; dort speichert „Übernehmen“ sofort, mit
+„Rückgängig“. „Mit KI ausfüllen“ heißt der Weg im Bearbeitungsmodus, dessen „Übernehmen“ erst den
+Bearbeitungsmodus füllt.
+
+- **Im Code:** `AiChangeButton`, `AiFillSheet` mit `entry: 'page'`, `PageEditor.apply`,
+  `revertPageDraft`
+- **Nicht verwenden:** KI-Bearbeiten, Assistent (das ist „Anpassen“, Spec 0003)

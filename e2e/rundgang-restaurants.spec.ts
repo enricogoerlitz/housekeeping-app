@@ -43,10 +43,9 @@ async function toTestHousehold(page: Page): Promise<void> {
   await switchHousehold(page, seedIds['hh-test']);
 }
 
-/** "Neu" → "Restaurant" (spec 0008: one "Neu" menu on recipes and restaurants). */
+/** "+" on "Restaurants" creates a restaurant at once (spec 0054, AC-007). */
 async function newRestaurant(page: Page): Promise<void> {
-  await tid(page, 'recipe-new').click();
-  await tid(page, 'recipe-new-restaurant').click();
+  await tid(page, 'restaurant-new').click();
   await expect(tid(page, 'restaurant-sheet')).toBeVisible();
 }
 
@@ -190,6 +189,20 @@ test('0002 AC-006: text that is not a map link shows an error and leaves the for
   await expect(tid(page, 'restaurant-address')).toHaveValue('');
 });
 
+test('0042 AC-017: the place field has "Google Maps Link" without "Einfügen" and without the Maps button', async ({
+  page,
+}) => {
+  await open(page, '/rezepte?ansicht=restaurants');
+  await newRestaurant(page);
+  const sheet = tid(page, 'restaurant-sheet');
+  await expect(sheet.getByText('Google Maps Link', { exact: true })).toBeVisible();
+  await expect(sheet.getByText('Karten-Link', { exact: true })).toHaveCount(0);
+  await expect(tid(page, 'restaurant-paste')).toHaveCount(0);
+  await expect(tid(page, 'restaurant-maps-search')).toHaveCount(0);
+  await expect(tid(page, 'restaurant-search-name')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'In Google Maps suchen' })).toHaveCount(0);
+});
+
 test('0002 AC-007: saving without a name creates nothing and shows "Name fehlt"', async ({
   page,
 }) => {
@@ -204,7 +217,7 @@ test('0002 AC-007: saving without a name creates nothing and shows "Name fehlt"'
   await expect(count).toHaveText(before);
 });
 
-test('0002 AC-008: /teilen opens "Restaurant hinzufügen" prefilled in the active household', async ({
+test('0002 AC-008: /teilen opens "Restaurant anlegen" prefilled in the active household', async ({
   page,
 }) => {
   await open(
@@ -310,9 +323,7 @@ test('0002 offline: restaurants stay readable, editing is greyed out, the route 
   await open(page, '/rezepte?ansicht=restaurants');
   await goOffline(page);
   await expect(tid(page, 'restaurant-offline-hint')).toBeVisible();
-  await tid(page, 'recipe-new').click();
-  await expect(tid(page, 'recipe-new-restaurant')).toHaveAttribute('aria-disabled', 'true');
-  await page.keyboard.press('Escape');
+  await expect(tid(page, 'restaurant-new')).toHaveAttribute('aria-disabled', 'true');
   await tid(page, PHO).click();
   await expect(tid(page, 'restaurant-title')).toHaveText('Pho Saigon');
   await expect(tid(page, 'restaurant-favorite')).toHaveAttribute('aria-disabled', 'true');
@@ -396,13 +407,13 @@ test.describe('ingredient shopping note (spec 0001 addition)', () => {
       '',
     );
     // Spec 0008: edits sit behind the section's pen; the Zusatz is in the ingredient window.
-    await tid(page, 'recipe-ingredients-edit').click();
+    await tid(page, 'recipe-edit').click();
     await tid(page, `recipe-row-menu-${ingredientId}`).click();
     await tid(page, `recipe-row-menu-${ingredientId}-edit`).click();
     await expect(tid(page, 'ingredient-shopping-note')).toHaveValue('Fior di Latte');
     await tid(page, 'ingredient-shopping-note').fill('Büffelmozzarella');
     await tid(page, 'ingredient-save').click();
-    await tid(page, 'recipe-ingredients-done').click();
+    await tid(page, 'recipe-edit-save').click();
     await expect(tid(page, `ingredient-shopping-note-${ingredientId}`)).toHaveText(
       '(Büffelmozzarella)',
     );

@@ -6,6 +6,7 @@ import {
   useRestaurantsById,
 } from '@housekeeping/api';
 import {
+  showsRoute,
   entryKindRole,
   formatLongDate,
   plannedAllLabel,
@@ -19,7 +20,6 @@ import { Avatar, Badge, Button, Row, Section, Surface, Text, useTheme } from '@h
 import { useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 
-import { hasPlace } from '@/features/activities/labels';
 import { useOpenActivity } from '@/features/activities/navigation';
 import { EntryPicture } from '@/features/meal-plan/entry-picture';
 import { kindBadge } from '@/features/meal-plan/kind-badges';
@@ -108,7 +108,12 @@ export function TodayMeals(props: TodayMealsProps) {
           title={titleOf(entry)}
           meta={restaurant.cuisine}
           onPress={() => openRestaurant(restaurant.id)}
-          corner={<RouteButton entryId={entry.id} onPress={() => setRouteFor(restaurant)} />}
+          corner={
+            // Only with a map link (spec 0036, AC-018).
+            showsRoute(restaurant) ? (
+              <RouteButton entryId={entry.id} onPress={() => setRouteFor(restaurant)} />
+            ) : undefined
+          }
         />
       );
     }
@@ -121,7 +126,7 @@ export function TodayMeals(props: TodayMealsProps) {
           slotName={slotName}
           onPress={activity ? () => openActivity(activity.id) : undefined}
           onRoute={
-            activity && hasPlace(activity)
+            activity && showsRoute(activity)
               ? () =>
                   setRouteFor({
                     name: activity.name,
@@ -251,6 +256,8 @@ function PlannedCard(props: {
         <Text
           variant="cardTitle"
           numberOfLines={2}
+          // Whole words only, too long ones cut with "…" (spec 0057, REQ-004).
+          wholeWords
           style={{ minHeight: theme.type.cardTitle.lineHeight * 2 }}
         >
           {props.title}

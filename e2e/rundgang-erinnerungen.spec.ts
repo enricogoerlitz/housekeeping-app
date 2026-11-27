@@ -19,7 +19,6 @@ import {
   goOffline,
   only,
   open,
-  openSettings,
   showPlanWeek,
   test,
   tid,
@@ -61,7 +60,7 @@ function entryRow(page: Page, date: string, title: string): Locator {
 
 /**
  * Fakes the browser's permission: `answer` is what the person picks when asked; every question is
- * counted in `window.permissionAsks` (as in the walk-through of spec 0013).
+ * counted in `window.permissionAsks`; spec 0051: nothing may ask any more.
  */
 async function fakePermission(page: Page, answer: 'denied' | 'default'): Promise<void> {
   await page.addInitScript((reply) => {
@@ -270,60 +269,22 @@ test('REQ-002: offline the block is greyed out with the known hint', async ({ pa
   await expect(toggle(page, 'entry-reminder-switch')).toBeDisabled();
 });
 
-test('AC-026: asked only when "Erinnern" is switched on; refused, the reminder stays with the hint', async ({
+test('spec 0051, AC-006: switching "Erinnern" on never asks for a permission; no device hint', async ({
   page,
 }) => {
   await fakePermission(page, 'denied');
   await open(page, '/kalender');
   await showPlanWeek(page, AHEAD);
-  expect(await permissionAsks(page), 'never asked on the way to the calendar').toBe(0);
-
   await tid(page, `add-${AHEAD}`).click();
   await tid(page, 'add-entry-search').fill('Lasagne gefragt');
   await tid(page, 'add-entry-new-text').click();
   await toggle(page, 'add-entry-reminder-switch').click();
-  await expect.poll(() => permissionAsks(page)).toBe(1);
-  await expect(tid(page, 'add-entry-reminder-reach')).toContainText(
-    'Auf diesem Gerät kommen keine Benachrichtigungen an',
-  );
-  await expect(tid(page, 'add-entry-reminder-settings')).toHaveText('Benachrichtigungen');
+  await expect(toggle(page, 'add-entry-reminder-switch')).toBeChecked();
+  await expect(tid(page, 'add-entry-reminder-reach')).toHaveCount(0);
   await tid(page, 'add-entry-save').click();
-
   await entryRow(page, AHEAD, 'Lasagne gefragt').click();
   await expect(toggle(page, 'entry-reminder-switch')).toBeChecked();
-  await expect(tid(page, 'entry-reminder-reach')).toContainText(
-    'Auf diesem Gerät kommen keine Benachrichtigungen an',
-  );
-  await tid(page, 'entry-reminder-settings').click();
-  await expect(tid(page, 'notif-kinds')).toBeVisible();
-});
-
-test('REQ-007 / task 8: "Erinnerungen an Einträgen" is on, has no time; off, the block says so', async ({
-  page,
-}) => {
-  await open(page, '/');
-  await openSettings(page);
-  await expect(tid(page, 'settings-notifications-summary')).toHaveText(/^2 an/);
-  await tid(page, 'settings-notifications-row').click();
-  await expect(tid(page, 'notif-kinds')).toContainText('Erinnerungen an Einträgen');
-  await expect(toggle(page, 'notif-kind-entry-reminders')).toBeChecked();
-  await expect(tid(page, 'notif-kind-entry-reminders-detail')).toHaveCount(0);
-  await toggle(page, 'notif-kind-entry-reminders').click();
-  await expect(toggle(page, 'notif-kind-entry-reminders')).not.toBeChecked();
-
-  await open(page, '/kalender');
-  await showPlanWeek(page, AHEAD);
-  await tid(page, `add-${AHEAD}`).click();
-  await tid(page, 'add-entry-search').fill('Lasagne still');
-  await tid(page, 'add-entry-new-text').click();
-  await toggle(page, 'add-entry-reminder-switch').click();
-  await expect(tid(page, 'add-entry-reminder-reach')).toContainText(
-    'Erinnerungen an Einträgen sind bei dir aus',
-  );
-  await tid(page, 'add-entry-reminder-settings').click();
-  // Back to the default for the other files.
-  await toggle(page, 'notif-kind-entry-reminders').click();
-  await expect(toggle(page, 'notif-kind-entry-reminders')).toBeChecked();
+  expect(await permissionAsks(page), 'never asked').toBe(0);
 });
 
 test('AC-002 / AC-005: the bell with day and time in the week, the day window and the entry window, not in the month', async ({

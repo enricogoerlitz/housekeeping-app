@@ -21,6 +21,7 @@ import {
   tid,
   tidPrefix,
   toastMessage,
+  tripRow,
   dayBlock,
 } from './helpers';
 import { seedIds } from './seed-ids';
@@ -247,17 +248,21 @@ test('AC-033 / AC-037 (0010), AC-027 (0030): with Enrico away on Saturday both a
   await expect(tid(page, `eater-${member('m-nadja')}`)).toHaveAttribute('aria-selected', 'true');
   await page.keyboard.press('Escape');
 
-  // AC-037: deleting a row without a packing list offers "Rückgängig" for 5 seconds.
+  // AC-037 (spec 0036: asks first): deleting a row without a packing list asks, then no undo.
   await open(page, '/reisen');
-  const row = tid(page, 'trips-upcoming')
-    .locator('[data-testid^="trip-"][data-testid$="-open"]')
-    .filter({ hasText: 'Fortbildung Köln' });
-  const rowId = ((await row.getAttribute('data-testid')) ?? '').replace(/-open$/, '');
-  await tid(page, `${rowId}-remove`).click();
+  // "Reise löschen" lives in the ⋯ of the trip window (spec 0054, REQ-006).
+  const row = tripRow(page, 'Fortbildung Köln');
+  await row.click();
+  await tid(page, 'trip-more').click();
+  await tid(page, 'trip-more-delete').click();
+  await tid(page, 'confirm-delete-trip-cancel').click();
+  await expect(tid(page, 'trip-window')).toBeVisible();
+  await tid(page, 'trip-more').click();
+  await tid(page, 'trip-more-delete').click();
+  await tid(page, 'confirm-delete-trip-confirm').click();
   await expect(toastMessage(page)).toHaveText('Reise gelöscht');
+  await expect(tid(page, 'toast-action')).toHaveCount(0);
   await expect(tid(page, 'trips-upcoming')).not.toContainText('Fortbildung Köln');
-  await tid(page, 'toast-action').click();
-  await expect(tid(page, 'trips-upcoming')).toContainText('Fortbildung Köln');
 });
 
 test('AC-034 (0016), AC-007 (0022): "Reisen" lives at /reisen, a trip opens as ?reise=<id> over it; old addresses are gone', async ({
@@ -268,7 +273,7 @@ test('AC-034 (0016), AC-007 (0022): "Reisen" lives at /reisen, a trip opens as ?
   await openManaged(page, 'trips');
   await expect(page).toHaveURL(/\/reisen$/);
   await expect(tid(page, 'trips-screen')).toContainText('Reisen');
-  await tid(page, `trip-${mallorca}-open`).click();
+  await tid(page, `trip-${mallorca}`).click();
   await expect(page).toHaveURL(new RegExp(`/reisen\\?reise=${mallorca}`));
   await page.reload();
   await expect(tid(page, 'trip-window-title')).toHaveText('Urlaub Mallorca');
@@ -313,25 +318,25 @@ test('AC-021 (0018): the trip window names who is chosen: "Nur Enrico", then "Ga
   await expect(tid(page, 'trip-who-hint')).toHaveText('Ganzer Haushalt');
 });
 
-test('AC-033 (0016): ⋯ offers "Reise eintragen" and "Reisen"; a trip without a note reads "unterwegs"; no old word for a trip', async ({
+test('AC-033 (0016) / AC-011 (0054): no ⋯ in the calendar; a trip from "Reisen" without a note reads "unterwegs"; no old word for a trip', async ({
   page,
 }) => {
   const year = Number(TODAY.slice(0, 4)) + 1;
   const from = `${year}-01-01`;
   const to = `${year}-01-04`;
   await open(page, '/kalender');
-  await tid(page, 'calendar-more').click();
-  await expect(tid(page, 'calendar-more-trips-new')).toHaveText('Reise eintragen');
-  await expect(tid(page, 'calendar-more-trips')).toHaveText('Reisen');
+  await expect(tid(page, 'calendar-more')).toHaveCount(0);
   await expectNoAbsenceWord(page);
 
-  await tid(page, 'calendar-more-trips-new').click();
+  await open(page, '/reisen');
+  await tid(page, 'trips-new').click();
   await expect(tid(page, 'trip-sheet')).toContainText('Reise eintragen');
   await expectNoAbsenceWord(page);
   await pickRange(page, from, to);
   await tid(page, 'trip-save').click();
   await expect(tid(page, 'trip-sheet')).toBeHidden();
 
+  await open(page, '/kalender');
   await tid(page, 'calendar-view-year').click();
   await tid(page, 'week-next').click();
   await expect(tid(page, 'calendar-title')).toHaveText(String(year));
@@ -341,11 +346,5 @@ test('AC-033 (0016): ⋯ offers "Reise eintragen" and "Reisen"; a trip without a
     .locator('[data-testid^="day-panel-stripe-"]')
     .filter({ hasText: 'unterwegs' });
   await expect(stripe).toContainText(tripEndLabel(to));
-  await expectNoAbsenceWord(page);
-
-  await tid(page, 'calendar-more').click();
-  await tid(page, 'calendar-more-trips').click();
-  await expect(page).toHaveURL(/\/reisen(\?von=kalender)?$/);
-  await expect(tid(page, 'trips-screen')).toContainText('Reisen');
   await expectNoAbsenceWord(page);
 });

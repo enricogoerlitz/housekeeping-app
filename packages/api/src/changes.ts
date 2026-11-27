@@ -33,8 +33,14 @@ const TABLE_ORDER = [
   // A new collection before its rows (spec 0009).
   'collection_recipes',
   'restaurants',
+  // Spec 0041: a kind before its activities, a series after its activity, exceptions after it.
+  'activity_kinds',
   'activities',
+  'activity_series',
+  'activity_series_exceptions',
   'meal_plan_entries',
+  // Spec 0060: a Dauerposten after its article.
+  'recurring_items',
   'shopping_items',
   'shopping_contributions',
   'chores',

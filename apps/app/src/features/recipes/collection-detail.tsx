@@ -11,51 +11,52 @@ import {
   collectionSummary,
   type Recipe,
 } from '@housekeeping/core';
-import {
-  Badge,
-  Button,
-  Row,
-  Screen,
-  ScreenHeader,
-  Stack,
-  Text,
-  useBreakpoint,
-} from '@housekeeping/ui';
-import { useState } from 'react';
-import { View } from 'react-native';
+import { Badge, Button, Row, Stack, Text, useBreakpoint, useToastAvoid } from '@housekeeping/ui';
+import { useRef, useState } from 'react';
+import { View, type HostInstance } from 'react-native';
 
 import { PlanRecipeSheet } from '@/features/meal-plan/plan-recipe-sheet';
 import { FavoriteButton } from '@/features/shell/favorite-button';
 import { MemberRatings } from '@/features/shell/member-ratings';
 import { useOnlineOnly } from '@/features/shell/offline';
 import { PantryCheckSheet } from '@/features/shopping/pantry-check-sheet';
+import { useBrowseSwipe } from '@/lib/browse-order';
 
 import { useOpenRecipe } from './navigation';
+import { shareTarget } from '@/lib/share';
+
 import { NO_INGREDIENTS_HINT, RecipeMoreMenu, useRecipePhoto } from './recipe-actions';
 import { RecipePhoto } from './recipe-cover';
+import { RecipeFrame, STACKED_PHOTO_MAX_WIDTH } from './recipe-frame';
 import { COLLECTION_BADGE } from './recipe-grid';
 import { ContentsSection } from './sections/contents-section';
 import { HeadSection } from './sections/head-section';
 import { IngredientsSection } from './sections/ingredients-section';
 import { LinksSection } from './sections/links-section';
+import { DraftBackupNotice, EditControls, EditError } from './sections/edit-controls';
 import { NotesSection } from './sections/notes-section';
-import { useSectionEditor } from './sections/use-section-editor';
+import { usePageEditor } from './sections/use-page-editor';
 import { useDeleteRecipe } from './use-delete-recipe';
 
 /**
  * The page of a collection (spec 0009, REQ-002, E13), at the address of a recipe: the cover (own
  * photo, collage or stack placeholder), the head with the Kennzeichen "Sammlung" and "für 6 ·
  * 2 Rezepte · 4 eigene Zutaten", the ratings, "Einplanen" and "Auf die Liste"; then "Enthält",
- * "Eigene Zutaten" and "Notizen". No Einordnung, no Zubereitung, no "Kochen" and no assistant.
+ * "Eigene Zutaten" and "Notizen". No Einordnung, no Zubereitung, no "Kochen" and no assistant. One
+ * pen at the top edits the whole page (spec 0037, REQ-001).
  * Two columns from the desktop breakpoint like the recipe page: "Enthält" on the left.
  */
 export function CollectionDetailBody(props: {
   collection: Recipe;
   onBack: () => void;
   backLabel: string;
+  /** Beside the recipe list on wide screens (spec 0038). */
+  quick?: boolean;
   /** true while this page deletes its collection; false again when the deletion did not start. */
   onDeleting: (leaving: boolean) => void;
 }) {
+  // Phones: swipe to the neighbour in the list it was opened from (spec 0034, REQ-008).
+  const browse = useBrowseSwipe();
   const { collection } = props;
   const online = useOnlineOnly();
   const me = useCurrentMember();
@@ -63,16 +64,24 @@ export function CollectionDetailBody(props: {
   const contents = useCollectionContents(collection.id);
   const openRecipe = useOpenRecipe();
   const { bp, isPhone } = useBreakpoint();
-  const desktop = bp === 'desktop';
+  // Beside the list the column is too narrow for two (spec 0038).
+  const desktop = bp === 'desktop' && !props.quick;
   const [pantryCheck, setPantryCheck] = useState(false);
   const [planning, setPlanning] = useState(false);
   const photo = useRecipePhoto(collection);
-  const editor = useSectionEditor(collection);
+  const editor = usePageEditor(collection);
+  const editing = editor.draft !== undefined;
+  // While the page is edited nothing leads away without asking (spec 0037, AC-005).
+  const swipe = editing ? undefined : browse;
+  const back = () => editor.guard(props.onBack);
   const { remove, dialog: deleteDialog } = useDeleteRecipe(
     collection,
     props.onBack,
     props.onDeleting,
   );
+
+  // "Teilen" (spec 0047, REQ-001): only the link to the page.
+  const share = () => void shareTarget({ kind: 'recipe', id: collection.id });
 
   // AC-025, AC-028: for the collection's own portions; nothing in it reads "Noch nichts enthalten".
   const canGoOnList = canPutCollectionOnList(collection, contents);
@@ -89,7 +98,9 @@ export function CollectionDetailBody(props: {
     />
   );
 
-  const headerRight = (
+  const headerRight = editing ? (
+    <EditControls editor={editor} />
+  ) : (
     <>
       <FavoriteButton
         testID="recipe-favorite"
@@ -99,7 +110,8 @@ export function CollectionDetailBody(props: {
         onPress={() => toggleFavorite(collection.id)}
       />
       {desktop ? actions : null}
-      <RecipeMoreMenu recipe={collection} photo={photo} onDelete={remove} />
+      <EditControls editor={editor} />
+      <RecipeMoreMenu recipe={collection} onDelete={remove} />
       {deleteDialog}
     </>
   );
@@ -117,16 +129,18 @@ export function CollectionDetailBody(props: {
           </Text>
         }
       />
-      <MemberRatings
-        ratings={collection.ratings}
-        members={members}
-        me={me.id}
-        onRate={(stars) => rateRecipe(collection.id, stars)}
-        disabled={online.disabled}
-        hint={online.hint}
-        testID="recipe-rating"
-      />
-      {desktop ? null : <View style={{ marginTop: 4 }}>{actions}</View>}
+      {editing ? null : (
+        <MemberRatings
+          ratings={collection.ratings}
+          members={members}
+          me={me.id}
+          onRate={(stars) => rateRecipe(collection.id, stars)}
+          disabled={online.disabled}
+          hint={online.hint}
+          testID="recipe-rating"
+        />
+      )}
+      {desktop || editing ? null : <View style={{ marginTop: 4 }}>{actions}</View>}
     </Stack>
   );
 
@@ -134,7 +148,13 @@ export function CollectionDetailBody(props: {
     <ContentsSection
       collection={collection}
       contents={contents}
-      onOpen={openRecipe}
+      // A recipe of the collection swipes through its contents (spec 0034, REQ-008).
+      onOpen={(recipeId) =>
+        openRecipe(
+          recipeId,
+          contents.map((content) => content.recipe.id),
+        )
+      }
       editor={editor}
     />
   );
@@ -157,25 +177,21 @@ export function CollectionDetailBody(props: {
   );
 
   return (
-    <Screen
-      testID="recipe-screen"
-      tone="essen"
-      header={
-        <ScreenHeader
-          title={collection.title}
-          titleOnScroll
-          backLabel={props.backLabel}
-          onBack={props.onBack}
-          right={headerRight}
-          testID="recipe-bar-title"
-        />
-      }
+    <RecipeFrame
+      quick={props.quick}
+      title={collection.title}
+      backLabel={props.backLabel}
+      onBack={back}
+      right={headerRight}
+      swipe={swipe}
     >
       <View testID="collection-detail" style={{ gap: isPhone ? 24 : 32, paddingTop: 8 }}>
+        <EditError editor={editor} />
+        <DraftBackupNotice editor={editor} />
         {desktop ? (
           <>
             <Row gap={32} align="flex-start">
-              <RecipePhoto recipe={collection} photo={photo} style={{ flex: 1 }} />
+              <RecipePhoto recipe={collection} photo={photo} style={{ flex: 1 }} onShare={share} />
               {head}
             </Row>
             <Row gap={32} align="flex-start">
@@ -188,7 +204,9 @@ export function CollectionDetailBody(props: {
           </>
         ) : (
           <>
-            <RecipePhoto recipe={collection} photo={photo} />
+            <View style={isPhone ? undefined : { maxWidth: STACKED_PHOTO_MAX_WIDTH }}>
+              <RecipePhoto recipe={collection} photo={photo} onShare={share} />
+            </View>
             {head}
             {contained}
             {ingredients}
@@ -206,7 +224,7 @@ export function CollectionDetailBody(props: {
           />
         ) : null}
       </View>
-    </Screen>
+    </RecipeFrame>
   );
 }
 
@@ -215,7 +233,7 @@ export function CollectionDetailBody(props: {
  * under the head. There is no "Kochen" and no "Anpassen"; offline both are greyed out.
  */
 function CollectionActions(props: {
-  /** Why "Auf die Liste" is greyed out; undefined when there is something to buy. */
+  /** Why there is nothing to buy; undefined when there is something ("Auf die Liste" shows). */
   listHint: string | undefined;
   onPlan: () => void;
   onList: () => void;
@@ -223,35 +241,36 @@ function CollectionActions(props: {
 }) {
   const online = useOnlineOnly();
   const size = props.compact ? 'sm' : 'md';
+  // A toast stands above these buttons, not on them (spec 0033, AC-025).
+  const buttons = useRef<HostInstance>(null);
+  useToastAvoid(buttons);
   return (
-    <Row gap={props.compact ? 8 : 10} wrap>
-      <Button
-        label="Einplanen"
-        icon="calendar-plus"
-        variant="secondary"
-        size={size}
-        onPress={props.onPlan}
-        disabled={online.disabled}
-        hint={online.hint}
-        testID="recipe-plan"
-      />
-      <Row gap={8}>
+    <View ref={buttons}>
+      <Row gap={props.compact ? 8 : 10} wrap>
         <Button
-          label="Auf die Liste"
-          icon="shopping-basket"
+          label="Einplanen"
+          icon="calendar-plus"
           variant="secondary"
           size={size}
-          onPress={props.onList}
-          disabled={online.disabled || props.listHint !== undefined}
-          hint={online.hint ?? props.listHint}
-          testID="recipe-to-list"
+          onPress={props.onPlan}
+          disabled={online.disabled}
+          hint={online.hint}
+          testID="recipe-plan"
         />
-        {props.listHint ? (
-          <Text variant="caption" color="muted" testID="recipe-to-list-hint">
-            {props.listHint}
-          </Text>
+        {/* Nachklick 27.11. (as N-03 for recipes): nothing to buy, no "Auf die Liste". */}
+        {props.listHint === undefined ? (
+          <Button
+            label="Auf die Liste"
+            icon="shopping-basket"
+            variant="secondary"
+            size={size}
+            onPress={props.onList}
+            disabled={online.disabled}
+            hint={online.hint}
+            testID="recipe-to-list"
+          />
         ) : null}
       </Row>
-    </Row>
+    </View>
   );
 }

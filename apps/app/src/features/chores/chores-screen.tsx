@@ -14,8 +14,8 @@ import {
 } from '@housekeeping/core';
 import {
   Button,
+  CreateButton,
   EmptyState,
-  IconButton,
   InfiniteList,
   List,
   ListDetail,
@@ -29,6 +29,7 @@ import {
   tabSwipe,
   toast,
   useBreakpoint,
+  openKeyboardNow,
 } from '@housekeeping/ui';
 import { useMemo, type ReactElement } from 'react';
 import { View } from 'react-native';
@@ -36,7 +37,7 @@ import { View } from 'react-native';
 import { StartPageActions } from '@/features/shell/profile-button';
 import { useOnlineOnly } from '@/features/shell/offline';
 import { useAddressedId, useHandedHousehold, useMissingObject } from '@/lib/addressed';
-import { usePageParams } from '@/lib/url-state';
+import { PagePreview, usePageParams } from '@/lib/url-state';
 
 import { useChoreCheckWindow } from './chore-check-list';
 import { ChoreHistory } from './chore-history';
@@ -156,6 +157,11 @@ export function ChoresScreen() {
     id ? select({ verlauf: id }) : deselect({ verlauf: undefined });
   const setCreating = (open: boolean) =>
     open ? address.open({ fenster: 'neu-aufgabe' }) : address.close({ fenster: undefined });
+  // "Neue Aufgabe": the title gets the keyboard with the tap (spec 0033, REQ-006).
+  const startCreating = () => {
+    openKeyboardNow();
+    setCreating(true);
+  };
   const setLogging = (open: boolean) =>
     open ? address.open({ fenster: 'erledigt' }) : address.close({ fenster: undefined });
 
@@ -196,9 +202,7 @@ export function ChoresScreen() {
       {doneLink}
     </View>
   );
-  const empty = (
-    <ChoresEmpty disabled={online.disabled} hint={online.hint} onCreate={() => setCreating(true)} />
-  );
+  const empty = <ChoresEmpty disabled={online.disabled} hint={online.hint} />;
 
   let body: ReactElement;
   if (tab === 'upcoming') {
@@ -290,11 +294,9 @@ export function ChoresScreen() {
           title="Haushalt"
           right={
             <>
-              <IconButton
-                icon="plus"
-                variant="soft"
-                label="Neue Aufgabe"
-                onPress={() => setCreating(true)}
+              <CreateButton
+                label="Aufgabe anlegen"
+                onPress={startCreating}
                 disabled={online.disabled}
                 hint={online.hint}
                 testID="chore-new"
@@ -313,8 +315,23 @@ export function ChoresScreen() {
           testID="chores-tab"
         />
       }
-      // On phones a sideways swipe changes the tab (spec 0029, REQ-003).
-      tabSwipe={tabSwipe(TAB_OPTIONS, tab, changeTab)}
+      // On phones a sideways swipe changes the tab (spec 0029, REQ-003), with the neighbour tab
+      // beside the content (spec 0034, REQ-007): the page as the tab would show it, no window.
+      tabSwipe={tabSwipe(TAB_OPTIONS, tab, changeTab, (next) => (
+        <PagePreview
+          page="haushalt"
+          params={{
+            ...params,
+            ansicht: VIEW_OF_TAB[next],
+            aufgabe: undefined,
+            verlauf: undefined,
+            fenster: undefined,
+            haushalt: undefined,
+          }}
+        >
+          <ChoresScreen />
+        </PagePreview>
+      ))}
     >
       {body}
       {openChore && !split ? (
@@ -463,7 +480,7 @@ function AllChores(props: {
 }
 
 /** First steps for a household without chores: one tap on a template, or a chore of your own. */
-function ChoresEmpty(props: { disabled: boolean; hint: string | undefined; onCreate: () => void }) {
+function ChoresEmpty(props: { disabled: boolean; hint: string | undefined }) {
   const members = useMembers();
   const today = useToday();
   const weekday = isoWeekday(today);
@@ -505,17 +522,9 @@ function ChoresEmpty(props: { disabled: boolean; hint: string | undefined; onCre
     <EmptyState
       icon="list-checks"
       title="Noch keine Aufgaben"
-      text="Legt eure erste Aufgabe an oder nehmt eine Vorlage."
+      text="Nehmt eine Vorlage oder legt eine eigene Aufgabe an."
       testID="chores-empty"
     >
-      <Button
-        label="Aufgabe anlegen"
-        icon="plus"
-        onPress={props.onCreate}
-        disabled={props.disabled}
-        hint={props.hint}
-        testID="chores-empty-new"
-      />
       {templates.map((template, index) => (
         <Button
           key={template.label}

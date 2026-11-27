@@ -1,5 +1,8 @@
 import type {
   Activity,
+  ActivityKind,
+  ActivitySeries,
+  ActivitySeriesException,
   Area,
   Article,
   Chore,
@@ -17,6 +20,7 @@ import type {
   PackingItem,
   PackingListBag,
   Recipe,
+  RecurringItem,
   Restaurant,
   RowOp,
   ShoppingItem,
@@ -26,7 +30,7 @@ import type {
 } from '@housekeeping/core';
 import { useSyncExternalStore } from 'react';
 
-import type { Transport } from './transport';
+import type { ChangeOp, Transport } from './transport';
 
 /** Everything that belongs to one household (one tenant). */
 export interface HouseholdData {
@@ -39,8 +43,14 @@ export interface HouseholdData {
   collectionRecipes: CollectionRecipe[];
   restaurants: Restaurant[];
   activities: Activity[];
+  /** Spec 0041: "Aktivitätsarten" (creation order), series and their exceptions. */
+  activityKinds: ActivityKind[];
+  activitySeries: ActivitySeries[];
+  activitySeriesExceptions: ActivitySeriesException[];
   planEntries: MealPlanEntry[];
   items: ShoppingItem[];
+  /** Spec 0060: "Dauerposten" in creation order. */
+  recurringItems: RecurringItem[];
   chores: Chore[];
   choreEvents: ChoreEvent[];
   /** Spec 0022: trips with their people (rows of trips and trip_members). */
@@ -53,8 +63,8 @@ export interface HouseholdData {
   packingListBags: PackingListBag[];
   packingItems: PackingItem[];
   /**
-   * Spec 0013: the signed-in member's own "Benachrichtigungs-Einstellungen" in this household
-   * (created by the server; undefined until the first pull brought it).
+   * The signed-in member's own row of notification_settings in this household (created by the
+   * server; undefined until the first pull brought it): her acknowledged notices (spec 0051).
    */
   notificationSettings?: NotificationSettings;
 }
@@ -141,14 +151,26 @@ export type StoreAction =
 
 /**
  * How a command's change reaches the server (ADR-0011):
- * - diff: the rows before and after become one `apply_changes` call, limited to the writable
- *   columns; every delete per table must be declared in `maxDeletes` (default 0).
+ * - diff: the rows before and after become one `apply_changes` call (or `send`), limited to the
+ *   writable columns; every delete per table must be declared in `maxDeletes` (default 0).
  * - rpc: a dedicated RPC; the local effect is shown until it is confirmed. `inverse` makes it
  *   undoable.
  * The four store actions do not go through commit but through `queueStoreAction`.
  */
 export type CommitSpec<T> = (
-  | { path: 'diff'; maxDeletes?: Partial<Record<string, number>> }
+  | {
+      path: 'diff';
+      maxDeletes?: Partial<Record<string, number>>;
+      /**
+       * Sends the diff through another RPC than apply_changes that takes the same ops (spec 0037:
+       * save_recipe_page). "Rückgängig" still goes through apply_changes.
+       */
+      send?: (
+        transport: Transport,
+        householdId: string,
+        ops: readonly ChangeOp[],
+      ) => Promise<unknown>;
+    }
   | {
       path: 'rpc';
       send: (transport: Transport, context: RpcContext<T>) => Promise<unknown>;
@@ -244,27 +266,6 @@ export function commit<T>(spec: CommitSpec<T>, run: () => T): T {
   // inner one runs as part of the outer commit.
   if (committing) return run();
   return record(requireBackend(), spec, run);
-}
-
-/**
- * Like commit, for another household than the one the app shows (spec 0027, REQ-008: the
- * notification settings of another household): the change is recorded for `householdId`, and
- * the app stays in its household. An unknown household throws.
- */
-export function commitIn<T>(householdId: string, spec: CommitSpec<T>, run: () => T): T {
-  const original = getState().activeHouseholdId;
-  if (householdId === original) return commit(spec, run);
-  if (!getState().households[householdId]) throw new Error(`Unknown household ${householdId}`);
-  state = { ...getState(), activeHouseholdId: householdId };
-  try {
-    return commit(spec, run);
-  } finally {
-    const current = getState();
-    if (current.activeHouseholdId !== original) {
-      state = { ...current, activeHouseholdId: original };
-      notify();
-    }
-  }
 }
 
 /** One of the four store actions (ADR-0008 addendum): queued, shown at once, works offline. */

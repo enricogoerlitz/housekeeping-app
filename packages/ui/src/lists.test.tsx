@@ -6,6 +6,7 @@ import { CheckRow, GhostRow, GroupLabel, List, ListRow, Section, SelectRow } fro
 import { Text } from './primitives';
 import { ThemeProvider } from './theme-context';
 import { getTheme, type ThemeId } from './themes';
+import { pointer } from '../test/setup';
 
 describe('ListRow', () => {
   it('AC-028: with controls there is no button inside a button', () => {
@@ -206,6 +207,14 @@ describe('ListRow', () => {
   it('selected: the row shown in the detail column is highlighted in accentSoft', () => {
     render(<ListRow title="Curry" selected onPress={() => undefined} />);
     const row = screen.getByRole('button', { name: 'Curry' });
+    expect(row.style.backgroundColor).toBe(rgb(getTheme('markthalle', 'light').colors.accentSoft));
+  });
+
+  it('D-06 (review 0004): a selected row under the mouse keeps its highlight', () => {
+    pointer.fine = true;
+    render(<ListRow title="Chili" checked selected onPress={() => undefined} />);
+    const row = screen.getByRole('checkbox', { name: 'Chili' });
+    fireEvent.pointerEnter(row, { pointerType: 'mouse' });
     expect(row.style.backgroundColor).toBe(rgb(getTheme('markthalle', 'light').colors.accentSoft));
   });
 

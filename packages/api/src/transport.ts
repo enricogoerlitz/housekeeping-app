@@ -2,16 +2,25 @@
 // (docs/architecture/sync.md). JSON keys are the database's snake_case. Two implementations:
 // SupabaseTransport (transport-supabase.ts) and an in-memory server for tests (transport-fake.ts).
 import {
-  PushSubscriptionStatusSchema,
+  type AiImageReply,
+  type AiImageRequest,
   type AiSearchRequest,
   type AiSearchResult,
   type AssistantReply,
   type AssistantRequest,
   type PullRequest,
   type PullResult,
+  type FetchImageRequest,
+  type FetchVideoReply,
+  type FetchVideoRequest,
+  type RecipeDraftReply,
+  type RecipeDraftRequest,
   type ResolveMapsLinkReply,
   type RowOp,
   type SpeechTokenReply,
+  type PlacePreviewReply,
+  type WebSearchReply,
+  type WebSearchRequest,
 } from '@housekeeping/core';
 import { z } from 'zod';
 
@@ -242,6 +251,15 @@ export const ApplyChangesResultSchema = z.object({
 });
 export type ApplyChangesResult = z.infer<typeof ApplyChangesResultSchema>;
 
+/** save_recipe_page (spec 0037, AC-006): whether the recipe changed since the edit mode opened. */
+export const SavedRecipePageSchema = z
+  .object({ changed_meanwhile: z.boolean(), updated_at: z.string().nullable().optional() })
+  .transform((row) => ({
+    changedMeanwhile: row.changed_meanwhile,
+    ...(row.updated_at ? { updatedAt: row.updated_at } : {}),
+  }));
+export type SavedRecipePage = z.infer<typeof SavedRecipePageSchema>;
+
 export const CheckResultSchema = z
   .object({ item_id: z.string(), checked: z.boolean(), check_seq: z.number() })
   .nullable();
@@ -339,6 +357,14 @@ export type DeletedRecipe = z.infer<typeof DeletedRecipeSchema>;
 export const RestoredRecipeSchema = z.boolean();
 
 /**
+ * remove_recipe_video (spec 0046, AC-017): the video taken out of the recipe's list, so the app
+ * deletes its files; null when the recipe had no such video.
+ */
+export const RemovedRecipeVideoSchema = z
+  .object({ path: z.string(), url: z.string().optional(), poster: z.string().optional() })
+  .nullable();
+
+/**
  * delete_restaurant / delete_activity (spec 0024, REQ-010): how many plan entries became free text
  * and how many went.
  */
@@ -363,23 +389,22 @@ export const RawPullResultSchema = z.object({
 });
 export type RawPullResult = z.infer<typeof RawPullResultSchema>;
 
-/**
- * One row of `list_push_subscriptions` (spec 0013): strict, so an answer that carried a push
- * address or a key would be refused rather than passed on (ADR-0014).
- */
-export const PushSubscriptionRowSchema = z.strictObject({
-  id: z.string(),
-  device_label: z.string(),
-  status: PushSubscriptionStatusSchema,
-  is_current: z.boolean(),
-  created_at: z.string(),
-  last_success_at: z.string().nullable(),
-});
-export type PushSubscriptionRow = z.infer<typeof PushSubscriptionRowSchema>;
-
 export interface Transport {
   // Generic write (ADR-0011)
   applyChanges(householdId: string, ops: readonly ChangeOp[]): Promise<ApplyChangesResult>;
+  /**
+   * The recipe page in one step (spec 0037, REQ-001): `ops` as for applyChanges, limited to the
+   * page's rows (the recipe, new articles, its collection rows, plan entries of a removed
+   * variant), in one transaction. `seenUpdatedAt` is the recipe's `updated_at` when the edit mode
+   * opened; the answer says whether the row changed since (AC-006). The change is applied either
+   * way. `row_not_found` when the recipe is gone or foreign, `invalid_change` for other rows.
+   */
+  saveRecipePage(
+    householdId: string,
+    recipeId: string,
+    seenUpdatedAt: string | undefined,
+    ops: readonly ChangeOp[],
+  ): Promise<SavedRecipePage>;
   // Store queue and list
   /** `onList`: checked on "Liste", not in "Einkaufen" (spec 0025, REQ-006). */
   setItemChecked(
@@ -486,6 +511,20 @@ export interface Transport {
   // Per member
   setRecipeFavorite(recipeId: string, favorite: boolean): Promise<void>;
   setRecipeRating(recipeId: string, stars: number | null): Promise<void>;
+  // The videos of a recipe (spec 0046): only these functions write recipes.videos.
+  /** The poster of a video; false when the recipe has no such video or it has a poster already. */
+  setRecipeVideoPoster(
+    householdId: string,
+    recipeId: string,
+    path: string,
+    poster: string,
+  ): Promise<boolean>;
+  /** Takes the video out of the recipe's list and returns it; null when it is not there. */
+  removeRecipeVideo(
+    householdId: string,
+    recipeId: string,
+    path: string,
+  ): Promise<z.infer<typeof RemovedRecipeVideoSchema>>;
   setRestaurantFavorite(restaurantId: string, favorite: boolean): Promise<void>;
   setRestaurantRating(restaurantId: string, stars: number | null): Promise<void>;
   setActivityFavorite(activityId: string, favorite: boolean): Promise<void>;
@@ -519,36 +558,39 @@ export interface Transport {
    * `media_remaining` (nothing is deleted then).
    */
   deleteHousehold(householdId: string): Promise<void>;
-  // Push devices (spec 0013, ADR-0014): only the caller's own, online only, never cached.
   /**
-   * Registers this browser's subscription for the caller (upsert by address: it moves to her).
-   * `invalid_subscription`, `too_many_devices`; returns the subscription's id.
+   * Spec 0051: acknowledges in-app notices of the caller in one of her households (her own row of
+   * notification_settings); `invalid_notice`, `not_found`.
    */
-  registerPushSubscription(
-    endpoint: string,
-    p256dh: string,
-    auth: string,
-    deviceLabel: string,
-  ): Promise<string>;
-  /** "Auf diesem Gerät benachrichtigen"; `not_found` for an address that is not the caller's. */
-  setPushSubscriptionEnabled(endpoint: string, enabled: boolean): Promise<void>;
-  /** Deletes this device's subscription (sign-out); an unknown address is no error. */
-  unregisterPushSubscription(endpoint: string): Promise<void>;
-  /** "Entfernen": true when an own subscription was deleted, false for a foreign or unknown id. */
-  removePushSubscription(id: string): Promise<boolean>;
-  /** "Deine Geräte": never an address or a key; `is_current` for `currentEndpoint`. */
-  listPushSubscriptions(currentEndpoint?: string): Promise<PushSubscriptionRow[]>;
-  /** "Probe senden" to this device; `not_found`, `push_not_configured`, `rate_limited`. */
-  sendTestPush(endpoint: string): Promise<void>;
+  acknowledgeNotices(householdId: string, keys: readonly string[]): Promise<void>;
   // Edge functions
   /** Follows a short map link on the server (`resolve-maps-link`); `not_a_maps_link` when none. */
   resolveMapsLink(url: string): Promise<ResolveMapsLinkReply>;
+  /**
+   * The image at a public address, loaded by the server (`fetch-image`, spec 0039) as raw bytes;
+   * `not_an_image` (422) when there is none, `forbidden` (403) for a foreign household.
+   */
+  fetchImage(request: FetchImageRequest): Promise<Blob>;
+  /**
+   * "Video speichern" (`fetch-video`, spec 0043, spec 0046): the server loads the TikTok video into
+   * household-videos and adds it to the recipe's videos; `not_a_tiktok_link`, `video_unavailable`,
+   * `video_too_large`, `video_exists` (that link's video is there; all permanent), `forbidden`.
+   */
+  fetchVideo(request: FetchVideoRequest): Promise<FetchVideoReply>;
   /** The assistant (`ai-assistant`): an answer, maybe with a proposal; it never changes data. */
   askAssistant(request: AssistantRequest): Promise<AssistantReply>;
   /** The AI recipe search (`ai-search`). */
   aiSearch(request: AiSearchRequest): Promise<AiSearchResult>;
   /** A short-lived token for streaming speech to Azure (`speech-token`); never the key. */
   speechToken(): Promise<SpeechTokenReply>;
+  /** "Mit KI ausfüllen" (`ai-recipe-draft`, spec 0040): a draft, nothing is saved. */
+  aiRecipeDraft(request: RecipeDraftRequest): Promise<RecipeDraftReply>;
+  /** Three image variants (`ai-image`, spec 0040): never stored by the server. */
+  aiImage(request: AiImageRequest): Promise<AiImageReply>;
+  /** "Websuche" (`web-search`, spec 0049): 3–5 cards; `search_unavailable` when no provider answers. */
+  webSearch(request: Extract<WebSearchRequest, { mode: 'search' }>): Promise<WebSearchReply>;
+  /** The preview of a place card (`web-search`, spec 0049): cuisine or kind, description. */
+  placePreview(request: Extract<WebSearchRequest, { mode: 'place' }>): Promise<PlacePreviewReply>;
   // Photo storage: the private bucket household-media, path <household>/<activities|recipes>/<id>/<file>
   /** Stores a JPEG under a new name (never overwrites). */
   uploadMedia(path: string, photo: Blob): Promise<void>;
@@ -559,6 +601,11 @@ export interface Transport {
   downloadMedia(path: string, signal?: AbortSignal): Promise<Blob>;
   /** Deletes what the caller may delete; missing or foreign paths are left alone. */
   removeMedia(paths: readonly string[]): Promise<void>;
+  // Video storage (spec 0043): the private bucket household-videos, <household>/recipes/<id>/<uuid>.mp4
+  /** The stored video, never into the HTTP cache; `not_found` for a missing or foreign one. */
+  downloadVideo(path: string, signal?: AbortSignal): Promise<Blob>;
+  /** Deletes what the caller may delete; missing or foreign paths are left alone. */
+  removeVideos(paths: readonly string[]): Promise<void>;
   // Sync
   syncPull(request: PullRequest): Promise<PullResult>;
   /** Realtime: calls `onSignal` when the household changed. Only a signal, never data. */
@@ -580,6 +627,7 @@ export function switchable(inner: Transport): SwitchableTransport {
       blocked ? Promise.reject(new TransportError('transient', 'offline')) : call(...args);
   return {
     applyChanges: guard(inner.applyChanges.bind(inner)),
+    saveRecipePage: guard(inner.saveRecipePage.bind(inner)),
     setItemChecked: guard(inner.setItemChecked.bind(inner)),
     setItemNotAvailable: guard(inner.setItemNotAvailable.bind(inner)),
     addShoppingContributions: guard(inner.addShoppingContributions.bind(inner)),
@@ -598,6 +646,8 @@ export function switchable(inner: Transport): SwitchableTransport {
     mergeAreas: guard(inner.mergeAreas.bind(inner)),
     deleteRecipe: guard(inner.deleteRecipe.bind(inner)),
     restoreRecipe: guard(inner.restoreRecipe.bind(inner)),
+    setRecipeVideoPoster: guard(inner.setRecipeVideoPoster.bind(inner)),
+    removeRecipeVideo: guard(inner.removeRecipeVideo.bind(inner)),
     deleteRestaurant: guard(inner.deleteRestaurant.bind(inner)),
     restoreRestaurant: guard(inner.restoreRestaurant.bind(inner)),
     deleteActivity: guard(inner.deleteActivity.bind(inner)),
@@ -620,19 +670,22 @@ export function switchable(inner: Transport): SwitchableTransport {
     updateProfile: guard(inner.updateProfile.bind(inner)),
     beginHouseholdDeletion: guard(inner.beginHouseholdDeletion.bind(inner)),
     deleteHousehold: guard(inner.deleteHousehold.bind(inner)),
-    registerPushSubscription: guard(inner.registerPushSubscription.bind(inner)),
-    setPushSubscriptionEnabled: guard(inner.setPushSubscriptionEnabled.bind(inner)),
-    unregisterPushSubscription: guard(inner.unregisterPushSubscription.bind(inner)),
-    removePushSubscription: guard(inner.removePushSubscription.bind(inner)),
-    listPushSubscriptions: guard(inner.listPushSubscriptions.bind(inner)),
-    sendTestPush: guard(inner.sendTestPush.bind(inner)),
+    acknowledgeNotices: guard(inner.acknowledgeNotices.bind(inner)),
     resolveMapsLink: guard(inner.resolveMapsLink.bind(inner)),
+    fetchImage: guard(inner.fetchImage.bind(inner)),
+    fetchVideo: guard(inner.fetchVideo.bind(inner)),
     askAssistant: guard(inner.askAssistant.bind(inner)),
     aiSearch: guard(inner.aiSearch.bind(inner)),
     speechToken: guard(inner.speechToken.bind(inner)),
+    aiRecipeDraft: guard(inner.aiRecipeDraft.bind(inner)),
+    aiImage: guard(inner.aiImage.bind(inner)),
+    webSearch: guard(inner.webSearch.bind(inner)),
+    placePreview: guard(inner.placePreview.bind(inner)),
     uploadMedia: guard(inner.uploadMedia.bind(inner)),
     downloadMedia: guard(inner.downloadMedia.bind(inner)),
     removeMedia: guard(inner.removeMedia.bind(inner)),
+    downloadVideo: guard(inner.downloadVideo.bind(inner)),
+    removeVideos: guard(inner.removeVideos.bind(inner)),
     syncPull: guard(inner.syncPull.bind(inner)),
     subscribe: (householdId, onSignal) =>
       inner.subscribe(householdId, () => {
