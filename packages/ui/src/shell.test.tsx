@@ -20,6 +20,7 @@ import {
   type NavItem,
   type PageScrollControl,
 } from './shell';
+import { scrollShownToTop } from './scroll-top';
 import { AreaToneContext, ThemeProvider } from './theme-context';
 
 /** The window size react-native-web reads (jsdom reports 0 × 0, a phone). */
@@ -120,6 +121,22 @@ describe('useBottomInset (spec 0029, REQ-002)', () => {
 });
 
 describe('Screen (spec 0005, REQ-002)', () => {
+  it('spec 0057 AC-009: a tap on the active tab scrolls the shown page to the top', () => {
+    const probe = measurable();
+    try {
+      render(
+        <Screen testID="page">
+          <Text>Inhalt</Text>
+        </Screen>,
+      );
+      expect(scrollShownToTop(false)).toBe(1);
+      expect(probe.calls).toHaveLength(1);
+      expect(probe.calls[0]?.top).toBe(0);
+    } finally {
+      probe.restore();
+    }
+  });
+
   it('shows header, tabs, toolbar, content and footer', () => {
     render(
       <Screen
@@ -695,3 +712,22 @@ describe('ComposerBar', () => {
     expect(screen.getByTestId('composer')).toBeTruthy();
   });
 });
+
+/** Lets every element report a box (jsdom has no layout) and records `scroll` calls. */
+function measurable(): { calls: { el: Element; top: unknown }[]; restore: () => void } {
+  const calls: { el: Element; top: unknown }[] = [];
+  const proto = HTMLElement.prototype as unknown as Record<string, unknown>;
+  const rects = proto.getClientRects;
+  const scroll = proto.scroll;
+  proto.getClientRects = () => [{}];
+  proto.scroll = function (this: Element, options: { top?: unknown }) {
+    calls.push({ el: this, top: options.top });
+  };
+  return {
+    calls,
+    restore: () => {
+      proto.getClientRects = rects;
+      proto.scroll = scroll;
+    },
+  };
+}

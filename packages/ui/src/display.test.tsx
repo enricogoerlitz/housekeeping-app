@@ -572,9 +572,9 @@ describe('KindLine (spec 0010, D19)', () => {
     expect(screen.getByText('Bad putzen').style.textDecorationLine).toBe('line-through');
   });
 
-  it('REQ-033: the title hyphenates', () => {
+  it('spec 0057 AC-024: the title breaks between words, without automatic hyphenation', () => {
     render(<KindLine kind="restaurant" title="Gasthausbesuch" />);
-    expect(screen.getByText('Gasthausbesuch').style.getPropertyValue('hyphens')).toBe('auto');
+    expect(screen.getByText('Gasthausbesuch').style.getPropertyValue('hyphens')).toBe('manual');
   });
 
   it('with a mouse it still presses while hovered', () => {

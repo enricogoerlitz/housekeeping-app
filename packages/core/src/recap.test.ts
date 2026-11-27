@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { notDoneMessage, recapDayLabel, recapEarlierLabel, recapItems } from './recap';
+import {
+  notDoneMessage,
+  recapDayLabel,
+  recapEarlierLabel,
+  recapItems,
+  recapStackIndex,
+} from './recap';
 import { enrico, grillabend, kartoffelsalat, makeRecipe, nadja } from './test-fixtures';
 import type { Activity, Id, MealPlanEntry, Recipe, Restaurant } from './types';
 
@@ -230,5 +236,34 @@ describe('spec 0020 REQ-008/REQ-009: the recap row', () => {
 
   it('AC-036: the hint after "Nicht gemacht"', () => {
     expect(notDoneMessage('Eislaufen')).toBe('„Eislaufen“ als nicht gemacht markiert');
+  });
+});
+
+describe('recapStackIndex (spec 0057, REQ-001)', () => {
+  it('AC-004: shows the remembered entry where it stands', () => {
+    expect(recapStackIndex(['a', 'b', 'c'], ['b'], 1)).toBe(1);
+    expect(recapStackIndex(['a', 'b', 'c'], [], 0)).toBe(0);
+  });
+
+  it('AC-005: an entry before the shown one leaves, the shown one stays', () => {
+    expect(recapStackIndex(['b', 'c'], ['b'], 1)).toBe(0);
+  });
+
+  it('AC-003: the shown entry leaves, the next one moves to its place; at the end the last', () => {
+    expect(recapStackIndex(['a', 'c'], ['b'], 1)).toBe(1);
+    expect(recapStackIndex(['a', 'b'], ['c'], 2)).toBe(1);
+  });
+
+  it('AC-005: once the next one moved in, it stays when an entry before leaves', () => {
+    // "b" was rated and left, "c" moved in; then "a" leaves too.
+    expect(recapStackIndex(['c', 'd'], ['b', 'c'], 1)).toBe(0);
+  });
+
+  it('AC-006: an entry that comes back after "Rückgängig" is shown again', () => {
+    expect(recapStackIndex(['a', 'b', 'c'], ['b', 'c'], 1)).toBe(1);
+  });
+
+  it('AC-007: nothing open gives no position', () => {
+    expect(recapStackIndex([], ['b'], 1)).toBe(-1);
   });
 });

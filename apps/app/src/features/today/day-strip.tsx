@@ -257,6 +257,8 @@ function DayTile(props: DayProps) {
         <Text
           variant="caption"
           numberOfLines={2}
+          // Not "Kichererb-|sen-…": whole words, a too long one cut with "…" (spec 0057, REQ-004).
+          wholeWords
           style={{ minHeight: theme.type.caption.lineHeight * 2 }}
           testID={`today-week-${date}-title`}
         >
