@@ -188,6 +188,21 @@ describe('pickPlaceHits (Entscheidung 11)', () => {
     expect(pickPlaceHits(friedrichshain, koeln, COUNTRY_CENTRE)).toEqual(friedrichshain);
   });
 
+  it('AC-045: a name the household has nearby wins over a famous one far away ("Trattoria Da Enzo" from Köln)', () => {
+    const rome = [at('Trattoria Da Enzo', 41.888, 12.474), at('Da Enzo al 29', 41.888, 12.474)];
+    const nearby = [at('Trattoria Da Enzo', 50.97, 7.41), at('Ristorante Da Enzo', 50.9, 6.9)];
+    expect(pickPlaceHits(rome, nearby, KOELN, 'Trattoria Da Enzo')).toEqual(nearby);
+    expect(pickPlaceHits(rome, nearby, KOELN, 'trattoria  da énzo')).toEqual(nearby);
+    // Only a name hit counts: the river "Mutzbach" is no "Mutzenbacher".
+    const mutzenbacher = [at('Mutzenbacher', 52.51, 13.45)];
+    expect(
+      pickPlaceHits(mutzenbacher, [at('Mutzbach', 50.98, 7.05)], KOELN, 'mutzenbacher'),
+    ).toEqual(mutzenbacher);
+    // A name hit farther than the city region does not count.
+    const hamburg = [at('Trattoria Da Enzo', 53.55, 9.99)];
+    expect(pickPlaceHits(rome, hamburg, KOELN, 'Trattoria Da Enzo')).toEqual(rome);
+  });
+
   it('free hits without coordinates count as not found nearby', () => {
     const unplaced: { title: string; location?: { lat: number; lng: number } }[] = [
       { title: 'Irgendwo' },

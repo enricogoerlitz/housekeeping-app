@@ -138,6 +138,29 @@ describe('Serper', () => {
     ]);
   });
 
+  it('AC-045: a namesake around the household wins over a famous one far away (the query reaches the pick)', async () => {
+    const place = (title: string, latitude: number, longitude: number, cid: string) => ({
+      title,
+      address: 'x',
+      latitude,
+      longitude,
+      cid,
+    });
+    const deps = fakeDeps({
+      env: KEYS,
+      fetch: async (_input, init) =>
+        json({
+          places: JSON.parse(String(init?.body)).ll
+            ? [place('Trattoria Da Enzo', 50.97, 7.41, '2')]
+            : [place('Trattoria Da Enzo', 41.888, 12.474, '1')],
+        }),
+    });
+    const { value } = await searchWithFallback(configuredProviders(deps), (p) =>
+      p.places('Trattoria Da Enzo', { lat: 50.934, lng: 6.948, zoom: 11 }),
+    );
+    expect(value.map((hit) => hit.mapsUrl)).toEqual(['https://maps.google.com/?cid=2']);
+  });
+
   it('a place without cid gets a maps link from its coordinates', async () => {
     const [place] = maps.places;
     const deps = fakeDeps({

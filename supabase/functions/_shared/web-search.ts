@@ -242,7 +242,8 @@ function serperProvider(deps: Pick<Deps, 'fetch'>, key: string): SearchProvider 
       });
     },
     // Entscheidung 11: Google searched once without a place and once around the centre, at the
-    // same time; a text naming a district, a city or one place is found without the centre.
+    // same time; a text naming a district, a city or one place is found without the centre, a
+    // namesake near the household first (Entscheidung 14).
     async places(query, around) {
       const maps = async (ll?: string) =>
         mapPlaces(
@@ -257,7 +258,7 @@ function serperProvider(deps: Pick<Deps, 'fetch'>, key: string): SearchProvider 
         maps(),
         maps(`@${around.lat},${around.lng},${around.zoom}z`),
       ]);
-      return pickPlaceHits(free, near, around);
+      return pickPlaceHits(free, near, around, query);
     },
   };
 }

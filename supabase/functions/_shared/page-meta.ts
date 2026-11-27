@@ -90,10 +90,50 @@ function findRecipe(node: unknown, depth = 0): { [key: string]: unknown } | unde
   return findRecipe(object['@graph'], depth + 1);
 }
 
-function recipeOf(node: { [key: string]: unknown }): PageRecipe {
+/** Persons in the JSON-LD by their @id, so an author given as a reference gets its name. */
+function personNames(root: unknown): Map<string, string> {
+  const names = new Map<string, string>();
+  const graph = (root as { '@graph'?: unknown } | null)?.['@graph'];
+  const nodes = Array.isArray(root) ? root : Array.isArray(graph) ? graph : [];
+  for (const node of nodes.slice(0, 200)) {
+    if (typeof node !== 'object' || node === null) continue;
+    const { '@id': id, name } = node as { [key: string]: unknown };
+    if (typeof id === 'string' && typeof name === 'string') names.set(id, name);
+  }
+  return names;
+}
+
+/** The author names of a Recipe: inline, or a reference into the graph. */
+function authorNames(node: { [key: string]: unknown }, persons: Map<string, string>): string[] {
+  const authors = Array.isArray(node.author) ? node.author.slice(0, 5) : [node.author];
+  return authors.flatMap((author) => {
+    if (typeof author === 'string') return [author];
+    if (typeof author !== 'object' || author === null) return [];
+    const { name, '@id': id } = author as { [key: string]: unknown };
+    if (typeof name === 'string') return [name];
+    const known = typeof id === 'string' ? persons.get(id) : undefined;
+    return known ? [known] : [];
+  });
+}
+
+/** Chefkoch names a recipe "Albertos Spaghetti von caralb": the author is no part of the title. */
+function withoutAuthor(name: string, authors: readonly string[]): string {
+  for (const author of authors) {
+    const suffix = ` von ${author.trim()}`.toLowerCase();
+    if (author.trim() && name.toLowerCase().endsWith(suffix)) {
+      const rest = name.slice(0, name.length - suffix.length).trim();
+      if (rest) return rest;
+    }
+  }
+  return name;
+}
+
+function recipeOf(node: { [key: string]: unknown }, persons: Map<string, string>): PageRecipe {
   const recipe: PageRecipe = {};
   if (typeof node.name === 'string' && node.name.trim()) {
-    recipe.name = decode(node.name.trim()).slice(0, MAX_NAME);
+    const name = decode(node.name.trim());
+    const authors = authorNames(node, persons).map(decode);
+    recipe.name = withoutAuthor(name, authors).slice(0, MAX_NAME);
   }
   const imageUrl = firstImage(node.image);
   if (imageUrl) recipe.imageUrl = imageUrl;
@@ -160,7 +200,7 @@ export function pageMeta(html: string): PageMeta {
     }
     const found = findRecipe(parsed);
     if (found) {
-      meta.recipe = recipeOf(found);
+      meta.recipe = recipeOf(found, personNames(parsed));
       break;
     }
   }
