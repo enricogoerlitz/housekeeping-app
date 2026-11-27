@@ -507,6 +507,7 @@ export async function fulfilError(route: Route, code: ErrorCode): Promise<void> 
     quota_exceeded: 429,
     ai_unavailable: 503,
     search_unavailable: 503,
+    chat_too_long: 409,
     internal: 500,
   };
   await fulfilFunction(route, status[code], ErrorReplySchema.parse({ error: code }));
@@ -598,6 +599,14 @@ async function stubEdgeFunctions(context: BrowserContext): Promise<void> {
       fulfilError(route, 'ai_unavailable'),
     );
   }
+  // Deleting a household first purges its KI-Agent chats (spec 0066, REQ-010): without seeded
+  // chats there is nothing in Foundry, so the purge answers "0 deleted". Every other action of
+  // the agent costs money and is answered by the test that needs it.
+  await context.route('**/functions/v1/ai-agent*', (route) =>
+    requestBody(route).action === 'purge'
+      ? fulfilFunction(route, 200, { deleted: 0 })
+      : fulfilError(route, 'ai_unavailable'),
+  );
 }
 
 // ---------- Map apps (never really opened) ----------
@@ -856,6 +865,31 @@ insert into auth.identities (id, user_id, provider_id, provider, identity_data, 
 values (${literal(id)}, ${literal(id)}, ${literal(id)}, 'email', ${literal(identity)}, now(), now(), now());
 `);
   return id;
+}
+
+/**
+ * A KI-Agent chat reference of a household as ai-agent would write it (spec 0066); the content
+ * lives in Foundry, which a test answers with `page.route`. Returns the chat id.
+ */
+export function insertAiChat(input: {
+  householdId: string;
+  title: string;
+  placeLabel?: string;
+  createdBy?: string;
+}): string {
+  const id = randomUUID();
+  sql(`
+insert into public.ai_chats (id, household_id, conversation_id, title, place_label, created_by, response_ids)
+values (${literal(id)}, ${literal(input.householdId)}, ${literal(`conv_e2e${id.replaceAll('-', '')}`)},
+        ${literal(input.title)}, ${input.placeLabel ? literal(input.placeLabel) : 'null'},
+        ${input.createdBy ? literal(input.createdBy) : 'null'}, '{resp_e2e}');
+`);
+  return id;
+}
+
+/** Deletes a chat reference as postgres, as ai-agent's delete would (with its tombstone). */
+export function deleteAiChatRow(id: string): void {
+  sql(`delete from public.ai_chats where id = ${literal(id)};`);
 }
 
 /** Deletes an account as postgres (profile and memberships go with it). */

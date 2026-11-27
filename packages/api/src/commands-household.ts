@@ -261,6 +261,8 @@ export async function deleteHousehold(householdId: Id): Promise<void> {
       const batch = videos.slice(start, start + 100);
       await onlineCall((transport) => transport.removeVideos(batch));
     }
+    // Spec 0066, REQ-010: the KI-Agent chats in Foundry; delete_household refuses while one is left.
+    await onlineCall((transport) => transport.agentDelete(householdId));
     await householdCall((transport) => transport.deleteHousehold(householdId));
   } catch (error) {
     if (!(error instanceof TransportError)) throw error;

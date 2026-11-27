@@ -525,6 +525,70 @@ gh run watch "$id" --exit-status
 Konten anmelden, Daten, Fotos und ein Rezeptvideo ansehen, „Probe senden“. Dann `rm -rf tmp/restore`. Das alte
 Projekt erst löschen, wenn alles stimmt.
 
+## KI-Agent: Foundry-Agenten je Umgebung
+
+Der KI-Agent (Spec 0066, ADR-0018, ADR-0019) spricht Prompt-Agents in Foundry an. Jeder Agent ist eine
+Datei `foundry/agents/<name>.yaml` (Instruktion als `<name>.md` daneben) und wird je Umgebung mit
+Suffix angelegt: `places-agent-local`, `places-agent-preview`, `places-agent-prod`, alle im Projekt
+`n8n` der Ressource `msf-n8n-ai` (Abo `sub-enrico-goerlitz`, Tenant „PCG Labs“). Ein Upsert legt
+eine neue Version nur bei geänderter Definition an und nennt nur Name und Version.
+
+| Umgebung   | Wer legt an                                              | Version in der Function                            |
+| ---------- | -------------------------------------------------------- | -------------------------------------------------- |
+| lokal      | `pnpm foundry:agents:local` (dein `az login`)            | leer = neueste, oder die genannte Nummer in `.env` |
+| Vorschau   | `preview.yml`, Schritt „Foundry-Agenten“ vor „Functions“ | gepinnt: die Nummer dieses Laufs (Secret)          |
+| Produktion | `release.yml`, Schritt „Foundry-Agenten“ vor „Functions“ | gepinnt: die Nummer dieses Laufs (Secret)          |
+
+**Lokal** (gibt nichts Geheimes aus):
+
+```sh
+az login                                        # einmal; das Konto mit Zugriff auf sub-enrico-goerlitz
+export FOUNDRY_PROJECT_ENDPOINT=https://msf-n8n-ai.services.ai.azure.com/api/projects/n8n
+export FOUNDRY_SUBSCRIPTION=sub-enrico-goerlitz # nur nötig, wenn az mehrere Konten hält
+pnpm foundry:agents:local                       # → „places-agent-local Version 1 (unverändert)“
+```
+
+In der `.env`: `FOUNDRY_PROJECT_ENDPOINT` wie oben, `FOUNDRY_PLACES_AGENT=places-agent-local`,
+`FOUNDRY_PLACES_AGENT_VERSION` leer (neueste) oder die genannte Nummer. Danach den lokalen Stack aus
+einer Shell mit geladener `.env` neu starten (`supabase/functions/README.md`).
+
+**Einrichtung für die Pipeline (einmal; erledigt am 27.11.2026).** App `enrico-n8n-testing`, appId `79c0ab1a-e3a0-4290-8787-cf62d1bae91e`, Rolle „Foundry User“ auf dem Projekt `n8n`, Variablen in `preview` und `production` gesetzt. Namen außerhalb des Abos folgen dem Muster „enrico n8n testing“ (Enrico). Die Foundry-Ressource liegt in einem anderen
+Tenant als die Static Web Apps; die vorhandene Pipeline-Identität (`AZURE_CLIENT_ID`) reicht nicht
+hinüber. Deshalb eine eigene App-Registrierung im Foundry-Tenant, ohne Client-Secret (OIDC):
+
+1. Im Foundry-Tenant anmelden: `az login --tenant d941a86d-6c69-4fa3-8181-3c23e0cba0fc`.
+2. App anlegen: `az ad app create --display-name enrico-n8n-testing --sign-in-audience AzureADMyOrg` → `appId` merken;
+   Service-Principal: `az ad sp create --id <appId>`.
+3. Föderierte Anmeldedaten je GitHub-Umgebung (Issuer `https://token.actions.githubusercontent.com`,
+   Audience `api://AzureADTokenExchange`):
+   `az ad app federated-credential create --id <appId> --parameters '{"name":"github-housekeeping-preview","issuer":"https://token.actions.githubusercontent.com","subject":"repo:enricogoerlitz/housekeeping-app:environment:preview","audiences":["api://AzureADTokenExchange"]}'`
+   und dasselbe mit `github-housekeeping-production` / `environment:production`.
+4. Rolle **„Foundry User“** (kleinste Rolle mit Datenaktionen eines Projekts; „Foundry Agent
+   Consumer“ darf nur ausführen, nicht anlegen) auf dem **Projekt**, nicht auf der Ressource:
+   `az role assignment create --assignee-object-id <spObjectId> --assignee-principal-type ServicePrincipal --role "Foundry User" --scope /subscriptions/82126bbb-75fc-4908-889e-7569202a21b8/resourceGroups/rg-n8n-ai/providers/Microsoft.CognitiveServices/accounts/msf-n8n-ai/projects/n8n`
+5. GitHub-Variablen (keine Secrets) **je Umgebung** `preview` und `production`:
+   `gh variable set FOUNDRY_AZURE_CLIENT_ID --env preview --body <appId>` (ebenso `production`),
+   `gh variable set FOUNDRY_AZURE_TENANT_ID --env preview --body d941a86d-6c69-4fa3-8181-3c23e0cba0fc`
+   (ebenso `production`),
+   `gh variable set FOUNDRY_PROJECT_ENDPOINT --env preview --body https://msf-n8n-ai.services.ai.azure.com/api/projects/n8n`
+   (ebenso `production`).
+6. Function-Secrets je Supabase-Projekt, die die Pipeline **nicht** setzt (Schlüssel, Enrico):
+   `FOUNDRY_API_KEY` und `SERPER_API_KEY` (Supabase → Edge Functions → Secrets). Name, Version und
+   Endpoint des Agents setzt die Pipeline selbst.
+
+Fehlt eine Variable, bricht der Lauf im Schritt „Foundry-Konfiguration vorhanden“ ab; fehlt die
+Rolle, im Schritt „Foundry-Agenten“ mit „HTTP 401/403 … Rolle „Foundry User“ … prüfen“. Ein
+übersprungener Agent wäre schlimmer: Die Function liefe dann mit einer alten Version.
+
+**Eine Änderung ausrollen:** YAML oder Instruktion ändern, per PR nach `develop`; die nächste
+Vorschau legt `places-agent-preview` in neuer Version an und pinnt sie, die nächste Veröffentlichung
+`places-agent-prod`. Zurück geht es mit einem Revert oder, schnell, mit der alten Nummer in
+`FOUNDRY_PLACES_AGENT_VERSION` des Supabase-Projekts (bis zum nächsten Lauf).
+
+**Aufräumen:** Löschen eines Chats oder Haushalts in der App löscht Conversation und Antworten in
+Foundry. Wird ein Haushalt außerhalb der App gelöscht, bleiben seine Conversations; sie tragen die
+Metadaten `household_id` und `app: housekeeping` und lassen sich danach finden.
+
 ## Schlüsselwechsel
 
 Bei Verdacht auf Abfluss sofort, sonst zum Ablaufdatum. Immer: neuen Wert setzen, einen Lauf

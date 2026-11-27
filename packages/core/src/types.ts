@@ -504,6 +504,25 @@ export interface Trip {
   draft?: boolean;
 }
 
+// ---------- KI-Agent (spec 0066) ----------
+
+/**
+ * A research chat of the household ("Recherche-Chat"): only the reference. The messages live in
+ * the Foundry conversation and are loaded online (ADR-0018).
+ */
+export interface AiChat {
+  id: Id;
+  title: string;
+  /** "Mitte", "Aktueller Standort": the place of the first message. */
+  placeLabel?: string;
+  createdBy?: Id;
+  createdAt: string;
+  updatedAt: string;
+  conversationId: string;
+  /** Its answers in Foundry (at most 20 before a new chat, spec 0066 decision 13). */
+  responseIds: string[];
+}
+
 // ---------- Feedback ----------
 
 export interface FeedbackEntry {

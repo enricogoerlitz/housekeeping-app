@@ -53,12 +53,18 @@ const TABLE_ORDER = [
   'packing_items',
   'feedback',
   'notification_settings',
+  'ai_chats',
   ...Object.keys(COMPOSITE_TABLES),
   'household_members',
 ];
 
 /** Tables only dedicated RPCs write (`apply_changes` refuses them). */
-const RPC_ONLY = new Set([...Object.keys(COMPOSITE_TABLES), 'household_members']);
+const RPC_ONLY = new Set([
+  ...Object.keys(COMPOSITE_TABLES),
+  'household_members',
+  // Spec 0066: only ai-agent writes them (create_ai_chat, record_ai_chat_turn, delete_ai_chat).
+  'ai_chats',
+]);
 const NEVER_SENT = new Set<string>(NEVER_SENT_COLUMNS);
 
 export interface HouseholdChange {

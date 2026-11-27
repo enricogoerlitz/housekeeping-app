@@ -67,6 +67,7 @@ import {
   type PackingItem,
   type PackingListBag,
   type Recipe,
+  type AiChat,
   type RecurringItem,
   type RecurringRule,
   type Trip,
@@ -461,6 +462,19 @@ const recurringItemRow = (householdId: string, item: RecurringItem) =>
     ...(item.createdAt ? { created_at: item.createdAt } : {}),
   }));
 
+const aiChatRow = (householdId: string, chat: AiChat) =>
+  single('ai_chats', householdId, chat, () => ({
+    id: chat.id,
+    household_id: householdId,
+    conversation_id: chat.conversationId,
+    title: chat.title,
+    place_label: chat.placeLabel ?? null,
+    created_by: chat.createdBy ?? null,
+    response_ids: [...chat.responseIds],
+    created_at: chat.createdAt,
+    updated_at: chat.updatedAt,
+  }));
+
 const collectionRecipeRow = (householdId: string, row: CollectionRecipe) =>
   single('collection_recipes', householdId, row, () => ({
     id: row.id,
@@ -633,6 +647,7 @@ export function householdToRows(data: HouseholdData): HouseholdRows {
     ...data.planEntries.map((entry) => planRow(householdId, entry)),
     ...data.items.map((item) => itemRows(householdId, item)),
     ...data.recurringItems.map((item) => recurringItemRow(householdId, item)),
+    ...data.aiChats.map((chat) => aiChatRow(householdId, chat)),
     ...data.chores.map((chore) => choreRow(householdId, chore)),
     ...data.choreEvents.map((event) => choreEventRow(householdId, event)),
     ...data.trips.map((trip) => tripRows(householdId, trip)),
@@ -669,6 +684,8 @@ export function householdToRows(data: HouseholdData): HouseholdRows {
     shopping_contributions: [],
     // After articles (foreign key), spec 0060.
     recurring_items: [],
+    // Spec 0066.
+    ai_chats: [],
     chores: [],
     chore_events: [],
     trips: [],
@@ -892,6 +909,22 @@ function toActivitySeries(row: Row): ActivitySeries | undefined {
     eaterIds: r.eater_ids ?? [],
     guests: r.guests ?? 0,
     reminder: toReminder(r),
+  };
+}
+
+/** Spec 0066: a chat reference; one without its conversation cannot be opened and is left out. */
+function toAiChat(row: Row): AiChat | undefined {
+  const r = row as Cached<'ai_chats'>;
+  if (!r.conversation_id || !r.title) return undefined;
+  return {
+    id: r.id,
+    conversationId: r.conversation_id,
+    title: r.title,
+    placeLabel: opt(r.place_label),
+    createdBy: opt(r.created_by),
+    createdAt: r.created_at ?? '',
+    updatedAt: r.updated_at ?? r.created_at ?? '',
+    responseIds: Array.isArray(r.response_ids) ? r.response_ids.map(String) : [],
   };
 }
 
@@ -1326,6 +1359,12 @@ export function rowsToHousehold(
       rowsOfTable(tables, 'recurring_items', 'created').flatMap(
         (row) => cached(row, [], () => toRecurringItem(row)) ?? [],
       ),
+    ),
+    aiChats: reuse(
+      previous?.aiChats,
+      [...rowsOfTable(tables, 'ai_chats', 'newest')]
+        .sort((a, b) => String(b.updated_at ?? '').localeCompare(String(a.updated_at ?? '')))
+        .flatMap((row) => cached(row, [], () => toAiChat(row)) ?? []),
     ),
     chores: reuse(previous?.chores, plain(tables, 'chores', 'created', toChore)),
     choreEvents: reuse(

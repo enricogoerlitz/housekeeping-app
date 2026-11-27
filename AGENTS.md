@@ -46,9 +46,9 @@ Use `expo install` for anything native so versions match the Expo SDK.
 3. **Tests first, red first.** Show the failing run before writing the implementation.
 4. **Read offline, write online.** The UI reads only from the local cache. Writes go to Supabase
    and are disabled offline — except the store-mode actions and packing (ADR-0008 addendum,
-   ADR-0013). One read is online-only: the version check (`/version.json`, `min_app_version`,
-   ADR-0015). Notices behind the bell come from the cache (ADR-0017). See
-   `docs/architecture/sync.md`.
+   ADR-0013). Two reads are online-only: the version check (`/version.json`, `min_app_version`,
+   ADR-0015) and the messages of a KI-Agent chat (its list is cached, ADR-0018). Notices behind
+   the bell come from the cache (ADR-0017). See `docs/architecture/sync.md`.
 5. **Every table is tenant-scoped and synced.** `household_id`, Row Level Security, explicit
    grants, a pgTAP isolation test, server-set `updated_at` and a delete trigger — always together.
    Use the `db-change` skill. Reviewed exceptions live in the `private` schema with RLS and no

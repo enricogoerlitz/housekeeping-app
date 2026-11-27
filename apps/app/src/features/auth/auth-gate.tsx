@@ -3,11 +3,19 @@ import { Text, toast, useTheme } from '@housekeeping/ui';
 import { useEffect, type ReactNode } from 'react';
 import { View } from 'react-native';
 
+import { clearRecentPlaces } from '@/features/ai-agent/device-place';
 import { ownAppVersion } from '@/lib/app-version';
 import { authConfig } from '@/lib/auth-config';
+import { clearPageDraftBackups } from '@/lib/page-draft-backup';
 
 import { LoginScreen } from './login-screen';
 import { NoHouseholdScreen } from './no-household-screen';
+
+/** What this device keeps besides the cache; gone with every sign-out, also a forced one. */
+function clearDeviceStores(): void {
+  clearPageDraftBackups();
+  clearRecentPlaces();
+}
 
 /**
  * Between the theme and the app: nothing of the app renders without a session and a household
@@ -18,7 +26,7 @@ export function AuthGate(props: { children: ReactNode }) {
   const sync = useSyncState();
 
   useEffect(() => {
-    startAuth(authConfig, { appVersion: ownAppVersion });
+    startAuth(authConfig, { appVersion: ownAppVersion, clearDevice: clearDeviceStores });
   }, []);
 
   // A write the server refused (AC-019): one calm toast, app-wide.

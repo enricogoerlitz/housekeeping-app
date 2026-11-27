@@ -11,7 +11,9 @@ The concept is in `docs/architecture/sync.md` (ADR-0008). These rules must never
 
 - **Reads come from the local cache.** UI code reads reactively from the cache in `packages/api`.
   It never awaits a network request to show data.
-- **One online-only read:** the version check. Notices behind the bell are derived from the
+- **Two online-only reads:** the version check, and the messages of a KI-Agent chat, loaded
+  through `ai-agent` from Foundry; the chat list (`ai_chats`) is cached and synced (ADR-0018).
+  Notices behind the bell are derived from the
   cache by `dueNotices` in `packages/core` (ADR-0017); the acknowledged ones live in the member's
   own synced row of `notification_settings`, readable only by herself and written only through
   `acknowledge_notices`.

@@ -48,6 +48,8 @@ export * from './sync-overlay';
 export * from './sync-diff';
 export * from './store-queue';
 export * from './ai-contract';
+export * from './ai-agent';
+export * from './ai-agent-places';
 export * from './recipe-list';
 export * from './unfinished-recipes';
 export * from './restaurant-list';

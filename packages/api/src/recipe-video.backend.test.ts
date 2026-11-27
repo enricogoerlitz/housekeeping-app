@@ -313,6 +313,8 @@ describe('Video entfernen (0046 REQ-005)', () => {
     expect(fx.calls.map((call) => call.fn)).toEqual([
       'beginHouseholdDeletion',
       'removeVideos',
+      // Spec 0066, REQ-010: the KI-Agent chats (none here) before the household.
+      'agentDelete',
       'deleteHousehold',
     ]);
     expect(fx.calls[1]?.args[0]).toEqual([videoPath]);

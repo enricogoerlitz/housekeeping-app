@@ -3,7 +3,6 @@ import { signOutWarning } from '@housekeeping/core';
 import { useState, type ReactNode } from 'react';
 
 import { ConfirmDialog } from '@/features/shell/confirm-dialog';
-import { clearPageDraftBackups } from '@/lib/page-draft-backup';
 
 /**
  * „Abmelden“ (spec 0018, REQ-005): with changes still waiting in the store queue it asks first;
@@ -13,9 +12,9 @@ import { clearPageDraftBackups } from '@/lib/page-draft-backup';
  */
 export function useSignOut(): { request: () => void; dialog: ReactNode } {
   const [warning, setWarning] = useState<string | undefined>();
-  // Kept recipe drafts go with the session (spec 0056, REQ-006).
+  // Kept recipe drafts (spec 0056, REQ-006) and the KI-Agent's recent places (spec 0066, AC-013)
+  // go with the session: startAuth clears them on every sign-out (clearDeviceStores).
   const leave = () => {
-    clearPageDraftBackups();
     void signOut();
   };
   const request = () => {

@@ -1,4 +1,5 @@
 import type {
+  AiChat,
   Activity,
   ActivityKind,
   ActivitySeries,
@@ -51,6 +52,8 @@ export interface HouseholdData {
   items: ShoppingItem[];
   /** Spec 0060: "Dauerposten" in creation order. */
   recurringItems: RecurringItem[];
+  /** Spec 0066: the household's KI-Agent chats, last used first. */
+  aiChats: AiChat[];
   chores: Chore[];
   choreEvents: ChoreEvent[];
   /** Spec 0022: trips with their people (rows of trips and trip_members). */

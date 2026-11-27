@@ -4,7 +4,7 @@
 -- Negative paths throughout: a foreign household, signed out, invalid input, the failure path.
 begin;
 \ir _helpers.psql
-select plan(93);
+select plan(94);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 grant select on fx to anon, authenticated;
@@ -314,6 +314,7 @@ values (tests.fx('entry'), tests.fx('wg'), current_date + 1, tests.fx('slot'), '
 insert into public.recurring_items (household_id, article_id, rule, starts_on)
 values (tests.fx('wg'), tests.fx('article'), '{"type": "monthly", "day": 1}', '2026-12-01');
 insert into public.shopping_items (id, household_id, article_id) values (tests.fx('item'), tests.fx('wg'), tests.fx('article'));
+insert into public.ai_chats (household_id, conversation_id, title) values (tests.fx('wg'), 'conv_wg_koeln', 'Brunch');
 insert into public.shopping_contributions (household_id, item_id) values (tests.fx('wg'), tests.fx('item'));
 insert into public.packing_bags (id, household_id, name, member_id) values (tests.fx('bag'), tests.fx('wg'), 'Kulturbeutel', tests.fx('enrico'));
 insert into public.packing_bag_items (id, household_id, bag_id, name) values (tests.fx('bag_item'), tests.fx('wg'), tests.fx('bag'), 'Zahnbürste');
@@ -389,6 +390,9 @@ select tests.clear_authentication();
 delete from storage.objects where bucket_id = 'household-media' and name like tests.fx('wg') || '/notes/%';
 
 select tests.authenticate_as(tests.fx('enrico'));
+select throws_ok(format('select public.delete_household(%L)', tests.fx('wg')),
+  'P0001', 'ai_chats_remaining', 'Spec 0066, AC-032: while a KI-Agent chat is left: ai_chats_remaining');
+select public.delete_ai_chat((select id from public.ai_chats where household_id = tests.fx('wg')));
 select lives_ok(format('select public.delete_household(%L)', tests.fx('wg')),
   'AC-019: the last member deletes "WG Köln"');
 select tests.clear_authentication();

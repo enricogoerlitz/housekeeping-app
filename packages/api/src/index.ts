@@ -23,6 +23,7 @@ export * from './commands-packing';
 export * from './commands-notices';
 export * from './assistant';
 export * from './ai';
+export * from './ai-agent';
 export { photoSource, useRecipeImage } from './photos';
 export {
   PHOTO_UPLOAD_FAILED_MESSAGE,
