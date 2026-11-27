@@ -395,7 +395,7 @@ describe('a new cache version (AC-018)', () => {
   }
 
   it('spec 0066: version 26 for ai_chats (spec 0060: 25 for recurring_items)', () => {
-    expect(CACHE_VERSION).toBe(26);
+    expect(CACHE_VERSION).toBe(27);
   });
 
   it('spec 0012: a queued pack entry survives the version bump and is sent', async () => {

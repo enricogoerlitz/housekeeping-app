@@ -1114,6 +1114,7 @@ export type Database = {
       notification_settings: {
         Row: {
           acknowledged_notices: string[];
+          app_view: string;
           created_at: string;
           household_id: string;
           id: string;
@@ -1123,6 +1124,7 @@ export type Database = {
         ComputedFields: never;
         Insert: {
           acknowledged_notices?: string[];
+          app_view?: string;
           created_at?: string;
           household_id: string;
           id?: string;
@@ -1131,6 +1133,7 @@ export type Database = {
         };
         Update: {
           acknowledged_notices?: string[];
+          app_view?: string;
           created_at?: string;
           household_id?: string;
           id?: string;
@@ -2174,6 +2177,7 @@ export type Database = {
         Returns: undefined;
       };
       set_activity_rating: { Args: { activity_id: string; stars: number }; Returns: undefined };
+      set_app_view: { Args: { view: string }; Returns: undefined };
       set_feedback_vote: { Args: { feedback_id: string; voted: boolean }; Returns: undefined };
       set_manual_amount: {
         Args: { p_count: number; p_item_id: string; p_qty: number; p_unit: string };

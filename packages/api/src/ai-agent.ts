@@ -3,6 +3,8 @@
 // the pull after it, so "Verlauf" shows it. Loading and deleting are online; the content of a
 // chat is never stored on the device.
 import {
+  type AgentAttachment,
+  type AgentBadgeSlug,
   AgentStreamEventSchema,
   createSseParser,
   type AgentMessage,
@@ -66,7 +68,15 @@ async function readEvents(
  * OfflineError before anything is sent; refusals are AiError (quota, chat too long).
  */
 export async function sendAgentMessage(
-  input: { chatId?: Id; message: string; place: AgentPlace },
+  input: {
+    chatId?: Id;
+    message: string;
+    place: AgentPlace;
+    /** Spec 0067: the badges of the message, as hints. */
+    badges?: readonly AgentBadgeSlug[];
+    /** Spec 0067: photos (JPEG) and PDF files, prepared by the app. */
+    attachments?: readonly AgentAttachment[];
+  },
   onEvent: (event: AgentStreamEvent) => void,
   signal: AbortSignal,
 ): Promise<void> {
@@ -84,6 +94,8 @@ export async function sendAgentMessage(
             message: input.message.trim(),
             place: input.place,
             timeZone: deviceTimeZone(),
+            badges: [...(input.badges ?? [])],
+            attachments: [...(input.attachments ?? [])],
           },
           signal,
         );

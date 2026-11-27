@@ -1,11 +1,13 @@
 import {
+  setAppView,
   syncNow,
+  useAppView,
   useCurrentMember,
   useHousehold,
   useHouseholdClock,
   useSyncState,
 } from '@housekeeping/api';
-import { dietPreferenceLabel, syncRow } from '@housekeeping/core';
+import { dietPreferenceLabel, syncRow, type AppView } from '@housekeeping/core';
 import {
   Avatar,
   Button,
@@ -273,11 +275,57 @@ function SyncLine() {
   );
 }
 
+/**
+ * Spec 0067, REQ-001: "Normal" or "KI zuerst" for this person only (AC-002); offline greyed out
+ * with the usual hint, the chosen view stays (AC-003).
+ */
+function ViewChoice() {
+  const view = useAppView();
+  const online = useOnlineOnly();
+  const choose = (next: AppView) => {
+    if (next === view) return;
+    try {
+      setAppView(next);
+    } catch (error) {
+      toast.show({ message: errorMessage(error) });
+    }
+  };
+  return (
+    <Stack gap={8}>
+      <Text variant="smallStrong">Ansicht</Text>
+      <ChoiceChips<AppView>
+        label="Ansicht"
+        value={view}
+        onChange={choose}
+        disabled={online.disabled}
+        hint={online.hint}
+        options={[
+          { value: 'normal', label: 'Normal' },
+          { value: 'ai_first', label: 'KI zuerst' },
+        ]}
+        testID="app-view"
+      />
+      <Text variant="small" color="muted" testID="app-view-hint">
+        {view === 'ai_first'
+          ? 'Der Agent steht in der Mitte der Leiste. „Haushalt“ findest du unter ⊞.'
+          : 'Den Agent erreichst du über ⊞ Verwalten → „Agent“ und über ✨ auf den Seiten.'}{' '}
+        Gilt nur für dich.
+      </Text>
+      {online.disabled && online.hint ? (
+        <Text variant="small" color="warn" testID="app-view-offline">
+          {online.hint}
+        </Text>
+      ) : null}
+    </Stack>
+  );
+}
+
 function AppearanceSection() {
   const settings = useSettings();
   return (
     <Section title="Darstellung" testID="settings-appearance">
       <Stack gap={14}>
+        {features.aiAgent ? <ViewChoice /> : null}
         <ThemePicker />
         <Stack gap={8}>
           <Text variant="smallStrong">Erscheinungsbild</Text>

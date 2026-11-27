@@ -6,7 +6,7 @@ import {
   createSseParser,
   type AgentStreamEvent,
 } from '../_shared/ai-agent.gen.ts';
-import type { DbResult } from '../_shared/deps.ts';
+import type { DbResult, Query } from '../_shared/deps.ts';
 import { ANON_JWT, fakeClient, fakeDeps, post, type Row } from '../_shared/test-fakes.ts';
 import { ENRICO, HOUSEHOLD_ID, householdTables } from '../_shared/test-household.ts';
 import { handler } from './handler.ts';
@@ -14,8 +14,8 @@ import { handler } from './handler.ts';
 const PROJECT = 'https://foundry.example.test/api/projects/p';
 const ENV = {
   FOUNDRY_PROJECT_ENDPOINT: PROJECT,
-  FOUNDRY_PLACES_AGENT: 'places-agent-local',
-  FOUNDRY_PLACES_AGENT_VERSION: '3',
+  FOUNDRY_HOUSEHOLD_AGENT: 'household-agent-local',
+  FOUNDRY_HOUSEHOLD_AGENT_VERSION: '3',
   SERPER_API_KEY: 'test-serper-SECRET',
 };
 const CHAT_ID = 'cccccccc-0000-4000-8000-000000000001';
@@ -301,16 +301,21 @@ describe('ai-agent: access', () => {
   });
 
   it('a missing agent setting is 500 and names only the variable', async () => {
-    const { deps } = setup({ env: { FOUNDRY_PLACES_AGENT: '' } });
+    const { deps } = setup({ env: { FOUNDRY_HOUSEHOLD_AGENT: '' } });
     expect((await handler(send(), deps)).status).toBe(500);
-    expect(JSON.stringify(vi.mocked(console.error).mock.calls)).toContain('FOUNDRY_PLACES_AGENT');
+    expect(JSON.stringify(vi.mocked(console.error).mock.calls)).toContain(
+      'FOUNDRY_HOUSEHOLD_AGENT',
+    );
   });
 
   it('without a pinned version the latest version of the agent answers (local)', async () => {
-    const { deps, state } = setup({ env: { FOUNDRY_PLACES_AGENT_VERSION: '' } });
+    const { deps, state } = setup({ env: { FOUNDRY_HOUSEHOLD_AGENT_VERSION: '' } });
     await events(await handler(send({ chatId: CHAT_ID }), deps));
     const body = calls(state, 'POST', '/responses')[0]?.body as { agent_reference: object };
-    expect(body.agent_reference).toEqual({ type: 'agent_reference', name: 'places-agent-local' });
+    expect(body.agent_reference).toEqual({
+      type: 'agent_reference',
+      name: 'household-agent-local',
+    });
   });
 
   it('a message over 2000 characters is 400', async () => {
@@ -360,7 +365,7 @@ describe('ai-agent: send', () => {
     const sent = calls(state, 'POST', '/responses')[0]!;
     expect(sent.headers.get('api-key')).toBe('test-foundry-key-SECRET');
     expect(sent.body).toMatchObject({
-      agent_reference: { type: 'agent_reference', name: 'places-agent-local', version: '3' },
+      agent_reference: { type: 'agent_reference', name: 'household-agent-local', version: '3' },
       conversation: 'conv_new',
       stream: true,
     });
@@ -648,7 +653,7 @@ describe('ai-agent: delete', () => {
   it('AC-031: a household without chats is purged without any Foundry setting (no agent configured)', async () => {
     const { deps, state } = setup({
       chats: [],
-      env: { FOUNDRY_PROJECT_ENDPOINT: '', FOUNDRY_PLACES_AGENT: '' },
+      env: { FOUNDRY_PROJECT_ENDPOINT: '', FOUNDRY_HOUSEHOLD_AGENT: '' },
     });
     const response = await handler(post({ action: 'purge', householdId: HOUSEHOLD_ID }), deps);
     expect(response.status).toBe(200);
@@ -661,5 +666,272 @@ describe('ai-agent: delete', () => {
     const response = await handler(post({ action: 'purge', householdId: FOREIGN_HOUSEHOLD }), deps);
     expect(response.status).toBe(403);
     void ENRICO;
+  });
+});
+
+// ---------- Spec 0067: the household agent's tools, badges and attachments ----------
+
+/** Round 1 calls tools, round 2 answers with text: the stream Foundry sends per model run. */
+function toolTurn(calls: { name: string; callId: string; args: unknown }[]): () => Response {
+  let run = 0;
+  return () => {
+    run += 1;
+    if (run === 1)
+      return sse([
+        { type: 'response.created', response: { id: 'resp_t1' } },
+        ...calls.flatMap((call) => [
+          {
+            type: 'response.output_item.added',
+            item: { type: 'function_call', name: call.name, call_id: call.callId },
+          },
+          {
+            type: 'response.output_item.done',
+            item: {
+              type: 'function_call',
+              name: call.name,
+              call_id: call.callId,
+              arguments: JSON.stringify(call.args),
+            },
+          },
+        ]),
+        { type: 'response.completed', response: { id: 'resp_t1' } },
+      ]);
+    return sse([
+      { type: 'response.created', response: { id: 'resp_t2' } },
+      { type: 'response.output_item.added', item: { type: 'message' } },
+      { type: 'response.output_text.delta', delta: 'Am Samstag gibt es Mango-Curry.' },
+      { type: 'response.output_item.done', item: { type: 'message' } },
+      { type: 'response.completed', response: { id: 'resp_t2' } },
+    ]);
+  };
+}
+
+type Sent = { input: { type: string; call_id?: string; output?: string; content?: unknown[] }[] };
+const outputsOf = (state: FoundryState, round: number) =>
+  ((calls(state, 'POST', '/responses')[round]?.body as Sent | undefined)?.input ?? []).filter(
+    (item) => item.type === 'function_call_output',
+  );
+
+function failingQuery(): Query {
+  const failed = Promise.resolve({ data: null, error: { message: 'down' } });
+  const query: Query = {
+    eq: () => query,
+    in: () => query,
+    gte: () => query,
+    lte: () => query,
+    limit: () => query,
+    order: () => query,
+    range: () => query,
+    then: (onFulfilled, onRejected) => failed.then(onFulfilled, onRejected),
+  };
+  return query;
+}
+
+describe('ai-agent: household tools (spec 0067)', () => {
+  it('AC-016: two tool calls are two step rows before the text; their outputs go to round 2', async () => {
+    const { deps, state } = setup({
+      state: {
+        stream: toolTurn([
+          { name: 'list_recipes', callId: 'call_r', args: { query: 'curry', fields: ['title'] } },
+          { name: 'calendar', callId: 'call_c', args: { from: '2026-11-21', to: '2026-11-22' } },
+        ]),
+      },
+    });
+    const all = await events(await handler(send({ chatId: CHAT_ID }), deps));
+    const steps = all.flatMap((event) => (event.type === 'step' ? [event.step] : []));
+    const done = steps.filter((step) => step.status === 'done' && step.kind === 'tool');
+    expect(done.map((step) => [step.id, step.label])).toEqual([
+      ['t1', 'Liest eure Rezepte'],
+      ['t2', 'Schaut in den Kalender'],
+    ]);
+    expect(steps.filter((step) => step.status === 'running').map((step) => step.id)).toEqual([
+      't1',
+      't2',
+    ]);
+    const firstText = all.findIndex((event) => event.type === 'text');
+    const lastStep = all.map((event) => event.type).lastIndexOf('step');
+    expect(lastStep).toBeLessThan(firstText);
+
+    const outputs = outputsOf(state, 1);
+    expect(outputs.map((item) => item.call_id)).toEqual(['call_r', 'call_c']);
+    expect(JSON.parse(outputs[0]!.output!)).toMatchObject({
+      total: 1,
+      items: [{ title: 'Mango-Curry' }],
+    });
+    expect(all.at(-1)).toEqual({ type: 'done' });
+  });
+
+  it('AC-014: the tools read only the chat household, as the caller, never a foreign row', async () => {
+    const { deps, state, client } = setup({
+      state: {
+        stream: toolTurn([
+          { name: 'list_articles', callId: 'call_a', args: { limit: 300, fields: ['name'] } },
+        ]),
+      },
+    });
+    await events(await handler(send({ chatId: CHAT_ID }), deps));
+    const output = outputsOf(state, 1)[0]!.output!;
+    expect(output).toContain('Tofu');
+    expect(output).not.toContain('Fremdartikel');
+    // Only the names of the household's members; never e-mail addresses.
+    expect(client.selects.find((entry) => entry.table === 'profiles')?.columns).toBe('id,name');
+    for (const entry of client.selects) expect(entry.columns).not.toContain('email');
+  });
+
+  it("AC-014: a household id in the model's arguments is refused, nothing is read", async () => {
+    const { deps, state, client } = setup({
+      state: {
+        stream: toolTurn([
+          { name: 'list_recipes', callId: 'call_x', args: { household_id: FOREIGN_HOUSEHOLD } },
+        ]),
+      },
+    });
+    const all = await events(await handler(send({ chatId: CHAT_ID }), deps));
+    expect(JSON.parse(outputsOf(state, 1)[0]!.output!)).toEqual({ error: 'invalid_arguments' });
+    expect(client.selects.map((entry) => entry.table)).not.toContain('recipes');
+    const step = all.find((event) => event.type === 'step' && event.step.status === 'done');
+    expect(step?.type === 'step' && step.step.detail).toBe('Anfrage ungültig');
+  });
+
+  it('AC-015: SQL in the arguments finds nothing, errors name no SQL, the answer goes on', async () => {
+    const { deps, state, client } = setup({
+      state: {
+        stream: toolTurn([
+          { name: 'list_recipes', callId: 'call_q', args: { query: "x' or 1=1 --" } },
+          {
+            name: 'calendar',
+            callId: 'call_d',
+            args: { from: "2026-11-21'; drop table x", to: '2026-11-22' },
+          },
+        ]),
+      },
+    });
+    const all = await events(await handler(send({ chatId: CHAT_ID }), deps));
+    const [search, range] = outputsOf(state, 1);
+    expect(JSON.parse(search!.output!)).toMatchObject({ total: 0, items: [] });
+    expect(JSON.parse(range!.output!)).toEqual({ error: 'invalid_arguments' });
+    for (const entry of client.selects) expect(entry.columns).toMatch(/^[a-z_, ]+$/);
+    expect(JSON.stringify(all)).not.toMatch(/drop table|syntax/i);
+    expect(all.at(-1)).toEqual({ type: 'done' });
+  });
+
+  it('cost: at most 10 household calls per round run, the rest is closed as too many and shown', async () => {
+    const { deps, state, client } = setup({
+      state: {
+        stream: toolTurn(
+          Array.from({ length: 14 }, (_, n) => ({
+            name: 'list_chores',
+            callId: `call_${n}`,
+            args: {},
+          })),
+        ),
+      },
+    });
+    const all = await events(await handler(send({ chatId: CHAT_ID }), deps));
+    const outputs = outputsOf(state, 1);
+    expect(outputs).toHaveLength(14);
+    expect(outputs.filter((item) => item.output === '{"error":"too_many_calls"}')).toHaveLength(4);
+    expect(client.selects.filter((entry) => entry.table === 'chores')).toHaveLength(10);
+    const skipped = all.filter(
+      (event) => event.type === 'step' && event.step.detail === 'übersprungen (zu viele Abfragen)',
+    );
+    expect(skipped).toHaveLength(4);
+    expect(all.at(-1)).toEqual({ type: 'done' });
+  });
+
+  it('a read that fails tells the model and shows "konnte nicht lesen", the answer goes on', async () => {
+    const { deps, state, client } = setup({
+      state: { stream: toolTurn([{ name: 'list_chores', callId: 'call_h', args: {} }]) },
+    });
+    const from = client.from;
+    client.from = (table) => (table === 'chores' ? { select: failingQuery } : from(table));
+    const all = await events(await handler(send({ chatId: CHAT_ID }), deps));
+    expect(JSON.parse(outputsOf(state, 1)[0]!.output!)).toEqual({ error: 'tool_failed' });
+    const step = all.find((event) => event.type === 'step' && event.step.status === 'done');
+    expect(step?.type === 'step' && step.step.detail).toBe('konnte nicht lesen');
+    expect(all.at(-1)).toEqual({ type: 'done' });
+  });
+
+  it("AC-008, AC-025: badges and the household's day go into the context block", async () => {
+    const { deps, state } = setup();
+    deps.now = () => new Date('2026-11-27T23:30:00Z');
+    await events(await handler(send({ chatId: CHAT_ID, badges: ['rezepte', 'ausgehen'] }), deps));
+    const content = (calls(state, 'POST', '/responses')[0]!.body as Sent).input[0]!.content as {
+      text: string;
+    }[];
+    expect(content[0]!.text).toContain('Hinweise der Person: Rezepte, Ausgehen');
+    expect(content[0]!.text).toContain('Heute im Haushalt: Samstag, 2026-11-28 (Europe/Berlin)');
+  });
+
+  it('REQ-005: photos go as input_image, a PDF as input_file; a body over the limit is 413', async () => {
+    const { deps, state } = setup();
+    const jpeg = `data:image/jpeg;base64,${'A'.repeat(64)}`;
+    const pdf = `data:application/pdf;base64,${'A'.repeat(64)}`;
+    await events(
+      await handler(
+        send({
+          chatId: CHAT_ID,
+          message: '',
+          attachments: [
+            { kind: 'image', dataUrl: jpeg },
+            { kind: 'pdf', name: 'Rezept.pdf', dataUrl: pdf },
+          ],
+        }),
+        deps,
+      ),
+    );
+    const content = (calls(state, 'POST', '/responses')[0]!.body as Sent).input[0]!.content;
+    expect(content).toEqual([
+      expect.objectContaining({ type: 'input_text' }),
+      { type: 'input_image', image_url: jpeg, detail: 'auto' },
+      { type: 'input_file', filename: 'Rezept.pdf', file_data: pdf },
+    ]);
+    const huge = await handler(
+      send({
+        chatId: CHAT_ID,
+        attachments: [{ kind: 'image', dataUrl: `${jpeg}${'A'.repeat(9_000_000)}` }],
+      }),
+      deps,
+    );
+    expect(huge.status).toBe(413);
+  });
+
+  it('AC-016: a stored chat shows its tool steps when it is opened again', async () => {
+    const { deps } = setup({
+      state: {
+        conversations: {
+          conv_old: {
+            metadata: { household_id: HOUSEHOLD_ID },
+            items: [
+              { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Curry?' }] },
+              {
+                type: 'function_call',
+                name: 'list_recipes',
+                call_id: 'call_r',
+                arguments: '{"query":"curry"}',
+              },
+              {
+                type: 'function_call_output',
+                call_id: 'call_r',
+                output: '{"total":1,"offset":0,"items":[{"title":"Mango-Curry"}]}',
+              },
+              {
+                type: 'message',
+                role: 'assistant',
+                content: [{ type: 'output_text', text: 'Mango-Curry.' }],
+              },
+            ],
+          },
+        },
+      },
+    });
+    const reply = AgentLoadReplySchema.parse(
+      await (
+        await handler(post({ action: 'load', householdId: HOUSEHOLD_ID, chatId: CHAT_ID }), deps)
+      ).json(),
+    );
+    expect(reply.messages[1]?.steps).toEqual([
+      expect.objectContaining({ label: 'Liest eure Rezepte', detail: 'Suche „curry“', count: 1 }),
+    ]);
   });
 });

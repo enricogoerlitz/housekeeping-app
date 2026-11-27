@@ -153,10 +153,10 @@ test('AC-001, AC-003, AC-004, AC-005: ✨ in "Restaurants" opens the empty page,
   await open(page, '/rezepte');
   await expect(tid(page, 'agent-open')).toHaveCount(0);
   await openAgentFromRestaurants(page);
-  await expect(tid(page, 'agent-title')).toContainText('KI-Agent');
-  await expect(tid(page, 'agent-title-subtitle')).toHaveText(
-    'Restaurants und Aktivitäten, mit Websuche',
-  );
+  // Spec 0067: the one household agent, opened with the badge "Ausgehen" and its start page.
+  await expect(tid(page, 'agent-title')).toContainText('Agent');
+  await expect(tid(page, 'agent-badge-ausgehen')).toBeVisible();
+  await expect(tid(page, 'agent-abilities')).toBeVisible();
   await expect(tid(page, 'agent-place-chip')).toContainText('Hier · Zu Fuß');
   await expect(page.locator('[data-testid^="agent-turn-"]')).toHaveCount(0);
   await expect(tid(page, 'agent-send')).toHaveAttribute('aria-disabled', 'true');
@@ -313,7 +313,7 @@ test('AC-039: offline the input is off with a hint and "Verlauf" still opens', a
   await openAgentFromRestaurants(page);
   await goOffline(page);
   await expect(tid(page, 'agent-offline-hint')).toHaveText(
-    'Offline – zum Recherchieren brauchst du Netz',
+    'Offline – für den Agent brauchst du Netz',
   );
   await expect(tid(page, 'agent-send')).toHaveAttribute('aria-disabled', 'true');
   await tid(page, 'agent-history-open').click();

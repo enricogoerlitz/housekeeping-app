@@ -1,5 +1,7 @@
 import { aiErrorMessage, loadAgentChat, sendAgentMessage } from '@housekeeping/api';
 import type {
+  AgentAttachment,
+  AgentBadgeSlug,
   AgentCard,
   AgentPlace,
   AgentSource,
@@ -24,6 +26,15 @@ export interface ChatTurn {
   steps: AgentStep[];
   status: 'streaming' | 'done' | 'stopped' | 'error';
   error?: string;
+  /** Spec 0067: the badges and the number of photos and files of a message of the person. */
+  badges?: AgentBadgeSlug[];
+  attachments?: number;
+}
+
+/** Spec 0067: the hints and files of one message. */
+export interface SendExtras {
+  badges?: readonly AgentBadgeSlug[];
+  attachments?: readonly AgentAttachment[];
 }
 
 export type ChatLoad =
@@ -88,7 +99,7 @@ export interface AgentChat {
   turns: ChatTurn[];
   load: ChatLoad;
   busy: boolean;
-  send: (message: string, place: AgentPlace) => void;
+  send: (message: string, place: AgentPlace, extras?: SendExtras) => void;
   stop: () => void;
   /** "Neuer Chat": an empty page. */
   reset: () => void;
@@ -142,6 +153,7 @@ export function useAgentChat(chatId: Id | undefined, onCreated: (id: Id) => void
             followUps: message.followUps,
             sources: message.sources,
             steps: message.steps,
+            ...(message.attachments ? { attachments: message.attachments } : {}),
           })),
         });
         setLoad({ status: 'idle' });
@@ -158,12 +170,16 @@ export function useAgentChat(chatId: Id | undefined, onCreated: (id: Id) => void
   useEffect(() => () => running.current?.abort(), []);
 
   const send = useCallback(
-    (message: string, place: AgentPlace) => {
+    (message: string, place: AgentPlace, extras: SendExtras = {}) => {
       if (running.current && !running.current.signal.aborted) return;
       const controller = new AbortController();
       running.current = controller;
       const answer = turn('assistant', '', 'streaming');
-      const question = turn('user', message.trim(), 'done');
+      const question: ChatTurn = {
+        ...turn('user', message.trim(), 'done'),
+        ...(extras.badges?.length ? { badges: [...extras.badges] } : {}),
+        ...(extras.attachments?.length ? { attachments: extras.attachments.length } : {}),
+      };
       setBusy(true);
       setState((current) => ({ ...current, turns: [...current.turns, question, answer] }));
       const update = (change: (current: ChatTurn) => ChatTurn) =>
@@ -172,7 +188,13 @@ export function useAgentChat(chatId: Id | undefined, onCreated: (id: Id) => void
           turns: current.turns.map((entry) => (entry.key === answer.key ? change(entry) : entry)),
         }));
       sendAgentMessage(
-        { chatId: state.chatId, message, place },
+        {
+          chatId: state.chatId,
+          message,
+          place,
+          badges: extras.badges,
+          attachments: extras.attachments,
+        },
         (event) => {
           if (event.type === 'chat') {
             setState((current) => ({ ...current, chatId: event.chatId, title: event.title }));

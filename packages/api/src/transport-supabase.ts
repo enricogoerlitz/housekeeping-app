@@ -468,6 +468,7 @@ export function createSupabaseTransport(
     deleteHousehold: (householdId) => nothing('delete_household', { household_id: householdId }),
     acknowledgeNotices: (householdId, keys) =>
       nothing('acknowledge_notices', { household_id: householdId, keys: [...keys] }),
+    setAppView: (view) => nothing('set_app_view', { view }),
     resolveMapsLink: (url) =>
       invokeParsed(ResolveMapsLinkReplySchema, 'resolve-maps-link', { url }),
     fetchImage: async (request) => {

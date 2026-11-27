@@ -25,6 +25,15 @@ describe('growHeight (spec 0062, decision 14)', () => {
     );
   });
 
+  it('spec 0067, AC-009: the agent field stops at 4.5 lines, the half line shows there is more', () => {
+    expect(growHeight({ contentHeight: 400, lineHeight, empty: false, maxLines: 4.5 })).toBe(
+      GROW_PADDING * 2 + lineHeight * 4.5,
+    );
+    expect(growHeight({ contentHeight: oneLine, lineHeight, empty: false, maxLines: 4.5 })).toBe(
+      oneLine,
+    );
+  });
+
   it('AC-033: cleared after sending it is one line again, whatever was measured', () => {
     expect(growHeight({ contentHeight: 90, lineHeight, empty: true })).toBe(oneLine);
   });

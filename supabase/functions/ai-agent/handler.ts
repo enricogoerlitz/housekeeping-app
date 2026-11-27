@@ -1,8 +1,10 @@
-// Spec 0066 "KI-Agent" (ADR-0018): the research chat with the Foundry places agent. `send` streams
-// server-sent events of our own contract (core ai-agent.ts), `load` reads a conversation's
+// Spec 0066 "KI-Agent" (ADR-0018), since spec 0067 the one household agent (ADR-0020): `send`
+// streams server-sent events of our own contract (core ai-agent.ts), `load` reads a conversation's
 // messages, `delete` and `purge` remove conversations, answers and our reference rows. The chat
 // belongs to a household: our row (RLS) and the conversation's metadata must both say so, because
-// the Foundry key can read every conversation of the project.
+// the Foundry key can read every conversation of the project. The household tools (tools.ts) read
+// as the caller, for the chat's household only.
+import { storedToolStep, toolLabel } from '../_shared/agent-tools.gen.ts';
 import {
   AGENT_LIMITS,
   AGENT_QUOTA_PER_TURN,
@@ -33,12 +35,17 @@ import { requireMember } from '../_shared/membership.ts';
 import { consumeQuota } from '../_shared/quota.ts';
 import { configuredProviders } from '../_shared/web-search.ts';
 import { agentConfig, foundryClient, type Foundry } from './foundry-agent.ts';
-import { DATA_TOOLS } from './tools.ts';
+import { loadToolBase, runHouseholdTool, type ToolBase } from './tools.ts';
 
 /** The whole answer, all rounds included (decision 13). */
 const TURN_MS = 120_000;
-/** Rounds of data tools in one answer (step 2, decision 14). */
-const MAX_TOOL_ROUNDS = 4;
+/** Model runs of one answer: the first and up to four rounds of household tools (spec 0067). */
+const MAX_TOOL_ROUNDS = 5;
+/** Household calls run per model run and per answer; more are closed unrun (cost, spec 0067). */
+const MAX_CALLS_PER_ROUND = 10;
+const MAX_CALLS_PER_ANSWER = 20;
+/** The body of a send with its photos and files (spec 0067, REQ-005). */
+const MAX_SEND_BODY_BYTES = AGENT_LIMITS.attachmentChars + 256 * 1024;
 const SERPER_ZOOM = 14;
 
 interface ChatRow {
@@ -196,6 +203,8 @@ async function streamRound(input: {
   web: AgentStep;
   sources: Map<string, ReturnType<typeof sourcesOf>[number]>;
   onResponse: (id: string) => Promise<void>;
+  /** The step row of a household tool call as soon as the model starts it (REQ-008). */
+  onToolStarted: (callId: string, name: string) => void;
 }): Promise<Round> {
   const round: Round = { calls: [], failed: false };
   const response = await input.foundry.respond(input.conversation, input.items, input.signal);
@@ -224,6 +233,8 @@ async function streamRound(input: {
           input.emit({ type: 'step', step: { ...input.web } });
         } else if (item.type === 'function_call' && item.name === 'show_suggestions') {
           input.emit({ type: 'cards_pending' });
+        } else if (item.type === 'function_call' && typeof item.call_id === 'string') {
+          input.onToolStarted(item.call_id, typeof item.name === 'string' ? item.name : '');
         }
         break;
       case 'response.output_item.done':
@@ -341,6 +352,8 @@ async function streamTurn(
     status: 'running',
   };
   const sources = new Map<string, ReturnType<typeof sourcesOf>[number]>();
+  // The household's zone, members and slots, once per answer (AC-025).
+  const base: ToolBase = await loadToolBase(client, chat.household_id, deps.now());
   let items: unknown[] = [
     {
       type: 'message',
@@ -348,14 +361,37 @@ async function streamTurn(
       content: [
         {
           type: 'input_text',
-          text: contextBlock({ place: input.place, now: deps.now(), timeZone: input.timeZone }),
+          text: contextBlock({
+            place: input.place,
+            now: deps.now(),
+            timeZone: input.timeZone,
+            badges: input.badges,
+            householdTimeZone: base.timeZone,
+          }),
         },
-        { type: 'input_text', text: input.message },
+        ...(input.message ? [{ type: 'input_text', text: input.message }] : []),
+        // Spec 0067, REQ-005: photos as JPEG, PDF as a file (decision 9).
+        ...input.attachments.map((attachment) =>
+          attachment.kind === 'image'
+            ? { type: 'input_image', image_url: attachment.dataUrl, detail: 'auto' }
+            : { type: 'input_file', filename: attachment.name, file_data: attachment.dataUrl },
+        ),
       ],
     },
   ];
   let cardsTitle: string | undefined;
   let lastResponse: string | undefined;
+  // One step row per tool call (REQ-008), numbered in the order the model starts them.
+  const stepOf = new Map<string, string>();
+  const stepFor = (callId: string) => {
+    let id = stepOf.get(callId);
+    if (!id) {
+      id = `t${stepOf.size + 1}`;
+      stepOf.set(callId, id);
+    }
+    return id;
+  };
+  let callsRun = 0;
   for (let roundNo = 0; roundNo < MAX_TOOL_ROUNDS; roundNo += 1) {
     const round = await streamRound({
       foundry,
@@ -365,6 +401,17 @@ async function streamTurn(
       emit,
       web,
       sources,
+      onToolStarted: (callId, name) =>
+        emit({
+          type: 'step',
+          step: {
+            id: stepFor(callId),
+            kind: 'tool',
+            label: toolLabel(name),
+            details: [],
+            status: 'running',
+          },
+        }),
       onResponse: async (id) => {
         lastResponse = id;
         // An answer the row does not name could never be deleted (chat deleted meanwhile).
@@ -380,9 +427,9 @@ async function streamTurn(
     });
     if (round.failed) throw new HttpError('ai_unavailable');
 
-    // UI tools close at once without a model run; data tools (step 2) answer and run on.
+    // UI tools close at once without a model run; household tools answer and the model runs on.
     const outputs: unknown[] = [];
-    const dataOutputs: unknown[] = [];
+    const dataCalls: FunctionCall[] = [];
     for (const call of round.calls) {
       if (call.name === 'show_suggestions') {
         const parsed = parseSuggestionsArgs(call.args);
@@ -402,19 +449,49 @@ async function streamTurn(
           output: functionOutput(enrichments),
         });
       } else {
-        const tool = DATA_TOOLS[call.name];
-        const output = tool
-          ? await tool.run(call.args, { client, householdId: chat.household_id })
-          : undefined;
-        (tool ? dataOutputs : outputs).push({
-          type: 'function_call_output',
-          call_id: call.callId,
-          output: output ?? '{"error":"unknown_tool"}',
-        });
+        dataCalls.push(call);
       }
     }
+    // The household id is the chat's, checked by requireMember; never an argument (AC-014).
+    const allowed = Math.max(0, Math.min(MAX_CALLS_PER_ROUND, MAX_CALLS_PER_ANSWER - callsRun));
+    callsRun += Math.min(allowed, dataCalls.length);
+    const dataOutputs = await Promise.all(
+      dataCalls.map(async (call, index) => {
+        if (index >= allowed) {
+          emit({
+            type: 'step',
+            step: {
+              id: stepFor(call.callId),
+              kind: 'tool',
+              label: toolLabel(call.name),
+              detail: 'übersprungen (zu viele Abfragen)',
+              details: [],
+              status: 'done',
+            },
+          });
+          return {
+            type: 'function_call_output',
+            call_id: call.callId,
+            output: '{"error":"too_many_calls"}',
+          };
+        }
+        const result = await runHouseholdTool(call, {
+          client,
+          householdId: chat.household_id,
+          base,
+          stepId: stepFor(call.callId),
+        });
+        emit({ type: 'step', step: result.step });
+        return { type: 'function_call_output', call_id: call.callId, output: result.output };
+      }),
+    );
     if (outputs.length > 0) await foundry.appendItems(chat.conversation_id, outputs);
     if (dataOutputs.length === 0) break;
+    if (roundNo === MAX_TOOL_ROUNDS - 1) {
+      // No run left: the outputs still go into the conversation, so the next message is taken.
+      await foundry.appendItems(chat.conversation_id, dataOutputs);
+      break;
+    }
     items = dataOutputs;
   }
   web.status = 'done';
@@ -510,7 +587,9 @@ async function run(deps: Deps, client: UserClient, input: AgentRequest, request:
       const chat = await loadChat(client, input.householdId, input.chatId);
       if ((await verifyConversation(foundry, chat)) === 'gone') return { messages: [] };
       const items = await foundry.items(chat.conversation_id, 'asc', 5);
-      return AgentLoadReplySchema.parse({ messages: messagesFromItems(items).slice(0, 200) });
+      return AgentLoadReplySchema.parse({
+        messages: messagesFromItems(items, { toolStep: storedToolStep }).slice(0, 200),
+      });
     }
     case 'delete': {
       const chat = await loadChat(client, input.householdId, input.chatId);
@@ -523,6 +602,7 @@ async function run(deps: Deps, client: UserClient, input: AgentRequest, request:
 export function handler(request: Request, deps: Deps): Promise<Response> {
   return handleRequest(request, deps, {
     schema: AgentRequestSchema,
+    maxBodyBytes: MAX_SEND_BODY_BYTES,
     run: ({ input, client }) => run(deps, client, input, request),
   });
 }

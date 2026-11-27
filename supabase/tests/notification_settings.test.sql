@@ -55,7 +55,7 @@ select is(
   (select count(*)::int from public.notification_settings where household_id = tests.fx('home')), 2,
   'AC-011 notification_settings: every member gets exactly one row');
 select columns_are('public', 'notification_settings',
-  array['id', 'household_id', 'member_id', 'acknowledged_notices', 'created_at', 'updated_at'],
+  array['id', 'household_id', 'member_id', 'acknowledged_notices', 'app_view', 'created_at', 'updated_at'],
   'Spec 0053, AC-003 notification_settings: only the acknowledged notices are left, no push settings');
 select tests.clear_authentication();
 insert into fx (key, id) values ('vera', tests.create_user('vera@example.com', 'Vera'));

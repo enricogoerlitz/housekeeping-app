@@ -95,3 +95,5 @@ export * from './proposal-diff';
 export * from './recipe-proposal';
 export * from './place-proposal';
 export * from './web-preview';
+export * from './agent-badges';
+export * from './agent-tools';

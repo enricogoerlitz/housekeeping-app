@@ -1,4 +1,4 @@
-import { answerBlocks, stepLine } from '@housekeeping/core';
+import { answerBlocks, badgeLabel, stepLine } from '@housekeeping/core';
 import {
   Chip,
   ProgressSteps,
@@ -16,22 +16,43 @@ import { PlaceCard, PlaceCardSkeleton } from './place-card';
 // Spec 0066, REQ-005/REQ-006: the turns of a chat. The person's message is a bubble on the right;
 // an answer shows its steps, its text, its cards as a carousel, its sources and follow-ups.
 
-function UserBubble(props: { text: string; testID: string }) {
+/** Spec 0067: what went with the message besides its text, e.g. "Rezepte · 1 Anhang". */
+function sentWith(turn: ChatTurn): string | undefined {
+  const parts = [
+    ...(turn.badges ?? []).map(badgeLabel),
+    ...(turn.attachments
+      ? [turn.attachments === 1 ? '1 Anhang' : `${turn.attachments} Anhänge`]
+      : []),
+  ];
+  return parts.length > 0 ? parts.join(' · ') : undefined;
+}
+
+function UserBubble(props: { turn: ChatTurn; testID: string }) {
   const theme = useTheme();
+  const meta = sentWith(props.turn);
   return (
-    <View
-      testID={props.testID}
-      style={{
-        alignSelf: 'flex-end',
-        maxWidth: '85%',
-        paddingVertical: 10,
-        paddingHorizontal: 14,
-        borderRadius: 18,
-        borderBottomRightRadius: 4,
-        backgroundColor: theme.colors.accent,
-      }}
-    >
-      <Text color="onAccent">{props.text}</Text>
+    <View style={{ alignSelf: 'flex-end', maxWidth: '85%', alignItems: 'flex-end', gap: 4 }}>
+      {meta ? (
+        <Text variant="caption" color="muted" testID={`${props.testID}-meta`}>
+          {meta}
+        </Text>
+      ) : null}
+      {props.turn.text ? (
+        <View
+          testID={props.testID}
+          style={{
+            paddingVertical: 10,
+            paddingHorizontal: 14,
+            borderRadius: 18,
+            borderBottomRightRadius: 4,
+            backgroundColor: theme.colors.accent,
+          }}
+        >
+          <Text color="onAccent">{props.turn.text}</Text>
+        </View>
+      ) : (
+        <View testID={props.testID} />
+      )}
     </View>
   );
 }
@@ -73,6 +94,8 @@ function Answer(props: {
     line: stepLine(step),
     details: step.details,
     running: turn.status === 'streaming' && step.status === 'running',
+    // Search terms in quotes; a tool's filters and fields as they are (spec 0067, REQ-008).
+    quoted: step.kind === 'web_search',
   }));
   const waiting = turn.status === 'streaming' && turn.text === '' && steps.length === 0;
   return (
@@ -168,7 +191,7 @@ export function AgentMessages(props: {
     <View style={{ gap: 20 }} testID="agent-messages">
       {props.turns.map((turn, index) =>
         turn.role === 'user' ? (
-          <UserBubble key={turn.key} text={turn.text} testID={`agent-turn-${index}`} />
+          <UserBubble key={turn.key} turn={turn} testID={`agent-turn-${index}`} />
         ) : (
           <Answer
             key={turn.key}

@@ -1,7 +1,7 @@
-import { createRef, useState } from 'react';
+import { createRef, useState, type ReactNode } from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { HostInstance } from 'react-native';
+import { View, type HostInstance } from 'react-native';
 
 import {
   Button,
@@ -537,6 +537,38 @@ describe('TextField', () => {
     expect(onChangeText).toHaveBeenCalledWith('Paella');
     expect(screen.getByText('Titel')).toBeTruthy();
     expect(screen.getByText('Kurz und klar')).toBeTruthy();
+  });
+
+  it('spec 0067, REQ-004: content above the text stands inside the field, backspace reaches onKeyPress', () => {
+    const onKeyPress = vi.fn();
+    render(
+      <TextField
+        accessibilityLabel="Nachricht"
+        value=""
+        top={<View testID="badges" />}
+        onKeyPress={onKeyPress}
+        testID="message"
+      />,
+    );
+    const input = screen.getByRole('textbox', { name: 'Nachricht' });
+    // The badges and the input share the field's frame.
+    expect(screen.getByTestId('badges').parentElement?.parentElement).toBe(
+      input.parentElement?.parentElement,
+    );
+    fireEvent.keyDown(input, { key: 'Backspace' });
+    expect(onKeyPress).toHaveBeenCalled();
+  });
+
+  it('spec 0067, AC-005: the first badge does not mount the input anew, so it keeps the cursor', () => {
+    const field = (top: ReactNode) => (
+      <TextField accessibilityLabel="Nachricht" value="" top={top} testID="message" />
+    );
+    const { rerender } = render(field(null));
+    const before = screen.getByRole('textbox', { name: 'Nachricht' });
+    rerender(field(<View testID="badges" />));
+    expect(screen.getByRole('textbox', { name: 'Nachricht' })).toBe(before);
+    rerender(field(null));
+    expect(screen.getByRole('textbox', { name: 'Nachricht' })).toBe(before);
   });
 
   it('D-05 (review 0004): `invalid` marks a narrow field whose message stands below its row', () => {

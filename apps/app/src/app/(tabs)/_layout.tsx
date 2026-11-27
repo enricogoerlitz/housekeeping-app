@@ -1,5 +1,5 @@
-import { useSyncState } from '@housekeeping/api';
-import type { Origin } from '@housekeeping/core';
+import { useAppView, useSyncState } from '@housekeeping/api';
+import type { AppView, Origin } from '@housekeeping/core';
 import {
   Fab,
   OfflineBanner,
@@ -36,12 +36,27 @@ const NAV: NavItem[] = [
   { key: 'haushalt', label: 'Haushalt', icon: 'list-checks', tone: 'haushalt' },
 ];
 
+/**
+ * Spec 0067, REQ-001: "KI zuerst" puts the agent in the middle, only its icon in the tab bar
+ * (AC-001); "Haushalt" moves to the top of ⊞ (manageGroups).
+ */
+const NAV_AI_FIRST: NavItem[] = [
+  NAV[0]!,
+  NAV[1]!,
+  { key: 'agent', label: 'Agent', icon: 'sparkles', tone: 'ki', iconOnly: true },
+  NAV[2]!,
+  NAV[3]!,
+];
+
+const navFor = (view: AppView): NavItem[] => (view === 'ai_first' ? NAV_AI_FIRST : NAV);
+
 const SECTION_OF_KEY: Record<string, Origin> = {
   index: 'uebersicht',
   rezepte: 'essen',
   kalender: 'kalender',
   liste: 'liste',
   haushalt: 'haushalt',
+  agent: 'agent',
 };
 const KEY_OF_SECTION = Object.fromEntries(
   Object.entries(SECTION_OF_KEY).map(([key, section]) => [section, key]),
@@ -135,12 +150,16 @@ function Navigation(props: BottomTabBarProps) {
   // While typing neither the tab bar nor the assistant button take room (spec 0032, AC-001).
   const keyboard = useKeyboard();
   const segments = useSegments();
+  const view = useAppView();
+  const nav = navFor(view);
   const activeRoute = props.state.routes[props.state.index]?.name ?? 'index';
   // A page opened from another section highlights that one while "Zurück" leads there (spec
   // 0057, REQ-003). A page under "Verwalten" opened from there highlights no tab (spec 0005,
   // AC-054).
   const section = useActiveSection();
-  const activeKey = (section && KEY_OF_SECTION[section]) ?? '';
+  const sectionKey = (section && KEY_OF_SECTION[section]) ?? '';
+  // A section outside this view's bar (the agent in "Normal") highlights no tab.
+  const activeKey = nav.some((item) => item.key === sectionKey) ? sectionKey : '';
   const pressSection = usePressSection();
   // A section always shows its start page as last left, without detail or window (REQ-005); on
   // that start page a second tap scrolls it to the top (spec 0057, REQ-002).
@@ -152,7 +171,7 @@ function Navigation(props: BottomTabBarProps) {
   if (!isPhone) {
     return (
       <AppSidebar
-        items={NAV}
+        items={nav}
         activeKey={activeKey}
         onSelect={select}
         // One mark only: an entry under "Verwalten" only while no tab is highlighted (spec 0057,
@@ -161,7 +180,9 @@ function Navigation(props: BottomTabBarProps) {
       />
     );
   }
-  if (FULL_SCREEN_PAGES.has(segments[segments.length - 1] ?? '')) return null;
+  const page = segments[segments.length - 1] ?? '';
+  // In "KI zuerst" the agent is a tab: its page keeps the tab bar (spec 0067, AC-001).
+  if (FULL_SCREEN_PAGES.has(page) && !(view === 'ai_first' && page === 'ki-agent')) return null;
   return (
     <View>
       {/* On the list the assistant entry sits in the input bar, so the thumb zone stays free. */}
@@ -174,7 +195,7 @@ function Navigation(props: BottomTabBarProps) {
           bottom={TAB_BAR_HEIGHT + bottom + 14}
         />
       ) : null}
-      <TabBar items={NAV} activeKey={activeKey} onSelect={select} />
+      <TabBar items={nav} activeKey={activeKey} onSelect={select} />
     </View>
   );
 }

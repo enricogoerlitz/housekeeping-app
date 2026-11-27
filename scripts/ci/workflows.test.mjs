@@ -43,7 +43,7 @@ const HEAVY = ['Prüfungen', 'Datenbank (pgTAP)', 'Integration (API)'];
 
 /** Spec 0066: the agent secrets of a run, from the upsert step's outputs. */
 const AGENT_SECRETS =
-  '"FOUNDRY_PROJECT_ENDPOINT=$FOUNDRY_PROJECT_ENDPOINT" "FOUNDRY_PLACES_AGENT=$FOUNDRY_PLACES_AGENT" "FOUNDRY_PLACES_AGENT_VERSION=$FOUNDRY_PLACES_AGENT_VERSION"';
+  '"FOUNDRY_PROJECT_ENDPOINT=$FOUNDRY_PROJECT_ENDPOINT" "FOUNDRY_HOUSEHOLD_AGENT=$FOUNDRY_HOUSEHOLD_AGENT" "FOUNDRY_HOUSEHOLD_AGENT_VERSION=$FOUNDRY_HOUSEHOLD_AGENT_VERSION"';
 
 /**
  * Spec 0066, ADR-0019: the build job (no environment) builds the agents and the upsert of our own
@@ -80,8 +80,8 @@ function assertFoundryUpsert(workflow, buildId, deployId, env) {
   assert.ok(check < login && login < upsertAt && upsertAt < deployAt && deployAt < secretsAt);
   assert.equal(steps(deploy)[upsertAt].id, 'foundry');
   assert.deepEqual(steps(deploy)[secretsAt].env, {
-    FOUNDRY_PLACES_AGENT: '${{ steps.foundry.outputs.places_agent_name }}',
-    FOUNDRY_PLACES_AGENT_VERSION: '${{ steps.foundry.outputs.places_agent_version }}',
+    FOUNDRY_HOUSEHOLD_AGENT: '${{ steps.foundry.outputs.household_agent_name }}',
+    FOUNDRY_HOUSEHOLD_AGENT_VERSION: '${{ steps.foundry.outputs.household_agent_version }}',
   });
 }
 

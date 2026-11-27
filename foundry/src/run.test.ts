@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { AGENT_TOOL_NAMES, agentToolParameters } from '@housekeeping/core';
 import { describe, expect, it } from 'vitest';
 
 import { loadAgents, parseAgentFile } from './definitions';
@@ -149,16 +150,36 @@ describe('foundry-agents (spec 0066, ADR-0019)', () => {
 });
 
 describe('agent files', () => {
-  it('places-agent.yaml reads with its instructions file and the show_suggestions schema', () => {
+  it('spec 0067: household-agent.yaml is the only agent, with web search, cards and the household tools', () => {
     const dir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../agents');
-    const [agent] = loadAgents(dir);
-    expect(agent?.name).toBe('places-agent');
-    expect(agentName('places-agent', 'prod')).toBe('places-agent-prod');
+    const agents = loadAgents(dir);
+    expect(agents.map((agent) => agent.name)).toEqual(['household-agent']);
+    const [agent] = agents;
+    expect(agentName('household-agent', 'prod')).toBe('household-agent-prod');
     expect(agent?.definition.model).toBe('gpt-6.1-terra');
-    expect(agent?.definition.instructions).toContain('Ausgeh-Scout');
-    const tools = agent?.definition.tools as { type: string; name?: string; strict?: boolean }[];
-    expect(tools.map((tool) => tool.type)).toEqual(['web_search', 'function']);
-    expect(tools[1]).toMatchObject({ name: 'show_suggestions', strict: true });
+    expect(agent?.definition.instructions).toContain('Housekeeping-Agent');
+    const tools = agent?.definition.tools as {
+      type: string;
+      name?: string;
+      strict?: boolean;
+      parameters?: unknown;
+    }[];
+    expect(tools.map((tool) => tool.name ?? tool.type)).toEqual([
+      'web_search',
+      'show_suggestions',
+      ...AGENT_TOOL_NAMES,
+    ]);
+    expect(tools.every((tool) => tool.type === 'web_search' || tool.strict === true)).toBe(true);
+  });
+
+  it('spec 0067: the YAML carries exactly the parameters core checks (agent-tools.ts)', () => {
+    const dir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../agents');
+    const tools = loadAgents(dir)[0]?.definition.tools as { name?: string; parameters?: unknown }[];
+    for (const name of AGENT_TOOL_NAMES) {
+      expect(tools.find((tool) => tool.name === name)?.parameters, name).toEqual(
+        agentToolParameters(name),
+      );
+    }
   });
 
   it('refuses an unknown key, a bad name and missing instructions', () => {

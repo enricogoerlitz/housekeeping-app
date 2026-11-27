@@ -1279,14 +1279,35 @@ gespeichert, bevor die Person „Speichern“ tippt.
 
 ### KI-Agent
 
-Die eigene Seite für Recherchen mit KI (Spec 0066), geöffnet mit ✨ im Kopf von „Restaurants“ und
-„Aktivitäten“: Nachricht, Ort, Antwort mit Text und Vorschlagskarten. Dahinter steht ein
-Foundry-Agent mit Websuche (`places-agent` in `foundry/agents/`, je Umgebung
-`places-agent-local`, `-preview`, `-prod`; ADR-0019). In Schritt 1 nur Restaurants und
-Aktivitäten, ohne Haushaltsdaten.
+Die eigene Seite „Agent“ (Spec 0066; seit Spec 0067 der Housekeeping-Agent): Nachricht, Badges,
+Anhänge, Ort, Antwort mit Schrittzeilen, Text und Vorschlagskarten. Geöffnet in „Normal“ über
+⊞ Verwalten → „Agent“ oder ✨ im Kopf von „Restaurants“ und „Aktivitäten“ (mit dem Badge
+„Ausgehen“), in „KI zuerst“ als Tab in der Mitte. Dahinter steht ein Foundry-Agent mit Websuche und
+den Lese-Werkzeugen der Haushaltsdaten (`household-agent` in `foundry/agents/`, je Umgebung
+`household-agent-local`, `-preview`, `-prod`; ADR-0019, ADR-0020).
 
-- **Im Code:** `AgentScreen`, `ai-agent` (Edge Function), `places-agent` (Foundry), `features.aiAgent`
+- **Im Code:** `AgentScreen`, `ai-agent` (Edge Function), `household-agent` (Foundry),
+  `agent-tools.ts` (Werkzeuge), `features.aiAgent`
 - **Nicht verwenden:** KI-Chat (Name des PoC), Assistent (das ist Spec 0003), Chatbot
+
+### Badge (Agent)
+
+Ein Hinweis an den Agenten in der Eingabe: „Rezepte“, „Ausgehen“, „Planen“, „Einkaufen“,
+„Haushalt“. Gesetzt über die Startseite „Ich kann“ oder das Slash-Menü („/re“), als Chip mit ✕ im
+Feld, kein Freitext; die Rücktaste direkt dahinter löscht ihn ganz. Mehrere je Nachricht. Keine
+Sperre: Passt die Frage nicht dazu, folgt der Agent der Frage (Spec 0067).
+
+- **Im Code:** `AgentBadgeSlug`, `AGENT_BADGES`, `badges` im Sendeauftrag
+- **Nicht verwenden:** Agent (für den Badge), Modus, Tag, Schlagwort
+
+### Ansicht (Normal / KI zuerst)
+
+Die Wahl je Person unter Einstellungen → Darstellung (Spec 0067): „Normal“ mit „Haushalt“ in der
+Tab-Leiste, „KI zuerst“ mit dem Agent in der Mitte (nur Icon) und „Haushalt“ oben im ⊞-Menü.
+
+- **Im Code:** `AppView` (`'normal' | 'ai_first'`), `notification_settings.app_view`,
+  `set_app_view`, `useAppView`
+- **Nicht verwenden:** Modus, Layout, Theme (das ist das Erscheinungsbild)
 
 ### Recherche-Chat
 

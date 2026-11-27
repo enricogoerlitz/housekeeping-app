@@ -339,9 +339,9 @@ jobs:
         # AC-045 (changed by spec 0066): the allowed origin and the agent of this release (name,
         # pinned version, project); never a key — FOUNDRY_API_KEY and SERPER_API_KEY stay Enrico's.
         env:
-          FOUNDRY_PLACES_AGENT: ${{ steps.foundry.outputs.places_agent_name }}
-          FOUNDRY_PLACES_AGENT_VERSION: ${{ steps.foundry.outputs.places_agent_version }}
-        run: supabase secrets set --remote="$SUPABASE_PROJECT_REF" --yes "ALLOWED_ORIGINS=$PRODUCTION_WEB_ORIGIN" "FOUNDRY_PROJECT_ENDPOINT=$FOUNDRY_PROJECT_ENDPOINT" "FOUNDRY_PLACES_AGENT=$FOUNDRY_PLACES_AGENT" "FOUNDRY_PLACES_AGENT_VERSION=$FOUNDRY_PLACES_AGENT_VERSION"
+          FOUNDRY_HOUSEHOLD_AGENT: ${{ steps.foundry.outputs.household_agent_name }}
+          FOUNDRY_HOUSEHOLD_AGENT_VERSION: ${{ steps.foundry.outputs.household_agent_version }}
+        run: supabase secrets set --remote="$SUPABASE_PROJECT_REF" --yes "ALLOWED_ORIGINS=$PRODUCTION_WEB_ORIGIN" "FOUNDRY_PROJECT_ENDPOINT=$FOUNDRY_PROJECT_ENDPOINT" "FOUNDRY_HOUSEHOLD_AGENT=$FOUNDRY_HOUSEHOLD_AGENT" "FOUNDRY_HOUSEHOLD_AGENT_VERSION=$FOUNDRY_HOUSEHOLD_AGENT_VERSION"
 
   web-ausliefern:
     name: Web ausliefern v${{ needs.version.outputs.version }}

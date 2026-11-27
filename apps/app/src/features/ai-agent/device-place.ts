@@ -34,6 +34,21 @@ export function deviceLocation(): Promise<{ lat: number; lng: number } | undefin
   });
 }
 
+/**
+ * Spec 0067: for a question that is not about going out, the location only when the browser
+ * already allows it — never a permission prompt for "Milch auf die Liste".
+ */
+export async function deviceLocationIfAllowed(): Promise<{ lat: number; lng: number } | undefined> {
+  try {
+    const permissions = typeof navigator === 'undefined' ? undefined : navigator.permissions;
+    if (!permissions) return undefined;
+    const status = await permissions.query({ name: 'geolocation' });
+    return status.state === 'granted' ? await deviceLocation() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 const RECENT_KEY = 'housekeeping.ki-agent.zuletzt.v1';
 
 function storage(): Storage | undefined {

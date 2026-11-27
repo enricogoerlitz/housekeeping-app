@@ -13,6 +13,8 @@ export interface ProgressStep {
   /** Shown when the step is opened, e.g. the search terms. */
   details: readonly string[];
   running: boolean;
+  /** Search terms are quoted; a tool's filters and fields are plain lines (spec 0067). */
+  quoted?: boolean;
 }
 
 export interface ProgressStepsProps {
@@ -83,7 +85,7 @@ function StepRow(props: { step: ProgressStep; runningLabel: string; testID?: str
         <View testID={id('details')} style={{ paddingLeft: 16, gap: 2, paddingBottom: 4 }}>
           {step.details.map((detail, index) => (
             <Text key={`${index}-${detail}`} variant="small" color="muted">
-              {`„${detail}“`}
+              {step.quoted === false ? detail : `„${detail}“`}
             </Text>
           ))}
         </View>

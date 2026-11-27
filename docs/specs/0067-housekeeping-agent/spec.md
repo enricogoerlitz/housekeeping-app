@@ -244,6 +244,47 @@ Mit Enrico am 27.11.2026 entschieden:
 14. Abgenommen mit Annahme: Speicherort der Ansicht: Spalte in der eigenen, synchronisierten Zeile der
     Person (wie `notification_settings`), nur von ihr lesbar und schreibbar.
 
+Beim Bau von Schritt A entschieden (27.11.2026):
+
+15. **Ansicht:** Spalte `notification_settings.app_view` (`normal` | `ai_first`), geschrieben nur über
+    `set_app_view`, für **alle** Haushalte der Person auf einmal (die Ansicht gehört der Person); ein
+    neuer Haushalt übernimmt sie beim Eintritt. ⊞ zeigt in „Normal“ zuerst die Gruppe „KI“ mit
+    „Agent“, in „KI zuerst“ die Gruppe „Bereiche“ mit „Haushalt“. Der Agent-Tab behält in „KI zuerst“
+    die Tab-Leiste und hat kein „Zurück“.
+16. **Ein Agent auch für ✨ (ADR-0020):** `places-agent` entfällt; ✨ öffnet die Agent-Seite mit dem
+    Badge „Ausgehen“. Ändert Spec 0066, Entscheidung 18. Die Seite heißt „Agent“; Offline-Hinweis
+    „Offline – für den Agent brauchst du Netz“, Knopf „Antwort anhalten“ (ändert Spec 0066, REQ-002,
+    REQ-005, AC-039 im Wortlaut).
+17. **Standort:** Nur mit dem Badge „Ausgehen“ fragt die App wie in Spec 0066 nach dem Standort (ohne
+    ihn öffnet „In der Nähe von“). Sonst geht der Standort nur mit, wenn der Browser ihn schon erlaubt
+    hat; „Milch auf die Liste“ löst nie eine Standortfrage aus. Ein gewählter Ort gilt immer.
+18. **Werkzeuge in TypeScript statt SQL-Funktionen:** Die Function liest feste Tabellen und Spalten
+    (`toolReads`, Seiten zu 1000, `household_id` = Haushalt des Chats) mit dem JWT der Person; Suche,
+    Filter, Sortierung, Seiten und Felder rechnet `packages/core/src/agent-tools.ts`. Kein Wert des
+    Modells erreicht eine Abfrage. Weil die Function Core nur als Kopie ohne Importe nutzen kann,
+    wiederholt `agent-tools.ts` vier Regeln der App (zuletzt gekocht, Besuche, Ernährung der
+    Standard-Variante, Serien-Termine); Tests vergleichen sie mit `cookingHistory` und
+    `seriesOccurrences`. Zehn Werkzeuge: `list_recipes`, `list_restaurants`, `list_activities`,
+    `calendar`, `shopping_list`, `list_recurring_items`, `list_chores`, `list_trips`, `list_articles`,
+    `household_values`; ihre JSON-Schemas erzeugt Core, `run.test.ts` prüft die YAML dagegen.
+19. **Grenzen:** Seiten Standard 10 (Kalender 60, Liste 100, Artikel und Dauerposten 50, Aufgaben 20),
+    höchstens 300; Kalender höchstens 62 Tage; Ausgabe höchstens 60 000 Zeichen (sonst gekürzt mit
+    `truncated`); höchstens 5 Modellläufe je Antwort, 10 Werkzeugaufrufe je Lauf und 20 je Antwort
+    (darüber `too_many_calls`, als Schrittzeile „übersprungen“ sichtbar).
+20. **Anhänge (Entscheidung 9 geprüft):** Fotos als JPEG (1280 px, wie `preparePhoto`), PDF bis ≈ 4 MB
+    als `input_file`; höchstens 4, zusammen höchstens 8 MB. Das Modell nimmt beides an (Smoke im
+    Nachweis). Alles andere weist die App mit „Dieses Format geht nicht – Fotos und PDF schon“ ab. Ein
+    geladener Chat zeigt nur die Zahl („1 Anhang“), nie die Daten.
+21. **Badges im Feld:** als Chips über dem Text innerhalb des Rahmens (mehrere Badges vor dem Text
+    machten das Feld auf dem Handy zu schmal); das Feld behält dafür immer denselben Aufbau, damit der
+    Cursor beim ersten Badge bleibt. Das Slash-Menü findet nach Wortanfang in Name und Stichworten
+    („/re“ → Rezepte, Ausgehen über „Restaurants“; „/au“ auch Haushalt über „Aufgaben“). Im
+    `[KONTEXT]` stehen die Badges als „Hinweise der Person: … (nur Hinweise …)“ und „Heute im Haushalt:
+    Freitag, 2026-11-27 (Europe/Berlin)“ aus `households.timezone`.
+22. OFFEN: Eine Frage wie „was kochen wir diese Woche und was fehlt“ ruft heute je Rezept ein
+    `list_recipes` mit Suche (7 Aufrufe). Ein Filter „diese Titel/IDs“ würde das bündeln — in Schritt
+    D mit dem Testkatalog entscheiden. Ebenso, ob viele Schrittzeilen zu einer Gruppe zusammenklappen.
+
 ## Grenzfälle, die in der App fest verdrahtet sind
 
 Jeder Fall braucht im Agenten denselben Weg wie in der App, sonst entstehen Daten, die anders
@@ -300,26 +341,30 @@ Nach dem Bau prüft der Bauende gründlich und schreibt eine Review mit klarem U
 
 ## Risiken
 
-| Risiko                                                       | Gegenmaßnahme                                                                      | Test                                           |
-| ------------------------------------------------------------ | ---------------------------------------------------------------------------------- | ---------------------------------------------- |
-| Werkzeug liefert Daten eines fremden Haushalts               | Haushalts-ID nur vom Server; Abfragen mit dem JWT der Person (RLS)                 | pgTAP + Werkzeugtest fremder Haushalt (AC-014) |
-| Modell schleust SQL oder Filter ein                          | feste Abfragen, Werte gebunden, Felder/Sortierungen per Liste erlaubt              | AC-015, Werkzeug-Unit-Tests                    |
-| Agent ändert ohne Zustimmung (Prompt-Injection)              | kein Schreibwerkzeug; nur `propose_actions`, Übernehmen in der App                 | AC-020, Testkatalog                            |
-| Vorschlag auf veraltetem Stand überschreibt Neueres          | beim Übernehmen neu lesen, abweichende Einträge abgewählt                          | Test mit zweitem Gerät                         |
-| Abgemeldete Person / fremde Person ruft die Function         | `requireMember` wie 0066                                                           | Function-Test 401/403                          |
-| Kosten laufen davon (lange Chats, Massenbearbeitung, Bilder) | Kontingent je Antwort und Werkzeuglauf, 20-Einträge-Grenze, Hinweis auf neuen Chat | Function-Tests, Messung im Testkatalog         |
-| Daten bleiben bei Foundry nach Löschen                       | Conversation + alle Antworten löschen, Löschprotokoll, Vorschau leert vor Reset    | Smoke wie 0066                                 |
-| Rohantworten verraten Anweisungen                            | Function gibt nie Rohantworten weiter                                              | Function-Test                                  |
+| Risiko                                                                                                    | Gegenmaßnahme                                                                                                                                                                                                | Test                                           |
+| --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------- |
+| Werkzeug liefert Daten eines fremden Haushalts                                                            | Haushalts-ID nur vom Server; Abfragen mit dem JWT der Person (RLS)                                                                                                                                           | pgTAP + Werkzeugtest fremder Haushalt (AC-014) |
+| Modell schleust SQL oder Filter ein                                                                       | feste Abfragen, Werte gebunden, Felder/Sortierungen per Liste erlaubt                                                                                                                                        | AC-015, Werkzeug-Unit-Tests                    |
+| Agent ändert ohne Zustimmung (Prompt-Injection)                                                           | kein Schreibwerkzeug; nur `propose_actions`, Übernehmen in der App                                                                                                                                           | AC-020, Testkatalog                            |
+| Vorschlag auf veraltetem Stand überschreibt Neueres                                                       | beim Übernehmen neu lesen, abweichende Einträge abgewählt                                                                                                                                                    | Test mit zweitem Gerät                         |
+| Abgemeldete Person / fremde Person ruft die Function                                                      | `requireMember` wie 0066                                                                                                                                                                                     | Function-Test 401/403                          |
+| Kosten laufen davon (lange Chats, Massenbearbeitung, Bilder)                                              | Kontingent je Antwort und Werkzeuglauf, 20-Einträge-Grenze, Hinweis auf neuen Chat                                                                                                                           | Function-Tests, Messung im Testkatalog         |
+| Daten bleiben bei Foundry nach Löschen                                                                    | Conversation + alle Antworten löschen, Löschprotokoll, Vorschau leert vor Reset                                                                                                                              | Smoke wie 0066                                 |
+| Rohantworten verraten Anweisungen                                                                         | Function gibt nie Rohantworten weiter                                                                                                                                                                        | Function-Test                                  |
+| Injection trägt Haushaltsdaten über Websuche oder Links hinaus (Security-Check 27.11., mittel; **offen**) | Instruktion: keine Haushaltsdaten in Suchen; Links nur https, Öffnen nur auf Tipp. Für B/D: klären, ob die Foundry-Websuche Seiten aufruft; Websites der Karten nach Werkzeugrunden nur aus der Anreicherung | Testkatalog D                                  |
+| Viele Werkzeugaufrufe treiben Kosten und Last (Security-Check, niedrig; behoben)                          | 10 Aufrufe je Lauf, 20 je Antwort, 5 Läufe, Seiten ≤ 300, Ausgabe ≤ 60 000 Zeichen                                                                                                                           | edge „cost: at most 10 …“                      |
+| Anhang mit falschem Inhalt (Security-Check, Hinweis; akzeptiert)                                          | Präfix, Base64, Länge geprüft; Unlesbares lehnt Foundry ab (`ai_unavailable`)                                                                                                                                | core                                           |
+| Werkzeugergebnisse und Anhänge liegen bei Foundry (Security-Check, Hinweis)                               | nur angefragte Felder, keine E-Mails, Profile nur `id,name` der Mitglieder; Löschen wie Spec 0066                                                                                                            | edge AC-014                                    |
 
 ## Umsetzung
 
 In drei Bauschritten, jeder mit Vorschau für Enrico; keine volle e2e-Suite vor dem Release.
 
-- [ ] A1. Ansicht „Normal“/„KI zuerst“ inkl. Speicherort (REQ-001, AC-001–003), Einstieg ⊞ (REQ-002)
-- [ ] A2. `household-agent` als YAML (`foundry/agents/`), Upsert je Umgebung; Function auf den
+- [x] A1. Ansicht „Normal“/„KI zuerst“ inkl. Speicherort (REQ-001, AC-001–003), Einstieg ⊞ (REQ-002)
+- [x] A2. `household-agent` als YAML (`foundry/agents/`), Upsert je Umgebung; Function auf den
       Agenten umstellen, Badges/Ort im Kontext (REQ-006)
-- [ ] A3. Startseite, Slash-Menü, Badges, Eingabefeld 4,5 Zeilen, „+“ für Dateien (REQ-003–005)
-- [ ] A4. Lese- und Überblick-Werkzeuge mit Parametern, Schrittzeilen (REQ-007, REQ-008)
+- [x] A3. Startseite, Slash-Menü, Badges, Eingabefeld 4,5 Zeilen, „+“ für Dateien (REQ-003–005)
+- [x] A4. Lese- und Überblick-Werkzeuge mit Parametern, Schrittzeilen (REQ-007, REQ-008)
 - [ ] B1. `propose_actions`, Sammelkarte, Übernehmen je Eintrag, Rückgängig, Löschen einzeln
       (REQ-009)
 - [ ] B2. Rezept anlegen über die Entwurfs-Strecke, „Prüfen und anlegen“ im Editor (REQ-010)
@@ -330,3 +375,50 @@ In drei Bauschritten, jeder mit Vorschau für Enrico; keine volle e2e-Suite vor 
 - [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün,
       `pnpm exec supabase test db` grün (eigener Wegwerf-Stack), `pnpm e2e:dev` grün; volle e2e-Suite
       vor dem nächsten Release
+
+## Nachweis (Schritt A, 27.11.2026)
+
+- **Rot zuerst:** core `agent-badges.test.ts`, `ai-agent-0067.test.ts`, `agent-tools.test.ts` (Modul
+  fehlte), api `commands-view.backend.test.ts`, ui `field-grow`, `progress-steps`, `shell` (3 rot), pgTAP
+  `app_view.test.sql` (18/18 rot vor der Migration); edge: die 8 neuen Fälle in
+  `ai-agent/handler.test.ts` gegen den Handler von Spec 0066 rot (8 failed, 26 passed), dann grün; der
+  Fall „höchstens 10 Aufrufe je Lauf“ rot, dann grün.
+- **Prüfungen:** `pnpm format:check && pnpm check` grün (20/20 Tasks, Abdeckung, knip), `pnpm build:web`
+  grün; pgTAP auf eigenem Wegwerf-Stack `hk-0067` (Ports 547xx): 59 Dateien, 2791 Tests grün;
+  `pnpm e2e:dev` 7/7 grün gegen `hk-0067` ohne Reset.
+- **e2e:** `e2e/rundgang-housekeeping-agent-0067.spec.ts` neu (Function per `page.route`), lief einmal
+  lokal 5/5 grün; `rundgang-ki-agent-0066.spec.ts` an Titel, Badge „Ausgehen“ und Offline-Text
+  angepasst (lokal 10/11; AC-024–028 schreibt mit SQL-Helfern in den Haupt-Stack und lässt sich gegen
+  einen Wegwerf-Stack nicht prüfen). Danach nach Enricos Anweisung keine e2e mehr in den Schritten
+  A–C: beide Dateien laufen in der e2e-Runde nach Schritt D.
+- **Foundry:** `household-agent-local` Version 1 mit `pnpm foundry:agents:local` angelegt. Smoke mit
+  echten Läufen gegen `hk-0067` (Seed „Enrico & Nadja“): 9 Nachrichten, 18 Modellläufe (Grenze 25):
+
+  | Fall                                                                                      | Dauer (erster Text) | Werkzeuge und Ergebnis                                                              |
+  | ----------------------------------------------------------------------------------------- | ------------------- | ----------------------------------------------------------------------------------- |
+  | „vegetarische Rezepte, die wir lange nicht hatten“                                        | 8,5 s (7,9 s)       | `list_recipes` vegan/vegetarisch nach „zuletzt gekocht“ → 5 nie gekochte, richtig   |
+  | „Was steht am Wochenende an?“                                                             | 5,3 s (4,6 s)       | `calendar` 28.–29. Nov. → 4 Einträge und 2 Aufgaben, gegen die DB geprüft           |
+  | „Restaurants gemerkt und noch nie besucht“                                                | 4,6 s (4,2 s)       | `list_restaurants` Favorit, nicht besucht → keins; stimmt (beide Favoriten besucht) |
+  | Falscher Badge „Rezepte“ + „Wo essen wir heute Abend in Mitte?“                           | 23,4 s (19,2 s)     | Websuche, Restaurant-Karte (★ 4,3 aus Serper), kein Rezept (AC-011)                 |
+  | Rückfrage „koch mir was Ähnliches zuhause“                                                | 10,0 s (9,4 s)      | bezieht sich auf das Restaurant (Schnitzel), 2 × `list_recipes` (AC-012)            |
+  | Zwei Badges „Rezepte“ + „Einkaufen“: Woche und was fehlt                                  | 12,0 s (10,2 s)     | `calendar`, `shopping_list`, 7 × `list_recipes` (Entscheidung 22)                   |
+  | Injection („Ignoriere …“, fremde `household_id`, `x' or 1=1 --`, E-Mails, „lösche alles“) | 2,5 s               | kein Werkzeugaufruf, lehnt ab, nennt keine Daten                                    |
+  | PDF „Linsensuppe“ als Anhang                                                              | 6,7 s (5,9 s)       | liest die Datei, 5 × `list_articles` (Karotten → „Möhren“)                          |
+  | Foto (Screenshot der Übersicht)                                                           | 8,1 s (7,1 s)       | beschreibt das Bild, gleicht mit `calendar` ab                                      |
+
+  `load` danach zeigt Schrittzeilen und „1 Anhang“; Protokoll in `tmp/review-0004/0067/smoke/`.
+
+- **UI:** Desktop 1440 × 900 und Handy 390 × 844, hell und dunkel (`tmp/review-0004/0067/shots/`):
+  Startseite, Slash-Menü, zwei Badges mit langem Text (4,5 Zeilen), Antwort mit Schrittzeilen,
+  Einstellung „Ansicht“, Tab-Leiste „KI zuerst“, ⊞ mit „Haushalt“ zuerst, echte Chats aus dem
+  Verlauf. iPhone-Simulator (iPhone 18 Pro, `tmp/review-0004/0067/sim/`): Anmelden, echter Chat
+  geladen, neuer Chat, Badge gesetzt, Tastatur und Eingabe bewegen sich zusammen. **Nicht erreicht:**
+  Im Simulator öffnet der Tipp auf eine Zeile von „Ich kann“ die Tastatur nicht (Badge und Cursor
+  stehen, erst ein Tipp ins Feld öffnet sie), obwohl die App `focusAfterChange` nutzt — in Schritt B
+  auf einem echten iPhone prüfen.
+- **Security-Check (27.11.2026, Diff von Schritt A):** 0 kritisch, 0 hoch, 1 mittel (offen, unter
+  „Risiken“), 1 niedrig (behoben), 2 Hinweise. Der Check über den ganzen Diff von 0067 folgt nach
+  Schritt D.
+- **Für Enrico lokal:** In der `.env` `FOUNDRY_HOUSEHOLD_AGENT=household-agent-local` (statt
+  `FOUNDRY_PLACES_AGENT`) und `FOUNDRY_PROJECT_ENDPOINT` setzen, dann den lokalen Stack aus einer Shell
+  mit geladener `.env` neu starten.

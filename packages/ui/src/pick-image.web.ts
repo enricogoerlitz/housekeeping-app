@@ -17,7 +17,7 @@ export function pickImageFile(onFile: (file: File) => void, options: PickImageOp
   pending?.remove();
   const input = document.createElement('input');
   input.type = 'file';
-  input.accept = 'image/*';
+  input.accept = options.accept ?? 'image/*';
   // "Foto aufnehmen" (spec 0039, AC-009): phones open the rear camera directly.
   if (options.camera) input.setAttribute('capture', 'environment');
   input.setAttribute('aria-hidden', 'true');

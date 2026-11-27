@@ -92,7 +92,8 @@ insert into lint_private_functions_for_authenticated values
   ('private.add_recipe_video(uuid,uuid,jsonb)'),           -- spec 0046: the only ways to write recipes.videos
   ('private.set_recipe_video_poster(uuid,uuid,text,text)'),
   ('private.remove_recipe_video(uuid,uuid,text)'),
-  ('private.acknowledge_notices(uuid,text[])'); -- spec 0051: the only way to acknowledge notices
+  ('private.acknowledge_notices(uuid,text[])'), -- spec 0051: the only way to acknowledge notices
+  ('private.set_app_view(text)');               -- spec 0067: the only way to set the person's view
 
 create temp view lint_public_tables as
   select c.oid, c.relname as name, c.relrowsecurity as rls

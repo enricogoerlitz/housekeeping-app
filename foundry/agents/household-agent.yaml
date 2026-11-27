@@ -1,0 +1,1003 @@
+# The one Foundry prompt agent of the household (spec 0067, ADR-0019, ADR-0020): answers everything
+# in one conversation, with web search (Web IQ), the cards of `show_suggestions` (parsed by core
+# ai-agent.ts) and the household read tools of core agent-tools.ts, which the edge function ai-agent
+# runs as the person (RLS). The parameters of those tools are generated from core and checked by
+# foundry/src/run.test.ts: change them in packages/core/src/agent-tools.ts, then here. Same keys as
+# Foundry's YAML of an agent version; `instructions_file` is ours. Deployed per environment as
+# household-agent-local / -preview / -prod by `@housekeeping/foundry`.
+name: household-agent
+description: 'Housekeeping-Agent: Haushaltsdaten, Websuche, Restaurants und Aktivitäten (Spec 0067)'
+metadata:
+  app: housekeeping
+  spec: '0067'
+instructions_file: household-agent.md
+definition:
+  kind: prompt
+  model: gpt-6.1-terra
+  reasoning:
+    effort: low
+  tools:
+    - type: web_search
+      search_context_size: medium
+    - type: function
+      name: show_suggestions
+      description: >-
+        Zeigt vorgeschlagene Restaurants und Aktivitäten als antippbare Karten in der App an. Als
+        letzter Schritt aufrufen.
+      strict: true
+      parameters:
+        type: object
+        additionalProperties: false
+        required: [title, items, follow_ups]
+        properties:
+          title:
+            type: [string, 'null']
+            description: Kurzer Titel der Auswahl, z. B. „Samstag in Kreuzberg“
+          items:
+            type: array
+            items:
+              type: object
+              additionalProperties: false
+              required:
+                [
+                  kind,
+                  step,
+                  name,
+                  category,
+                  address,
+                  district,
+                  lat,
+                  lng,
+                  price_level,
+                  price_range,
+                  open_status,
+                  why,
+                  website,
+                  tags,
+                ]
+              properties:
+                kind:
+                  type: string
+                  enum: [restaurant, activity]
+                step:
+                  type: [string, 'null']
+                  description: „erst“, „dann“ … bei Kombinationen, sonst null
+                name:
+                  type: string
+                  description: Name wie auf der eigenen Website
+                category:
+                  type: string
+                  description: Art, z. B. „Italienisch“, „Gourmetrestaurant“, „Museum“
+                address:
+                  type: [string, 'null']
+                  description: Straße Hausnummer, PLZ Ort – nur aus einer Quelle
+                district:
+                  type: [string, 'null']
+                  description: Stadtteil/Kiez
+                lat:
+                  type: [number, 'null']
+                lng:
+                  type: [number, 'null']
+                price_level:
+                  type: [integer, 'null']
+                  minimum: 1
+                  maximum: 4
+                price_range:
+                  type: [string, 'null']
+                  description: z. B. „40–90 € p. P.“ oder „Eintritt 12 €“
+                open_status:
+                  type: [string, 'null']
+                  description: zum gewünschten Zeitpunkt, z. B. „Fr ab 18 Uhr geöffnet“ oder „unsicher“
+                why:
+                  type: string
+                  description: 1–2 Sätze, warum es zur Anfrage passt
+                website:
+                  type: [string, 'null']
+                  description: Eigene Website (https), nur wenn gefunden
+                tags:
+                  type: array
+                  items:
+                    type: string
+                  description: z. B. Terrasse, vegetarisch
+          follow_ups:
+            type: array
+            items:
+              type: string
+            description: Bis zu drei kurze Antworten auf deine Rückfrage, z. B. „Eher mit Terrasse“
+    - type: function
+      name: list_recipes
+      description:
+        'Liest die Rezepte des Haushalts: Suche, Filter (Gang, Ernährung, Küche, Schlagworte,
+        Zeit, zuletzt gekocht, Favorit, unfertig), Sortierung, Seiten mit Gesamtzahl, Felder.'
+      strict: true
+      parameters:
+        type: object
+        additionalProperties: false
+        required:
+          - query
+          - sort
+          - descending
+          - limit
+          - offset
+          - fields
+          - course
+          - diet
+          - cuisine
+          - tags
+          - max_minutes
+          - cooked_before
+          - favorite
+          - unfinished
+          - include_collections
+        properties:
+          query:
+            type:
+              - string
+              - 'null'
+            description: Freitext-Suche
+          sort:
+            type:
+              - string
+              - 'null'
+            enum:
+              - title
+              - last_cooked
+              - cooked_count
+              - rating
+              - total_minutes
+              - created
+              - null
+            description: Sortierung
+          descending:
+            type:
+              - boolean
+              - 'null'
+            description: absteigend sortieren
+          limit:
+            type:
+              - integer
+              - 'null'
+            description: Einträge je Seite (Standard klein, bis 300 auf ausdrücklichen Wunsch)
+            minimum: 1
+            maximum: 300
+          offset:
+            type:
+              - integer
+              - 'null'
+            description: ab Eintrag (0 = Anfang)
+            minimum: 0
+            maximum: 100000
+          fields:
+            type:
+              - array
+              - 'null'
+            items:
+              type: string
+              enum:
+                - id
+                - title
+                - course
+                - cuisine
+                - tags
+                - diet
+                - total_minutes
+                - servings
+                - last_cooked_on
+                - cooked_count
+                - rating
+                - favorite_of
+                - ingredients
+                - has_photo
+                - unfinished
+                - description
+            description: Felder der Antwort; nur anfragen, was gebraucht wird
+          course:
+            type:
+              - array
+              - 'null'
+            items:
+              type: string
+              enum:
+                - breakfast
+                - main
+                - side
+                - dessert
+                - snack
+                - drink
+            description: Gang, einer davon
+          diet:
+            type:
+              - array
+              - 'null'
+            items:
+              type: string
+              enum:
+                - vegan
+                - vegetarian
+                - fish
+                - meat
+                - unknown
+            description: Ernährung der Standard-Variante, eine davon; vegetarisch = vegan und vegetarian
+          cuisine:
+            type:
+              - string
+              - 'null'
+            description: Küche, z. B. Indisch
+          tags:
+            type:
+              - array
+              - 'null'
+            items:
+              type: string
+            description: Schlagworte, alle müssen passen
+          max_minutes:
+            type:
+              - integer
+              - 'null'
+            description: höchstens so viele Minuten
+            minimum: 1
+            maximum: 10000
+          cooked_before:
+            type:
+              - string
+              - 'null'
+            description: zuletzt gekocht vor diesem Tag oder nie (JJJJ-MM-TT)
+          favorite:
+            type:
+              - boolean
+              - 'null'
+            description: Favorit von mindestens einem Mitglied
+          unfinished:
+            type:
+              - boolean
+              - 'null'
+            description: 'unfertig: ohne Zutaten und ohne Schritte'
+          include_collections:
+            type:
+              - boolean
+              - 'null'
+            description: auch Sammlungen
+    - type: function
+      name: list_restaurants
+      description:
+        Liest die gespeicherten Restaurants des Haushalts mit Besuchen (aus dem Kalender),
+        Favoriten und Bewertung; Suche, Filter, Sortierung, Seiten, Felder.
+      strict: true
+      parameters:
+        type: object
+        additionalProperties: false
+        required:
+          - query
+          - sort
+          - descending
+          - limit
+          - offset
+          - fields
+          - cuisine
+          - tags
+          - max_price_level
+          - favorite
+          - visited
+          - visited_before
+        properties:
+          query:
+            type:
+              - string
+              - 'null'
+            description: Freitext-Suche
+          sort:
+            type:
+              - string
+              - 'null'
+            enum:
+              - name
+              - last_visit
+              - visits
+              - rating
+              - created
+              - null
+            description: Sortierung
+          descending:
+            type:
+              - boolean
+              - 'null'
+            description: absteigend sortieren
+          limit:
+            type:
+              - integer
+              - 'null'
+            description: Einträge je Seite (Standard klein, bis 300 auf ausdrücklichen Wunsch)
+            minimum: 1
+            maximum: 300
+          offset:
+            type:
+              - integer
+              - 'null'
+            description: ab Eintrag (0 = Anfang)
+            minimum: 0
+            maximum: 100000
+          fields:
+            type:
+              - array
+              - 'null'
+            items:
+              type: string
+              enum:
+                - id
+                - name
+                - cuisine
+                - address
+                - price_level
+                - tags
+                - rating
+                - favorite_of
+                - visits
+                - last_visit
+                - website
+                - maps_url
+                - notes
+                - has_photo
+            description: Felder der Antwort; nur anfragen, was gebraucht wird
+          cuisine:
+            type:
+              - string
+              - 'null'
+            description: Küche, z. B. Italienisch
+          tags:
+            type:
+              - array
+              - 'null'
+            items:
+              type: string
+            description: Schlagworte, alle müssen passen
+          max_price_level:
+            type:
+              - integer
+              - 'null'
+            description: höchstens dieses Preisniveau
+            minimum: 1
+            maximum: 4
+          favorite:
+            type:
+              - boolean
+              - 'null'
+            description: Favorit von mindestens einem Mitglied
+          visited:
+            type:
+              - boolean
+              - 'null'
+            description: schon besucht (stand bis heute im Kalender)
+          visited_before:
+            type:
+              - string
+              - 'null'
+            description: zuletzt besucht vor diesem Tag oder nie (JJJJ-MM-TT)
+    - type: function
+      name: list_activities
+      description:
+        Liest die gespeicherten Aktivitäten des Haushalts (Art, gemerkt, Besuche, Favoriten);
+        Suche, Filter, Sortierung, Seiten, Felder.
+      strict: true
+      parameters:
+        type: object
+        additionalProperties: false
+        required:
+          - query
+          - sort
+          - descending
+          - limit
+          - offset
+          - fields
+          - kind
+          - remembered
+          - favorite
+          - visited
+          - visited_before
+        properties:
+          query:
+            type:
+              - string
+              - 'null'
+            description: Freitext-Suche
+          sort:
+            type:
+              - string
+              - 'null'
+            enum:
+              - name
+              - last_visit
+              - visits
+              - rating
+              - created
+              - null
+            description: Sortierung
+          descending:
+            type:
+              - boolean
+              - 'null'
+            description: absteigend sortieren
+          limit:
+            type:
+              - integer
+              - 'null'
+            description: Einträge je Seite (Standard klein, bis 300 auf ausdrücklichen Wunsch)
+            minimum: 1
+            maximum: 300
+          offset:
+            type:
+              - integer
+              - 'null'
+            description: ab Eintrag (0 = Anfang)
+            minimum: 0
+            maximum: 100000
+          fields:
+            type:
+              - array
+              - 'null'
+            items:
+              type: string
+              enum:
+                - id
+                - name
+                - kind
+                - place_name
+                - address
+                - description
+                - rating
+                - favorite_of
+                - remembered
+                - visits
+                - last_visit
+                - website
+                - maps_url
+                - has_photo
+            description: Felder der Antwort; nur anfragen, was gebraucht wird
+          kind:
+            type:
+              - string
+              - 'null'
+            description: Art, z. B. Museum
+          remembered:
+            type:
+              - boolean
+              - 'null'
+            description: gemerkt („Merken“)
+          favorite:
+            type:
+              - boolean
+              - 'null'
+            description: Favorit von mindestens einem Mitglied
+          visited:
+            type:
+              - boolean
+              - 'null'
+            description: schon besucht (stand bis heute im Kalender)
+          visited_before:
+            type:
+              - string
+              - 'null'
+            description: zuletzt besucht vor diesem Tag oder nie (JJJJ-MM-TT)
+    - type: function
+      name: calendar
+      description:
+        'Liest den Kalender eines Zeitraums (höchstens 62 Tage): Einträge je Tag und Tageszeit
+        (Rezepte, Restaurants, Aktivitäten auch aus Serien, Freitext, Reste), dazu fällige Aufgaben und
+        Reisen.'
+      strict: true
+      parameters:
+        type: object
+        additionalProperties: false
+        required:
+          - from
+          - to
+          - kinds
+          - query
+          - sort
+          - descending
+          - limit
+          - offset
+          - fields
+        properties:
+          from:
+            type:
+              - string
+              - 'null'
+            description: erster Tag, Pflicht (JJJJ-MM-TT)
+          to:
+            type:
+              - string
+              - 'null'
+            description: letzter Tag, Pflicht, höchstens 62 Tage (JJJJ-MM-TT)
+          kinds:
+            type:
+              - array
+              - 'null'
+            items:
+              type: string
+              enum:
+                - recipe
+                - restaurant
+                - activity
+                - text
+                - leftovers
+            description: nur diese Arten
+          query:
+            type:
+              - string
+              - 'null'
+            description: Freitext-Suche
+          sort:
+            type:
+              - string
+              - 'null'
+            enum:
+              - date
+              - null
+            description: Sortierung
+          descending:
+            type:
+              - boolean
+              - 'null'
+            description: absteigend sortieren
+          limit:
+            type:
+              - integer
+              - 'null'
+            description: Einträge je Seite (Standard klein, bis 300 auf ausdrücklichen Wunsch)
+            minimum: 1
+            maximum: 300
+          offset:
+            type:
+              - integer
+              - 'null'
+            description: ab Eintrag (0 = Anfang)
+            minimum: 0
+            maximum: 100000
+          fields:
+            type:
+              - array
+              - 'null'
+            items:
+              type: string
+              enum:
+                - date
+                - weekday
+                - slot
+                - starts_at
+                - kind
+                - title
+                - note
+                - guests
+                - people
+                - not_done
+                - series
+            description: Felder der Antwort; nur anfragen, was gebraucht wird
+    - type: function
+      name: shopping_list
+      description: Liest die Einkaufsliste (standardmäßig nur Offenes) in Ladenfolge mit Mengen.
+      strict: true
+      parameters:
+        type: object
+        additionalProperties: false
+        required:
+          - query
+          - sort
+          - descending
+          - limit
+          - offset
+          - fields
+          - include_checked
+          - area
+        properties:
+          query:
+            type:
+              - string
+              - 'null'
+            description: Freitext-Suche
+          sort:
+            type:
+              - string
+              - 'null'
+            enum:
+              - area
+              - article
+              - null
+            description: Sortierung
+          descending:
+            type:
+              - boolean
+              - 'null'
+            description: absteigend sortieren
+          limit:
+            type:
+              - integer
+              - 'null'
+            description: Einträge je Seite (Standard klein, bis 300 auf ausdrücklichen Wunsch)
+            minimum: 1
+            maximum: 300
+          offset:
+            type:
+              - integer
+              - 'null'
+            description: ab Eintrag (0 = Anfang)
+            minimum: 0
+            maximum: 100000
+          fields:
+            type:
+              - array
+              - 'null'
+            items:
+              type: string
+              enum:
+                - article
+                - area
+                - amount
+                - checked
+                - not_available
+            description: Felder der Antwort; nur anfragen, was gebraucht wird
+          include_checked:
+            type:
+              - boolean
+              - 'null'
+            description: auch Abgehaktes (sonst nur Offenes)
+          area:
+            type:
+              - string
+              - 'null'
+            description: nur dieser Bereich, z. B. Kühlregal
+    - type: function
+      name: list_recurring_items
+      description: Liest die Dauerposten (Artikel, die regelmäßig auf die Liste kommen) mit ihrem Rhythmus.
+      strict: true
+      parameters:
+        type: object
+        additionalProperties: false
+        required:
+          - query
+          - sort
+          - descending
+          - limit
+          - offset
+          - fields
+          - paused
+        properties:
+          query:
+            type:
+              - string
+              - 'null'
+            description: Freitext-Suche
+          sort:
+            type:
+              - string
+              - 'null'
+            enum:
+              - article
+              - last_added
+              - null
+            description: Sortierung
+          descending:
+            type:
+              - boolean
+              - 'null'
+            description: absteigend sortieren
+          limit:
+            type:
+              - integer
+              - 'null'
+            description: Einträge je Seite (Standard klein, bis 300 auf ausdrücklichen Wunsch)
+            minimum: 1
+            maximum: 300
+          offset:
+            type:
+              - integer
+              - 'null'
+            description: ab Eintrag (0 = Anfang)
+            minimum: 0
+            maximum: 100000
+          fields:
+            type:
+              - array
+              - 'null'
+            items:
+              type: string
+              enum:
+                - article
+                - amount
+                - rule
+                - paused
+                - starts_on
+                - last_added_on
+                - note
+            description: Felder der Antwort; nur anfragen, was gebraucht wird
+          paused:
+            type:
+              - boolean
+              - 'null'
+            description: pausiert
+    - type: function
+      name: list_chores
+      description: 'Liest die Aufgaben im Haushalt: fällig am, wer dran ist, Rhythmus, zuletzt erledigt.'
+      strict: true
+      parameters:
+        type: object
+        additionalProperties: false
+        required:
+          - query
+          - sort
+          - descending
+          - limit
+          - offset
+          - fields
+          - room
+          - assignee
+          - due_before
+          - overdue
+        properties:
+          query:
+            type:
+              - string
+              - 'null'
+            description: Freitext-Suche
+          sort:
+            type:
+              - string
+              - 'null'
+            enum:
+              - next_due
+              - title
+              - room
+              - last_done
+              - null
+            description: Sortierung
+          descending:
+            type:
+              - boolean
+              - 'null'
+            description: absteigend sortieren
+          limit:
+            type:
+              - integer
+              - 'null'
+            description: Einträge je Seite (Standard klein, bis 300 auf ausdrücklichen Wunsch)
+            minimum: 1
+            maximum: 300
+          offset:
+            type:
+              - integer
+              - 'null'
+            description: ab Eintrag (0 = Anfang)
+            minimum: 0
+            maximum: 100000
+          fields:
+            type:
+              - array
+              - 'null'
+            items:
+              type: string
+              enum:
+                - title
+                - room
+                - next_due_on
+                - assignee
+                - recurrence
+                - last_done_on
+                - effort
+                - due_time
+                - overdue
+            description: Felder der Antwort; nur anfragen, was gebraucht wird
+          room:
+            type:
+              - string
+              - 'null'
+            description: Raum, z. B. Bad
+          assignee:
+            type:
+              - string
+              - 'null'
+            description: wer als Nächstes dran ist (Name)
+          due_before:
+            type:
+              - string
+              - 'null'
+            description: fällig bis einschließlich (JJJJ-MM-TT)
+          overdue:
+            type:
+              - boolean
+              - 'null'
+            description: überfällig (fällig vor heute)
+    - type: function
+      name: list_trips
+      description: Liest die Reisen des Haushalts mit Zeitraum, Notiz und wer mitfährt.
+      strict: true
+      parameters:
+        type: object
+        additionalProperties: false
+        required:
+          - query
+          - sort
+          - descending
+          - limit
+          - offset
+          - fields
+          - upcoming
+          - from
+          - to
+        properties:
+          query:
+            type:
+              - string
+              - 'null'
+            description: Freitext-Suche
+          sort:
+            type:
+              - string
+              - 'null'
+            enum:
+              - from_on
+              - null
+            description: Sortierung
+          descending:
+            type:
+              - boolean
+              - 'null'
+            description: absteigend sortieren
+          limit:
+            type:
+              - integer
+              - 'null'
+            description: Einträge je Seite (Standard klein, bis 300 auf ausdrücklichen Wunsch)
+            minimum: 1
+            maximum: 300
+          offset:
+            type:
+              - integer
+              - 'null'
+            description: ab Eintrag (0 = Anfang)
+            minimum: 0
+            maximum: 100000
+          fields:
+            type:
+              - array
+              - 'null'
+            items:
+              type: string
+              enum:
+                - from_on
+                - to_on
+                - note
+                - people
+                - draft
+                - days
+            description: Felder der Antwort; nur anfragen, was gebraucht wird
+          upcoming:
+            type:
+              - boolean
+              - 'null'
+            description: laufende und kommende
+          from:
+            type:
+              - string
+              - 'null'
+            description: überschneidet sich mit dem Zeitraum ab (JJJJ-MM-TT)
+          to:
+            type:
+              - string
+              - 'null'
+            description: überschneidet sich mit dem Zeitraum bis (JJJJ-MM-TT)
+    - type: function
+      name: list_articles
+      description: Liest den Artikel-Katalog des Haushalts (Name, Bereich, Ernährung, andere Namen, Vorrat).
+      strict: true
+      parameters:
+        type: object
+        additionalProperties: false
+        required:
+          - query
+          - sort
+          - descending
+          - limit
+          - offset
+          - fields
+          - area
+          - diet
+          - pantry
+        properties:
+          query:
+            type:
+              - string
+              - 'null'
+            description: Freitext-Suche
+          sort:
+            type:
+              - string
+              - 'null'
+            enum:
+              - name
+              - area
+              - null
+            description: Sortierung
+          descending:
+            type:
+              - boolean
+              - 'null'
+            description: absteigend sortieren
+          limit:
+            type:
+              - integer
+              - 'null'
+            description: Einträge je Seite (Standard klein, bis 300 auf ausdrücklichen Wunsch)
+            minimum: 1
+            maximum: 300
+          offset:
+            type:
+              - integer
+              - 'null'
+            description: ab Eintrag (0 = Anfang)
+            minimum: 0
+            maximum: 100000
+          fields:
+            type:
+              - array
+              - 'null'
+            items:
+              type: string
+              enum:
+                - name
+                - area
+                - diet
+                - synonyms
+                - is_pantry
+                - needs_review
+            description: Felder der Antwort; nur anfragen, was gebraucht wird
+          area:
+            type:
+              - string
+              - 'null'
+            description: Bereich, z. B. Gewürze
+          diet:
+            type:
+              - array
+              - 'null'
+            items:
+              type: string
+              enum:
+                - vegan
+                - vegetarian
+                - fish
+                - meat
+                - unknown
+                - non_food
+            description: Ernährung, eine davon
+          pantry:
+            type:
+              - boolean
+              - 'null'
+            description: Vorrat (hat man meist da)
+    - type: function
+      name: household_values
+      description:
+        Liefert alle Werte einer Spalte vollständig ohne Seiten, z. B. alle Artikelnamen, alle
+        Schlagworte, alle Küchen, alle Räume, die Mitglieder.
+      strict: true
+      parameters:
+        type: object
+        additionalProperties: false
+        required:
+          - column
+        properties:
+          column:
+            type:
+              - string
+              - 'null'
+            enum:
+              - article_names
+              - recipe_tags
+              - recipe_cuisines
+              - restaurant_cuisines
+              - restaurant_tags
+              - activity_kinds
+              - areas
+              - chore_rooms
+              - members
+              - null
+            description: welche Spalte, vollständig ohne Seiten

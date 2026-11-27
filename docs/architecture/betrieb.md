@@ -529,7 +529,7 @@ Projekt erst löschen, wenn alles stimmt.
 
 Der KI-Agent (Spec 0066, ADR-0018, ADR-0019) spricht Prompt-Agents in Foundry an. Jeder Agent ist eine
 Datei `foundry/agents/<name>.yaml` (Instruktion als `<name>.md` daneben) und wird je Umgebung mit
-Suffix angelegt: `places-agent-local`, `places-agent-preview`, `places-agent-prod`, alle im Projekt
+Suffix angelegt: `household-agent-local`, `household-agent-preview`, `household-agent-prod` (seit Spec 0067 der eine Agent des Haushalts, ADR-0020; vorher `places-agent-…`), alle im Projekt
 `n8n` der Ressource `msf-n8n-ai` (Abo `sub-enrico-goerlitz`, Tenant „PCG Labs“). Ein Upsert legt
 eine neue Version nur bei geänderter Definition an und nennt nur Name und Version.
 
@@ -545,11 +545,11 @@ eine neue Version nur bei geänderter Definition an und nennt nur Name und Versi
 az login                                        # einmal; das Konto mit Zugriff auf sub-enrico-goerlitz
 export FOUNDRY_PROJECT_ENDPOINT=https://msf-n8n-ai.services.ai.azure.com/api/projects/n8n
 export FOUNDRY_SUBSCRIPTION=sub-enrico-goerlitz # nur nötig, wenn az mehrere Konten hält
-pnpm foundry:agents:local                       # → „places-agent-local Version 1 (unverändert)“
+pnpm foundry:agents:local                       # → „household-agent-local Version 1 (unverändert)“
 ```
 
-In der `.env`: `FOUNDRY_PROJECT_ENDPOINT` wie oben, `FOUNDRY_PLACES_AGENT=places-agent-local`,
-`FOUNDRY_PLACES_AGENT_VERSION` leer (neueste) oder die genannte Nummer. Danach den lokalen Stack aus
+In der `.env`: `FOUNDRY_PROJECT_ENDPOINT` wie oben, `FOUNDRY_HOUSEHOLD_AGENT=household-agent-local`,
+`FOUNDRY_HOUSEHOLD_AGENT_VERSION` leer (neueste) oder die genannte Nummer. Danach den lokalen Stack aus
 einer Shell mit geladener `.env` neu starten (`supabase/functions/README.md`).
 
 **Einrichtung für die Pipeline (einmal; erledigt am 27.11.2026).** App `enrico-n8n-testing`, appId `79c0ab1a-e3a0-4290-8787-cf62d1bae91e`, Rolle „Foundry User“ auf dem Projekt `n8n`, Variablen in `preview` und `production` gesetzt. Namen außerhalb des Abos folgen dem Muster „enrico n8n testing“ (Enrico). Die Foundry-Ressource liegt in einem anderen
@@ -581,9 +581,9 @@ Rolle, im Schritt „Foundry-Agenten“ mit „HTTP 401/403 … Rolle „Foundry
 übersprungener Agent wäre schlimmer: Die Function liefe dann mit einer alten Version.
 
 **Eine Änderung ausrollen:** YAML oder Instruktion ändern, per PR nach `develop`; die nächste
-Vorschau legt `places-agent-preview` in neuer Version an und pinnt sie, die nächste Veröffentlichung
-`places-agent-prod`. Zurück geht es mit einem Revert oder, schnell, mit der alten Nummer in
-`FOUNDRY_PLACES_AGENT_VERSION` des Supabase-Projekts (bis zum nächsten Lauf).
+Vorschau legt `household-agent-preview` in neuer Version an und pinnt sie, die nächste Veröffentlichung
+`household-agent-prod`. Zurück geht es mit einem Revert oder, schnell, mit der alten Nummer in
+`FOUNDRY_HOUSEHOLD_AGENT_VERSION` des Supabase-Projekts (bis zum nächsten Lauf).
 
 **Aufräumen:** Löschen eines Chats oder Haushalts in der App löscht Conversation und Antworten in
 Foundry. Wird ein Haushalt außerhalb der App gelöscht, bleiben seine Conversations; sie tragen die

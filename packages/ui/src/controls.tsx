@@ -766,6 +766,7 @@ export interface TextFieldProps extends Pick<
   | 'accessibilityValue'
   | 'autoComplete'
   | 'onSelectionChange'
+  | 'onKeyPress'
 > {
   /** Visible label above the field; also the accessible name. */
   label?: string;
@@ -789,12 +790,25 @@ export interface TextFieldProps extends Pick<
    * four lines (spec 0062, decision 14); its buttons on the right stay at the bottom.
    */
   grow?: boolean;
+  /** With `grow`: the most lines before it scrolls (default 4; the agent 4.5, spec 0067). */
+  growLines?: number;
+  /**
+   * Inside the field above the text, e.g. the badges of the agent's input (spec 0067, REQ-004):
+   * part of the field, not free text. Pass `null` while there is none, never leave it out: the
+   * field keeps one layout, so the input keeps its focus when the first one comes.
+   */
+  top?: ReactNode;
   /** false: Enter in this field never saves the window it is in (a search field). */
   submitsWindow?: boolean;
   /** The input itself, e.g. to move the focus into it after a choice. */
   inputRef?: Ref<ComponentRef<typeof TextInput>>;
   style?: StyleProp<ViewStyle>;
   testID?: string;
+}
+
+/** The row of a field's input and buttons; inside a frame of its own when content stands above. */
+function FieldRow(props: { framed: boolean; style: ViewStyle; children: ReactNode }) {
+  return props.framed ? <View style={props.style}>{props.children}</View> : <>{props.children}</>;
 }
 
 let fieldSerial = 0;
@@ -835,6 +849,8 @@ export function TextField(props: TextFieldProps) {
     left,
     round,
     grow: growProp,
+    growLines,
+    top,
     style,
     testID,
     accessibilityLabel,
@@ -881,18 +897,35 @@ export function TextField(props: TextFieldProps) {
   const grow = growProp === true && props.multiline === true;
   const [contentHeight, setContentHeight] = useState(0);
   const lineHeight = theme.type.body.lineHeight ?? 22;
-  const grownHeight = growHeight({ contentHeight, lineHeight, empty: !props.value });
+  const grownHeight = growHeight({
+    contentHeight,
+    lineHeight,
+    empty: !props.value,
+    maxLines: growLines,
+  });
+  // With content above the text the border goes around both; the row keeps its own layout.
+  // A field that can hold content above its text keeps one layout whether it shows any or not:
+  // switching would mount the input anew and take its focus (the first badge of the agent).
+  const framed = top !== undefined;
+  const hasTop = top !== null && top !== false && top !== undefined;
   return (
     <View style={[{ gap: 6 }, style]}>
       {label ? <Text variant="smallStrong">{words(label)}</Text> : null}
       <View
         style={{
-          flexDirection: 'row',
-          alignItems: grow ? 'flex-end' : props.multiline ? 'flex-start' : 'center',
-          gap: 6,
+          flexDirection: framed ? 'column' : 'row',
+          alignItems: framed
+            ? 'stretch'
+            : grow
+              ? 'flex-end'
+              : props.multiline
+                ? 'flex-start'
+                : 'center',
+          gap: framed ? 0 : 6,
           minHeight: 50,
-          paddingLeft: left ? 12 : 14,
-          paddingRight: right ? 5 : 14,
+          paddingLeft: framed ? 0 : left ? 12 : 14,
+          paddingRight: framed ? 0 : right ? 5 : 14,
+          paddingTop: hasTop ? 8 : 0,
           borderRadius: round ? theme.shape.radius.input : theme.shape.radius.control,
           backgroundColor: theme.shape.cardBorder || focused ? c.surface : c.surfaceSunken,
           borderWidth: 1.5,
@@ -906,56 +939,68 @@ export function TextField(props: TextFieldProps) {
                   : 'transparent',
         }}
       >
-        {left}
-        <TextInput
-          autoCapitalize={autofill.autoCapitalize}
-          autoCorrect={autofill.autoCorrect}
-          inputMode={autofill.inputMode}
-          {...input}
-          // No autofill from contacts on titles, amounts and notes (spec 0032, AC-010; 0033).
-          autoComplete={autofill.autoComplete as TextInputProps['autoComplete']}
-          autoFocus={autoFocus === true && !claimFocus}
-          onSubmitEditing={enterSaves ? () => submitWindow() : input.onSubmitEditing}
-          // A window that stays open (a field is missing) keeps the cursor in the field.
-          blurOnSubmit={enterSaves ? false : input.blurOnSubmit}
-          {...(grow
-            ? {
-                numberOfLines: 1,
-                onContentSizeChange: (event: {
-                  nativeEvent: { contentSize: { height: number } };
-                }) => setContentHeight(event.nativeEvent.contentSize.height),
-              }
-            : {})}
-          ref={mergeRefs(own, inputRef)}
-          nativeID={autofill.id}
-          aria-invalid={error || invalid ? true : undefined}
-          testID={testID}
-          placeholder={props.placeholder === undefined ? undefined : words(props.placeholder)}
-          accessibilityLabel={accessibleName === undefined ? undefined : words(accessibleName)}
-          placeholderTextColor={placeholderColor}
-          onFocus={(event) => {
-            setFocused(true);
-            onFocus?.(event);
+        {hasTop ? <View style={{ paddingHorizontal: 10, paddingBottom: 2 }}>{top}</View> : null}
+        <FieldRow
+          framed={framed}
+          style={{
+            flexDirection: 'row',
+            alignItems: grow ? 'flex-end' : props.multiline ? 'flex-start' : 'center',
+            gap: 6,
+            paddingLeft: left ? 12 : 14,
+            paddingRight: right ? 5 : 14,
           }}
-          onBlur={(event) => {
-            setFocused(false);
-            onBlur?.(event);
-          }}
-          style={[
-            theme.type.body,
-            {
-              flex: 1,
-              color: c.text,
-              paddingVertical: props.multiline ? GROW_PADDING : 0,
-              minHeight: grow ? undefined : props.multiline ? 96 : 46,
-              height: grow ? grownHeight : undefined,
-              // The browser's own focus outline would double the border.
-              outlineStyle: 'none',
-            } as object,
-          ]}
-        />
-        {/* A growing field keeps its buttons centred on the last line. */}
-        {grow && right ? <View style={{ paddingBottom: 3 }}>{right}</View> : right}
+        >
+          {left}
+          <TextInput
+            autoCapitalize={autofill.autoCapitalize}
+            autoCorrect={autofill.autoCorrect}
+            inputMode={autofill.inputMode}
+            {...input}
+            // No autofill from contacts on titles, amounts and notes (spec 0032, AC-010; 0033).
+            autoComplete={autofill.autoComplete as TextInputProps['autoComplete']}
+            autoFocus={autoFocus === true && !claimFocus}
+            onSubmitEditing={enterSaves ? () => submitWindow() : input.onSubmitEditing}
+            // A window that stays open (a field is missing) keeps the cursor in the field.
+            blurOnSubmit={enterSaves ? false : input.blurOnSubmit}
+            {...(grow
+              ? {
+                  numberOfLines: 1,
+                  onContentSizeChange: (event: {
+                    nativeEvent: { contentSize: { height: number } };
+                  }) => setContentHeight(event.nativeEvent.contentSize.height),
+                }
+              : {})}
+            ref={mergeRefs(own, inputRef)}
+            nativeID={autofill.id}
+            aria-invalid={error || invalid ? true : undefined}
+            testID={testID}
+            placeholder={props.placeholder === undefined ? undefined : words(props.placeholder)}
+            accessibilityLabel={accessibleName === undefined ? undefined : words(accessibleName)}
+            placeholderTextColor={placeholderColor}
+            onFocus={(event) => {
+              setFocused(true);
+              onFocus?.(event);
+            }}
+            onBlur={(event) => {
+              setFocused(false);
+              onBlur?.(event);
+            }}
+            style={[
+              theme.type.body,
+              {
+                flex: 1,
+                color: c.text,
+                paddingVertical: props.multiline ? GROW_PADDING : 0,
+                minHeight: grow ? undefined : props.multiline ? 96 : 46,
+                height: grow ? grownHeight : undefined,
+                // The browser's own focus outline would double the border.
+                outlineStyle: 'none',
+              } as object,
+            ]}
+          />
+          {/* A growing field keeps its buttons centred on the last line. */}
+          {grow && right ? <View style={{ paddingBottom: 3 }}>{right}</View> : right}
+        </FieldRow>
       </View>
       {error ? (
         <View ref={errorRef}>
