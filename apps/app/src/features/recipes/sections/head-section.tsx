@@ -1,5 +1,5 @@
 import type { HeadDraft, Recipe } from '@housekeeping/core';
-import { Icon, Row, Stack, Text, TextField } from '@housekeeping/ui';
+import { Icon, Row, Stack, Text, TextField, useLargeTitle } from '@housekeeping/ui';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 
@@ -22,6 +22,8 @@ export function HeadSection(props: {
 }) {
   const { recipe, editor } = props;
   const draft = editor.draft?.head;
+  // On phones the bar shows the title once this one has scrolled under it (spec 0056, REQ-009).
+  const largeTitle = useLargeTitle();
   return (
     <RecipeSection title="Kopf" inline testID="recipe-head">
       {draft ? (
@@ -30,6 +32,7 @@ export function HeadSection(props: {
         <View style={{ gap: 8 }}>
           <Row gap={10} wrap>
             <Text
+              ref={largeTitle}
               variant={props.desktop ? 'display' : 'title'}
               heading
               style={{ flexShrink: 1 }}

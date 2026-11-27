@@ -417,11 +417,51 @@ describe('Sheet with the keyboard on iPhone (spec 0044, REQ-002, REQ-003)', () =
     setWindow(390, 844);
     act(() => openKeyboardNow());
     openSheet();
+    report(464);
     const title = screen.getByTestId('title');
     // Still sliding in: the hidden field keeps the keyboard.
     expect(document.activeElement).not.toBe(title);
     act(() => vi.advanceTimersByTime(300));
     expect(document.activeElement).toBe(title);
+  });
+
+  it('AC-024: opened in the tap that asked for the keyboard, the window waits out of sight until the keyboard is there, then slides in one move (Dauerposten, 27.11.)', () => {
+    setWindow(390, 844);
+    act(() => openKeyboardNow());
+    const view = openSheet();
+    const panel = () => screen.getByTestId('sheet').style.transform;
+    act(() => vi.advanceTimersByTime(150));
+    view.rerender(
+      <Sheet visible onClose={() => undefined} title="Neu" size="m" testID="sheet">
+        <TextField label="Titel" autoFocus testID="title" />
+      </Sheet>,
+    );
+    // iOS brings the keyboard up meanwhile and the page stalls: the window has not started and
+    // is out of sight, also where the keyboard has not come yet.
+    expect(panel()).toBe('translateY(844px)');
+    expect(screen.getByTestId('sheet').style.opacity).toBe('0');
+    expect(document.activeElement).not.toBe(screen.getByTestId('title'));
+    report(464);
+    view.rerender(
+      <Sheet visible onClose={() => undefined} title="Neu" size="m" testID="sheet">
+        <TextField label="Titel" autoFocus testID="title" />
+      </Sheet>,
+    );
+    expect(panel()).toBe('translateY(0px)');
+    expect(screen.getByTestId('sheet').style.opacity).toBe('1');
+  });
+
+  it('AC-024: the keyboard late, the window slides in after 400 ms all the same', () => {
+    setWindow(390, 844);
+    act(() => openKeyboardNow());
+    const view = openSheet();
+    act(() => vi.advanceTimersByTime(450));
+    view.rerender(
+      <Sheet visible onClose={() => undefined} title="Neu" size="m" testID="sheet">
+        <TextField label="Titel" autoFocus testID="title" />
+      </Sheet>,
+    );
+    expect(screen.getByTestId('sheet').style.transform).toBe('translateY(0px)');
   });
 
   it('AC-008: the visible area moved down by 120 px, the window ends at its bottom edge', () => {

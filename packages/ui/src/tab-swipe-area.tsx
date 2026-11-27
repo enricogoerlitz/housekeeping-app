@@ -90,6 +90,8 @@ export function TabSwipeArea(props: {
   frame?: TabPreviewFrame;
   /** The page's measured chrome, handed to a page that mounts anew for the new tab. */
   chrome?: ScreenChrome;
+  /** Switched off for a while (the recipe page in its edit mode): the content stays mounted. */
+  disabled?: boolean;
   children: ReactNode;
 }) {
   const { isPhone, width: screenWidth } = useBreakpoint();
@@ -151,11 +153,22 @@ export function TabSwipeArea(props: {
   });
   useLayoutEffect(() => panesApi.setDraw(props.swipe.preview));
   useLayoutEffect(() => {
-    enabled.set(isPhone && !fine);
+    enabled.set(isPhone && !fine && !props.disabled);
     still.set(reduced);
     index.set(props.swipe.index);
     count.set(props.swipe.count);
-  }, [isPhone, fine, reduced, props.swipe.index, props.swipe.count, enabled, still, index, count]);
+  }, [
+    isPhone,
+    fine,
+    reduced,
+    props.disabled,
+    props.swipe.index,
+    props.swipe.count,
+    enabled,
+    still,
+    index,
+    count,
+  ]);
 
   // A new tab arrives from the side the finger pushed towards; reduced motion only fades.
   const shown = props.swipe.index;

@@ -196,6 +196,32 @@ bisher. Offline: nur online (offline fragt „Fertig“ nicht und verlässt den 
 - AC-035: Angenommen das Rezept wurde auf einem anderen Gerät gelöscht · Wenn ich „Eintragen“ tippe
   · Dann ist nichts eingetragen, und die App sagt „Das Rezept gibt es nicht mehr“ (Spec 0008, E6)
 
+### Nachklick iPhone 27.11.: Kopfzeile und Foto
+
+**REQ-009 — Der Titel blendet in die Kopfzeile ein.** Am Handy blendet der Titel in der Kopfzeile
+erst ein, wenn der große Titel der Seite unter der Kopfzeile verschwunden ist: nur über die
+Deckkraft (150 ms), einzeilig und mit „…“ gekürzt (ein mehrzeiliger Titel zeigt nur den Anfang der
+ersten Zeile), in der Zeile zwischen „‹ Essen“ und den Knöpfen. Er bleibt, solange gescrollt ist,
+und blendet aus, sobald der große Titel wieder zu sehen ist. Die Kopfzeile ändert dabei ihre Höhe
+nicht. Gilt für Rezept- und Sammlungsseite. Präzisiert Spec 0008, AC-020 („nach dem Scrollen
+erscheint dort ‚Lasagne‘“); der Nicht-Ziel-Punkt „Kopfzeile bleibt unberührt“ gilt dafür nicht.
+Offline: offline vollständig.
+
+- AC-036: Angenommen Handy, „Mango-Curry“ · Wenn ich schnell nach unten scrolle · Dann blendet
+  „Mango-Curry“ in der Kopfzeile erst ein, wenn der große Titel unter ihr verschwunden ist, nur über
+  die Deckkraft und nie in großer Schrift · Und scrolle ich zurück, bis der große Titel wieder zu
+  sehen ist, blendet er aus
+- AC-037: Angenommen Handy, „Mango-Curry“ einmal nach unten und wieder ganz nach oben gescrollt ·
+  Dann steht das Foto so dicht unter der Kopfzeile wie beim Öffnen (keine Lücke), und die Kopfzeile
+  war beim Scrollen immer gleich hoch
+
+**REQ-010 — Das Foto bleibt beim Wechsel in den Bearbeitungsmodus.** Tippe ich ✎ oder im
+Bearbeitungsmodus „Abbrechen“ bzw. „Speichern“, bleibt das Titelfoto in jedem Bild sichtbar. Gilt
+für Rezept- und Sammlungsseite. Offline: offline lesend (✎ deaktiviert wie bisher).
+
+- AC-038: Angenommen „Mango-Curry“ aus der Liste geöffnet · Wenn ich ✎ und danach „Abbrechen“ tippe
+  · Dann ist das Foto in keinem Bild ein leerer Rahmen, und die Seite steht an derselben Stelle
+
 ## Entscheidungen
 
 1. Der Lesemodus speichert über den vorhandenen Befehl `saveRecipePage`: ein frischer Entwurf der
@@ -248,6 +274,30 @@ bisher. Offline: nur online (offline fragt „Fertig“ nicht und verlässt den 
     Variante und je Gruppe (core `ingredientSections`); verschoben wird innerhalb eines Teils, Variante
     und Gruppe ändert ⋯ „Zutat bearbeiten“. Die Schritte bleiben in der Reihenfolge des Kochens mit
     der Variante darunter: nach Varianten getrennt ginge die Reihenfolge verloren.
+14. Nachklick iPhone 27.11., Lücke über dem Foto (AC-037): Am Handy passen neben „‹ Essen“ und vier
+    Knöpfen nur wenige Buchstaben in die Zeile, daher stellte die Kopfzeile den Titel nach dem
+    Scrollen in eine eigene Zeile darunter (Review 0003) und wurde 27 pt höher. `Screen` legt den
+    Inhalt unter die gemessene schmale Leiste; war sie höher als die volle Kopfzeile, rechnete er
+    einen negativen Abstand, den der Browser verwirft (der alte Wert von 60 px blieb) — nach einmal
+    Hinunter- und Hinaufscrollen stand das Foto 87 pt tiefer (≈ 1/6 des Bildschirms; im Simulator
+    nachgestellt, `tmp/iphone-header/`). Behoben an beiden Stellen: `Screen` legt den Inhalt nie
+    tiefer als unter die volle Kopfzeile, und die Kopfzeile mit großem Titel auf der Seite ändert
+    ihre Höhe nicht mehr (REQ-009).
+15. Nachklick iPhone 27.11., Titel blitzt groß auf (AC-036): Der Titel erschien schon nach 56 pt
+    Scrollen, während der große Titel noch zu sehen war, zuerst in der Zeile und ein Bild später in
+    einer eigenen Zeile — die Kopfzeile wuchs, der Inhalt sprang. Enricos Entscheidung (Empfehlung
+    vorab angenommen): einblenden statt wachsen. Die Seite meldet ihren großen Titel
+    (`useLargeTitle`), `Screen` misst bei jedem Scrollen, ob seine Unterkante unter der Kopfzeile
+    liegt; der Titel steht immer in der Zeile und ändert nur die Deckkraft (bei „Bewegung
+    reduzieren“ ohne Übergang). Ohne großen Titel (Bearbeitungsmodus) bleibt das Verhalten aus
+    Review 0003: Titel nach dem Scrollen, bei zu wenig Platz in eigener Zeile statt „Ge…“; dank
+    Entscheidung 14 rückt der Inhalt dabei nicht. Andere Seiten mit `ScreenHeader` ohne
+    `titleOnScroll` sind nicht betroffen (nur die Begrenzung aus Entscheidung 14 gilt für alle).
+16. Nachklick iPhone 27.11., B-04 (AC-038): Der Bearbeitungsmodus schaltet das Wischen zum
+    nächsten Rezept aus (Spec 0034, REQ-008). `Screen` ließ dafür den Wisch-Bereich um den Inhalt
+    weg — React baute die ganze Seite neu auf, das Foto stand rund 4 Bilder leer, bis es neu
+    dekodiert war. Jetzt behält `Screen` den Wisch-Bereich, sobald einmal gewischt werden konnte,
+    und schaltet ihn nur aus; die Seite bleibt montiert.
 
 ## Daten
 
@@ -275,6 +325,8 @@ bei Speichern, Verwerfen und Abmelden. Keine Schema-Änderung.
       nutzen den Lesemodus-Weg von Spec 0037 AC-002 / 0047 AC-011 nicht
 - [x] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün; Screenshots Desktop
       1440 × 900 und Handy 390 × 844 in `tmp/review-0004/0056/`
+- [x] 11. Nachklick iPhone 27.11.: `ui` Kopfzeile blendet ein, `Screen` ohne Lücke und ohne Neuaufbau
+      beim Bearbeiten (AC-036–AC-038), rot → grün; App: großer Titel meldet sich (`useLargeTitle`)
 
 **Nachweis (27.11.2026):** Die neuen Tests in `core` (`page-editor`, `page-draft-backup`,
 `cooking-timers`, `cooking-history`) und `ui` (`photo-viewer`) liefen zuerst rot (Funktionen bzw.
@@ -286,3 +338,13 @@ dem Link und „Hat nicht geklappt“ (AC-004); Entwurf nach Browser-Zurück ang
 keine Frage; Vollbild mit zwei untergeschobenen Videos (nur im Browser-Kontext): Foto → Video 1 →
 Video 2 → zurück, aus der Kachel „Video 2“ öffnet Seite 3 und lädt. Die e2e-Datei läuft beim
 Koordinator. Nicht geprüft: echter Ton und echte Vibration auf einem Gerät, iPhone-Simulator.
+
+**Nachweis Nachklick iPhone (27.11.2026):** Rot, dann grün: `shell.test.tsx` (AC-036, AC-037 je für
+Kopfzeile und `Screen`, AC-038), `large-title.test.ts`. iPhone-Simulator (Safari und installiert),
+Videos Bild für Bild in `tmp/iphone-header/`: vorher nach Hinunter- und Hinaufscrollen 87 pt Lücke
+über dem Foto, der Titel erst in der Zeile, ein Bild später in eigener Zeile (Kopfzeile wuchs,
+Inhalt sprang), beim Wechsel in den Bearbeitungsmodus 4 Bilder leerer Fotorahmen; nachher Foto an
+derselben Stelle, Kopfzeile gleich hoch, „Mango-…“ blendet ein, sobald der große Titel verschwunden
+ist, Foto in jedem Bild sichtbar, Wischen zum nächsten Rezept geht danach weiter und ist im
+Bearbeitungsmodus aus. Desktop 1440 × 900 unverändert. e2e in `rundgang-rezeptseite-0056.spec.ts`
+(AC-036–AC-038) läuft in GitHub.

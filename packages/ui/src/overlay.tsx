@@ -105,6 +105,8 @@ export interface SheetAction {
 // Spec 0029, REQ-001: the scrim fades in place, only the sheet travels; 250 ms in, 200 ms out.
 const OPEN_MS = 250;
 const CLOSE_MS = 200;
+/** How long a window opened by the tap's keyboard waits for it (spec 0044, AC-024). */
+const KEYBOARD_WAIT_MS = 400;
 const EASE_OUT = Easing.bezier(0.23, 1, 0.32, 1);
 // Spec 0033, decision 1: after a drag the window springs back with a little give, or leaves at the
 // finger's speed.
@@ -156,11 +158,26 @@ export function Sheet(props: SheetProps) {
   const [mounted, setMounted] = useState(props.visible);
   // Mounted at once on opening; unmounted only once the fade-out has finished.
   if (props.visible && !mounted) setMounted(true);
+  // Spec 0044, AC-024: opened in the tap that asked for the keyboard, the window waits out of
+  // sight until the keyboard is there, at most KEYBOARD_WAIT_MS. iOS stalls the page while it
+  // brings the keyboard up: a window already sliding stood still half way for about 100 ms and then
+  // jumped to the top ("Dauerposten anlegen", 27.11.). Started after it, the window and the
+  // keyboard move in one go, as for a window that mounts after an address change.
+  const waitsForKeyboard = isPhone && keyboard.expected === true;
+  const [started, setStarted] = useState(false);
+  if (props.visible && !started && !waitsForKeyboard) setStarted(true);
+  if (!props.visible && started) setStarted(false);
+  useEffect(() => {
+    if (!props.visible || started) return undefined;
+    const late = setTimeout(() => setStarted(true), KEYBOARD_WAIT_MS);
+    return () => clearTimeout(late);
+  }, [props.visible, started]);
   const progress = useSharedValue(0);
   // The sheet's own height once measured; until then the screen height keeps it out of sight.
   const travel = useSharedValue(height);
   useEffect(() => {
     if (props.visible) {
+      if (!started) return;
       progress.set(
         withTiming(1, { duration: OPEN_MS, easing: EASE_OUT, reduceMotion: ReduceMotion.Never }),
       );
@@ -177,7 +194,7 @@ export function Sheet(props: SheetProps) {
         ),
       );
     }
-  }, [props.visible, progress]);
+  }, [props.visible, started, progress]);
 
   // Spec 0033, REQ-001: on phones the window follows a finger dragging it down.
   const drag = useSharedValue(0);
@@ -189,7 +206,9 @@ export function Sheet(props: SheetProps) {
     if (!isPhone) return { opacity: progress.get() };
     const entering = slide ? (1 - progress.get()) * travel.get() : 0;
     return {
-      opacity: slide ? 1 : progress.get(),
+      // Before it starts it is out of sight: it waits under the place of the keyboard still to
+      // come, where the page would show it (AC-024).
+      opacity: slide ? (progress.get() > 0 ? 1 : 0) : progress.get(),
       transform: [{ translateY: entering + drag.get() }],
     };
   });
@@ -276,7 +295,7 @@ export function Sheet(props: SheetProps) {
     };
   }, []);
   useEffect(() => {
-    if (!props.visible) return;
+    if (!props.visible || !started) return;
     let settle: ReturnType<typeof setTimeout> | undefined;
     let reclaim: ((event: FocusEvent) => void) | undefined;
     // A field of its own (a search field with autoFocus) took the focus as the window mounted.
@@ -323,7 +342,7 @@ export function Sheet(props: SheetProps) {
       clearTimeout(settle);
       if (reclaim) document.removeEventListener('focusin', reclaim, true);
     };
-  }, [props.visible]);
+  }, [props.visible, started]);
 
   // Removed by its page while open: a copy fades out in its place (spec 0029, REQ-001).
   const layer = useRef<HostInstance>(null);
