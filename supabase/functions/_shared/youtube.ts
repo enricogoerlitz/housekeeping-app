@@ -76,6 +76,8 @@ export interface YouTubeRead {
   coverUrl?: string;
   /** REQ-003: a recipe page the description names when it has no ingredient part itself. */
   recipeLink?: string;
+  /** AC-011: the watch page gave no description (bot check, consent page); at most the title. */
+  descriptionUnread?: true;
 }
 
 type Json = { [key: string]: unknown };
@@ -281,5 +283,6 @@ export async function readYouTube(
   if (coverUrl) result.coverUrl = coverUrl;
   const recipeLink = page ? descriptionRecipeLink(page.description) : undefined;
   if (recipeLink) result.recipeLink = recipeLink;
+  if (!page) result.descriptionUnread = true;
   return result;
 }

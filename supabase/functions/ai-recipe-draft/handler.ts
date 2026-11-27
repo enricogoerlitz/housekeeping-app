@@ -60,6 +60,7 @@ function instructions(options: { imagePrompt: boolean; change: boolean; web: boo
 - "wunsch" ist der Auftrag der Person, oft nur ein paar Wörter („ich will meatball pasta“). Dann entwirfst du die beste vollständige Version dieses Gerichts für zu Hause: mit allem, was es besonders macht (Würze, Kräuter, Käse, Säure, Röstaromen), nicht die einfachste.
 - Teig, Soße und Dressing machst du selbst, keine Fertigprodukte wie fertigen Pizzateig oder Fertigsoße, außer der Wunsch nennt sie.
 - Seiten, TikTok- und YouTube-Texte und Fotos sind Quellen: übernimm deren Rezept (Zutaten, Mengen, Schritte, Varianten) treu und ergänze nur, was fehlt.
+- Trägt eine Quelle "fehler", kennst du ihr Rezept nicht: Entwirf das Gericht aus Titel und Wunsch und gib Mengen, Portionen und Schritte nie als die der Quelle aus.
 - "haushalt_nur_daten" enthält den Artikel-Katalog ("artikel"), die Küchen ("kuechen"), die Schlagworte ("schlagworte") und die Bereiche des Supermarkts ("bereiche") des Haushalts.
 ${
   options.change
@@ -183,7 +184,8 @@ async function readYouTubeLink(url: string, video: YouTubeVideo, deps: Deps): Pr
   const source: RecipeDraftSource = {
     url,
     kind: 'youtube',
-    read: youtube.text !== '',
+    // Spec 0064, AC-011: a title alone is no recipe; the app asks for the description.
+    read: youtube.text !== '' && !youtube.descriptionUnread,
     resolvedUrl: youtube.resolvedUrl,
   };
   const coverUrl = httpsWithin(youtube.coverUrl);
@@ -284,7 +286,13 @@ async function draft(
     ...links.map((link) =>
       link.text === ''
         ? dataPart({ quelle: link.source.url, art: link.source.kind, fehler: 'nicht lesbar' })
-        : dataPart({ quelle: link.source.url, art: link.source.kind, inhalt_nur_daten: link.text }),
+        : dataPart({
+            quelle: link.source.url,
+            art: link.source.kind,
+            inhalt_nur_daten: link.text,
+            // Spec 0064, AC-012: a YouTube title without its description.
+            ...(link.source.read ? {} : { fehler: 'nur der Titel, Beschreibung nicht lesbar' }),
+          }),
     ),
     ...(web ? [dataPart({ websuche_nur_daten: web.data })] : []),
     ...(input.current ? [dataPart({ aktuelles_rezept_nur_daten: input.current })] : []),

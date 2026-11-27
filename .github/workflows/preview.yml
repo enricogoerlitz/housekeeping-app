@@ -134,6 +134,12 @@ jobs:
         env:
           PREVIEW_INVITE_EMAILS: ${{ secrets.PREVIEW_INVITE_EMAILS }}
         run: node scripts/preview-invites.mjs
+      - name: Projekt neu starten
+        # The pg_cron launcher keeps the job list it loaded at its start across the reset: on
+        # 27.11.2026 it still ran jobs deleted long ago and none of the current ones. A restart
+        # (Management API) starts it fresh; the step waits until the project is ACTIVE_HEALTHY
+        # (at most 10 min, else red) and prints the jobs in cron.job (red without any).
+        run: node scripts/ci/supabase-restart.mjs
       - name: Auth- und API-Konfiguration
         run: supabase config push --remote="$SUPABASE_PROJECT_REF" --yes
       - name: Functions

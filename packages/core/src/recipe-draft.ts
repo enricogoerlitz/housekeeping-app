@@ -64,6 +64,22 @@ export function linkChipLabel(url: string, state: 'reading' | 'read' | 'failed')
   return name;
 }
 
+/**
+ * The toast after the draft for the links that could not be read (spec 0040, AC-004, AC-017,
+ * AC-019; spec 0064, AC-011): one line per link, saying what the person can do instead.
+ */
+export function unreadLinksNotice(sources: readonly RecipeDraftSource[]): string | undefined {
+  const lines = sources
+    .filter((source) => !source.read)
+    .map((source) => {
+      if (source.kind === 'youtube')
+        return 'Die Videobeschreibung ließ sich nicht lesen – kopiere sie ins Textfeld, dann übernimmt die KI sie genau.';
+      if (source.kind === 'tiktok') return linkChipLabel(source.url, 'failed');
+      return `${linkHost(source.url)} ließ sich nicht laden – vermutlich eine Bezahlschranke oder ein Schutz der Seite. Füge den Rezepttext ein oder hänge Screenshots an.`;
+    });
+  return lines.length > 0 ? lines.join('\n') : undefined;
+}
+
 function articleOf(
   ingredient: DraftIngredient,
   articles: readonly Article[],

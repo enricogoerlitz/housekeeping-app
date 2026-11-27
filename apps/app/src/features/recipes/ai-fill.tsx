@@ -28,6 +28,7 @@ import {
   type RecipeDraftReply,
   type RecipeDraftSource,
   type WebPhotoChoice,
+  unreadLinksNotice,
 } from '@housekeeping/core';
 import {
   Button,
@@ -279,13 +280,13 @@ export function useDraftInput(): (reply: RecipeDraftReply) => PageDraftInput {
     });
 }
 
-/** AC-004, AC-017: the links that could not be read, once the draft is open. */
+// Spec 0040, Entscheidung 8: the notice says what to do instead, so it stays longer than 5 s.
+const UNREAD_NOTICE_MS = 8000;
+
+/** AC-004, AC-017, AC-019 (spec 0064, AC-011): the links that could not be read, once the draft is open. */
 export function toastUnreadLinks(sources: readonly RecipeDraftSource[]): void {
-  const failed = sources.filter((source) => !source.read);
-  if (failed.length === 0) return;
-  toast.show({
-    message: failed.map((source) => linkChipLabel(source.url, 'failed')).join(' · '),
-  });
+  const message = unreadLinksNotice(sources);
+  if (message) toast.show({ message, duration: UNREAD_NOTICE_MS });
 }
 
 const ADDRESS_DELAY_MS = 400;

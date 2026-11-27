@@ -86,7 +86,7 @@ describe('callFlux (ADR-0016: FLUX.2-pro over the BFL path of Foundry)', () => {
     expect(Date.now() - start).toBe(45_000);
   });
 
-  it('a refusal, an answer without an image or no JSON is ai_unavailable; nothing is logged', async () => {
+  it('a refusal, an answer without an image or no JSON is ai_unavailable; no key and no prompt is logged', async () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
     for (const reply of [
       new Response('{"error":"content policy"}', { status: 400 }),
@@ -98,8 +98,54 @@ describe('callFlux (ADR-0016: FLUX.2-pro over the BFL path of Foundry)', () => {
       await expectUnavailable(callFlux(deps, { prompt: 'Geheimes Familienrezept' }));
     }
     const logged = JSON.stringify(errors.mock.calls);
-    for (const secret of ['test-foundry-key-SECRET', 'Geheimes', 'content policy'])
+    for (const secret of ['test-foundry-key-SECRET', 'Geheimes', '<html>'])
       expect(logged).not.toContain(secret);
+  });
+
+  it('Entscheidung 9 (0040): a rejection logs its status and the error code and message of the reply, short', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const reject = async (body: string) => {
+      const deps = fakeDeps({ env: ENV, fetch: async () => new Response(body, { status: 400 }) });
+      await expectUnavailable(callFlux(deps, { prompt: 'Lasagne Bolognese', image: '/9j/AAAA' }));
+      return errors.mock.calls.at(-1);
+    };
+    expect(
+      await reject(
+        JSON.stringify({
+          error: { code: 'content_filter', message: 'The request was filtered.', inner: 'x' },
+        }),
+      ),
+    ).toEqual([
+      'flux_rejected',
+      { status: 400, code: 'content_filter', message: 'The request was filtered.' },
+    ]);
+    // Black Forest Labs answers with "detail"; a bare string error counts as the message.
+    expect(await reject(JSON.stringify({ detail: 'Invalid input_image' }))).toEqual([
+      'flux_rejected',
+      { status: 400, message: 'Invalid input_image' },
+    ]);
+    expect(await reject(JSON.stringify({ error: 'content policy' }))).toEqual([
+      'flux_rejected',
+      { status: 400, message: 'content policy' },
+    ]);
+    // At most 200 characters, on one line.
+    const long = await reject(JSON.stringify({ error: { message: `a\n${'b'.repeat(500)}` } }));
+    expect((long?.[1] as { message: string }).message).toBe(`a ${'b'.repeat(198)}`);
+    // Never the prompt, the photo or the key, even when the reply repeats them; no JSON: status only.
+    for (const echo of [
+      'Prompt "Lasagne Bolognese" rejected',
+      'bad image /9j/AAAA',
+      'key test-foundry-key-SECRET invalid',
+    ])
+      expect(await reject(JSON.stringify({ error: { code: 'bad', message: echo } }))).toEqual([
+        'flux_rejected',
+        { status: 400, code: 'bad' },
+      ]);
+    expect(await reject('<html>Bad Request</html>')).toEqual(['flux_rejected', { status: 400 }]);
+    expect(await reject(JSON.stringify({ error: { code: 'x'.repeat(80) } }))).toEqual([
+      'flux_rejected',
+      { status: 400 },
+    ]);
   });
 
   it('a missing FOUNDRY_IMAGE_DEPLOYMENT fails loudly before any call', async () => {
