@@ -1,6 +1,17 @@
 import { expect as baseExpect } from '@playwright/test';
 
-import { expect, freshSeed, goOffline, nav, only, open, test, tid, toastMessage } from './helpers';
+import {
+  contentReady,
+  expect,
+  freshSeed,
+  goOffline,
+  nav,
+  only,
+  open,
+  test,
+  tid,
+  toastMessage,
+} from './helpers';
 import { seedIds } from './seed-ids';
 
 // Spec 0056 — the read view saves "+ Zutat", "Mehrere einfügen" and "+ Link" at once, the
@@ -140,14 +151,19 @@ test('AC-030 / AC-033: "Fertig" without an entry of today asks; Escape stays, "E
   await open(page, `/rezept/${HALLOUMI}/kochen?schritt=99`);
   await tid(page, 'cook-done').click();
   await expect(tid(page, 'cook-cooked-today')).toContainText('Heute gekocht eintragen?');
-  await page.keyboard.press('Escape');
-  await expect(tid(page, 'cook-cooked-today')).toBeHidden();
+  // The question takes Escape once it stands (its modal listens from its first effect on).
+  await expect(async () => {
+    await page.keyboard.press('Escape');
+    await expect(tid(page, 'cook-cooked-today')).toBeHidden({ timeout: 1_000 });
+  }).toPass();
   await expect(tid(page, 'cooking-screen')).toBeVisible();
   await tid(page, 'cook-done').click();
   await tid(page, 'cook-cooked-today-confirm').click();
   await expect(toastMessage(page)).toHaveText('Heute gekocht eingetragen');
   await expect(tid(page, 'cooking-screen')).toBeHidden();
-  // AC-031: now there is an entry of today, "Fertig" asks no more.
+  // AC-031: now there is an entry of today, "Fertig" asks no more (once the sync after the
+  // write has brought it into the cache).
+  await contentReady(page);
   await page.goto(`/rezept/${HALLOUMI}/kochen?schritt=99`);
   await tid(page, 'cook-done').click();
   await expect(tid(page, 'cooking-screen')).toBeHidden();

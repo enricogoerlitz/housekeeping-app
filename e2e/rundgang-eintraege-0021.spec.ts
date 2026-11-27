@@ -1,4 +1,14 @@
-import { expect, freshSeed, goOffline, open, test, tid, toastMessage, chooseTime } from './helpers';
+import {
+  contentReady,
+  expect,
+  freshSeed,
+  goOffline,
+  open,
+  test,
+  tid,
+  toastMessage,
+  chooseTime,
+} from './helpers';
 import { seedIds } from './seed-ids';
 
 // Spec 0021, REQ-006 to REQ-015: the window of an entry edits everything chosen when planning and
@@ -22,6 +32,9 @@ test('AC-015, AC-018: a person more is a portion more, "−" stops at 1', async 
   await expect(value).toHaveText(String(before + 1));
   await tid(page, 'entry-done').click();
   await expect(tid(page, 'entry-sheet')).toBeHidden();
+  // The delta sync after the write brings it into the cache; a reload before it ends would open
+  // the window with the cached value from before.
+  await contentReady(page);
   await open(page, `/kalender?eintrag=${LASAGNE}`);
   await expect(tid(page, 'entry-portions-value')).toHaveText(String(before + 1));
 });
@@ -39,6 +52,8 @@ test('AC-035, AC-037: a first time on the restaurant switches "Erinnern" on', as
   await open(page, `/kalender?eintrag=${ENZO}`);
   await tid(page, 'entry-time-clear').click();
   await tid(page, 'entry-done').click();
+  await expect(tid(page, 'entry-sheet')).toBeHidden();
+  await contentReady(page);
   await open(page, `/kalender?eintrag=${ENZO}`);
   await chooseTime(page, 'entry-time', '19:30');
   await expect(tid(page, 'entry-reminder-switch').locator('input')).toBeChecked();
