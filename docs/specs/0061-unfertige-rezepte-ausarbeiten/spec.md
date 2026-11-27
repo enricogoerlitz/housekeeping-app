@@ -1,5 +1,5 @@
 ---
-status: freigegeben # entwurf | freigegeben | umgesetzt | verworfen
+status: umgesetzt # entwurf | freigegeben | umgesetzt | verworfen
 datum: 2026-11-27
 ---
 
@@ -180,12 +180,30 @@ personenbezogenen Daten.
 
 ## Umsetzung
 
-- [ ] 1. core: `isUnfinishedRecipe`, Filterwert `unfinished` mit Schnellchip, Adresse
+- [x] 1. core: `isUnfinishedRecipe`, Filterwert `unfinished` mit Schnellchip, Adresse
       `unfertig`, `nextUnfinished`, Texte (AC-001 – AC-010, AC-017 – AC-022), Vitest rot → grün
-- [ ] 2. App: Chip mit Zahl, Leerzustand, Zähler und „Ausarbeiten“ über der Liste (AC-005 –
+- [x] 2. App: Chip mit Zahl, Leerzustand, Zähler und „Ausarbeiten“ über der Liste (AC-005 –
       AC-011)
-- [ ] 3. App: Karte auf der Rezeptseite, Absicht `ai`, sofortige Suche im KI-Fenster, „Weiter zum
+- [x] 3. App: Karte auf der Rezeptseite, Absicht `ai`, sofortige Suche im KI-Fenster, „Weiter zum
       nächsten“ (AC-012 – AC-024)
-- [ ] 4. e2e `e2e/rundgang-unfertige-rezepte-0061.spec.ts` (Websuche mit `page.route`), Glossar
-- [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün, Screenshots in
+- [x] 4. e2e `e2e/rundgang-unfertige-rezepte-0061.spec.ts` (Websuche mit `page.route`), Glossar
+- [x] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün, Screenshots in
       `tmp/review-0004/0061/`
+
+### Nachweis
+
+- Rot vor Grün (Vitest): `packages/core/src/unfinished-recipes.test.ts` mit Platzhaltern 18 rot,
+  3 grün (21); danach alle grün. `url-params.test.ts` „every filter survives the round trip“ um
+  `unfinished` ergänzt.
+- `pnpm format:check && pnpm check && pnpm build:web` grün (core 1993 Tests), nach dem Merge von
+  `develop` (0054, 0055, 0056, 0059).
+- e2e `e2e/rundgang-unfertige-rezepte-0061.spec.ts` geschrieben, nicht lokal gelaufen (setzt die
+  Datenbank zurück; läuft beim Mergen).
+- Screenshots (eigener Dev-Server, Websuche und KI mit `page.route`): `tmp/review-0004/0061/` —
+  Desktop: Liste „Unfertig (3)“ mit „Noch 3 unfertig“ und „Ausarbeiten“, Karte „Noch nicht
+  ausgearbeitet“, KI-Fenster mit laufender Websuche (genau eine Suche), „Ausgearbeitet · noch 2
+  unfertig“ mit „Weiter zum nächsten“; Handy: Liste, Karte, KI-Fenster ohne Tastatur.
+- Beim Ansehen gefunden: Der Rahmen der Rezeptseite baut seinen Inhalt beim Wechsel in den
+  Bearbeitungsmodus neu auf (Wischen aus, Spec 0034). Darum merkt sich die Seite selbst, ob sie
+  auf einem unfertigen Rezept geöffnet wurde, und „Mit KI ausfüllen“ folgt der Absicht `ai` statt
+  eigenem Zustand.

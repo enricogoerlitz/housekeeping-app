@@ -49,8 +49,8 @@ async function stubAi(page: Page): Promise<string[]> {
 /** A recipe with only a title, from "+" → "Rezept"; lands on its page. */
 async function titleOnly(page: Page, title: string): Promise<void> {
   await open(page, '/rezepte');
+  // Spec 0054: "+" opens "Neu" at once, with "Rezept" chosen.
   await tid(page, 'recipe-new').click();
-  await tid(page, 'recipe-new-recipe').click();
   await tid(page, 'new-recipe-title').fill(title);
   await tid(page, 'new-recipe-save').click();
   await expect(tid(page, 'recipe-title')).toHaveText(title);
