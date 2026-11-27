@@ -114,6 +114,13 @@ steht beim Eigentümer „Eigentümer“. Quelle: V-01. Offline: offline lesend.
     Fassung von `20261126111313` (Spec 0041) auf und ergänzt nur `maps_url` bei `stores`;
     Cache-Version 20 (0041: 19). `save_recipe_page` (0037) ruft `apply_changes(uuid, jsonb)`
     unverändert auf.
+11. Browser-Durchklick 27.11. (Review 0003, B-02, REQ-003): Was beim Einfügen in ein Ortsfeld
+    landet, bestimmt `recognizePaste`: Steht danach im Feld ein Karten-Link, bleibt es ein
+    Karten-Link. Vorher wurde beim Ersetzen eines Karten-Links durch einen anderen nur der Teil
+    hinter dem gemeinsamen „https://“ erkannt, als Webadresse in „Webseite“ verschoben, und der
+    Karten-Link blieb alt.
+12. Browser-Durchklick 27.11. (B-12): Scheitert das Abrufen eines Kurzlinks, steht unter dem Feld
+    nur der Fehler; „Kurzlink erkannt – Ort wird beim Speichern abgerufen“ fällt dann weg.
 
 ## Daten
 

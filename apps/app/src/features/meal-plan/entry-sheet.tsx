@@ -38,6 +38,7 @@ import {
   type Id,
   type ISODate,
   type TimeOfDay,
+  type MealPlanEntry,
 } from '@housekeeping/core';
 import {
   Button,
@@ -70,6 +71,15 @@ import { EaterPicker, PortionFields, usePortions } from './plan-fields';
 import { ReminderBlock, useReminderForm } from './reminder-block';
 import { entryReminderLabels, ReminderBell } from './reminder-bell';
 import { errorMessage } from '@/features/shell/error-message';
+
+/** The example in "Zusatz", fitting the kind of entry (review 0003, browser click-through). */
+const NOTE_EXAMPLE: Record<MealPlanEntry['kind'], string> = {
+  recipe: 'z. B. doppelte Menge',
+  leftovers: 'z. B. mit Salat',
+  text: 'z. B. mit Salat',
+  restaurant: 'z. B. Tisch draußen',
+  activity: 'z. B. Hohenschönhausen',
+};
 
 function Label(props: { children: string }) {
   return (
@@ -537,7 +547,7 @@ export function EntrySheet(props: {
           value={note}
           onChangeText={(value) => setField('note', value)}
           maxLength={NOTE_MAX_LENGTH}
-          placeholder="z. B. doppelte Menge"
+          placeholder={NOTE_EXAMPLE[entry.kind]}
           editable={!online.disabled}
           error={errors.note}
           hint="Steht im Kalender in Klammern hinter dem Namen."

@@ -330,6 +330,9 @@ Alle nach Enricos Regel „Empfehlung nehmen“ (Claude, 22.11.2026).
 20. Beim Bau: `create_store` ohne Vorlage legt die Bereiche in ihrer Reihenfolge an, nichts
     ausgeblendet (wie bisher, Spec 0007 AC-043); „Ohne Bereich“ im Wähler ist auch offline
     wählbar (Laden-Aktion).
+21. Browser-Durchklick 27.11. (Review 0003, B-09): Am Handy steht „⋯“ der Liste am Ende der
+    Knopfzeile („Einkaufen“, „+ Aus Kalender …“, „⋯“), damit „Einkaufsliste“ neben Glocke, ⊞ und
+    Avatar ganz zu lesen ist (vorher „Einkaufsli…“ bei 390 px).
 
 ## Daten
 

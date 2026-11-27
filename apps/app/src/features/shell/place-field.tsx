@@ -1,7 +1,7 @@
 import {
-  insertedText,
   mapsSearchUrl,
   nextEmptyField,
+  recognizePaste,
   recognizePlaceText,
   type PlaceText,
 } from '@housekeeping/core';
@@ -82,9 +82,8 @@ export function PlaceField(props: {
 
   /** A paste into `own` that belongs elsewhere moves there; the field keeps its own text. */
   const pastedElsewhere = (previous: string, next: string, own: Field | 'search'): boolean => {
-    const pasted = insertedText(previous, next);
-    if (pasted === undefined) return false;
-    const text = recognizePlaceText(pasted);
+    const text = recognizePaste(previous, next);
+    if (text === undefined) return false;
     const target = text.kind === 'maps' ? 'link' : text.kind === 'address' ? 'address' : text.kind;
     if (target === own || target === 'none') return false;
     return place(text);
@@ -117,8 +116,7 @@ export function PlaceField(props: {
             onChangeText={(value) => {
               if (pastedElsewhere(props.link, value, 'link')) return;
               props.onLinkChange(value);
-              const pasted = insertedText(props.link, value);
-              if (pasted !== undefined && recognizePlaceText(pasted).kind === 'maps') {
+              if (recognizePaste(props.link, value)?.kind === 'maps') {
                 focusAfter('link', { link: value });
               }
             }}
@@ -165,8 +163,7 @@ export function PlaceField(props: {
           onChangeText={(value) => {
             if (pastedElsewhere(address.value, value, 'address')) return;
             address.onChange(value);
-            const pasted = insertedText(address.value, value);
-            if (pasted !== undefined && recognizePlaceText(pasted).kind === 'address') {
+            if (recognizePaste(address.value, value)?.kind === 'address') {
               focusAfter('address', { address: value });
             }
           }}

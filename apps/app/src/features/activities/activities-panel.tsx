@@ -195,11 +195,21 @@ export function ActivitiesScreen() {
     />
   );
   // Spec 0041, REQ-001: the kinds are renamed and deleted here.
-  const kindsButton = (
+  // On wide screens with its word, like "Aktivität anlegen" next to it (review 0003).
+  const kindsButton = isPhone ? (
     <IconButton
       icon="layers"
       label="Arten"
       variant="soft"
+      onPress={() => address.open({ fenster: 'arten' })}
+      testID="activity-kinds-open"
+    />
+  ) : (
+    <Button
+      label="Arten"
+      icon="layers"
+      size="sm"
+      variant="secondary"
       onPress={() => address.open({ fenster: 'arten' })}
       testID="activity-kinds-open"
     />
@@ -265,7 +275,7 @@ export function ActivitiesScreen() {
   const cellWidth =
     columns === 1
       ? '100%'
-      : tiles && listWidth > 0
+      : listWidth > 0
         ? Math.floor((listWidth - GAP * (columns - 1)) / columns)
         : columns === 2
           ? '48.5%'

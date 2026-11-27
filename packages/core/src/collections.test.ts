@@ -168,6 +168,11 @@ describe('REQ-002: texts of a collection', () => {
     expect(collectionSummary(empty, [])).toBe('für 6');
   });
 
+  it("spec 0037, REQ-005: the time of a collection stands in its summary like a recipe's", () => {
+    const timed = makeCollection({ id: grillabend.id, title: 'Grillabend', totalMinutes: 90 });
+    expect(collectionSummary(timed, contentsOf(timed))).toBe('für 6 · 2 Rezepte · 90 Min');
+  });
+
   it('AC-018, AC-024: "2 Rezepte", "1 Rezept", nothing for 0', () => {
     expect(collectionRecipeCountLabel(2)).toBe('2 Rezepte');
     expect(collectionRecipeCountLabel(1)).toBe('1 Rezept');

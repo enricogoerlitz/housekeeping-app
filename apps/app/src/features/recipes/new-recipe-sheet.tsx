@@ -36,6 +36,7 @@ import {
 import { useState } from 'react';
 import { View } from 'react-native';
 
+import { confirmFirst } from '@/features/shell/confirm-dialog';
 import { errorMessage, FAILED_MESSAGE } from '@/features/shell/error-message';
 import { useOnlineOnly } from '@/features/shell/offline';
 import { useWebSearch } from '@/features/web-search/use-web-search';
@@ -117,6 +118,25 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
     search.reset();
     setAiTab('web');
     props.onClose();
+  };
+
+  // Escape, a tap outside or "Abbrechen" ask before typed text goes (review 0003, like the
+  // recipe page's edit mode); an empty window just closes.
+  const dirty =
+    title.trim() !== '' || ingredients.trim() !== '' || recipeIds.length > 0 || photo !== undefined;
+  const dismiss = () => {
+    if (!dirty) {
+      close();
+      return;
+    }
+    confirmFirst({
+      title: 'Änderungen verwerfen?',
+      confirmLabel: 'Verwerfen',
+      cancelLabel: 'Weiter bearbeiten',
+      needsNetwork: false,
+      onConfirm: close,
+      testID: 'confirm-discard-new',
+    });
   };
 
   const takesIngredients = newEntryTakesIngredients(kind);
@@ -230,7 +250,7 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
   return (
     <Sheet
       visible={props.visible}
-      onClose={close}
+      onClose={dismiss}
       title="Neu"
       testID="new-recipe-sheet"
       size="m"

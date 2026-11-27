@@ -147,6 +147,13 @@ p_seen_updated_at, p_ops)`: sie sperrt das Rezept, vergleicht sein `updated_at` 
     Mit Namen bräuchte es eine Spalte `updated_by` (Migration) – Entscheidung Enrico.
 12. OFFEN: Browser-Zurück und der Wechsel des Tabs unten verwerfen ungespeicherte Änderungen ohne
     Frage (der Router bietet dafür keinen Haken ohne neue Abhängigkeit).
+13. Browser-Durchklick 27.11. (Review 0003, B-01): „Kein Schlagwort gefunden.“ steht nur, wenn
+    kein Schlagwort des Haushalts zur Suche passt — ein schon gewähltes passendes zählt mit.
+14. Browser-Durchklick 27.11. (B-03, REQ-005): Die Dauer einer Sammlung steht im Lesemodus in der
+    Zeile unter dem Titel wie beim Rezept: „für 2 · 2 Rezepte · 90 Min“ (`collectionSummary`).
+15. Browser-Durchklick 27.11. (B-04, REQ-002): Im Fenster „Neu“ fragen Escape, Tipp daneben und
+    „Abbrechen“ „Änderungen verwerfen?“ („Weiter bearbeiten“ / „Verwerfen“), sobald Titel, Zutaten,
+    Rezepte oder ein Foto eingegeben sind; ein leeres Fenster schließt sofort.
 
 ## Daten
 

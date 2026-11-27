@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { insertedText, mapsSearchUrl, nextEmptyField, recognizePlaceText } from './place-input';
+import {
+  insertedText,
+  mapsSearchUrl,
+  nextEmptyField,
+  recognizePaste,
+  recognizePlaceText,
+} from './place-input';
 
 describe('mapsSearchUrl: the pin opens Google Maps with the search (spec 0042, REQ-001)', () => {
   it('AC-001: "Bless" searches for Bless', () => {
@@ -116,6 +122,32 @@ describe('insertedText: a paste is more than one typed character (spec 0042, REQ
 
   it('a repeated letter is found once (no overlap of prefix and suffix)', () => {
     expect(insertedText('aa', 'aaaa')).toBe('aa');
+  });
+});
+
+describe('recognizePaste: what a paste into a place field is (spec 0042, REQ-003)', () => {
+  it('AC-005: a map link pasted into an empty field is a map link', () => {
+    expect(recognizePaste('', 'https://maps.app.goo.gl/abc')).toEqual({
+      kind: 'maps',
+      url: 'https://maps.app.goo.gl/abc',
+    });
+  });
+
+  it('a map link replacing another one stays a map link (the shared "https://" is no web address)', () => {
+    const next = 'https://www.google.com/maps/place/Bless/@52.5,13.4,17z';
+    expect(recognizePaste('https://maps.app.goo.gl/abc', next)).toEqual(recognizePlaceText(next));
+    expect(recognizePaste('https://maps.app.goo.gl/abc', next)?.kind).toBe('maps');
+  });
+
+  it('AC-006: an address pasted behind a typed name is the pasted address only', () => {
+    expect(recognizePaste('Bless', 'BlessOranienburger Str. 45, 10117 Berlin')).toEqual({
+      kind: 'address',
+      text: 'Oranienburger Str. 45, 10117 Berlin',
+    });
+  });
+
+  it('typing is no paste', () => {
+    expect(recognizePaste('Bles', 'Bless')).toBeUndefined();
   });
 });
 

@@ -412,7 +412,8 @@ export function ListScreen() {
         )}
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        {more}
+        {/* On phones "⋯" goes to the end of the button row, so "Einkaufsliste" keeps its room. */}
+        {isPhone ? null : more}
         <StartPageActions />
       </View>
     </View>
@@ -439,6 +440,7 @@ export function ListScreen() {
           testID="list-from-plan"
           onPress={() => setPantryCheck(true)}
         />
+        {isPhone ? <View style={{ marginLeft: 'auto' }}>{more}</View> : null}
       </Row>
     </Stack>
   );

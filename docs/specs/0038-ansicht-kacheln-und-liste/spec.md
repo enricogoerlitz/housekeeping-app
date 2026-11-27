@@ -55,6 +55,9 @@ Aktivitäten „Liste“. Gespeichert lokal je Gerät. Offline: offline vollstä
 6. Beim Bau, 26.11.: Liste ohne geöffneten Eintrag = Raster der Listeneinträge (wie heute bei
    Restaurants), mit geöffnetem Eintrag die schmale Spalte links. Auf dem Handy steht der
    Umschalter ebenfalls am Zeilenende; die Chips davor scrollen seitlich.
+7. Browser-Durchklick 27.11. (Review 0003, B-07): Die Liste der Aktivitäten rechnet die Breite
+   ihrer Spalten wie die Kacheln aus der gemessenen Breite; vorher (31,8 %) endete die dritte
+   Spalte 28 px vor dem rechten Rand.
 
 ## Daten
 

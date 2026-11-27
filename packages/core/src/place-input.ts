@@ -77,6 +77,19 @@ export function insertedText(previous: string, next: string): string | undefined
 }
 
 /**
+ * What a paste into a place field is (REQ-003): undefined when the change was no paste. A field
+ * that holds a map link after the paste keeps it as a map link — replacing one link with another
+ * shares "https://", and the rest alone would look like a web address. Otherwise only the pasted
+ * piece counts, so an address pasted behind a typed name is just the address.
+ */
+export function recognizePaste(previous: string, next: string): PlaceText | undefined {
+  const pasted = insertedText(previous, next);
+  if (pasted === undefined) return undefined;
+  const whole = recognizePlaceText(next);
+  return whole.kind === 'maps' ? whole : recognizePlaceText(pasted);
+}
+
+/**
  * The field that gets the cursor after `filled` was filled (AC-006): the next empty one in
  * `order`, else the first empty one before it; undefined when every field has a value.
  */

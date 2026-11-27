@@ -172,7 +172,7 @@ export function StoreEditSheet(props: { store: Store; onClose: () => void }) {
           linkError={linkError}
           linkHint={link ? undefined : 'Mit dem Karten-Link zeigt der Markt „Route“.'}
           linkStatus={
-            reading?.kind === 'short' ? (
+            reading?.kind === 'short' && !linkError ? (
               <Text variant="small" color="muted" testID="store-link-short">
                 Kurzlink erkannt – Ort wird beim Speichern abgerufen
               </Text>
