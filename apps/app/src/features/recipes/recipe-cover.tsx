@@ -1,4 +1,9 @@
-import { useArticlesById, useCollectionContents, useRecipeImage } from '@housekeeping/api';
+import {
+  useArticlesById,
+  useCollectionContents,
+  usePhoto,
+  useRecipeImage,
+} from '@housekeeping/api';
 import {
   coverPhotos,
   defaultImagePrompt,
@@ -125,7 +130,11 @@ export function RecipePhoto(props: {
       : image
         ? [image]
         : [];
-  const items = galleryItems(props.recipe, sources.length > 0);
+  // The own photo loads from the device after the recipe and its videos are known; its page
+  // stands in front meanwhile, so the gallery never opens on a video that the photo then pushes
+  // aside (spec 0046, AC-021; Safari keeps the snapped page in view).
+  const ownPhoto = usePhoto(props.recipe.kind === 'recipe' ? props.recipe.photoPath : undefined);
+  const items = galleryItems(props.recipe, sources.length > 0 || ownPhoto.loading);
   // The page the full-screen viewer shows; `play` when a video's tile opened it (AC-013).
   const [viewer, setViewer] = useState<{ index: number; play: boolean }>();
   const [shown, setShown] = useState(0);

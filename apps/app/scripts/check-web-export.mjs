@@ -6,7 +6,8 @@
 //   'none', base-uri 'self' and connect-src with the Supabase origin of the build and no wildcard
 //   or bare scheme (`*`, `https:` …) except blob: (spec 0040, "Aus diesem Foto"); in a build against a non-local Supabase, connect-src names
 //   neither localhost nor 127.0.0.1 (spec 0014, AC-035); media-src exactly 'self' blob: (spec
-//   0043: the recipe video plays from a blob: URL);
+//   0043: the recipe video plays from a blob: URL); worker-src exactly 'self' (spec 0003, AC-028:
+//   no data: worker of the Speech SDK);
 // - index.html has no inline script (any <script> without a src attribute, in any letter case);
 // - the service worker dist/sw.js exists (offline start, AC-004);
 // - EXPO_PUBLIC_DEV_LOGIN=1 only with a local Supabase (spec 0014, AC-038);
@@ -299,6 +300,11 @@ export function checkExport({
     // Spec 0043: the recipe video plays from a blob: URL; never from another host.
     if (values('media-src').join(' ') !== "'self' blob:") {
       problems.push("media-src must be exactly 'self' blob:");
+    }
+    // Spec 0003, AC-028 (27.11.): workers only from the app's own files. A data: or blob: worker
+    // runs code that script-src never sees; the Speech SDK keeps its timers on the page instead.
+    if (values('worker-src').join(' ') !== "'self'") {
+      problems.push("worker-src must be exactly 'self'");
     }
     const connect = values('connect-src');
     if (supabaseUrl && !connect.includes(new URL(supabaseUrl).origin)) {

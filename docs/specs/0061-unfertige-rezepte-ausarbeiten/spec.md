@@ -64,9 +64,10 @@ er, außer er ist an. Offline: offline vollständig.
   „Zurücksetzen“ tippe · Dann sind beide aus
 - AC-008: Angenommen die Adresse `/rezepte?unfertig=1` · Wenn ich die Seite neu lade · Dann ist
   „Unfertig“ an
-- AC-009: Angenommen „Unfertig“ ist an und das letzte unfertige Rezept wurde auf einem anderen Gerät
-  ausgearbeitet · Dann zeigt die Liste „Alle Rezepte sind ausgearbeitet“ mit „Filter zurücksetzen“,
-  und der Chip „Unfertig (0)“ bleibt zum Abschalten
+- AC-009 (geändert 27.11.2026, Entscheidung 11): Angenommen „Unfertig“ ist an und das letzte
+  unfertige Rezept wurde auf einem anderen Gerät ausgearbeitet · Dann zeigt die Liste den normalen
+  Leerzustand „Keine Rezepte für diese Filter“ mit „Filter zurücksetzen“ (kein „Alle Rezepte sind
+  ausgearbeitet“), und der Chip „Unfertig (0)“ bleibt zum Abschalten
 
 **REQ-003 — Zähler und „Ausarbeiten“.** Ist „Unfertig“ an und zeigt die Liste Treffer, steht über
 ihr statt „12 Rezepte“ der Zähler „Noch 12 unfertig“ und der Knopf „Ausarbeiten“. Er arbeitet das
@@ -108,7 +109,7 @@ gespeichert, steht beim Lesen die Karte „Ausgearbeitet · noch 11 unfertig“ 
 nächsten“. Das nächste ist das nächste unfertige Rezept nach diesem in der Reihenfolge der Liste,
 aus der die Seite geöffnet wurde (Spec 0034, REQ-008), danach von vorn; unfertige Rezepte außerhalb
 dieser Reihenfolge folgen A–Z; ohne Liste gilt A–Z. Es wird ausgearbeitet wie mit „Ausarbeiten“.
-Ist keins mehr übrig, steht „Alle Rezepte sind ausgearbeitet“ ohne Knopf. Neben der Liste
+Ist keins mehr übrig, verschwindet die Karte (geändert 27.11.2026, Entscheidung 11). Neben der Liste
 (Schnellansicht, Spec 0038) gibt es „Weiter zum nächsten“ nicht. Offline: offline lesend —
 „Weiter zum nächsten“ öffnet das nächste offline zum Lesen.
 
@@ -121,8 +122,9 @@ Ist keins mehr übrig, steht „Alle Rezepte sind ausgearbeitet“ ohne Knopf. N
   unfertig
 - AC-019: Angenommen „Chili“ ist das letzte der Reihenfolge und „Bami Goreng“ noch unfertig · Wenn
   ich „Chili“ speichere und „Weiter zum nächsten“ tippe · Dann öffnet „Bami Goreng“
-- AC-020: Angenommen „Chili“ ist das letzte unfertige Rezept · Wenn ich es mit Zutaten speichere ·
-  Dann steht „Alle Rezepte sind ausgearbeitet“ und kein „Weiter zum nächsten“
+- AC-020 (geändert 27.11.2026, Entscheidung 11): Angenommen „Chili“ ist das letzte unfertige Rezept
+  · Wenn ich es mit Zutaten speichere · Dann steht auf der Seite keine Karte mehr — weder
+  „Ausgearbeitet“ noch „Alle Rezepte sind ausgearbeitet“ noch „Weiter zum nächsten“
 - AC-021: Angenommen „Chili“ ist aus der Übersicht geöffnet (keine Liste), unfertig sind noch
   „Apfelstrudel“ und „Bami Goreng“ · Wenn ich „Weiter zum nächsten“ tippe · Dann öffnet
   „Apfelstrudel“
@@ -175,6 +177,15 @@ Ist keins mehr übrig, steht „Alle Rezepte sind ausgearbeitet“ ohne Knopf. N
     sucht den Titel sofort, ohne Tastatur). „Mit KI ändern“ gibt es nur bei Rezepten mit Inhalt; so
     hat jeder Einstieg eine Bedeutung. iN-08: Ein gewählter Chip der Chipzeile scrollt ganz ins
     Bild, frei vom Ausblendverlauf („Unfertig (4)“ lesbar).
+11. Befund aus Produktion (v2026.11.3), 27.11.2026, ändert REQ-005, AC-009 und AC-020: Nach dem
+    Speichern des letzten unfertigen Rezepts blieb die Karte „Alle Rezepte sind ausgearbeitet“ auf
+    der Seite stehen. Enrico: keine Meldung nötig. Den Zustand „alles erledigt“ gibt es nicht
+    mehr: Auf der Rezeptseite verschwindet die Karte, sobald kein unfertiges Rezept übrig ist;
+    „Ausgearbeitet · noch n unfertig“ mit „Weiter zum nächsten“ bleibt, solange es noch welche
+    gibt. In der Liste mit „Unfertig“ an und nichts übrig steht der normale Leerzustand der Filter
+    („Keine Rezepte für diese Filter“, „Filter zurücksetzen“), damit es auch dort keine eigene
+    Erfolgsmeldung gibt. `workedOutLabel(0)` gibt nichts zurück, `recipeEmptyLabel` kennt den
+    Sonderfall nicht mehr (Vitest rot → grün).
 
 ## Daten
 
