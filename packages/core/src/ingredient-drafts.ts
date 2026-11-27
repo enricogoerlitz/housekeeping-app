@@ -5,7 +5,16 @@ import {
   type StarterCatalogEntry,
 } from './article-catalog';
 import { normalizeText } from './text';
-import type { Article } from './types';
+import type { Article, Diet, Id } from './types';
+
+/**
+ * What the AI proposes for an article it names (spec 0055, REQ-009): the household area and what
+ * it contains. Such an article is created "Neu aus Rezepten", so somebody checks it.
+ */
+export interface ArticleProposal {
+  areaId?: Id;
+  diet?: Diet;
+}
 
 // Draft lines of "Mehrere einfügen" (spec 0007, REQ-002): a pasted block becomes one line per
 // ingredient; they become rows of the section "Zutaten" (recipe-editor rowsFromIngredientDrafts),
@@ -16,7 +25,7 @@ export type DraftArticle<T extends Article = Article> =
   /** A household article or a starter entry (created on saving, AC-003). */
   | { kind: 'hit'; hit: CatalogHit<T> }
   /** "„Drachenfrüchte“ neu anlegen" (AC-002): created on saving, not "Neu aus Rezepten". */
-  | { kind: 'new'; name: string };
+  | { kind: 'new'; name: string; proposed?: ArticleProposal };
 
 export interface IngredientDraft<T extends Article = Article> {
   key: string;

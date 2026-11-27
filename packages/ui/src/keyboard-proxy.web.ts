@@ -8,8 +8,11 @@
 // where it was), or the keyboard closes again: for this short while `focus()` of anything but a
 // text field does nothing. Only on iPhone and iPad; elsewhere the window's own focus is enough.
 
+import { flushSync } from 'react-dom';
+
 import { isAppleTouchBrowser } from './field-autofill';
 import { expectKeyboard } from './keyboard';
+import { focusQuietly } from './sheet-focus';
 
 /**
  * How long a tap's keyboard waits for its window (spec 0033, decision 10).
@@ -135,4 +138,36 @@ export function handOverKeyboard(input: unknown): boolean {
  */
 export function holdHandOver(): void {
   if (proxy && document.activeElement === proxy) deferring = true;
+}
+
+/**
+ * A tap (or swipe) that changes what a window shows, e.g. its tab (spec 0055, REQ-001): the new
+ * content is rendered at once and its field takes the cursor still inside the tap, so iOS keeps
+ * (or opens) the keyboard; on an iPhone the hidden field holds it while the old field goes.
+ * `onlyWhenTyping`: only when a text field has the cursor now (a swipe never opens the keyboard).
+ * Without a field to focus (the tab shows results) the keyboard goes.
+ *
+ * @public Metro resolves the import of the native twin to this file on the web.
+ */
+export function focusAfterChange(
+  change: () => void,
+  field: () => unknown,
+  options: { onlyWhenTyping?: boolean } = {},
+): void {
+  if (typeof document === 'undefined') {
+    change();
+    return;
+  }
+  if (options.onlyWhenTyping && !isTextField(document.activeElement)) {
+    flushSync(change);
+    return;
+  }
+  openKeyboardNow();
+  flushSync(change);
+  const input = field();
+  if (!input) {
+    release();
+    return;
+  }
+  if (!handOverKeyboard(input)) focusQuietly(input);
 }

@@ -5,11 +5,14 @@ import {
   type FieldChange,
   type RowChange,
 } from '@housekeeping/core';
-import { Badge, Button, Photo, Sheet, Stack, Text, useTheme } from '@housekeeping/ui';
+import { Badge, Button, LoadingLines, Photo, Sheet, Stack, Text, useTheme } from '@housekeeping/ui';
 import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 
-// The Änderungsansicht (spec 0049, REQ-005): what a proposal (Websuche or „Eigene Angaben“) would
+import { DictationField } from '@/features/shell/dictation-field';
+import { useOnlineOnly } from '@/features/shell/offline';
+
+// The Änderungsansicht (spec 0049, REQ-005): what a proposal (Websuche or „Prompt“) would
 // change on an item that exists. New and changed fields and rows are tinted yellow and carry
 // "neu" / "geändert"; an old value stands small, red and struck through with ↺; a removed row
 // stays visible, red and struck through, with "↺ behalten"; a new row can be left out with ×.
@@ -18,6 +21,65 @@ import { View } from 'react-native';
 
 const WORDS = { new: 'neu', changed: 'geändert', removed: 'entfernt' } as const;
 const PHOTO_SIZE = 96;
+
+/**
+ * "Was soll noch anders sein?" (spec 0055, REQ-008): `onSend` asks the AI to change the proposal
+ * and says whether a new one came; then the sentence goes, otherwise it stays (AC-027).
+ */
+export interface ProposalRefine {
+  busy: boolean;
+  error?: string;
+  onSend: (wish: string) => Promise<boolean>;
+}
+
+const REFINE_MAX = 500;
+
+function RefineLine(props: { refine: ProposalRefine; testID: string }) {
+  const { refine, testID } = props;
+  const online = useOnlineOnly();
+  const [wish, setWish] = useState('');
+  const send = () => {
+    if (wish.trim() === '' || refine.busy) return;
+    void refine.onSend(wish.trim()).then((done) => {
+      if (done) setWish('');
+    });
+  };
+  return (
+    <Stack gap={8}>
+      <DictationField
+        label="Was soll noch anders sein?"
+        placeholder={'z. B. „nimm Räuchertofu statt Bohnen“'}
+        value={wish}
+        onChangeText={(text) => setWish(text.slice(0, REFINE_MAX))}
+        maxLength={REFINE_MAX}
+        editable={!refine.busy && !online.disabled}
+        onSubmitEditing={send}
+        returnKeyType="send"
+        testID={`${testID}-text`}
+      />
+      <View style={{ alignItems: 'flex-start' }}>
+        <Button
+          label={refine.busy ? 'Wird angepasst …' : 'Anpassen'}
+          icon="sparkles"
+          variant="secondary"
+          size="sm"
+          disabled={refine.busy || online.disabled || wish.trim() === ''}
+          hint={online.hint}
+          onPress={send}
+          testID={`${testID}-send`}
+        />
+      </View>
+      {refine.busy ? (
+        <LoadingLines label="Die KI passt den Vorschlag an …" testID={`${testID}-busy`} />
+      ) : null}
+      {refine.error ? (
+        <Text variant="small" color="warn" testID={`${testID}-error`}>
+          {refine.error}
+        </Text>
+      ) : null}
+    </Stack>
+  );
+}
 
 /** The photo a proposal brings, shown as the field "Foto" (id `photo`). */
 export interface ProposedPhoto {
@@ -182,6 +244,8 @@ function RowLine(props: {
 export function ProposalSheet(props: {
   proposal: ChangeProposal;
   photo?: ProposedPhoto;
+  /** Recipes: "Was soll noch anders sein?" below the proposal (spec 0055, REQ-008). */
+  refine?: ProposalRefine;
   onApply: (rejected: ReadonlySet<string>) => void;
   onClose: () => void;
   testID?: string;
@@ -189,6 +253,12 @@ export function ProposalSheet(props: {
   const theme = useTheme();
   const testID = props.testID ?? 'proposal';
   const [rejected, setRejected] = useState<ReadonlySet<string>>(() => new Set());
+  // AC-029 (spec 0055): a new proposal starts with every change active.
+  const [shown, setShown] = useState(props.proposal);
+  if (shown !== props.proposal) {
+    setShown(props.proposal);
+    setRejected(new Set());
+  }
   const toggle = (id: string) =>
     setRejected((current) => {
       const next = new Set(current);
@@ -234,6 +304,7 @@ export function ProposalSheet(props: {
           label: 'Übernehmen',
           icon: 'check',
           onPress: () => props.onApply(rejected),
+          disabled: props.refine?.busy === true,
           testID: `${testID}-apply`,
         },
         cancel: { label: 'Abbrechen', onPress: props.onClose, testID: `${testID}-cancel` },
@@ -271,6 +342,7 @@ export function ProposalSheet(props: {
             </Stack>
           ),
         )}
+        {props.refine ? <RefineLine refine={props.refine} testID={`${testID}-refine`} /> : null}
       </Stack>
     </Sheet>
   );

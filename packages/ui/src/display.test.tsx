@@ -12,6 +12,7 @@ import {
   EmptyState,
   KindDot,
   KindLine,
+  LoadingLines,
   MediaCard,
   Notice,
   OfflineBanner,
@@ -142,6 +143,28 @@ describe('Photo', () => {
     render(<Photo testID="photo" generating="Foto wird erzeugt" aspectRatio={1} width={80} />);
     await act(async () => undefined);
     expect(screen.getByRole('progressbar', { name: 'Foto wird erzeugt' })).toBeTruthy();
+    expect(loop).not.toHaveBeenCalled();
+  });
+});
+
+describe('LoadingLines (spec 0055, REQ-003)', () => {
+  it('AC-010: placeholder lines pulse under one progress indicator with the status', async () => {
+    vi.spyOn(AccessibilityInfo, 'isReduceMotionEnabled').mockResolvedValue(false);
+    const loop = vi.spyOn(Animated, 'loop');
+    render(<LoadingLines label="Das Rezept wird gelesen …" lines={4} testID="lines" />);
+    await act(async () => undefined);
+    const indicator = screen.getByRole('progressbar', { name: 'Das Rezept wird gelesen …' });
+    expect(indicator).toBeTruthy();
+    expect(screen.getAllByTestId(/^lines-line-/)).toHaveLength(4);
+    expect(loop).toHaveBeenCalled();
+  });
+
+  it('AC-012: reduced motion: the lines stand still', async () => {
+    vi.spyOn(AccessibilityInfo, 'isReduceMotionEnabled').mockResolvedValue(true);
+    const loop = vi.spyOn(Animated, 'loop');
+    render(<LoadingLines label="Der Ort wird eingeordnet …" testID="lines" />);
+    await act(async () => undefined);
+    expect(screen.getByRole('progressbar', { name: 'Der Ort wird eingeordnet …' })).toBeTruthy();
     expect(loop).not.toHaveBeenCalled();
   });
 });

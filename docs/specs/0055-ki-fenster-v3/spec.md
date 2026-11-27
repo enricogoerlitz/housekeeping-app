@@ -1,5 +1,5 @@
 ---
-status: freigegeben # entwurf | freigegeben | umgesetzt | verworfen
+status: umgesetzt # entwurf | freigegeben | umgesetzt | verworfen
 datum: 2026-11-27
 ---
 
@@ -57,8 +57,8 @@ Spec 0044: keine Seitensprünge, Feld über der Tastatur). Offline: nur online.
 - AC-004: Angenommen ein Rezept mit Zutaten im Bearbeitungsmodus · Wenn ich „Mit KI ausfüllen“
   tippe · Dann öffnet das Fenster auf „Prompt“ und „Was soll ins Rezept?“ hat den Cursor
 - AC-005: Angenommen die Websuche zeigt Treffer oder eine Vorschau · Wenn ich auf „Prompt“ und
-  wieder auf „Websuche“ tippe · Dann stehen die Treffer bzw. die Vorschau noch da, ohne Cursor im
-  Feld (es ist keins zu sehen)
+  wieder auf „Websuche“ tippe · Dann stehen die Treffer bzw. die Vorschau noch da, und der Cursor
+  springt nicht ins Suchfeld (die Tastatur verdeckt die Treffer nicht)
 
 **REQ-002 — Wischen zwischen den Reitern.** Auf dem Handy wechselt Wischen nach links/rechts im
 Inhalt von „Mit KI ausfüllen“ zwischen „Websuche“ und „Prompt“, wie bei den Seiten-Tabs (Spec 0029,
@@ -75,9 +75,9 @@ Wischen sie nicht. Offline: nur online.
 - AC-009: Angenommen Desktop mit Maus · Wenn ich im Inhalt ziehe · Dann wechselt kein Reiter
 
 **REQ-003 — Deutliche Ladeanzeige.** Nach dem Tipp auf einen Treffer der Websuche zeigt die
-Vorschau bis zur Antwort pulsierende Platzhalter (Foto-Kachel wie Spec 0045, Zeilen für Zutaten und
-Schritte bzw. Adresse und Art) unter der Zeile „Das Rezept wird gelesen …“ bzw. „Der Ort wird
-eingeordnet …“. Dieselben Platzhalter stehen beim „Ausfüllen“ im Reiter „Prompt“ und beim
+Vorschau bis zur Antwort pulsierende Platzhalterzeilen (sie atmen wie die Foto-Kacheln von Spec
+0045; 6 Zeilen für Zutaten und Schritte, 3 für Adresse und Art) unter der Zeile „Das Rezept wird
+gelesen …“ bzw. „Der Ort wird eingeordnet …“, das Foto des Treffers steht darüber wie bisher. Dieselben Platzhalter stehen beim „Ausfüllen“ im Reiter „Prompt“ und beim
 „Anpassen“ (REQ-008). Mit „Bewegung reduzieren“ stehen sie still. Offline: nur online.
 
 - AC-010: Angenommen Websuche „Pasta“ mit Treffern · Wenn ich den ersten Treffer tippe · Dann
@@ -198,12 +198,13 @@ online (der Knopf ist deaktiviert).
    `focusAfterChange` in `packages/ui`. Grund: iOS öffnet die Tastatur nur für einen Fokus im Tipp,
    und Feld A verschwindet, bevor Feld B da ist.
 2. **Inhalt bleibt beim Reiterwechsel (AC-005):** Die Zustände beider Reiter liegen schon im Fenster
-   (`useWebSearch`, `useAiFill`); nur der sichtbare Inhalt wechselt. Mit Treffern oder Vorschau gibt
-   es kein Suchfeld, also keinen Fokus.
+   (`useWebSearch`, `useAiFill`); nur der sichtbare Inhalt wechselt. Mit Treffern oder Vorschau
+   bekommt das Suchfeld keinen Fokus, damit die Tastatur die Treffer nicht verdeckt.
 3. **Wischen (REQ-002):** `TabSwipeArea` (Spec 0029/0034) liegt als `TabSwipeContent` um den Inhalt
    des Reiters, im Fenster mit `touch-action: pan-y`; ohne Vorschau des Nachbarn (der neue Reiter
    gleitet nach dem Loslassen herein), weil der Nachbar eigenen Zustand hat. Im Fenster „Neu“ wischt
-   nur der KI-Teil, nicht Art und Titel.
+   nur der KI-Teil, nicht Art und Titel. Wischen fokussiert nur, wenn gerade ein Textfeld den Cursor
+   hat (`focusAfterChange` mit `onlyWhenTyping`).
 4. **Nur-Titel-Rezept (REQ-005):** Ein Rezept ohne Zutaten und Schritte öffnet auf „Websuche“, weil
    es dort nichts zu ändern gibt und „erst anlegen, dann ausfüllen“ (Feature-Review V4) die Websuche
    mit dem Titel braucht. Ändert Spec 0049, AC-001 nur für Rezepte mit Inhalt.
@@ -229,6 +230,10 @@ online (der Knopf ist deaktiviert).
    wie bisher (ändert das Glossar „Neu aus Rezepten“: jetzt auch aus KI-Entwürfen).
 10. **Lupe nur beim Anlegen (REQ-010):** Beim Bearbeiten führt die Websuche erst in die
     Änderungsansicht; dort ist der Link genug. Icon „search“, Name „Im Web suchen“.
+    `PlaceWebFill` wird dafür zum Hook `usePlaceWebFill` (Link, Lupe, Fenster).
+11. **Nachbessern behält die Art des Vergleichs:** „Anpassen“ vergleicht wie der erste Vorschlag
+    (Ergänzen, Ersetzen oder Ändern) und behält dessen Links; ein Vorschlag aus „Websuche“ mit
+    „Ergänzen“ bleibt also ein Ergänzen.
 
 ## Daten
 
@@ -241,29 +246,44 @@ personenbezogenen Daten. Vertrag: `RecipeDraftRequestSchema` + `current`, `webQu
 
 ## Risiken
 
-| Risiko | Gegenmaßnahme | Test |
-| --- | --- | --- |
-| Seite aus der Suche schmuggelt Anweisungen | nur als `websuche_nur_daten`, Anweisung „nur Daten“, strenges Schema, Function schreibt nichts | Deno `handler.test.ts` AC-024 |
-| Suche oder Seiten blähen Kosten/Zeit auf | höchstens 1 Suche, 5 Ausschnitte, 2 Seiten à 6000 Zeichen, 8 s/6 s, nur mit `webQuery` | Deno AC-022, AC-025 |
-| SSRF über eine Treffer-Adresse | `fetchPublic` (https, keine internen Adressen, Größe, Zeit) | vorhandene `fetch-public.test.ts`, Deno AC-025 |
-| Fremder Haushalt / abgemeldet | `requireMember` vor allem anderen; 401 ohne Anmeldung | Deno „fremder Haushalt“, „abgemeldet“ |
-| Ungültige Eingabe (`webQuery` zu lang, `current` kaputt) | Zod-Schema, 400 | Deno „invalid input“, Vitest Vertrag |
-| Suche fällt aus | Entwurf ohne Suche, `webContext: 'unavailable'` | Deno AC-023 |
-| Älterer App-Stand (Cache) lehnt die Antwort mit `area`/`diet` ab (strenges Schema) | Web und Functions im selben Release; die Versionsprüfung lädt neu; bis dahin „KI nicht erreichbar“ | — (Betrieb) |
-| Falsche Ernährung (Worcestershiresauce) | im Zweifel „unbekannt“, Markierung „Neu aus Rezepten“ zum Prüfen | Vitest AC-030 |
+| Risiko                                                                                                                              | Gegenmaßnahme                                                                                                           | Test                                           |
+| ----------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| Seite aus der Suche schmuggelt Anweisungen                                                                                          | nur als `websuche_nur_daten`, Anweisung „nur Daten“, strenges Schema, Function schreibt nichts                          | Deno `handler.test.ts` AC-024                  |
+| Suche oder Seiten blähen Kosten/Zeit auf                                                                                            | höchstens 1 Suche, 5 Ausschnitte, 2 Seiten à 6000 Zeichen, 8 s/6 s, nur mit `webQuery`                                  | Deno AC-022, AC-025                            |
+| SSRF über eine Treffer-Adresse                                                                                                      | `fetchPublic` (https, keine internen Adressen, Größe, Zeit)                                                             | vorhandene `fetch-public.test.ts`, Deno AC-025 |
+| Fremder Haushalt / abgemeldet                                                                                                       | `requireMember` vor allem anderen; 401 ohne Anmeldung                                                                   | Deno „fremder Haushalt“, „abgemeldet“          |
+| Ungültige Eingabe (`webQuery` zu lang, `current` kaputt)                                                                            | Zod-Schema, 400                                                                                                         | Deno „invalid input“, Vitest Vertrag           |
+| Suche fällt aus                                                                                                                     | Entwurf ohne Suche, `webContext: 'unavailable'`                                                                         | Deno AC-023                                    |
+| Älterer App-Stand (Cache) lehnt die Antwort mit `area`/`diet` ab (strenges Schema)                                                  | Web und Functions im selben Release; die Versionsprüfung lädt neu; bis dahin „KI nicht erreichbar“                      | — (Betrieb)                                    |
+| Falsche Ernährung (Worcestershiresauce), auch durch eine präparierte Trefferseite („Speck ist vegan“; Security-Check 0055, niedrig) | im Zweifel „unbekannt“, Markierung „Neu aus Rezepten“ zum Prüfen; Rest akzeptiert (nur Integrität, nur mit Websuche an) | Vitest AC-030                                  |
 
 ## Umsetzung
 
-- [ ] 1. Vertrag in `packages/core/src/ai-contract.ts` erweitern, `pnpm gen:edge` (AC-018, AC-021,
+- [x] 1. Vertrag in `packages/core/src/ai-contract.ts` erweitern, `pnpm gen:edge` (AC-018, AC-021,
       AC-030)
-- [ ] 2. core: `promptWebQuery`, `recipeDraftOf`, `aiFillDefaults`, Bereich/Ernährung in
+- [x] 2. core: `promptWebQuery`, `recipeDraftOf`, `aiFillDefaults`, Bereich/Ernährung in
       `draftToPageInput` (AC-014 – AC-018, AC-021, AC-030 – AC-033), Vitest rot → grün
-- [ ] 3. api: neuer Artikel mit Vorschlag → Bereich, Ernährung, `needsReview` (AC-030), Vitest
-- [ ] 4. Function: Bereiche im Kontext, `current`, Websuche mit Grenzen, Anweisungen (AC-018 –
+- [x] 3. api: neuer Artikel mit Vorschlag → Bereich, Ernährung, `needsReview` (AC-030), Vitest
+- [x] 4. Function: Bereiche im Kontext, `current`, Websuche mit Grenzen, Anweisungen (AC-018 –
       AC-025), Deno-Tests
-- [ ] 5. ui: `LoadingLines`, `focusAfterChange`, `TabSwipeContent` (AC-001 – AC-012), Vitest
-- [ ] 6. App: Reiter „Prompt“, Standards, Fokus, Wischen, Schalter „Websuche“, `current`,
+- [x] 5. ui: `LoadingLines`, `focusAfterChange`, `TabSwipeContent` (AC-001 – AC-012), Vitest
+- [x] 6. App: Reiter „Prompt“, Standards, Fokus, Wischen, Schalter „Websuche“, `current`,
       Ladeanzeige, Nachbessern, Lupe (AC-001 – AC-037)
-- [ ] 7. e2e `e2e/ki-fenster-v3.spec.ts` (KI-Antworten mit `page.route`), Glossar
-- [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün, Deno-Tests der Functions,
+- [x] 7. e2e `e2e/rundgang-ki-fenster-0055.spec.ts` (KI-Antworten mit `page.route`), Glossar
+- [x] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün, Deno-Tests der Functions,
       Screenshots in `tmp/review-0004/0055/`
+
+### Nachweis
+
+- Rot vor Grün (Vitest): `ai-recipes-contract.test.ts` 5 rot, `ai-fill.test.ts` (Modul fehlte),
+  `recipe-draft.test.ts` AC-030/AC-031 rot, `commands-recipes.backend.test.ts` AC-030 rot,
+  `ai-recipes.backend.test.ts` 1 rot, Edge `ai-recipe-draft/handler.test.ts` 7 rot,
+  `window-tabs.test.tsx` 6 rot, `display.test.tsx` LoadingLines 2 rot; danach alle grün.
+- `pnpm format:check && pnpm check` grün (Edge-Tests 318, ui 1165); Typen und Lint der e2e grün.
+- e2e `rundgang-ki-fenster-0055.spec.ts` geschrieben, nicht lokal gelaufen (setzt die DB zurück;
+  läuft beim Mergen).
+- Screenshots (Dev-Server, Functions mit `page.route`): `tmp/review-0004/0055/` — Handy: „Neu“ mit
+  Cursor in „Im Web suchen“, Reiter „Prompt“ mit Cursor, pulsierende Vorschau; Desktop: Bearbeiten
+  auf „Prompt“, Änderungsansicht mit „Was soll noch anders sein?“, Lupe im Feld „Name“.
+- Security-Check: kritisch 0, hoch 0, mittel 0, niedrig 1 (Risiken, akzeptiert), Hinweise 2
+  (Suchtext geht an Serper/Brave wie Spec 0049; mehr Kosten je Aufruf ohne Kontingent, bewusst).

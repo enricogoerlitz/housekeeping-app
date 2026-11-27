@@ -28,7 +28,7 @@ import { revokeLater } from '@/features/shell/revoke-later';
 
 export const NOTHING_FOUND = 'Nichts gefunden. Versuch es mit anderen Wörtern.';
 const PREVIEW_FAILED = 'Diese Seite konnte nicht gelesen werden. Versuch einen anderen Treffer.';
-/** AC-023; places have no „Eigene Angaben“. */
+/** AC-023; places have no „Prompt“ (spec 0055, REQ-004). */
 const UNAVAILABLE = 'Die Websuche ist gerade nicht erreichbar. Versuch es gleich noch einmal';
 
 export type SearchState =
@@ -59,7 +59,8 @@ export interface WebSearch {
   photoChoice: WebPhotoChoice;
   setPhotoChoice: (choice: WebPhotoChoice) => void;
   photos: Record<string, CardPhoto>;
-  search: () => void;
+  /** Searches the field's text, or `text` (put into the field; spec 0055, REQ-010). */
+  search: (text?: string) => void;
   open: (card: WebResult) => void;
   /** "Zurück zu den Ergebnissen". */
   back: () => void;
@@ -74,7 +75,7 @@ export interface WebSearch {
 
 function searchMessage(error: unknown, kind: WebSearchKind): string {
   if (error instanceof OfflineError) return OFFLINE_EDIT_HINT;
-  return kind === 'recipe' ? `${UNAVAILABLE} oder nutze „Eigene Angaben“.` : `${UNAVAILABLE}.`;
+  return kind === 'recipe' ? `${UNAVAILABLE} oder nutze „Prompt“.` : `${UNAVAILABLE}.`;
 }
 
 /** AC-008: where the household's restaurants and activities are. */
@@ -137,8 +138,9 @@ export function useWebSearch(kind: WebSearchKind, initialQuery = ''): WebSearch 
     }
   };
 
-  const search = () => {
-    const text = query.trim();
+  const search = (given?: string) => {
+    if (given !== undefined) setQuery(given.slice(0, WEB_SEARCH_LIMITS.query));
+    const text = (given ?? query).trim();
     if (text === '' || state.status === 'searching') return;
     round.current += 1;
     const mine = round.current;
