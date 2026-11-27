@@ -21,6 +21,7 @@ import {
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { OFFLINE_EDIT_HINT } from '@/features/shell/offline';
+import { revokeLater } from '@/features/shell/revoke-later';
 
 // The Websuche (spec 0049) of one window: the query, the cards with their photos (loaded through
 // fetch-image, CSP), and the preview of the card the person tapped. Nothing is saved here.
@@ -106,8 +107,9 @@ export function useWebSearch(kind: WebSearchKind, initialQuery = ''): WebSearch 
   useEffect(
     () => () => {
       round.current += 1;
+      // The closing window still shows the photos for a moment.
       for (const photo of Object.values(shown.current))
-        if (photo.status === 'ready') URL.revokeObjectURL(photo.uri);
+        if (photo.status === 'ready') revokeLater(photo.uri);
     },
     [],
   );

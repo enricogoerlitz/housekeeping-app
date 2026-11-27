@@ -9,6 +9,7 @@ import type { CollectionContent } from './collections';
 import { scaleAmount } from './amounts';
 import {
   addIngredientRows,
+  addMissingIngredientRows,
   sectionChanged,
   sectionDraft,
   validateSectionDraft,
@@ -184,9 +185,9 @@ export interface PageDraftInput {
    * there is takes its place (AC-008). "Ersetzen" replaces the variants there are (AC-010).
    */
   variants?: readonly RecipeVariant[];
-  /** Added after the rows there are. */
+  /** Added after the rows there are; "Ergänzen" only the missing ones (spec 0049, AC-044). */
   ingredients?: readonly IngredientRow[];
-  /** Added after the steps there are (recipes only). */
+  /** Added after the steps there are, only to a part without steps (recipes only, AC-044). */
   steps?: readonly PageDraftStep[];
   /** Replaces the notes. */
   notes?: string;
@@ -277,18 +278,23 @@ export function fillPageDraft(
       const variantId = variantOf(drafted);
       return variantId === undefined ? rest : { ...rest, variantId };
     });
-    next = withSection(next, addIngredientRows(next.ingredients, rows));
+    // "Ergänzen" adds only the missing rows (spec 0049, AC-044).
+    const add = replace ? addIngredientRows : addMissingIngredientRows;
+    next = withSection(next, add(next.ingredients, rows));
   }
   if (next.steps) {
     let steps = next.steps;
     const newSteps = input.steps ?? [];
     if (replace && newSteps.length > 0) steps = { ...steps, steps: [] };
-    const added = newSteps.map((step): RecipeStep => {
+    // "Ergänzen" (spec 0049, AC-044) never doubles the method: steps go only to a part (shared or
+    // a variant) that has none yet, e.g. a new variant.
+    const withSteps = new Set(steps.steps.map((step) => step.variantId ?? ''));
+    const added = newSteps.flatMap((step): RecipeStep[] => {
       const made: RecipeStep = { id: newId(), text: step.text };
       const variantId = variantOf(step.variantId);
       if (variantId !== undefined) made.variantId = variantId;
       if (step.timerMinutes !== undefined) made.timerMinutes = step.timerMinutes;
-      return made;
+      return replace || !withSteps.has(variantId ?? '') ? [made] : [];
     });
     steps = { ...steps, steps: [...steps.steps, ...added] };
     if (input.leadTime && (replace || steps.leadTimeText.trim() === '')) {

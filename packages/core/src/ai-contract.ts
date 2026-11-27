@@ -272,6 +272,8 @@ export const RecipeDraftSourceSchema = z.strictObject({
   resolvedUrl: HttpsUrl.optional(),
   /** TikTok: the video's cover, the reference for "Foto generieren" (REQ-006). */
   coverUrl: HttpsUrl.optional(),
+  /** A page: its photo (JSON-LD image, else og:image), the photo without "Foto generieren" (spec 0049, AC-042). */
+  imageUrl: HttpsUrl.optional(),
 });
 export type RecipeDraftSource = z.infer<typeof RecipeDraftSourceSchema>;
 

@@ -192,6 +192,21 @@ export function isDictationStopWord(segment: string): boolean {
   return segment.replace(/[\s.,;:!?…"„“'‚‘»«-]/gu, '').toLowerCase() === 'ende';
 }
 
+/**
+ * Spec 0049, AC-042: with "Foto generieren" off, a link still gives the photo its page shows — the
+ * first page photo, else a TikTok cover — like the web search's „Original“. Undefined with it on.
+ */
+export function draftPagePhotoUrl(
+  sources: readonly RecipeDraftSource[],
+  generatePhoto: boolean,
+): string | undefined {
+  if (generatePhoto) return undefined;
+  return (
+    sources.find((source) => source.imageUrl)?.imageUrl ??
+    sources.find((source) => source.coverUrl)?.coverUrl
+  );
+}
+
 /** The prefilled prompt of the tab "KI" (REQ-004): the title, for a recipe with main ingredients. */
 export function defaultImagePrompt(title: string, mainIngredients: readonly string[]): string {
   const names = mainIngredients.slice(0, MAIN_INGREDIENTS_IN_PROMPT);

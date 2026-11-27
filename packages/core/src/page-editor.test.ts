@@ -306,6 +306,110 @@ describe('a draft from outside, e.g. "Mit KI ausfüllen" (spec 0040 hooks in her
   });
 });
 
+describe('"Ergänzen" adds only what is missing (spec 0049, AC-044)', () => {
+  let next = 0;
+  const newId = () => `e-${++next}`;
+  const veggie = { id: 'v-veg', name: 'Vegetarisch', isDefault: false };
+  const lasagne = makeRecipe({
+    id: 'rec-lasagne',
+    title: 'Lasagne',
+    servings: 4,
+    variants: [veggie],
+    ingredients: [
+      {
+        id: 'i-mehl',
+        articleId: 'art-mehl',
+        amount: parseAmount('40 g'),
+        shoppingRule: 'recipeAmount',
+      },
+      {
+        id: 'i-butter',
+        articleId: 'art-butter',
+        amount: parseAmount('30 g'),
+        shoppingRule: 'recipeAmount',
+      },
+      {
+        id: 'i-tofu',
+        articleId: 'art-tofu',
+        variantId: 'v-veg',
+        amount: parseAmount('200 g'),
+        shoppingRule: 'recipeAmount',
+      },
+    ],
+    steps: [
+      { id: 's1', text: 'Béchamel kochen.' },
+      { id: 's2', text: 'Schichten und backen.' },
+    ],
+  });
+  const row = (key: string, articleId: string, amountText: string, variantId?: string) => ({
+    ...newIngredientRow(key),
+    amountText,
+    article: { kind: 'article' as const, articleId },
+    ...(variantId ? { variantId } : {}),
+  });
+
+  it('AC-044: an article there already for the same variant is not added again (no second salt or butter)', () => {
+    const filled = fillPageDraft(
+      pageDraft(lasagne, []),
+      {
+        ingredients: [
+          row('d-mehl', 'art-mehl', '50 g'),
+          row('d-butter-1', 'art-butter', '30 g'),
+          row('d-butter-2', 'art-butter', '1 TL'),
+          row('d-tofu', 'art-tofu', '200 g', 'v-new-veg'),
+          row('d-hack', 'art-hack', '500 g'),
+        ],
+        variants: [{ id: 'v-new-veg', name: 'Vegetarisch', isDefault: false }],
+      },
+      newId,
+    );
+    expect(filled.ingredients.rows.map((one) => one.key)).toEqual([
+      'i-mehl',
+      'i-butter',
+      'i-tofu',
+      'd-hack',
+    ]);
+  });
+
+  it('AC-044: steps go only where the recipe has none yet (a new variant); the method is not doubled', () => {
+    const filled = fillPageDraft(
+      pageDraft(lasagne, []),
+      {
+        variants: [{ id: 'v-meat', name: 'Mit Hackfleisch', isDefault: false }],
+        steps: [
+          { text: 'Béchamel kochen und abschmecken.' },
+          { text: 'Hack anbraten.', variantId: 'v-meat' },
+          { text: 'Schichten und backen.' },
+        ],
+      },
+      newId,
+    );
+    expect(filled.steps?.steps.map((step) => step.text)).toEqual([
+      'Béchamel kochen.',
+      'Schichten und backen.',
+      'Hack anbraten.',
+    ]);
+  });
+
+  it('AC-044: a recipe without steps takes all of them; "Ersetzen" still replaces rows and steps', () => {
+    const empty = makeRecipe({ id: 'rec-leer', title: 'Leer', servings: 2 });
+    const filled = fillPageDraft(
+      pageDraft(empty, []),
+      { steps: [{ text: 'A' }, { text: 'B' }] },
+      newId,
+    );
+    expect(filled.steps?.steps.map((step) => step.text)).toEqual(['A', 'B']);
+    const replaced = fillPageDraft(
+      pageDraft(lasagne, []),
+      { ingredients: [row('d-mehl', 'art-mehl', '50 g')], steps: [{ text: 'Neu' }] },
+      newId,
+      { replace: true },
+    );
+    expect(replaced.ingredients.rows.map((one) => one.key)).toEqual(['d-mehl']);
+    expect(replaced.steps?.steps.map((step) => step.text)).toEqual(['Neu']);
+  });
+});
+
 describe('"Aus Rezept übernehmen" (spec 0037, REQ-003)', () => {
   const pizzateig: Recipe = makeRecipe({
     id: 'rec-pizzateig',

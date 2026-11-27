@@ -16,6 +16,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { useOnlineOnly } from '@/features/shell/offline';
+import { revokeLater } from '@/features/shell/revoke-later';
 import { features } from '@/lib/features';
 
 import { ProposalSheet } from './proposal-sheet';
@@ -156,7 +157,7 @@ function ReviewSheet(props: {
   const [uri] = useState(() => (review.photo ? URL.createObjectURL(review.photo) : undefined));
   useEffect(
     () => () => {
-      if (uri) URL.revokeObjectURL(uri);
+      if (uri) revokeLater(uri);
     },
     [uri],
   );

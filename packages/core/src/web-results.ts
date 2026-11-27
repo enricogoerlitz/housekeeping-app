@@ -186,18 +186,46 @@ export function distanceKm(
   return 2 * EARTH_KM * Math.asin(Math.min(1, Math.sqrt(h)));
 }
 
+/** Around this far from the centre a hit named like the search is "the one nearby" (AC-045). */
+const NEAR_NAME_KM = 100;
+
+const words = (text: string) =>
+  text
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((word) => word !== '');
+
+/** Every word of the search is a word of the hit's name ("Trattoria Da Enzo"). */
+function namedLike(title: string, query: string): boolean {
+  const wanted = words(query);
+  const name = new Set(words(title));
+  return wanted.length > 0 && wanted.every((word) => name.has(word));
+}
+
 /**
  * Which place hits a search shows (Entscheidung 11). `free` was searched without a place, `around`
- * around the household's centre (or Germany). A text that names a district, a city or one place
- * ("vietnamesisch friedrichshain", "Mutzenbacher") lets Google find it on its own, near the
- * centre's part of the world: then `free` wins, even when the household's places are elsewhere.
- * A text without a place lands at the provider's default far away: then `around`.
+ * around the household's centre (or Germany). A hit around the centre (≤ 100 km) named like the
+ * search ("Trattoria Da Enzo") wins first (Entscheidung 14): a famous namesake in Rome is not
+ * meant. A text that names a district, a city or one place ("vietnamesisch friedrichshain",
+ * "Mutzenbacher") lets Google find it on its own, near the centre's part of the world: then `free`
+ * wins, even when the household's places are elsewhere. A text without a place lands at the
+ * provider's default far away: then `around`.
  */
-export function pickPlaceHits<T extends { location?: { lat: number; lng: number } }>(
+export function pickPlaceHits<T extends { title: string; location?: { lat: number; lng: number } }>(
   free: readonly T[],
   around: readonly T[],
   centre: { lat: number; lng: number },
+  query = '',
 ): T[] {
+  const nearbyNamesake = around.some(
+    (hit) =>
+      hit.location !== undefined &&
+      distanceKm(hit.location, centre) <= NEAR_NAME_KM &&
+      namedLike(hit.title, query),
+  );
+  if (nearbyNamesake) return [...around];
   const first = free.find((hit) => hit.location)?.location;
   if (first && distanceKm(first, centre) <= NAMED_PLACE_KM) return [...free];
   return [...around];

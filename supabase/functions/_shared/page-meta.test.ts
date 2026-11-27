@@ -54,6 +54,21 @@ describe('pageMeta', () => {
     expect(pageMeta(page).recipe).toEqual({ name: 'X' });
   });
 
+  it('AC-041: a recipe name drops the trailing "von <author>" (Chefkoch), the rest stays', () => {
+    const byReference = `<script type="application/ld+json">{"@graph":[
+      {"@type":"Recipe","name":"Albertos Spaghetti mit Meatballs von caralb",
+       "author":{"@id":"https://www.chefkoch.de/user/profil/d43f#author"}},
+      {"@type":"Person","@id":"https://www.chefkoch.de/user/profil/d43f#author","name":"caralb"}]}</script>`;
+    expect(pageMeta(byReference).recipe?.name).toBe('Albertos Spaghetti mit Meatballs');
+    const inline = `<script type="application/ld+json">{"@type":"Recipe","name":"Dal von Oma Inge",
+      "author":[{"@type":"Person","name":"Oma Inge"}]}</script>`;
+    expect(pageMeta(inline).recipe?.name).toBe('Dal');
+    // "von" that is not the author stays: "Lasagne von der Oma" by "kochfan".
+    const notAuthor = `<script type="application/ld+json">{"@type":"Recipe","name":"Lasagne von der Oma",
+      "author":{"@type":"Person","name":"kochfan"}}</script>`;
+    expect(pageMeta(notAuthor).recipe?.name).toBe('Lasagne von der Oma');
+  });
+
   it('security check 0049: long attribute-less meta tags and deeply nested images stay cheap', () => {
     const started = Date.now();
     pageMeta(`<meta ${'a'.repeat(1990)}>`.repeat(1500));

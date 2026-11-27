@@ -1000,6 +1000,27 @@ export function addIngredientRows(
 }
 
 /**
+ * "Ergänzen" (spec 0049, AC-044): only the rows that are missing. A row whose article the section
+ * has already for the same variant is left out — no second salt or butter from another source.
+ */
+export function addMissingIngredientRows(
+  draft: IngredientsDraft,
+  rows: readonly IngredientRow[],
+): IngredientsDraft {
+  const there = new Set(
+    draft.rows.flatMap((row) => {
+      const key = rowArticleKey(row);
+      return key === undefined || row.duplicate ? [] : [`${row.variantId ?? ''}|${key}`];
+    }),
+  );
+  const missing = rows.filter((row) => {
+    const key = rowArticleKey(row);
+    return key === undefined || !there.has(`${row.variantId ?? ''}|${key}`);
+  });
+  return { ...draft, rows: [...draft.rows, ...missing] };
+}
+
+/**
  * Pasted rows ("Mehrere einfügen", "Zutaten einfügen") at the end of the section (spec 0023,
  * REQ-006): a row whose article is in the section already for the same variant, or in a row
  * further up of `rows`, is marked as duplicate. A row added with "+ Zutat" is never one.
