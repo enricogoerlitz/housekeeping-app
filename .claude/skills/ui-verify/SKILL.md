@@ -1,6 +1,6 @@
 ---
 name: ui-verify
-description: Look at the real UI before calling UI work done - screenshots of the web build at phone, tablet and desktop size in light and dark mode, plus iOS simulator or Android emulator screenshots when available, checked against DESIGN.md and a fixed checklist. Use after building or changing a screen or component, when asked how something looks, or before an impeccable critique.
+description: Look at the real UI before calling UI work done - desktop in the browser (Playwright), mobile in the iPhone simulator, in light and dark mode, checked against DESIGN.md and a fixed checklist. Use after building or changing a screen or component, when asked how something looks, or before an impeccable critique.
 argument-hint: "[route, e.g. /rezepte]"
 ---
 
@@ -8,6 +8,17 @@ argument-hint: "[route, e.g. /rezepte]"
 
 Code that compiles can still look broken. This skill gives the agent eyes: it produces
 screenshots, reads them, and reports what is wrong. It does not change code.
+
+## Where to check what
+
+| Target | Tool |
+| --- | --- |
+| Desktop | Playwright/Chromium 1440x900 (tablet 820x1180 optional) |
+| Mobile (real iOS keyboard, Safari, gestures) | iPhone simulator, see `references/ios-simulator.md` |
+| Android proxy (Nadja uses Android) | light Playwright phone-viewport pass (390x844), main flows only |
+
+The automated e2e suite keeps its phone viewport. Use the simulator for anything keyboard-,
+viewport- or gesture-related; Chromium cannot show those.
 
 ## 1. Build and serve the web app
 
@@ -35,17 +46,14 @@ done
 
 Add `--full-page` for long screens. Stop the server afterwards.
 
-## 3. Native screenshots, when available
+## 3. iPhone simulator
 
-Only if a simulator or emulator is running with a development build:
+Setup, helpers (`scripts/ios-sim/`), typing, PWA mode and limits are in
+`references/ios-simulator.md`; read it before the first simulator run. Screenshots go to the same
+`tmp/ui-verify/` folder. Android emulator: `adb exec-out screencap -p > "$OUT/android.png"`.
 
-```bash
-xcrun simctl io booted screenshot "$OUT/ios.png"          # iOS simulator (needs Xcode)
-adb exec-out screencap -p > "$OUT/android.png"             # Android emulator or device
-```
-
-Web screenshots do not show native-only behaviour (Liquid Glass, native tabs, haptics). Say so
-when native screenshots were not possible.
+Web screenshots do not show native-only behaviour (Liquid Glass, haptics). Say so when the
+simulator was not used.
 
 ## 4. Look at every screenshot
 
