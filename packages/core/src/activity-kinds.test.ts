@@ -4,6 +4,7 @@ import {
   ACTIVITY_ICONS,
   activityIconOf,
   DEFAULT_ACTIVITY_ICON,
+  countRememberFilters,
   DEFAULT_ACTIVITY_KINDS,
   filterRemembered,
   findDuplicateKind,
@@ -82,6 +83,18 @@ describe('Merken', () => {
     expect(filterRemembered([autofahren, bouldern], 'remembered')).toEqual([bouldern]);
     expect(filterRemembered([autofahren, bouldern], 'all')).toEqual([autofahren, bouldern]);
     expect(filterRemembered([autofahren, bouldern], 'forgotten')).toEqual([autofahren]);
+  });
+
+  it('AC-016: the counts of "Gemerkt", "Alle" and "Nicht gemerkt" add up', () => {
+    expect(countRememberFilters([autofahren, bouldern, activity({ id: 'c' })])).toEqual({
+      remembered: 2,
+      all: 3,
+      forgotten: 1,
+    });
+  });
+
+  it('AC-016: no activities, no counts', () => {
+    expect(countRememberFilters([])).toEqual({ remembered: 0, all: 0, forgotten: 0 });
   });
 
   it('AC-013: the filter starts with "Gemerkt"', () => {

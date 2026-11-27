@@ -253,7 +253,7 @@ test('0002 AC-010: 5 stars, favourite and a note show in the list and on the det
   // and the note "Trüffelpasta! …", so tapping the heart there would remove it. The flow is
   // proven on "Brooklyn Burger Bar" (4 stars, no heart, no note).
   await open(page, '/rezepte?ansicht=restaurants');
-  await expect(tid(page, `${BURGER}-favorite`)).toBeHidden();
+  await expect(tid(page, `${BURGER}-favorite`)).toHaveAttribute('aria-pressed', 'false');
   await expect(tid(page, `${BURGER}-stars`)).toHaveAttribute('aria-label', '4 von 5 Sternen');
   await tid(page, BURGER).click();
   await tid(page, 'restaurant-stars-5').click();
@@ -264,7 +264,7 @@ test('0002 AC-010: 5 stars, favourite and a note show in the list and on the det
   await tid(page, 'restaurant-save').click();
   await expect(tid(page, 'restaurant-notes-text')).toHaveText('Trüffelpasta!');
   await backToList(page);
-  await expect(tid(page, `${BURGER}-favorite`)).toBeVisible();
+  await expect(tid(page, `${BURGER}-favorite`)).toHaveAttribute('aria-pressed', 'true');
   await expect(tid(page, `${BURGER}-stars`)).toHaveAttribute('aria-label', '5 von 5 Sternen');
   await tid(page, BURGER).click();
   await expect(tid(page, 'restaurant-notes-text')).toHaveText('Trüffelpasta!');

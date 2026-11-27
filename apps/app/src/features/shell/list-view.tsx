@@ -52,6 +52,8 @@ export function PlaceTile(props: {
   photoPath: string | undefined;
   placeholderIcon: IconName;
   meta?: ReactNode;
+  /** Top right, outside the pressable card (the toggles of spec 0041, AC-017). */
+  corner?: ReactNode;
   onPress: () => void;
   testID: string;
 }) {
@@ -67,6 +69,7 @@ export function PlaceTile(props: {
       photoAspectRatio={4 / 3}
       size={isPhone ? 'm' : 'l'}
       meta={props.meta}
+      corner={props.corner}
       onPress={props.onPress}
     />
   );
