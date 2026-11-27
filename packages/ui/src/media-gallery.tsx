@@ -56,8 +56,10 @@ export function MediaGallery(props: MediaGalleryProps) {
   const fill = props.aspectRatio === undefined;
   // Each page in numbers: a percentage of the scrolling content would be circular.
   const pageHeight = fill ? size.height : width / (props.aspectRatio ?? 1);
+  // Filling the whole screen, a focus ring would frame the screen itself (the viewer's window
+  // focuses it on opening, also on a touch screen).
   const frame = fill
-    ? { flex: 1, width: '100%' as const }
+    ? { flex: 1, width: '100%' as const, outlineWidth: 0 }
     : { width: '100%' as const, aspectRatio: props.aspectRatio };
   // A page that went away (a removed video) leaves the gallery on the last one there is.
   const index = Math.min(shown, Math.max(0, count - 1));
