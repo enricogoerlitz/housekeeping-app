@@ -345,6 +345,9 @@ describe('Sheet with the keyboard on iPhone (spec 0044, REQ-002, REQ-003)', () =
   afterEach(() => {
     report(undefined);
     act(() => vi.runOnlyPendingTimers());
+    // A late autofocus from those timers expects a keyboard once more (a tapped field on iPhone):
+    // let that expectation run out too.
+    act(() => vi.advanceTimersByTime(HANDOVER_MS + 50));
     viewport.offsetTop = 0;
     vi.useRealTimers();
     if (userAgent) Object.defineProperty(window.navigator, 'userAgent', userAgent);
@@ -483,6 +486,30 @@ describe('Toast clear of the page buttons (spec 0033, REQ-009)', () => {
     stubRect(screen.getByTestId('buttons'), { top: 717, height: 46 });
     act(() => toast.show({ message: 'Foto gespeichert' }));
     expect(bottomOf()).toBe(`${844 - 717 + 12}px`);
+  });
+
+  it('shown while leaving a page, it moves off the bar of the page it lands on once that is in (iPhone click-through)', () => {
+    vi.useFakeTimers();
+    try {
+      setWindow(390, 844);
+      render(
+        <>
+          <RecipeButtons />
+          <ToastHost />
+        </>,
+      );
+      // Still hidden behind the page that closes.
+      stubRect(screen.getByTestId('buttons'), { top: 717, height: 0 });
+      act(() => toast.show({ message: '1 gekauft · 13 bleiben' }));
+      act(() => vi.advanceTimersByTime(20));
+      expect(bottomOf()).toBe('74px');
+      stubRect(screen.getByTestId('buttons'), { top: 717, height: 46 });
+      act(() => vi.advanceTimersByTime(400));
+      expect(bottomOf()).toBe(`${844 - 717 + 12}px`);
+    } finally {
+      act(() => vi.runOnlyPendingTimers());
+      vi.useRealTimers();
+    }
   });
 
   it('buttons elsewhere: the toast keeps its place above the tab bar', () => {

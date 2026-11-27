@@ -58,7 +58,7 @@ import {
   SheetSubmitContext,
   focusQuietly,
 } from './sheet-focus';
-import { toastBottom, toastEdge, type Box } from './toast-place';
+import { keyboardToastBottom, toastBottom, toastEdge, type Box } from './toast-place';
 import { useTitleFit } from './use-title-fit';
 import { createToastStore } from './toast-state';
 import { TopLayer } from './top-layer';
@@ -513,6 +513,7 @@ function SheetActionsHeader(props: {
     onTitle,
     onAction,
   } = useTitleFit({ padding: 2 * HEADER_PADDING, gap: HEADER_GAP, actions: 2 });
+  const [primaryWidth, setPrimaryWidth] = useState(0);
   const cancel =
     props.actions.cancel === null
       ? null
@@ -549,10 +550,21 @@ function SheetActionsHeader(props: {
         }}
       >
         <View onLayout={onAction(0)}>
-          {cancel ? <HeaderAction action={cancel} /> : <View style={{ width: 8 }} />}
+          {cancel ? (
+            <HeaderAction action={cancel} />
+          ) : (
+            // Without "Abbrechen" as wide as the right button, so the title stays centred
+            // ("Mitteilungen"; iPhone click-through, review 0003).
+            <View testID={id('balance')} style={{ width: Math.max(8, primaryWidth) }} />
+          )}
         </View>
         {titleBelow ? <View key="spacer" style={{ flex: 1 }} /> : title}
-        <View onLayout={onAction(1)}>
+        <View
+          onLayout={(event) => {
+            onAction(1)(event);
+            setPrimaryWidth(event.nativeEvent.layout.width);
+          }}
+        >
           <HeaderAction action={props.actions.primary} />
         </View>
       </View>
@@ -653,6 +665,8 @@ interface Obstacles {
   avoid: Band[];
   /** Everything to press on screen (decision 12): the toast goes to the top rather than on it. */
   pressable: Box[];
+  /** The text field with the cursor, kept free while the keyboard is open. */
+  focused?: Band;
 }
 let obstacles: Obstacles = { avoid: [], pressable: [] };
 const obstacleListeners = new Set<() => void>();
@@ -743,13 +757,25 @@ function pressableBoxes(): Box[] {
   return boxes;
 }
 
+/** The text field with the cursor (web only). */
+function focusedField(): Band | undefined {
+  if (typeof document === 'undefined') return undefined;
+  const field = document.activeElement;
+  if (!(field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement))
+    return undefined;
+  const rect = field.getBoundingClientRect();
+  return rect.height > 0 ? { top: rect.top, bottom: rect.bottom } : undefined;
+}
+
 function measureObstacles(): Obstacles {
-  return { avoid: avoidedBands(), pressable: pressableBoxes() };
+  const focused = focusedField();
+  return { avoid: avoidedBands(), pressable: pressableBoxes(), ...(focused ? { focused } : {}) };
 }
 
 /** Mount once near the root: above the tab bar and the home bar on phones (AC-024). */
 const WEB_TOAST_LAYER = { position: 'fixed', zIndex: 10000 } as unknown as ViewStyle;
 const TOAST_MIN_HEIGHT = 48;
+const TOAST_REMEASURE_MS = 400;
 
 export function ToastHost() {
   const theme = useTheme();
@@ -768,15 +794,32 @@ export function ToastHost() {
   useEffect(() => {
     if (shownId === undefined || typeof requestAnimationFrame === 'undefined') return;
     const frame = requestAnimationFrame(() => setObstacles(measureObstacles()));
-    return () => cancelAnimationFrame(frame);
+    // A toast shown while leaving a page ("Fertig" in "Einkaufen") measures the page it lands on
+    // once that has come in (iPhone click-through, review 0003).
+    const later = setTimeout(() => setObstacles(measureObstacles()), TOAST_REMEASURE_MS);
+    return () => {
+      cancelAnimationFrame(frame);
+      clearTimeout(later);
+    };
   }, [shownId]);
   if (!state) return null;
   const c = theme.colors;
   const below = bar ?? (isPhone ? TAB_BAR_HEIGHT : 0);
   // On the keyboard, which hides the tab bar (spec 0032, REQ-002); else above the bottom bar and
   // the page's buttons, or at the top when that would cover something to press (decision 12).
+  // A field with the cursor right above the keyboard (an input bar) stays free.
   const place = keyboard.open
-    ? { bottom: keyboard.inset + 12 }
+    ? {
+        bottom: keyboardToastBottom({
+          windowHeight:
+            typeof document === 'undefined'
+              ? height
+              : document.documentElement.clientHeight || height,
+          inset: keyboard.inset,
+          toastHeight: TOAST_MIN_HEIGHT,
+          field: focusedField() ?? measured.focused,
+        }),
+      }
     : toastEdge({
         windowWidth: width,
         windowHeight: height,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { toastBottom, toastEdge } from './toast-place';
+import { keyboardToastBottom, toastBottom, toastEdge } from './toast-place';
 
 // A phone 844 high; the toast 48 high stands 95 above the bottom edge (tab bar and gap).
 const base = { bottom: 95, windowHeight: 844, toastHeight: 48, gap: 12 };
@@ -87,5 +87,24 @@ describe('toastEdge (spec 0033, REQ-009, decision 12)', () => {
         ],
       }),
     ).toEqual({ bottom: 95 });
+  });
+});
+
+describe('keyboardToastBottom: the toast with the keyboard open (iPhone click-through)', () => {
+  // Window 714 high, keyboard covers the lower 330, the toast is 48 high.
+  const open = { windowHeight: 714, inset: 330, toastHeight: 48 };
+
+  it('stands 12 above the keyboard when nothing with the cursor is there', () => {
+    expect(keyboardToastBottom({ ...open })).toBe(342);
+    expect(keyboardToastBottom({ ...open, field: { top: 100, bottom: 150 } })).toBe(342);
+  });
+
+  it('a field with the cursor right above the keyboard ("Was fehlt?") stays free: the toast goes above it', () => {
+    // Field 324–374 (layout coordinates): the toast ends 8 above it, at 316.
+    expect(keyboardToastBottom({ ...open, field: { top: 324, bottom: 374 } })).toBe(714 - 316);
+  });
+
+  it('no room above the field: on the keyboard as before', () => {
+    expect(keyboardToastBottom({ ...open, field: { top: 30, bottom: 380 } })).toBe(342);
   });
 });

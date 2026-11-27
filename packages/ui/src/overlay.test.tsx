@@ -200,6 +200,8 @@ describe('Sheet actions (spec 0032, REQ-003)', () => {
     const header = screen.getByTestId('sheet-header');
     expect(within(header).queryByRole('button', { name: 'Abbrechen' })).toBeNull();
     expect(within(header).getByRole('button', { name: 'Fertig' })).toBeTruthy();
+    // The empty left side balances the right button, so the title stays centred.
+    expect(screen.getByTestId('sheet-balance')).toBeTruthy();
   });
 
   it('AC-008: offline "Speichern" is greyed out and says why', () => {

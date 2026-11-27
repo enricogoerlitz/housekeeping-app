@@ -399,9 +399,10 @@ function Preview(props: { search: WebSearch; rows?: RecipeRows; testID: string }
 }
 
 const PLACEHOLDERS = {
-  recipe: 'z. B. „Spaghetti Bolognese“ oder „Linsen-Dal“',
+  // Short enough for a phone beside the microphone (iPhone click-through, review 0003).
+  recipe: 'z. B. „Spaghetti Bolognese“',
   restaurant: 'z. B. „vietnamesisch Friedrichshain“',
-  activity: 'z. B. „Kletterhalle“ oder „Indoor-Spielplatz“',
+  activity: 'z. B. „Kletterhalle“',
 } as const;
 
 /**

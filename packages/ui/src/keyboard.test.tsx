@@ -98,15 +98,17 @@ describe('the field with the cursor in view (spec 0044, REQ-004)', () => {
     render(<Listener />);
     const { area } = scrollArea(100, 200);
     const next = document.createElement('input');
-    next.getBoundingClientRect = () => ({ top: 600 - area.scrollTop, bottom: 644 }) as DOMRect;
+    next.getBoundingClientRect = () =>
+      ({ top: 900 - area.scrollTop, bottom: 944 - area.scrollTop }) as DOMRect;
     area.append(next);
     act(() => (area.firstElementChild as HTMLInputElement).focus());
     keyboardTo(464);
     frames();
+    // The next field is too far below to show along with this one: nothing moves.
     expect(area.scrollTop).toBe(0);
     act(() => next.focus());
     frames();
-    expect(area.scrollTop).toBe(600 - 212);
+    expect(area.scrollTop).toBe(900 - 212);
   });
 
   it('AC-018: a field in a window scrolls the window content, not the page behind', () => {
@@ -120,6 +122,18 @@ describe('the field with the cursor in view (spec 0044, REQ-004)', () => {
     frames();
     expect(sheet.area.scrollTop).toBe(Math.round(470 - (316 + 74 / 3)));
     expect(page.area.scrollTop).toBe(0);
+  });
+
+  it('AC-010: Safari scrolling the window by itself (with the visual viewport still) is undone at once (iPhone click-through)', () => {
+    render(<Listener />);
+    keyboardTo(384);
+    vi.mocked(window.scrollTo).mockClear();
+    Object.defineProperty(window, 'scrollY', { configurable: true, value: 331 });
+    act(() => {
+      window.dispatchEvent(new Event('scroll'));
+    });
+    expect(window.scrollTo).toHaveBeenCalledWith(0, 0);
+    Object.defineProperty(window, 'scrollY', { configurable: true, value: 0 });
   });
 
   it('AC-019: without a keyboard (desktop) the app scrolls nothing itself', () => {
@@ -148,6 +162,54 @@ describe('the cursor moving between fields on iPhone (spec 0044, REQ-005)', () =
     act(() => second.focus());
     expect(focus).toHaveBeenCalledWith({ preventScroll: true });
     expect(document.activeElement).toBe(second);
+  });
+
+  it('AC-017: on iPhone the next field is in place before it takes the focus, so iOS offers its neighbours to ˄ ˅ (iPhone click-through)', () => {
+    asIPhone();
+    render(<Listener />);
+    const { area, field } = scrollArea(100, 200);
+    const next = document.createElement('textarea');
+    next.getBoundingClientRect = () =>
+      ({ top: 900 - area.scrollTop, bottom: 944 - area.scrollTop }) as DOMRect;
+    area.append(next);
+    act(() => field.focus());
+    keyboardTo(464);
+    frames();
+    // iOS decides which neighbours ˄ ˅ reach when the field takes the focus: only visible ones.
+    let atFocus: number | undefined;
+    next.addEventListener('focus', () => (atFocus ??= area.scrollTop));
+    act(() => next.focus());
+    expect(atFocus).toBe(900 - 212);
+  });
+
+  it('AC-020: a tapped field on iPhone makes room for the coming keyboard at once, so Safari does not push the page up (iPhone click-through)', () => {
+    asIPhone();
+    render(<Listener />);
+    const field = document.createElement('input');
+    document.body.append(field);
+    act(() => field.focus());
+    // 45 % of 844 until a keyboard was measured (decision 4).
+    expect(document.documentElement.style.getPropertyValue('--app-height')).toBe('464px');
+  });
+
+  it('AC-016: a tapped field below the coming keyboard is in place before iOS decides about ˄ ˅ (iPhone click-through)', () => {
+    asIPhone();
+    render(<Listener />);
+    const { area, field } = scrollArea(100, 700);
+    let atFocus: number | undefined;
+    field.addEventListener('focus', () => (atFocus ??= area.scrollTop));
+    act(() => field.focus());
+    // In place at once, no frame later: 100 + 16 + (332 − 44) / 3 = 212.
+    expect(area.scrollTop).toBe(700 - 212);
+    expect(atFocus).toBeDefined();
+  });
+
+  it('AC-021: elsewhere a tapped field changes nothing before the keyboard is there', () => {
+    render(<Listener />);
+    const field = document.createElement('input');
+    document.body.append(field);
+    act(() => field.focus());
+    expect(document.documentElement.style.getPropertyValue('--app-height')).toBe('');
   });
 
   it('AC-021: elsewhere the browser keeps its own focus handling', () => {
