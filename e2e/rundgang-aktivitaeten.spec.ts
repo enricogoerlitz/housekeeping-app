@@ -94,7 +94,11 @@ async function slotTitles(page: Page, date: string, slotId: string): Promise<(st
   return dayBlock(page, date)
     .locator(`[data-testid="week-slot-${date}-${slotId}"]`)
     .locator(PLAN_ENTRY)
-    .evaluateAll((rows) => rows.map((row) => row.getAttribute('aria-label')));
+    .evaluateAll((rows) => rows.map((row) => row.getAttribute('aria-label')))
+    .then((labels) =>
+      // The row also names who is "dabei" and a series (spec 0041): only the title counts here.
+      labels.map((label) => label?.replace(/, (mit .*|Serie)$/, '') ?? null),
+    );
 }
 
 /**
@@ -257,7 +261,9 @@ test('AC-004: "Aktivitäten" lists Eislaufen and Bouldern with picture, name and
     await expect(tid(page, `activity-${id}-placeholder`)).toBeVisible();
   }
   await expect(tid(page, `activity-${BOULDERN}-last`)).toHaveText('Zuletzt: vor 12 Tagen · 3-mal');
-  await expect(tid(page, `activity-${EISLAUFEN}-place`)).toHaveText('Eisstadion Hohenschönhausen');
+  await expect(tid(page, `activity-${EISLAUFEN}-place`)).toHaveText(
+    'Sport · Eisstadion Hohenschönhausen',
+  );
   await expect(tid(page, 'activity-count')).toContainText('3');
   // The page has its own address: a reload keeps it.
   await page.reload();

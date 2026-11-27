@@ -66,7 +66,7 @@ test.describe('REQ-004: link and photo of a YouTube video', () => {
     await tid(page, 'new-recipe-ai-tab-prompt').click();
     await tid(page, 'new-recipe-ai-text').fill(YOUTU_BE);
     await tid(page, 'new-recipe-ai-generate-photo').click();
-    await expect(tid(page, 'new-recipe-ai-generate-photo')).not.toBeChecked();
+    await expect(tid(page, 'new-recipe-ai-generate-photo').locator('input')).not.toBeChecked();
     await tid(page, 'new-recipe-ai-submit').click();
 
     await expect(tid(page, 'recipe-edit-save')).toBeVisible();

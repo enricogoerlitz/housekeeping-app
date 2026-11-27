@@ -15,6 +15,7 @@ import {
   tid,
   tidPrefix,
   toastMessage,
+  tripRow,
 } from './helpers';
 import { seedIds } from './seed-ids';
 
@@ -154,9 +155,7 @@ test('AC-011 / AC-012 / AC-013: the trip window attaches bags; the button counts
   await tid(page, 'trip-save').click();
   await expect(tid(page, 'trip-sheet')).toBeHidden();
 
-  const row = tid(page, 'trips-upcoming')
-    .locator('[data-testid^="trip-"][data-testid$="-open"]')
-    .filter({ hasText: 'Zeltwochenende' });
+  const row = tripRow(page, 'Zeltwochenende');
   await row.click();
   await expect(tid(page, 'trip-window-title')).toHaveText('Zeltwochenende');
   await expect(tid(page, 'trip-progress')).toHaveText('Packliste · 0 von 12 gepackt');

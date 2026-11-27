@@ -118,15 +118,21 @@ async function serverItems(
   }));
 }
 
-/** Records every toast text shown from now on (to prove that none appeared). */
+/**
+ * Records every toast text shown from now on (to prove that none appeared). A toast still showing
+ * from before (e.g. „Milch steht auf der Liste“ of an earlier step) is not one of them.
+ */
 async function recordToasts(page: Page): Promise<() => Promise<string[]>> {
   await page.evaluate(() => {
     const seen: string[] = [];
     (window as unknown as { e2eToasts: string[] }).e2eToasts = seen;
+    const textNow = () =>
+      document.querySelector('[data-testid="toast-message"]')?.textContent ?? '';
+    let last = textNow();
     new MutationObserver(() => {
-      const toast = document.querySelector('[data-testid="toast-message"]');
-      const text = toast?.textContent ?? '';
-      if (text && seen.at(-1) !== text) seen.push(text);
+      const text = textNow();
+      if (text && last !== text) seen.push(text);
+      last = text;
     }).observe(document.body, { subtree: true, childList: true, characterData: true });
   });
   return () =>
@@ -419,8 +425,13 @@ test('AC-022: checking wins — Enrico unchecks "Butter" offline, Nadja re-check
 
   await enrico.bringToFront();
   await showInCart(enrico);
+  // A checked row stays in its area for a moment before it moves to "Im Wagen": take that one.
+  const inCart = tid(enrico, 'sm-done').locator('[role="checkbox"][aria-label="Butter"]');
+  await expect(
+    enrico.locator('[data-testid^="sm-group-"] [role="checkbox"][aria-label="Butter"]'),
+  ).toHaveCount(0);
   await context.setOffline(true);
-  await smCheck(enrico, 'Butter').click();
+  await inCart.click();
   await expect(smCheck(enrico, 'Butter')).toHaveAttribute('aria-checked', 'false');
 
   // Nadja takes the check back and sets it again in "Einkaufen", online.
@@ -474,8 +485,16 @@ test('AC-023: Enrico (offline) and Nadja both add "Brot": one item with both con
     .poll(() => serverItems(householdId, 'Brot'), SYNC)
     .toEqual([{ checked: false, contributions: 2 }]);
   // One row with 2× on both devices (the offline row took the server's item id).
-  const count = async (device: Page) =>
-    tid(device, `item-${await itemIdOf(itemRows(device, 'Brot'))}-count`).innerText();
+  // The id is read anew on every try: the row changes it while the sync merges, and a read of the
+  // old row must not hold the poll up.
+  const count = async (device: Page) => {
+    try {
+      const id = await itemIdOf(itemRows(device, 'Brot'));
+      return await tid(device, `item-${id}-count`).innerText({ timeout: 1_000 });
+    } catch {
+      return '';
+    }
+  };
   await expect.poll(() => count(enrico), SYNC).toBe('2×');
   await expect(itemRows(enrico, 'Brot')).toHaveCount(1);
   await nadja.bringToFront();

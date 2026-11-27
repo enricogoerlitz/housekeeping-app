@@ -1,9 +1,12 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
+import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { reducedMotion } from '../test/mocks/reanimated';
 import { pointer } from '../test/setup';
 import { Button } from './controls';
+import { DragContext } from './drag-context';
+import type { DragController } from './drag-controller';
 import { Text } from './primitives';
 import { SwipeArea } from './swipe-area';
 import { Screen, ScreenHeader } from './shell';
@@ -297,6 +300,23 @@ describe('TabSwipeArea (spec 0029, REQ-003)', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Öffnen' }));
     expect(onPress).toHaveBeenCalledTimes(1);
+  });
+
+  it('while something hangs on the finger (a trip drawn in the year) the move is no tab swipe', () => {
+    const onStep = vi.fn();
+    const dragging = {
+      getSnapshot: () => ({ phase: 'dragging', sourceId: 'trip:2027-01-04' }),
+      subscribe: () => () => undefined,
+    } as unknown as DragController<ReactNode>;
+    render(
+      <DragContext.Provider value={dragging}>
+        <TabSwipeArea swipe={{ index: 1, count: 3, onStep }}>
+          <Button label="Inhalt" onPress={() => undefined} />
+        </TabSwipeArea>
+      </DragContext.Provider>,
+    );
+    drag(screen.getByRole('button', { name: 'Inhalt' }), RIGHT);
+    expect(onStep).not.toHaveBeenCalled();
   });
 });
 

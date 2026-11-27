@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { H, TODAY, withBackend } from './backend-test-helpers';
-import { deleteArticle, mergeArticles } from './commands-articles';
+import { deleteArticle, mergeArticles, updateArticle } from './commands-articles';
 import {
   createRecurringItem,
   deleteRecurringItem,
@@ -138,6 +138,29 @@ describe('"Aus Kalender …" (REQ-005)', () => {
     });
     expect(fx.server.row(H, 'recurring_items', id)).toMatchObject({ last_added_on: '2026-11-21' });
     expect(getData().recurringItems[0]?.lastAddedOn).toBe('2026-11-21');
+  });
+
+  it('AC-024: a chosen Dauerposten of a Vorrat article a dish needs too starts selected', async () => {
+    await fx.startEnrico();
+    // Reis is Vorrat: alone a dish's row of it would start as "habe ich" (the Mango-Curry).
+    const reis = articleNamed('Reis');
+    updateArticle(reis.id, { isPantry: true });
+    await fx.settle();
+    const dish = getData().recipes.find((recipe) =>
+      recipe.ingredients.some((ingredient) => ingredient.articleId === reis.id),
+    );
+    if (!dish) throw new Error('fixture: no dish with Reis');
+    const id = createRecurringItem(saturdays(reis.id, 1), TODAY);
+    await fx.settle();
+    const item = getData().recurringItems.find((candidate) => candidate.id === id);
+    if (!item) throw new Error('missing');
+    const row = pantryCheckRows(
+      [],
+      [{ recipeId: dish.id, portions: dish.servings }],
+      [{ item, on: '2026-11-21' }],
+    ).find((candidate) => candidate.articleId === reis.id);
+    expect(row?.sources).toContain('regelmäßig');
+    expect(row?.isPantry).toBe(false);
   });
 });
 

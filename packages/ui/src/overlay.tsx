@@ -109,6 +109,19 @@ const EASE_OUT = Easing.bezier(0.23, 1, 0.32, 1);
 // Spec 0033, decision 1: after a drag the window springs back with a little give, or leaves at the
 // finger's speed.
 const SNAP_BACK = { duration: 300, dampingRatio: 0.8 } as const;
+
+/**
+ * True when `node` lies in a window opened after the one of `panel` (react-native-web appends
+ * every Modal to the body in opening order and marks it `aria-modal`; `role="dialog"` only stays
+ * on the topmost): that window has the cursor now, not this one.
+ */
+function inLaterWindow(node: unknown, panel: unknown): boolean {
+  if (typeof Element === 'undefined' || !(node instanceof Element)) return false;
+  if (!(panel instanceof Element)) return false;
+  const own = panel.parentElement?.closest('[aria-modal="true"]') ?? panel;
+  if (own.contains(node) || !node.closest('[aria-modal="true"]')) return false;
+  return (own.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+}
 const DRAG_AWAY = { duration: 300, dampingRatio: 1, overshootClamping: true } as const;
 
 /**
@@ -280,6 +293,8 @@ export function Sheet(props: SheetProps) {
       // Opened by a tap that opened the keyboard (iPhone, spec 0033 decision 10): the hidden field
       // kept it (and the focus) while the window slid in; the field takes it now that the window
       // stands, as iOS decides then which neighbours ˄ ˅ reach (only visible ones; I-04).
+      // A window opened on top in the meantime (the magnifier tapped at once) keeps the cursor.
+      if (inLaterWindow(document.activeElement, panel.current)) return;
       const handed = handOverKeyboard(focusTarget.current ?? mountedFocus);
       const input = focusTarget.current ?? mountedFocus ?? (handed ? document.activeElement : null);
       if (!input) return;
@@ -290,6 +305,11 @@ export function Sheet(props: SheetProps) {
         const box = panel.current as unknown;
         if (box instanceof Node && event.target instanceof Node && box.contains(event.target))
           return;
+        if (inLaterWindow(event.target, box)) {
+          if (reclaim) document.removeEventListener('focusin', reclaim, true);
+          reclaim = undefined;
+          return;
+        }
         focusQuietly(input);
       };
       document.addEventListener('focusin', reclaim, true);

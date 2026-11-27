@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { reducedMotion } from '../test/mocks/reanimated';
 import { safeArea } from '../test/mocks/safe-area';
 import { keyboard } from '../test/setup';
-import { Button } from './controls';
+import { Button, TextField } from './controls';
 import { Text } from './primitives';
 import { Sheet, ToastHost, toast, useToastClearance } from './overlay';
 import { PageScrollContext, PageScrollControlContext, Screen } from './shell';
@@ -65,6 +65,40 @@ describe('Sheet (AC-029)', () => {
       rerender(<Sheet visible={false} onClose={() => undefined} title="Einplanen" size="s" />);
     });
     expect(screen.queryByRole('heading', { name: 'Einplanen' })).toBeNull();
+  });
+});
+
+describe('Sheet and the cursor (spec 0033, REQ-006)', () => {
+  function Windows(props: { second: boolean }) {
+    const field = (testID: string) => (
+      <TextField label="Name" value="" onChangeText={() => undefined} autoFocus testID={testID} />
+    );
+    return (
+      <>
+        <Sheet visible onClose={() => undefined} title="Aktivität anlegen" size="m">
+          {field('name')}
+        </Sheet>
+        <Sheet visible={props.second} onClose={() => undefined} title="Im Web suchen" size="l">
+          {field('query')}
+        </Sheet>
+      </>
+    );
+  }
+
+  it('a window opened right after another keeps the cursor in its own field (AC-035 of spec 0055)', () => {
+    vi.useFakeTimers();
+    try {
+      const { rerender } = render(<Windows second={false} />);
+      // The first window has given its field the cursor and still takes it back for a moment.
+      act(() => vi.advanceTimersByTime(300));
+      expect(document.activeElement).toBe(screen.getByTestId('name'));
+      rerender(<Windows second />);
+      act(() => vi.advanceTimersByTime(2_000));
+      expect(document.activeElement).toBe(screen.getByTestId('query'));
+    } finally {
+      act(() => vi.runAllTimers());
+      vi.useRealTimers();
+    }
   });
 });
 

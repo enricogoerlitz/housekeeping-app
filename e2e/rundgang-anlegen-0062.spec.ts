@@ -100,12 +100,16 @@ test.describe('REQ-001 – REQ-005: the window "Neu"', () => {
     await newRecipeWindow(page);
     await tid(page, 'new-recipe-ai-tab-prompt').click();
     await expect(tid(page, 'new-recipe-ai-text')).toBeFocused();
-    await expect(tid(page, 'new-recipe-ai-generate-photo')).toBeChecked();
+    await expect(tid(page, 'new-recipe-ai-generate-photo').locator('input')).toBeChecked();
   });
 
   test('AC-005, AC-007: Return searches once; "Übernehmen" of a hit opens the edit mode', async ({
     page,
+    allowConsoleError,
   }) => {
+    // The taken hit has no photo: it asks for photo suggestions (ai-image); none is made here.
+    allowConsoleError(/^Failed to load resource: the server responded with a status of 503/);
+    await noImages(page);
     const queries = await stubSearch(page, searchReply);
     await stubDraft(page, () => ({
       draft: draft('Spaghetti Bolognese'),
@@ -140,9 +144,9 @@ test.describe('REQ-001 – REQ-005: the window "Neu"', () => {
     await expect(tid(page, 'recipe-title')).toHaveText(title);
   });
 
-  test('AC-009: without a title "Anlegen" says so, also from "KI-Rezept"', async ({ page }) => {
+  // "KI-Rezept" has no "Anlegen" any more, only "Erzeugen" (REQ-004, owner 27.11.2026).
+  test('AC-009: without a title "Anlegen" says so', async ({ page }) => {
     await newRecipeWindow(page);
-    await tid(page, 'new-recipe-ai-tab-prompt').click();
     await tid(page, 'new-recipe-save').click();
     await expect(tid(page, 'new-recipe-ai-tab-web')).toHaveAttribute('aria-selected', 'true');
     await expect(tid(page, 'new-recipe-title-error')).toHaveText('Titel fehlt');
@@ -179,7 +183,9 @@ test.describe('REQ-001 – REQ-005: the window "Neu"', () => {
 
   test('AC-013: the AI unavailable: the window stays with the wish and the hint', async ({
     page,
+    allowConsoleError,
   }) => {
+    allowConsoleError(/^Failed to load resource: the server responded with a status of 503/);
     await stubDraft(page, () => 'fail');
     await newRecipeWindow(page);
     await tid(page, 'new-recipe-ai-tab-prompt').click();
@@ -337,9 +343,13 @@ test.describe('REQ-007 – REQ-010: ✨ "Mit KI ändern"', () => {
     await expect(tid(page, 'recipe-ai-change-open')).toHaveCount(0);
   });
 
-  test('AC-025: a row without an article opens the edit mode instead of saving', async ({
+  // AC-025 cannot happen any more: every row of an AI proposal has an article, an unknown name
+  // becomes a new one on saving (spec 0055, REQ-009). The way into the edit mode is AC-026.
+  test('AC-026: a refused save opens the edit mode with the proposal; nothing is saved', async ({
     page,
+    allowConsoleError,
   }) => {
+    allowConsoleError(/^Failed to load resource: the server responded with a status of 400/);
     const title = await ownRecipe(page);
     await stubDraft(page, () => ({
       draft: draft(title, {
@@ -352,16 +362,33 @@ test.describe('REQ-007 – REQ-010: ✨ "Mit KI ändern"', () => {
       }),
       sources: [],
     }));
+    await page.route('**/rest/v1/rpc/save_recipe_page', (route) =>
+      route.fulfill({
+        status: 400,
+        contentType: 'application/json',
+        json: { code: '23514', message: 'check constraint', details: null, hint: null },
+      }),
+    );
     await tid(page, 'recipe-ai-change-open').click();
     await tid(page, 'recipe-ai-change-field-text').fill('mehr Würze');
     await tid(page, 'recipe-ai-change-submit').click();
     await tid(page, 'recipe-proposal-apply').click();
+    await expect(toastMessage(page)).toHaveText('Hat nicht geklappt – bitte noch einmal versuchen');
     await expect(tid(page, 'recipe-edit-save')).toBeVisible();
+    await expect(page.getByText('Xyzzy-Gewürz').first()).toBeVisible();
+    await page.unroute('**/rest/v1/rpc/save_recipe_page');
+    await page.reload();
+    await expect(tid(page, 'recipe-title')).toHaveText(title);
+    await expect(page.getByText('Xyzzy-Gewürz')).toHaveCount(0);
   });
 
   test('AC-028: a recipe from the web search offers "Ergänzen · Ersetzen", "Ergänzen" first', async ({
     page,
+    allowConsoleError,
   }) => {
+    // The proposal asks for photo suggestions (ai-image) too; none is made here.
+    allowConsoleError(/^Failed to load resource: the server responded with a status of 503/);
+    await noImages(page);
     const title = await ownRecipe(page);
     await stubSearch(page, searchReply);
     await stubDraft(page, () => ({

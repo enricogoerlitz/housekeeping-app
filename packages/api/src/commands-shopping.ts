@@ -642,6 +642,9 @@ export function pantryCheckRows(
       contributions: [],
     };
     row.contributions.push(contribution);
+    // Vorrat only when every contribution is: a chosen Dauerposten keeps the row selected, also
+    // when a dish needs the same Vorrat article (spec 0060, AC-024).
+    row.isPantry = row.isPantry && contribution.isPantry;
     if (!row.sources.includes(contribution.label)) row.sources.push(contribution.label);
     rows.set(article.id, row);
   }

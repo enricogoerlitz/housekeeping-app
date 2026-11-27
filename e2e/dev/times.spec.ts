@@ -63,7 +63,9 @@ test('AC-022, AC-025: a time on "Bad putzen" shows in Haushalt, Zu tun and the h
   await expect(tid(page, 'chore-due-time-minute').locator('option')).toHaveCount(12);
   await expect(tid(page, 'chore-due-time-hour')).toHaveAccessibleName('Uhrzeit, Stunde');
   await expect(tid(page, 'chore-remind').locator('input')).toBeChecked();
-  await expect(tid(page, 'chore-sheet')).toContainText('Erinnert zur Uhrzeit, wer dran ist.');
+  await expect(tid(page, 'chore-sheet')).toContainText(
+    'Erinnert zur Uhrzeit in den Mitteilungen, wer dran ist.',
+  );
   await tid(page, 'chore-save').click();
   await expect(tid(page, 'chore-sheet')).toContainText('19:00');
   await tid(page, 'chore-sheet-close').click();
