@@ -91,7 +91,8 @@ function NoticesSheet(props: { visible: boolean; notices: Notice[]; onClose: () 
           hint: online.hint,
           testID: 'notices-ack-all',
         },
-        cancel: null,
+        // A visible way out on phones too: "Alle bestätigen" does not close (spec 0054, AC-019).
+        cancel: { label: 'Schließen', onPress: props.onClose, testID: 'notices-close' },
       }}
     >
       <Stack gap={8}>

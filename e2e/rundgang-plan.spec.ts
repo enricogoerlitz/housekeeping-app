@@ -316,25 +316,25 @@ test('AC-021 (0018): the trip window names who is chosen: "Nur Enrico", then "Ga
   await expect(tid(page, 'trip-who-hint')).toHaveText('Ganzer Haushalt');
 });
 
-test('AC-033 (0016): ⋯ offers "Reise eintragen" and "Reisen"; a trip without a note reads "unterwegs"; no old word for a trip', async ({
+test('AC-033 (0016) / AC-011 (0054): no ⋯ in the calendar; a trip from "Reisen" without a note reads "unterwegs"; no old word for a trip', async ({
   page,
 }) => {
   const year = Number(TODAY.slice(0, 4)) + 1;
   const from = `${year}-01-01`;
   const to = `${year}-01-04`;
   await open(page, '/kalender');
-  await tid(page, 'calendar-more').click();
-  await expect(tid(page, 'calendar-more-trips-new')).toHaveText('Reise eintragen');
-  await expect(tid(page, 'calendar-more-trips')).toHaveText('Reisen');
+  await expect(tid(page, 'calendar-more')).toHaveCount(0);
   await expectNoAbsenceWord(page);
 
-  await tid(page, 'calendar-more-trips-new').click();
+  await open(page, '/reisen');
+  await tid(page, 'trips-new').click();
   await expect(tid(page, 'trip-sheet')).toContainText('Reise eintragen');
   await expectNoAbsenceWord(page);
   await pickRange(page, from, to);
   await tid(page, 'trip-save').click();
   await expect(tid(page, 'trip-sheet')).toBeHidden();
 
+  await open(page, '/kalender');
   await tid(page, 'calendar-view-year').click();
   await tid(page, 'week-next').click();
   await expect(tid(page, 'calendar-title')).toHaveText(String(year));
@@ -344,11 +344,5 @@ test('AC-033 (0016): ⋯ offers "Reise eintragen" and "Reisen"; a trip without a
     .locator('[data-testid^="day-panel-stripe-"]')
     .filter({ hasText: 'unterwegs' });
   await expect(stripe).toContainText(tripEndLabel(to));
-  await expectNoAbsenceWord(page);
-
-  await tid(page, 'calendar-more').click();
-  await tid(page, 'calendar-more-trips').click();
-  await expect(page).toHaveURL(/\/reisen(\?von=kalender)?$/);
-  await expect(tid(page, 'trips-screen')).toContainText('Reisen');
   await expectNoAbsenceWord(page);
 });

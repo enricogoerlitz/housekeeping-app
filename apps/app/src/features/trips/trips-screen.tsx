@@ -1,5 +1,4 @@
 import {
-  removeTrip,
   useTrips,
   useMembers,
   useMembersById,
@@ -12,7 +11,6 @@ import {
   parseTripPeriod,
   stripeText,
   tripDateTile,
-  tripDeleteDialog,
   tripListSections,
   tripPeriodLabel,
   tripPeriodOptions,
@@ -23,10 +21,10 @@ import {
 import {
   Badge,
   Button,
+  CreateButton,
   EmptyState,
   GroupLabel,
   Icon,
-  IconButton,
   List,
   ListRow,
   Menu,
@@ -35,16 +33,12 @@ import {
   Row,
   Section,
   Text,
-  toast,
   useTheme,
 } from '@housekeeping/ui';
-import { useState } from 'react';
 import { View } from 'react-native';
 
 import { stripeWho } from '@/features/calendar/calendar-data';
 import { stripeSurface, useStripeColors } from '@/features/calendar/calendar-parts';
-import { FAILED } from '@/features/packing/packing-labels';
-import { confirmFirst, ConfirmDialog } from '@/features/shell/confirm-dialog';
 import { useOnlineOnly } from '@/features/shell/offline';
 import { useOriginBack, usePageParams } from '@/lib/url-state';
 
@@ -55,12 +49,11 @@ import { TripWindowHost, useTripWindow } from './trip-window';
 const ALL_PERIODS = 'alle';
 
 /**
- * "Reisen" (spec 0010, AC-037; spec 0030, REQ-003), from the calendar's ⋯ and from "Verwalten":
+ * "Reisen" (spec 0010, AC-037; spec 0030, REQ-003), from "Verwalten":
  * "Kommend" earliest first, then "Vergangen" newest first, each under the months the trips start
  * in; the menu "Zeitraum" filters by year or month (`zeitraum` in the address). One row per trip
  * with a date tile in the stripe's colour, hatched for a draft. A tap opens the trip window over
- * the page (spec 0022, REQ-006). Deleting a trip with a packing list asks first and names it;
- * without one there is 5 s "Rückgängig" (AC-038).
+ * the page (spec 0022, REQ-006); deleting happens there (spec 0054, REQ-006).
  */
 export function TripsScreen() {
   const trips = useTrips();
@@ -75,7 +68,6 @@ export function TripsScreen() {
   // "‹ Verwalten", or the page it was opened from with `von` (spec 0031, REQ-036).
   const back = useOriginBack(address.params.von, 'verwalten');
   const creating = address.params.fenster === 'neu-reise';
-  const [deleting, setDeleting] = useState<{ stripe: TripStripe; message: string }>();
 
   const stripes = tripStripes(trips, members);
   const period = parseTripPeriod(address.params.zeitraum);
@@ -83,33 +75,6 @@ export function TripsScreen() {
   const periodOptions = tripPeriodOptions(stripes);
   const choosePeriod = (value: string) =>
     address.replace({ zeitraum: value === ALL_PERIODS ? undefined : value });
-
-  const remove = (stripe: TripStripe, confirmed = false) => {
-    if (online.disabled) return;
-    const message = tripDeleteDialog(stripe.tripId, listBags, items);
-    // With a packing list the dialog below, without one the plain question (spec 0036,
-    // Entscheidung 1; before "Rückgängig").
-    if (!confirmed) {
-      if (message) setDeleting({ stripe, message });
-      else {
-        confirmFirst({
-          title: 'Reise löschen?',
-          confirmLabel: 'Löschen',
-          onConfirm: () => remove(stripe, true),
-          testID: 'confirm-delete-trip',
-        });
-      }
-      return;
-    }
-    setDeleting(undefined);
-    try {
-      removeTrip(stripe.tripId);
-    } catch {
-      toast.show({ message: FAILED });
-      return;
-    }
-    toast.show({ message: message ? 'Reise und Packliste gelöscht' : 'Reise gelöscht' });
-  };
 
   const row = (stripe: TripStripe) => {
     const who = stripeWho(stripe, membersById);
@@ -153,19 +118,9 @@ export function TripsScreen() {
             </View>
           ) : undefined
         }
-        // Spec 0022, REQ-006: the trip window opens over "Reisen"; reading works offline.
+        // Spec 0022, REQ-006: the trip window opens over "Reisen"; reading works offline. It
+        // holds "Reise löschen" in its ⋯, so the row has no bin (spec 0054, REQ-006).
         onPress={() => tripWindow.open(stripe.tripId)}
-        // Outside the row's press area, so the two buttons do not nest.
-        controls={
-          <IconButton
-            icon="trash"
-            label={`Reise von ${who} löschen`}
-            disabled={online.disabled}
-            hint={online.hint}
-            onPress={() => remove(stripe)}
-            testID={`trip-${stripe.tripId}-remove`}
-          />
-        }
       />
     );
   };
@@ -180,10 +135,8 @@ export function TripsScreen() {
           backLabel={back.label}
           onBack={back.back}
           right={
-            <IconButton
-              icon="plus"
+            <CreateButton
               label="Reise eintragen"
-              variant="soft"
               disabled={online.disabled}
               hint={online.hint}
               onPress={() => address.open({ fenster: 'neu-reise' })}
@@ -269,17 +222,6 @@ export function TripsScreen() {
       )}
       {creating ? <TripSheet onClose={() => address.close({ fenster: undefined })} /> : null}
       <TripWindowHost page="reisen" />
-      {deleting ? (
-        <ConfirmDialog
-          title="Reise löschen?"
-          message={deleting.message}
-          confirmLabel="Löschen"
-          needsNetwork
-          onConfirm={() => remove(deleting.stripe, true)}
-          onCancel={() => setDeleting(undefined)}
-          testID="trips-delete-dialog"
-        />
-      ) : null}
     </Screen>
   );
 }

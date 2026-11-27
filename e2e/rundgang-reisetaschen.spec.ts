@@ -125,7 +125,7 @@ test('AC-002: the household "Test" has no bags yet', async ({ page }) => {
   await switchHousehold(page, seedIds['hh-test']);
   await openManaged(page, 'packing-bags');
   await expect(tid(page, 'bags-empty')).toContainText('Noch keine Reisetaschen');
-  await expect(tid(page, 'bag-new')).toHaveText(/Reisetasche anlegen/);
+  await expect(tid(page, 'bags-empty-new')).toHaveText(/Reisetasche anlegen/);
 });
 
 test('AC-011 / AC-012 / AC-013: the trip window attaches bags; the button counts the items', async ({

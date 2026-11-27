@@ -16,6 +16,7 @@ export {
   keyboardFocusRing,
   type TextFieldProps,
 } from './controls';
+export { CreateButton } from './create-button';
 export { Section, GroupLabel, List, ListRow, CheckRow, GhostRow } from './lists';
 export {
   Avatar,

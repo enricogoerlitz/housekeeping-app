@@ -65,7 +65,7 @@ export function AddRestaurantSheet(props: AddRestaurantSheetProps) {
 /**
  * "Restaurant bearbeiten" (spec 0024, REQ-001): the form of "Restaurant hinzufügen", prefilled.
  * "Speichern" sends every field (a cleared one is cleared, an emptied map link takes the
- * coordinates with it) → "Restaurant gespeichert"; ✕ discards. "Notiz bearbeiten" opens it with
+ * coordinates with it) → "Restaurant gespeichert"; ✕ discards. "Notiz hinzufügen" opens it with
  * the keyboard in "Notiz" (REQ-002).
  */
 export function EditRestaurantSheet(props: {

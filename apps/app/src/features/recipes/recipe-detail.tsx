@@ -224,10 +224,8 @@ function RecipeDetailBody(props: {
       <EditControls editor={editor} />
       <RecipeMoreMenu
         recipe={recipe}
-        photo={photo}
         onDelete={remove}
         onAddToCollection={() => setAddingToCollection(true)}
-        onShare={share}
       />
       {deleteDialog}
     </>
