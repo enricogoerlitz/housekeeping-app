@@ -64,25 +64,18 @@ export function EaterPicker(props: {
             />
           );
         })}
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, marginLeft: 4 }}>
-          <IconButton
-            icon="minus"
-            label="Ein Gast weniger"
-            disabled={props.disabled || guests === 0}
-            testID="guests-minus"
-            onPress={() => props.onGuests(Math.max(0, guests - 1))}
-          />
-          <Text variant="smallStrong" testID="guests-count">
-            {guests === 1 ? '1 Gast' : `${guests} Gäste`}
-          </Text>
-          <IconButton
-            icon="plus"
-            label="Ein Gast mehr"
-            disabled={props.disabled || guests >= MAX_GUESTS}
-            testID="guests-plus"
-            onPress={() => props.onGuests(Math.min(MAX_GUESTS, guests + 1))}
-          />
-        </View>
+      </View>
+      {/* The same counter as "Portionen" (I-16: before bare − and +, beside the chips). */}
+      <View style={{ marginTop: 8 }}>
+        <Counter
+          label="Gäste"
+          value={String(guests)}
+          canMinus={!props.disabled && guests > 0}
+          canPlus={!props.disabled && guests < MAX_GUESTS}
+          onStep={(delta) => props.onGuests(Math.min(MAX_GUESTS, Math.max(0, guests + delta)))}
+          testID="guests"
+          stepLabels={['Ein Gast weniger', 'Ein Gast mehr']}
+        />
       </View>
     </View>
   );
@@ -98,6 +91,8 @@ function Counter(props: {
   canPlus: boolean;
   onStep: (delta: 1 | -1) => void;
   testID: string;
+  /** Names of − and +; default "<label>: eine weniger/mehr". */
+  stepLabels?: [string, string];
 }) {
   return (
     <Row gap={4}>
@@ -105,7 +100,7 @@ function Counter(props: {
       <IconButton
         icon="minus"
         variant="soft"
-        label={`${props.label}: eine weniger`}
+        label={props.stepLabels?.[0] ?? `${props.label}: eine weniger`}
         disabled={!props.canMinus}
         onPress={() => props.onStep(-1)}
         testID={`${props.testID}-minus`}
@@ -120,7 +115,7 @@ function Counter(props: {
       <IconButton
         icon="plus"
         variant="soft"
-        label={`${props.label}: eine mehr`}
+        label={props.stepLabels?.[1] ?? `${props.label}: eine mehr`}
         disabled={!props.canPlus}
         onPress={() => props.onStep(1)}
         testID={`${props.testID}-plus`}

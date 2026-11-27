@@ -45,8 +45,8 @@ import {
 } from './shell';
 import { ToneContext, useBreakpoint, useTheme } from './theme-context';
 import { useKeyboard } from './keyboard';
-import { keyboardSheetFrame } from './keyboard-state';
-import { handOverKeyboard } from './keyboard-proxy';
+import { keyboardSheetFrame, sheetWindowHeight } from './keyboard-state';
+import { handOverKeyboard, holdHandOver } from './keyboard-proxy';
 import { lockPageScroll } from './page-scroll-lock';
 import type { Band } from './scroll-reveal';
 import { sheetDragOffset, sheetDragRelease, upwardShadow } from './sheet-drag';
@@ -125,13 +125,21 @@ export function Sheet(props: SheetProps) {
   // With the keyboard open a phone window sits on it and fills the visible area (spec 0032).
   const keyboard = useKeyboard();
   const typing = isPhone && keyboard.open;
-  const fixedFrame = sheetFrame(props.size, { width, height });
+  const fixedFrame = sheetFrame(props.size, { width, height: sheetWindowHeight(height, keyboard) });
   const frame = typing
     ? keyboardSheetFrame(fixedFrame, keyboard.visibleHeight, insets.top + TOP_GAP_TYPING)
     : fixedFrame;
   const slide = isPhone && !reduced;
   const headerActions = isPhone && props.actions !== undefined;
 
+  // Opened by the tap's keyboard: the fields wait until the window stands (`holdHandOver`, I-04).
+  // Before the children's effects, where react-native-web's modal focuses its first field.
+  const [held, setHeld] = useState(false);
+  if (props.visible && isPhone && !held) {
+    setHeld(true);
+    holdHandOver();
+  }
+  if (!props.visible && held) setHeld(false);
   const [mounted, setMounted] = useState(props.visible);
   // Mounted at once on opening; unmounted only once the fade-out has finished.
   if (props.visible && !mounted) setMounted(true);
@@ -244,9 +252,6 @@ export function Sheet(props: SheetProps) {
   const focusTarget = useRef<unknown>(null);
   const claimFocus = useCallback((input: unknown) => {
     focusTarget.current ??= input;
-    // Opened by a tap that opened the keyboard (iPhone, decision 10): the field takes it now,
-    // before react-native-web's modal moves the focus into the window and the keyboard closes.
-    if (focusTarget.current === input) handOverKeyboard(input);
     return () => {
       if (focusTarget.current === input) focusTarget.current = null;
     };
@@ -266,9 +271,13 @@ export function Sheet(props: SheetProps) {
         ? active
         : null;
     const opened = setTimeout(() => {
-      const input = focusTarget.current ?? mountedFocus;
+      // Opened by a tap that opened the keyboard (iPhone, spec 0033 decision 10): the hidden field
+      // kept it (and the focus) while the window slid in; the field takes it now that the window
+      // stands, as iOS decides then which neighbours ˄ ˅ reach (only visible ones; I-04).
+      const handed = handOverKeyboard(focusTarget.current ?? mountedFocus);
+      const input = focusTarget.current ?? mountedFocus ?? (handed ? document.activeElement : null);
       if (!input) return;
-      focusQuietly(input);
+      if (!handed) focusQuietly(input);
       if (typeof document === 'undefined') return;
       // A menu closing behind the window hands the focus back to its button for a moment.
       reclaim = (event) => {

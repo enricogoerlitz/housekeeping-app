@@ -57,18 +57,30 @@ function proxyField(): HTMLInputElement {
   return input;
 }
 
+// A window sliding in (`holdHandOver`): its fields wait for `handOverKeyboard` too; the first one
+// that asked is remembered (react-native-web's modal focuses its first field as it mounts).
+let deferring = false;
+let pending: HTMLElement | null = null;
+
 function holdFocus() {
   if (nativeFocus) return;
   const original = HTMLElement.prototype.focus;
   nativeFocus = original;
   HTMLElement.prototype.focus = function focusTextOnly(this: HTMLElement, options?: FocusOptions) {
-    if (isTextField(this)) original.call(this, options);
+    if (!isTextField(this)) return;
+    if (deferring) {
+      pending ??= this;
+      return;
+    }
+    original.call(this, options);
   };
 }
 
 function release() {
   clearTimeout(timer);
   timer = undefined;
+  deferring = false;
+  pending = null;
   if (nativeFocus) HTMLElement.prototype.focus = nativeFocus;
   nativeFocus = null;
   if (proxy && document.activeElement === proxy) proxy.blur();
@@ -99,7 +111,28 @@ export function openKeyboardNow(): void {
  * @public Metro resolves the import of the native twin to this file on the web.
  */
 export function handOverKeyboard(input: unknown): boolean {
-  if (!proxy || document.activeElement !== proxy || !isTextField(input)) return false;
-  (input as HTMLElement).focus({ preventScroll: true });
-  return document.activeElement === input;
+  const target = isTextField(input) ? (input as HTMLElement) : pending;
+  deferring = false;
+  pending = null;
+  if (!proxy || document.activeElement !== proxy || !target) return false;
+  target.focus({ preventScroll: true });
+  if (document.activeElement !== target) return false;
+  // Out of the page once handed over: react-native-web's modal gives the focus back on closing to
+  // what had it when it opened — this field, which then kept the keyboard open (I-05). The next
+  // tap makes a new one.
+  proxy.remove();
+  proxy = null;
+  return true;
+}
+
+/**
+ * A window opened by the tap's keyboard starts to slide in: until `handOverKeyboard`, its fields
+ * do not take the focus (the hidden field keeps the keyboard). iOS decides when a field takes the
+ * focus which neighbours ˄ ˅ reach, and only visible ones: the field takes it once the window
+ * stands (iPhone click-through, review 0003, I-04).
+ *
+ * @public Metro resolves the import of the native twin to this file on the web.
+ */
+export function holdHandOver(): void {
+  if (proxy && document.activeElement === proxy) deferring = true;
 }

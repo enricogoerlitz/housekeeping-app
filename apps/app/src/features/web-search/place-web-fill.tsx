@@ -11,7 +11,17 @@ import {
   type PlaceValues,
   type ProposalPlaceKind,
 } from '@housekeeping/core';
-import { Button, Photo, Row, Sheet, Stack, Text, toast, useTheme } from '@housekeeping/ui';
+import {
+  Button,
+  Photo,
+  Row,
+  Sheet,
+  Stack,
+  Text,
+  openKeyboardNow,
+  toast,
+  useTheme,
+} from '@housekeeping/ui';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
@@ -208,6 +218,7 @@ export function PlaceWebFill(props: {
 }) {
   const online = useOnlineOnly();
   const [open, setOpen] = useState(false);
+  const [typing, setTyping] = useState(false);
   const [review, setReview] = useState<Review>();
   const search = useWebSearch(props.kind);
   const { suggestions, suggest, chosen, choose } = usePhotoSuggestions();
@@ -282,6 +293,10 @@ export function PlaceWebFill(props: {
           onPress={() => {
             search.reset();
             search.setQuery(props.name.trim());
+            // Without a name there is nothing to search for yet: the field takes the cursor and
+            // the keyboard comes with the tap (I-20; spec 0033, REQ-006).
+            if (!props.name.trim()) openKeyboardNow();
+            setTyping(!props.name.trim());
             setOpen(true);
           }}
           testID={`${testID}-open`}
@@ -305,6 +320,7 @@ export function PlaceWebFill(props: {
         >
           <WebSearchPanel
             search={search}
+            autoFocus={typing}
             onLink={(link) => {
               setOpen(false);
               props.onLink(link);

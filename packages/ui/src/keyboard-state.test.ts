@@ -6,6 +6,7 @@ import {
   keyboardState,
   keyboardStep,
   NO_KEYBOARD,
+  sheetWindowHeight,
 } from './keyboard-state';
 
 describe('keyboardState (spec 0032, REQ-001)', () => {
@@ -94,5 +95,16 @@ describe('expectedKeyboard (spec 0044, REQ-002, decision 4)', () => {
   it('AC-005: without one, 45 % of the window', () => {
     expect(expectedKeyboard(844, undefined).inset).toBe(380);
     expect(expectedKeyboard(700, undefined).inset).toBe(315);
+  });
+});
+
+describe('sheetWindowHeight (iPhone click-through, I-04)', () => {
+  it('with the keyboard open a window is sized by the whole screen, not what the keyboard leaves', () => {
+    // React Native Web reports the visible 443 px; the screen is 812 high.
+    expect(sheetWindowHeight(443, { open: true, inset: 369, visibleHeight: 443 })).toBe(812);
+  });
+
+  it('without the keyboard the window height stays', () => {
+    expect(sheetWindowHeight(812, NO_KEYBOARD)).toBe(812);
   });
 });

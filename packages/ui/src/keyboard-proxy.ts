@@ -12,3 +12,8 @@ export function openKeyboardNow(): void {
 export function handOverKeyboard(_input: unknown): boolean {
   return false;
 }
+
+/** A window opened by the tap's keyboard starts to slide in (web only). */
+export function holdHandOver(): void {
+  return undefined;
+}

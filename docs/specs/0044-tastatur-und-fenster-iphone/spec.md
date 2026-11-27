@@ -200,6 +200,20 @@ Befund 7. Offline: offline vollständig.
       `portrait-hint.test.ts`); `pnpm format:check && pnpm check && pnpm build:web` grün;
       iPhone-18-Pro-Simulator (iOS 27.2, Safari-Tab): Titel → Beschreibung → Portionen → Zeit mit
       ˅, `scrollY` bleibt 0 beim Antippen und in „Im Web suchen“.
+11. iPhone-Durchklick Runde 2 (27.11., installierte PWA im Simulator):
+    - **˅ im Fenster „Link“ (I-04).** Das Feld bekam den Cursor (aus dem versteckten Feld, Spec
+      0033 Entscheidung 10) schon während das Fenster hineinglitt; iOS legt dann fest, welche
+      Nachbarn ˄ ˅ erreichen, und nimmt nur sichtbare. Jetzt hält das versteckte Feld Tastatur und
+      Fokus, bis das Fenster steht (`holdHandOver`, 250 ms), dann übernimmt das Feld. Außerdem
+      meldet React Native Web mit offener Tastatur den sichtbaren Bereich als Fensterhöhe; ein
+      kleines Fenster („s“ = halbe Höhe) schrumpfte auf die Hälfte davon und schnitt sein zweites
+      Feld ab. Die Fenstergrößen gehen jetzt vom ganzen Bildschirm aus (`sheetWindowHeight`), die
+      Tastatur begrenzt sie wie bisher.
+    - **Tastatur blieb nach dem Schließen (I-05).** React Native Webs Modal gibt den Fokus beim
+      Schließen an das zurück, was ihn beim Öffnen hatte — das versteckte Feld, das die Tastatur
+      offen hielt. Es verlässt die Seite, sobald es übergeben hat. Der leere Rand beim Schließen
+      aus Runde 1 trat in der installierten App nicht mehr auf.
+    - I-06 (erster Tipp auf einen Treffer kam nicht an) ließ sich nicht nachstellen.
 
 ## Daten
 

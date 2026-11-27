@@ -8,6 +8,7 @@ import {
 import { Sheet, Text, toast } from '@housekeeping/ui';
 import { useState } from 'react';
 
+import { discardFirst } from '@/features/shell/confirm-dialog';
 import { useOnlineOnly } from '@/features/shell/offline';
 
 import { ChoreFormFields, useChoreDraft, useChoreTime } from './chore-form';
@@ -51,7 +52,8 @@ export function NewChoreSheet(props: { visible: boolean; onClose: () => void }) 
   return (
     <Sheet
       visible={props.visible}
-      onClose={close}
+      // A typed title asks before it goes (I-07, like "Neu").
+      onClose={() => discardFirst(draft.title.trim() !== '', close)}
       title="Neue Aufgabe"
       testID="chore-new-sheet"
       size="m"

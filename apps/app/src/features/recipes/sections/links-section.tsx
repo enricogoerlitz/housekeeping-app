@@ -26,6 +26,7 @@ import { View } from 'react-native';
 
 import { RecipeSection } from './common';
 import type { PageEditor } from './use-page-editor';
+import { discardFirst } from '@/features/shell/confirm-dialog';
 import { errorMessage } from '@/features/shell/error-message';
 import { useOnlineOnly } from '@/features/shell/offline';
 import { openLink } from '@/lib/open-link';
@@ -268,7 +269,13 @@ function LinkSheet(props: {
       visible
       size="s"
       title="Link"
-      onClose={props.onClose}
+      onClose={() =>
+        discardFirst(
+          url.trim() !== (current?.url ?? '').trim() ||
+            label.trim() !== (current?.label ?? '').trim(),
+          props.onClose,
+        )
+      }
       testID="recipe-link-sheet"
       actions={{
         primary: {

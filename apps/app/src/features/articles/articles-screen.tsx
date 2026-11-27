@@ -226,7 +226,8 @@ export function ArticlesScreen() {
           />
         ) : (
           <Menu
-            label="Bereich ▾"
+            // The menu draws its own chevron (I-21: "Bereich ▾ ⌄").
+            label="Bereich"
             accessibilityLabel="Nach Bereich filtern"
             icon="map-pin"
             value=""

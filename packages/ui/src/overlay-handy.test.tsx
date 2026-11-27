@@ -391,6 +391,17 @@ describe('Sheet with the keyboard on iPhone (spec 0044, REQ-002, REQ-003)', () =
     expect(layer()).toBe('0px');
   });
 
+  it('AC-018: the keyboard of the tap goes to the field once the window has slid in, so iOS sees its neighbours for ˄ ˅ (iPhone click-through, I-04)', () => {
+    setWindow(390, 844);
+    act(() => openKeyboardNow());
+    openSheet();
+    const title = screen.getByTestId('title');
+    // Still sliding in: the hidden field keeps the keyboard.
+    expect(document.activeElement).not.toBe(title);
+    act(() => vi.advanceTimersByTime(300));
+    expect(document.activeElement).toBe(title);
+  });
+
   it('AC-008: the visible area moved down by 120 px, the window ends at its bottom edge', () => {
     setWindow(390, 844);
     openSheet();
