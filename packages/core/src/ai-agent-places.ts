@@ -188,3 +188,60 @@ export function chatMetaLine(
   const who = chat.createdBy ? names[chat.createdBy] : undefined;
   return [chat.placeLabel, when, who].filter(Boolean).join(' · ');
 }
+
+// ---------- The answer's text ----------
+
+export interface AnswerSpan {
+  text: string;
+  bold: boolean;
+}
+
+export interface AnswerBlock {
+  kind: 'paragraph' | 'bullet';
+  spans: AnswerSpan[];
+}
+
+function spansOf(line: string): AnswerSpan[] {
+  const spans: AnswerSpan[] = [];
+  const pattern = /\*\*(.+?)\*\*/g;
+  let last = 0;
+  for (let match = pattern.exec(line); match; match = pattern.exec(line)) {
+    if (match.index > last) spans.push({ text: line.slice(last, match.index), bold: false });
+    spans.push({ text: match[1]!, bold: true });
+    last = match.index + match[0].length;
+  }
+  if (last < line.length) spans.push({ text: line.slice(last), bold: false });
+  return spans;
+}
+
+/**
+ * The agent writes a little Markdown: paragraphs, "- " bullets, **bold** names, sometimes a "###"
+ * heading. The app shows exactly that as plain text with bold spans; anything else stays text,
+ * nothing is ever rendered as HTML (10-security).
+ */
+export function answerBlocks(text: string): AnswerBlock[] {
+  const blocks: AnswerBlock[] = [];
+  let paragraph: string[] = [];
+  const close = () => {
+    if (paragraph.length > 0)
+      blocks.push({ kind: 'paragraph', spans: spansOf(paragraph.join(' ')) });
+    paragraph = [];
+  };
+  for (const raw of text.split('\n')) {
+    const line = raw.trim();
+    if (line === '') {
+      close();
+    } else if (/^#{1,6}\s+/.test(line)) {
+      close();
+      const title = line.replace(/^#{1,6}\s+/, '').replace(/\*\*/g, '');
+      blocks.push({ kind: 'paragraph', spans: [{ text: title, bold: true }] });
+    } else if (/^[-*•]\s+/.test(line)) {
+      close();
+      blocks.push({ kind: 'bullet', spans: spansOf(line.replace(/^[-*•]\s+/, '')) });
+    } else {
+      paragraph.push(line);
+    }
+  }
+  close();
+  return blocks;
+}

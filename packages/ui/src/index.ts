@@ -101,6 +101,8 @@ export {
 } from './shell';
 export { columnsFor } from './grid-columns';
 export { Disclosure } from './disclosure';
+export { ProgressSteps, type ProgressStep } from './progress-steps';
+export { ScrollRow } from './scroll-row';
 export { expandableA11y } from './expandable';
 export { PhotoCollage } from './display';
 export { SelectRow } from './lists';

@@ -1,3 +1,4 @@
+import { AgentEntryButton } from '@/features/ai-agent/agent-entry';
 import { useCurrentMember, usePlanEntries, useRestaurants, useToday } from '@housekeeping/api';
 import {
   applyRestaurantListFilter,
@@ -174,6 +175,7 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
       onBack={fromOther ? origin.back : undefined}
       right={
         <>
+          <AgentEntryButton from="restaurants" />
           <CreateButton
             label="Restaurant anlegen"
             disabled={online.disabled}

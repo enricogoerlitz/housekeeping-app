@@ -41,6 +41,7 @@ import {
   FieldClearButton,
   openKeyboardNow,
 } from '@housekeeping/ui';
+import { AgentEntryButton } from '@/features/ai-agent/agent-entry';
 import { useIsFocused, useRouter } from 'expo-router';
 import { type ComponentRef, useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, View, type TextInput } from 'react-native';
@@ -211,6 +212,7 @@ export function ActivitiesScreen() {
       right={
         <Row gap={8}>
           {kindsButton}
+          <AgentEntryButton from="aktivitaeten" />
           {addButton}
         </Row>
       }

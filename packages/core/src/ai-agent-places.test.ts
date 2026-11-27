@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { AgentCard } from './ai-agent';
 import {
   activityDraftOfCard,
+  answerBlocks,
   chatMetaLine,
   decodeRecentPlaces,
   encodeRecentPlaces,
@@ -134,5 +135,29 @@ describe('history line', () => {
       ),
     ).toBe('Friedrichshain · Mo., 23. Nov. · Nadja');
     expect(chatMetaLine({ createdAt: '2026-11-27T09:00:00Z' }, {}, '2026-11-27')).toBe('heute');
+  });
+});
+
+describe('answer text', () => {
+  const plain = (text: string) => ({ text, bold: false });
+  const bold = (text: string) => ({ text, bold: true });
+  it('paragraphs, bullets and bold names of the agent text; no other markup', () => {
+    expect(
+      answerBlocks(
+        'Drei Häuser in **Mitte**.\n\n### Crackers\nVersteckt.\n- Für Vegetarier: **stark**\n* Atmosphäre: dunkel\n\nEher klassisch?',
+      ),
+    ).toEqual([
+      { kind: 'paragraph', spans: [plain('Drei Häuser in '), bold('Mitte'), plain('.')] },
+      { kind: 'paragraph', spans: [bold('Crackers')] },
+      { kind: 'paragraph', spans: [plain('Versteckt.')] },
+      { kind: 'bullet', spans: [plain('Für Vegetarier: '), bold('stark')] },
+      { kind: 'bullet', spans: [plain('Atmosphäre: dunkel')] },
+      { kind: 'paragraph', spans: [plain('Eher klassisch?')] },
+    ]);
+  });
+  it('an unclosed ** while streaming stays text', () => {
+    expect(answerBlocks('Das **Crack')).toEqual([
+      { kind: 'paragraph', spans: [plain('Das **Crack')] },
+    ]);
   });
 });

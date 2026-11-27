@@ -2,6 +2,7 @@ import { signOut, unsentStoreChangeCount } from '@housekeeping/api';
 import { signOutWarning } from '@housekeeping/core';
 import { useState, type ReactNode } from 'react';
 
+import { clearRecentPlaces } from '@/features/ai-agent/device-place';
 import { ConfirmDialog } from '@/features/shell/confirm-dialog';
 import { clearPageDraftBackups } from '@/lib/page-draft-backup';
 
@@ -14,8 +15,10 @@ import { clearPageDraftBackups } from '@/lib/page-draft-backup';
 export function useSignOut(): { request: () => void; dialog: ReactNode } {
   const [warning, setWarning] = useState<string | undefined>();
   // Kept recipe drafts go with the session (spec 0056, REQ-006).
+  // So are the KI-Agent's recent places (spec 0066, AC-013).
   const leave = () => {
     clearPageDraftBackups();
+    clearRecentPlaces();
     void signOut();
   };
   const request = () => {
