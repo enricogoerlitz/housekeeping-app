@@ -525,15 +525,13 @@ export function recipeShowLabel(recipes: readonly Pick<Recipe, 'kind'>[]): strin
 
 /**
  * The empty list: "Keine Rezepte für „xyzzy““ for a search (AC-004), else "Keine Rezepte für diese
- * Filter" (AC-008), or with "Unfertig" on and none left "Alle Rezepte sind ausgearbeitet" (spec
- * 0061, AC-009).
+ * Filter" (AC-008), also with "Unfertig" on and none left (spec 0061, AC-009, changed 27.11.: no
+ * "all done" state).
  */
-export function recipeEmptyLabel(query: string, options: { allWorkedOut?: boolean } = {}): string {
+export function recipeEmptyLabel(query: string): string {
   const shown = query.trim();
   if (shown !== '') return `Keine Rezepte für „${shown}“`;
-  return options.allWorkedOut
-    ? 'Alle Rezepte sind ausgearbeitet'
-    : 'Keine Rezepte für diese Filter';
+  return 'Keine Rezepte für diese Filter';
 }
 
 /** The average on a tile: one decimal with a comma, rounded half up; "4,8" for 4.75 (AC-040). */

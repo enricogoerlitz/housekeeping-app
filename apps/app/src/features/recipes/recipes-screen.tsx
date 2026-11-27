@@ -477,19 +477,12 @@ export function RecipesScreen() {
       </View>
     ) : null;
 
-  // Spec 0061, AC-009: with "Unfertig" on and nothing left to work out.
-  const allWorkedOut = filter.unfinished && unfinished === 0;
+  // Spec 0061, AC-009 (changed 27.11.): "Unfertig" on with nothing left is a plain empty filter.
   const empty = (
     <EmptyState
-      icon={query.trim() ? 'search' : allWorkedOut ? 'circle-check' : 'list-filter'}
-      title={recipeEmptyLabel(query, { allWorkedOut })}
-      text={
-        query.trim()
-          ? 'Probiere ein anderes Wort.'
-          : allWorkedOut
-            ? 'Neue Rezepte mit nur einem Titel erscheinen hier.'
-            : undefined
-      }
+      icon={query.trim() ? 'search' : 'list-filter'}
+      title={recipeEmptyLabel(query)}
+      text={query.trim() ? 'Probiere ein anderes Wort.' : undefined}
       testID="recipes-no-results"
     >
       {filterCount > 0 ? (
