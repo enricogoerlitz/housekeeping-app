@@ -1,7 +1,16 @@
 import type { AgentStreamEvent } from '@housekeeping/core';
 import type { Page, Route } from '@playwright/test';
 
-import { expect, freshSeed, goOffline, open, openManaged, openSettings, test, tid } from './helpers';
+import {
+  expect,
+  freshSeed,
+  goOffline,
+  open,
+  openManaged,
+  openSettings,
+  test,
+  tid,
+} from './helpers';
 
 // Spec 0067 "Housekeeping-Agent", step A: the view "Normal" / "KI zuerst", the way in from ⊞, the
 // start page, the slash menu and badges, the input of 4.5 lines, "+" for photos and PDF, and the

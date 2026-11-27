@@ -24,7 +24,7 @@ export interface ManageGroup {
 
 // "Reisetaschen" (spec 0012) got its entry with its page (spec 0005, open question 1); "Aktivitäten"
 // has its own page under "Verwalten" (spec 0024, REQ-009).
-export const MANAGE_GROUPS: ManageGroup[] = [
+const MANAGE_GROUPS: ManageGroup[] = [
   {
     key: 'plan',
     title: 'Planen',
@@ -114,7 +114,13 @@ export function manageGroups(view: AppView, agent: boolean): ManageGroup[] {
         key: 'areas',
         title: 'Bereiche',
         entries: [
-          { key: 'household', label: 'Haushalt', icon: 'list-checks', href: '/haushalt', route: 'haushalt' },
+          {
+            key: 'household',
+            label: 'Haushalt',
+            icon: 'list-checks',
+            href: '/haushalt',
+            route: 'haushalt',
+          },
         ],
       },
       ...MANAGE_GROUPS,
@@ -124,7 +130,9 @@ export function manageGroups(view: AppView, agent: boolean): ManageGroup[] {
     {
       key: 'agent',
       title: 'KI',
-      entries: [{ key: 'agent', label: 'Agent', icon: 'sparkles', href: '/ki-agent', route: 'ki-agent' }],
+      entries: [
+        { key: 'agent', label: 'Agent', icon: 'sparkles', href: '/ki-agent', route: 'ki-agent' },
+      ],
     },
     ...MANAGE_GROUPS,
   ];

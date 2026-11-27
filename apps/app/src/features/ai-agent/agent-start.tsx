@@ -20,7 +20,9 @@ export function AgentStart(props: { onPick: (slug: AgentBadgeSlug) => void; disa
     <Stack gap={18}>
       <Stack gap={6}>
         <Text variant="heading" testID="agent-greeting">
-          {firstName ? `Hi ${firstName}, ich bin euer Housekeeping-Agent.` : 'Hi, ich bin euer Housekeeping-Agent.'}
+          {firstName
+            ? `Hi ${firstName}, ich bin euer Housekeeping-Agent.`
+            : 'Hi, ich bin euer Housekeeping-Agent.'}
         </Text>
         <Text color="muted">
           Ich kenne eure Rezepte, euren Kalender und eure Liste – und kann im Web suchen.

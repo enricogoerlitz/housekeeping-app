@@ -7,15 +7,7 @@ import {
   takeSlash,
   type AgentBadgeSlug,
 } from '@housekeeping/core';
-import {
-  Chip,
-  IconButton,
-  List,
-  ListRow,
-  pickImageFile,
-  Surface,
-  Text,
-} from '@housekeeping/ui';
+import { Chip, IconButton, List, ListRow, pickImageFile, Surface, Text } from '@housekeeping/ui';
 import { useState, type ComponentRef, type ReactNode, type RefObject } from 'react';
 import { View, type TextInput } from 'react-native';
 
@@ -66,10 +58,7 @@ export function AgentInput(props: AgentInputProps) {
 
   const chips =
     props.badges.length > 0 || props.attachments.length > 0 ? (
-      <View
-        style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}
-        testID="agent-input-chips"
-      >
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }} testID="agent-input-chips">
         {props.badges.map((slug) => (
           <Chip
             key={slug}

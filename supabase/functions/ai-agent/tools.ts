@@ -32,7 +32,7 @@ const record = (value: unknown): Record<string, unknown> =>
     : {};
 
 /** "2026-11-27" in the zone, Europe/Berlin when the zone is unknown (AC-025). */
-export function dayIn(now: Date, timeZone: string): string {
+function dayIn(now: Date, timeZone: string): string {
   const format = (zone: string) =>
     new Intl.DateTimeFormat('en-CA', {
       year: 'numeric',

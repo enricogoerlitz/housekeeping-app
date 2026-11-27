@@ -11,6 +11,7 @@ import {
   Button,
   Chip,
   ComposerBar,
+  focusAfterChange,
   IconButton,
   LoadingLines,
   revealInScrollParent,
@@ -156,10 +157,12 @@ export function AgentScreen() {
     onSend: () => send(text),
   });
 
-  const pickBadge = (slug: AgentBadgeSlug) => {
-    setBadges((current) => addBadge(current, slug));
-    input.current?.focus();
-  };
+  // AC-005: the badge and the cursor behind it in one tap, so iOS opens the keyboard too.
+  const pickBadge = (slug: AgentBadgeSlug) =>
+    focusAfterChange(
+      () => setBadges((current) => addBadge(current, slug)),
+      () => input.current,
+    );
 
   const addFile = (file: File) => {
     setAttachError(undefined);
