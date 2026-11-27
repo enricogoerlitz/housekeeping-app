@@ -2,7 +2,7 @@ import type { Page, Route } from '@playwright/test';
 
 import type { RecipeDraft, RecipeDraftReply, WebSearchReply } from '@housekeeping/core';
 
-import { contentReady, expect, open, settle, test, tid } from './helpers';
+import { contentReady, expect, isPhone, open, settle, test, tid } from './helpers';
 import { seedIds } from './seed-ids';
 
 // Spec 0055 — the AI windows v3: cursor and keyboard on a tab change, swiping between the tabs, a
@@ -111,6 +111,13 @@ test.describe('REQ-001, REQ-004: the tabs and the cursor', () => {
     await editWithAi(page);
     await expect(tid(page, 'recipe-ai-fill-tab-prompt')).toHaveAttribute('aria-selected', 'true');
     await expect(tid(page, 'recipe-ai-fill-field-text')).toBeFocused();
+    // Durchklick 27.11., D-02: the words of a change, and a proposal comes, not a draft.
+    await expect(tid(page, 'recipe-ai-fill')).toContainText('Was soll anders sein?');
+    await expect(tid(page, 'recipe-ai-fill-field-text')).toHaveAttribute(
+      'placeholder',
+      'z. B. „Füg eine vegane Variante hinzu“',
+    );
+    await expect(tid(page, 'recipe-ai-fill-submit')).toHaveText(/Vorschlag/);
     await expect(tid(page, 'recipe-ai-fill-mode')).toHaveCount(0);
     await tid(page, 'recipe-ai-fill-tab-web').click();
     // Spec 0062, REQ-011: the question moved into the proposal of the web search.
@@ -140,13 +147,34 @@ test.describe('REQ-002: swiping between the tabs', () => {
   test('AC-006, AC-007, AC-008: left to „Prompt“, right back to „Websuche“; past the end it springs back', async ({
     page,
   }) => {
+    const warnings: string[] = [];
+    page.on('console', (message) => {
+      if (message.type() === 'error') warnings.push(message.text());
+    });
     await newRecipeWithAi(page, 'Pasta');
     await swipe(page, -160);
     await expect(tid(page, 'new-recipe-ai-tab-prompt')).toHaveAttribute('aria-selected', 'true');
+    // Durchklick 27.11., I-01/I-02: the cursor moves along into the field of the new tab.
+    await expect(tid(page, 'new-recipe-ai-text')).toBeFocused();
     await swipe(page, -160);
     await expect(tid(page, 'new-recipe-ai-tab-prompt')).toHaveAttribute('aria-selected', 'true');
     await swipe(page, 160);
     await expect(tid(page, 'new-recipe-ai-tab-web')).toHaveAttribute('aria-selected', 'true');
+    await expect(tid(page, 'new-recipe-title')).toBeFocused();
+    await swipe(page, 160);
+    await expect(tid(page, 'new-recipe-title')).toBeFocused();
+    expect(warnings.filter((text) => text.includes('flushSync'))).toEqual([]);
+  });
+
+  test('Durchklick 27.11.: „KI-Rezept“ on a phone has one photo button and no link „Foto“', async ({
+    page,
+  }) => {
+    await newRecipeWithAi(page, 'Pasta');
+    await expect(tid(page, 'new-recipe-open-photo')).toBeVisible();
+    await tid(page, 'new-recipe-ai-tab-prompt').click();
+    await expect(tid(page, 'new-recipe-ai-photo')).toHaveText('Foto auswählen');
+    await expect(tid(page, 'new-recipe-ai-camera')).toHaveCount(0);
+    await expect(tid(page, 'new-recipe-open-photo')).toHaveCount(0);
   });
 });
 
@@ -168,6 +196,10 @@ test('AC-010: a tapped hit shows pulsing placeholders until the recipe is read',
   await tid(page, 'new-recipe-web-submit').click();
   await tid(page, 'new-recipe-web-card-0').click();
   await expect(page.getByRole('progressbar', { name: 'Das Rezept wird gelesen …' })).toBeVisible();
+  // Durchklick 27.11., D-01: in sight at once, not below a big photo placeholder.
+  await expect(
+    page.getByRole('progressbar', { name: 'Das Rezept wird gelesen …' }),
+  ).toBeInViewport();
   answer();
   await expect(tid(page, 'new-recipe-web-preview-ingredients')).toBeVisible();
 });
@@ -234,6 +266,8 @@ test.describe('REQ-006 – REQ-008: „Prompt“ on the recipe, the web search, 
     await tid(page, 'recipe-ai-fill-field-text').fill('füge eine vegane Variante hinzu');
     await tid(page, 'recipe-ai-fill-submit').click();
     await expect(tid(page, 'recipe-proposal')).toBeVisible();
+    // Durchklick 27.11., D-03: on wide screens the line stands above the window's buttons.
+    if (!isPhone(page)) await expect(tid(page, 'recipe-proposal-refine-text')).toBeInViewport();
     await expect(tid(page, 'recipe-proposal-refine-send')).toBeDisabled();
     await tid(page, 'recipe-proposal-refine-text').fill('nimm Linsen statt Tofu');
     await tid(page, 'recipe-proposal-refine-send').click();

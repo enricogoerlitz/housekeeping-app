@@ -1,8 +1,26 @@
 import { describe, expect, it } from 'vitest';
 
-import { householdRow, type HouseholdRowItem } from './household-row';
+import { householdItemTitle, householdRow, type HouseholdRowItem } from './household-row';
 import { enrico, nadja } from './test-fixtures';
 import type { Chore, ChoreEvent } from './types';
+
+describe('householdItemTitle (review 0004, D-09)', () => {
+  const item = (approximate: boolean): HouseholdRowItem => ({
+    key: 'k',
+    title: 'Pflanzen gießen',
+    memberIds: [],
+    status: 'planned',
+    approximate,
+  });
+
+  it('a flexible chore says "ungefähr" after a dot, so it never reads like cut-off text', () => {
+    expect(householdItemTitle(item(true))).toBe('Pflanzen gießen · ungefähr');
+  });
+
+  it('a fixed date keeps its title', () => {
+    expect(householdItemTitle(item(false))).toBe('Pflanzen gießen');
+  });
+});
 
 // Friday, 20 November 2026; KW 47 runs from 16 to 22 November, KW 48 from 23 to 29.
 const today = '2026-11-20';

@@ -199,6 +199,12 @@ bei den Bausteinen. Quelle: Auftrag. Offline: entfällt.
    mehr genutzte Export von `confirmPhotoRemoval` entfernt.
 10. **Reisen-Zeile ohne eigene Knöpfe:** Ohne Mülleimer ist die ganze Zeile der Knopf; ihre Test-ID
     ist jetzt `trip-<id>` statt `trip-<id>-open` (e2e angepasst).
+11. Durchklick 27.11., I-04: Ein Titel im Fensterkopf geht schon auf eine eigene Zeile, wenn er nur
+    bis auf 2 px passen würde: die Knöpfe werden in ganzen Pixeln gemessen, „Änderungen verwerfen?“
+    wurde sonst zu „Änderungen verwerfe…“ (`titleOnOwnLine`). D-07: Hat ein Textfeld den Cursor,
+    zeigt kein Knopf einen Fokusring (vorher trugen ✕ und „Abbrechen“ einen alten Fokus mit,
+    `keyboardFocused`). Durchklick 27.11., Dauerposten: Das Fenster „Neuer Dauerposten“ hat wie jedes
+    Formular „Abbrechen · Speichern“, ab Tablet unten nebeneinander.
 
 ## Daten
 

@@ -315,6 +315,11 @@ blob:`); das Foto einer Karte wird bei „Übernehmen“ zum Foto des Eintrags.
 20. iPhone-Durchklick Runde 2 (27.11., I-20): „Im Web suchen“ in „Aktivität/Restaurant anlegen“
     ohne Namen öffnet mit Cursor im Suchfeld und Tastatur (vorher erst ein zweiter Tipp ins Feld);
     mit Namen bleibt es wie bisher (der Name steht schon drin).
+21. Durchklick 27.11., D-03: Die gelbe Leiste der Änderungsansicht hat kein „Alles verwerfen“ mehr;
+    es tat dasselbe wie „Abbrechen“ im Fensterkopf (zwei Knöpfe für eine Handlung). Ändert AC-019:
+    „Abbrechen“ schließt ohne Änderung. Durchklick 27.11., D-01: Nach dem Tipp auf einen Treffer
+    steht das Foto klein neben Titel und Quelle, bis das Rezept gelesen ist; die Ladezeilen stehen
+    so sofort im Bild. Das große Foto und die Foto-Wahl kommen mit der Vorschau.
 
 ## Daten
 

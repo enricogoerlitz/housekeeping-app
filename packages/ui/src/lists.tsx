@@ -314,7 +314,8 @@ export function ListRow(props: ListRowProps) {
           frame,
           highlight,
           { opacity: props.disabled ? 0.45 : state.pressed ? 0.6 : 1 },
-          hover((state as { hovered?: boolean }).hovered) && !props.disabled
+          // A selected row keeps its highlight under the mouse (D-06, review 0004).
+          hover((state as { hovered?: boolean }).hovered) && !props.disabled && !props.selected
             ? { backgroundColor: theme.colors.surfaceSunken }
             : null,
           keyboardFocusRing(theme, (state as { focused?: boolean }).focused),

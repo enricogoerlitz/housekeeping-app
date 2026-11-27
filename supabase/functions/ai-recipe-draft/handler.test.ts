@@ -458,13 +458,36 @@ describe('ai-recipe-draft: the recipe to change (spec 0055, REQ-006, REQ-008)', 
     const carrying = texts().find((text) => text.includes('aktuelles_rezept_nur_daten')) ?? '{}';
     expect(JSON.parse(carrying)).toEqual({ aktuelles_rezept_nur_daten: CURRENT });
     expect(texts()).toContain(JSON.stringify({ wunsch: WISH }));
-    expect(modelBody().instructions).toMatch(/nur, was der Wunsch verlangt/);
+    expect(modelBody().instructions).toMatch(/ausschließlich, was der Wunsch verlangt/);
+  });
+
+  it('I-06 (review 0004): changing touches only what the wish asks; the rules for new recipes do not rewrite the rest', async () => {
+    const { deps, modelBody } = setup();
+    await handler(
+      post({ householdId: HOUSEHOLD_ID, text: WISH, current: CURRENT, imagePrompt: false }),
+      deps,
+    );
+    const instructions = modelBody().instructions;
+    expect(instructions).toMatch(/Ändere ausschließlich, was der Wunsch verlangt/);
+    // "Füge eine vegane Variante hinzu" brought "Vegetarisch" too and a new description.
+    expect(instructions).not.toMatch(/zusätzlich „Vegetarisch“/);
+    expect(instructions).not.toMatch(/Der Haushalt will zu jedem Hauptgericht/);
+    expect(instructions).toMatch(/"description" bleibt wörtlich/);
+    expect(instructions).toMatch(/Zutaten und Schritte.*wörtlich.*Reihenfolge/s);
+    expect(instructions).toMatch(/gelten nur für das, was du neu schreibst/);
+  });
+
+  it('a new recipe keeps the rule of a vegetarian variant for meat', async () => {
+    const { deps, modelBody } = setup();
+    await handler(post({ householdId: HOUSEHOLD_ID, text: 'Gulasch' }), deps);
+    expect(modelBody().instructions).toMatch(/zusätzlich „Vegetarisch“/);
+    expect(modelBody().instructions).not.toMatch(/Ändere ausschließlich/);
   });
 
   it('without `current` the instructions have no change part', async () => {
     const { deps, modelBody } = setup();
     await handler(post({ householdId: HOUSEHOLD_ID, text: 'Kuchen' }), deps);
-    expect(modelBody().instructions).not.toMatch(/nur, was der Wunsch verlangt/);
+    expect(modelBody().instructions).not.toMatch(/ausschließlich, was der Wunsch verlangt/);
   });
 
   it('a broken `current` gets 400 before anything is loaded', async () => {

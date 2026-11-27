@@ -72,7 +72,12 @@ export function keyboardFocusRing(theme: Theme, focused: boolean | undefined): V
 export function keyboardFocused(focused: boolean | undefined): boolean {
   if (!focused) return false;
   const doc = (globalThis as { document?: { activeElement?: unknown } }).document;
-  return doc === undefined || keyboardFocus({ target: doc.activeElement });
+  if (doc === undefined) return true;
+  // A text field is always :focus-visible; with it focused, a button's `focused` is stale (a
+  // window moved the focus on), and the ring would show on two controls at once (D-07).
+  const active = doc.activeElement as { tagName?: string; isContentEditable?: boolean } | null;
+  if (/^(INPUT|TEXTAREA)$/.test(active?.tagName ?? '') || active?.isContentEditable) return false;
+  return keyboardFocus({ target: active });
 }
 
 const FOCUS_RING_OFFSET = 2;
@@ -759,6 +764,11 @@ export interface TextFieldProps extends Pick<
   accessibilityLabel?: string;
   /** Message below the field (orange, never red). */
   error?: string;
+  /**
+   * Marked like `error`, without the message: a narrow field in a row whose message stands below
+   * the whole row (D-05, review 0004).
+   */
+  invalid?: boolean;
   hint?: string;
   /** Content inside the field on the right, e.g. icon buttons. */
   right?: ReactNode;
@@ -805,6 +815,7 @@ export function TextField(props: TextFieldProps) {
   const {
     label,
     error,
+    invalid,
     hint,
     right,
     left,
@@ -866,13 +877,14 @@ export function TextField(props: TextFieldProps) {
           borderRadius: round ? theme.shape.radius.input : theme.shape.radius.control,
           backgroundColor: theme.shape.cardBorder || focused ? c.surface : c.surfaceSunken,
           borderWidth: 1.5,
-          borderColor: error
-            ? c.warnText
-            : focused
-              ? c.accent
-              : theme.shape.cardBorder
-                ? c.border
-                : 'transparent',
+          borderColor:
+            error || invalid
+              ? c.warnText
+              : focused
+                ? c.accent
+                : theme.shape.cardBorder
+                  ? c.border
+                  : 'transparent',
         }}
       >
         {left}
@@ -889,6 +901,7 @@ export function TextField(props: TextFieldProps) {
           blurOnSubmit={enterSaves ? false : input.blurOnSubmit}
           ref={mergeRefs(own, inputRef)}
           nativeID={autofill.id}
+          aria-invalid={error || invalid ? true : undefined}
           testID={testID}
           placeholder={props.placeholder === undefined ? undefined : words(props.placeholder)}
           accessibilityLabel={accessibleName === undefined ? undefined : words(accessibleName)}

@@ -127,6 +127,9 @@ Offline: offline vollständig.
 5. Bau, 26.11.: Im Plan-Eintrag ist das Foto höchstens 280 px breit, mittig, im Seitenverhältnis
    seiner Quelle (Rezept 4:3, Restaurant/Aktivität 16:9); es erscheint erst, wenn es geladen ist
    (kein leerer Rahmen). Welche Quelle infrage kommt, sagt `core.planEntryPhoto`.
+6. Durchklick 27.11. (Koordinator): Auch „Mit KI ausfüllen“ und der Reiter „KI-Rezept“ von „Neu“
+   zeigen auf Handy und Touch-Geräten nur noch „Foto auswählen“ statt „Foto aufnehmen“ und
+   „Fotomediathek“ (wie REQ-002); mit Maus bleibt „Foto wählen“.
 
 ## Daten
 

@@ -11,6 +11,7 @@ import {
   useToday,
 } from '@housekeeping/api';
 import {
+  AMOUNT_NOT_RECOGNIZED,
   nextRecurringDay,
   parseItemAmount,
   recurringAmountLabel,
@@ -52,6 +53,11 @@ export interface RecurringFormProps {
   onDone: () => void;
   /** "Öffnen ›" at "Für Cola gibt es schon einen Dauerposten" (AC-008). */
   onOpen: (recurringId: Id) => void;
+  /**
+   * A new value starts the fields again from what is stored: the step of "Artikel bearbeiten"
+   * keeps the form while it shows the article's other fields (I-05, review 0004).
+   */
+  session?: number;
 }
 
 export interface RecurringForm {
@@ -117,30 +123,6 @@ function ArticleChoice(props: { onChosen: (articleId: Id) => void; disabled: boo
 }
 
 /**
- * "Regelmäßig kaufen" as a step of "Artikel bearbeiten" (REQ-002, AC-010): the same fields with
- * "Zurück", "Löschen" and "Speichern" below them.
- */
-export function RecurringStep(props: RecurringFormProps & { onBack: () => void }) {
-  const form = useRecurringForm(props);
-  return (
-    <Stack gap={16}>
-      {form.body}
-      <Row gap={10} wrap style={{ justifyContent: 'flex-end' }}>
-        <Button
-          label="Zurück"
-          icon="chevron-left"
-          variant="secondary"
-          onPress={props.onBack}
-          testID="article-step-back"
-        />
-        {form.remove ? <Button {...form.remove} variant="ghost" /> : null}
-        <Button {...form.save} />
-      </Row>
-    </Stack>
-  );
-}
-
-/**
  * The fields of a Dauerposten (spec 0060, REQ-001): Artikel, Menge, Zusatz, Rhythmus (weekly on
  * weekdays every N weeks, or monthly on a day) and "Pausiert", with "Speichern" and "Löschen".
  * Shown in its own window on "Dauerposten" and as a step of "Artikel bearbeiten". Online only.
@@ -152,16 +134,31 @@ export function useRecurringForm(props: RecurringFormProps): RecurringForm {
   const online = useOnlineOnly();
   const existing = recurringItems.find((item) => item.id === props.recurringId);
 
-  const [articleId, setArticleId] = useState<Id | undefined>(
-    existing?.articleId ?? props.articleId,
-  );
-  const [amountText, setAmountText] = useState(() =>
-    existing ? recurringAmountLabel(existing).replace(/^(\d+)×$/, '$1') : '1',
-  );
-  const [note, setNote] = useState(existing?.note ?? '');
-  const [repeat, setRepeat] = useState<RepeatDraft>(() => recurringRepeat(existing?.rule, today));
-  const [paused, setPaused] = useState(existing?.paused ?? false);
+  const stored = () => ({
+    articleId: existing?.articleId ?? props.articleId,
+    amountText: existing ? recurringAmountLabel(existing).replace(/^(\d+)×$/, '$1') : '1',
+    note: existing?.note ?? '',
+    repeat: recurringRepeat(existing?.rule, today),
+    paused: existing?.paused ?? false,
+  });
+  const [articleId, setArticleId] = useState<Id | undefined>(() => stored().articleId);
+  const [amountText, setAmountText] = useState(() => stored().amountText);
+  const [note, setNote] = useState(() => stored().note);
+  const [repeat, setRepeat] = useState<RepeatDraft>(() => stored().repeat);
+  const [paused, setPaused] = useState(() => stored().paused);
   const [error, setError] = useState<string | undefined>();
+  // A new `session` starts again from what is stored (state adjusted while rendering).
+  const [session, setSession] = useState(props.session);
+  if (session !== props.session) {
+    const fresh = stored();
+    setSession(props.session);
+    setArticleId(fresh.articleId);
+    setAmountText(fresh.amountText);
+    setNote(fresh.note);
+    setRepeat(fresh.repeat);
+    setPaused(fresh.paused);
+    setError(undefined);
+  }
 
   const article = articles.find((candidate) => candidate.id === articleId);
   const problem = recurringDraftProblem(
@@ -183,6 +180,9 @@ export function useRecurringForm(props: RecurringFormProps): RecurringForm {
     today,
   );
   const offlineGrey = online.disabled ? { opacity: 0.45 } : undefined;
+  // The amount's own message, also while no article is chosen yet (that one says "Wähl einen Artikel.").
+  const amountProblem =
+    parseItemAmount(amountText) === undefined ? AMOUNT_NOT_RECOGNIZED : undefined;
 
   const save = () => {
     const amount = parseItemAmount(amountText);
@@ -257,32 +257,40 @@ export function useRecurringForm(props: RecurringFormProps): RecurringForm {
           />
         </Row>
       ) : null}
-      <View style={[{ flexDirection: 'row', gap: 12 }, offlineGrey]}>
-        <View style={{ width: 120 }}>
-          <TextField
-            label="Menge"
-            value={amountText}
-            onChangeText={(value) => {
-              setAmountText(value);
-              setError(undefined);
-            }}
-            placeholder="z. B. 2"
-            editable={!online.disabled}
-            error={parseItemAmount(amountText) === undefined ? problem : undefined}
-            testID="recurring-amount"
-          />
+      <View style={[{ gap: 6 }, offlineGrey]}>
+        <View style={{ flexDirection: 'row', gap: 12 }}>
+          <View style={{ width: 120 }}>
+            <TextField
+              label="Menge"
+              value={amountText}
+              onChangeText={(value) => {
+                setAmountText(value);
+                setError(undefined);
+              }}
+              placeholder="z. B. 2"
+              editable={!online.disabled}
+              // D-05 (review 0004): the message stands below the row, not in the narrow field.
+              invalid={amountProblem !== undefined}
+              testID="recurring-amount"
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <TextField
+              label="Zusatz"
+              value={note}
+              onChangeText={setNote}
+              placeholder="z. B. laktosefrei"
+              maxLength={200}
+              editable={!online.disabled}
+              testID="recurring-note"
+            />
+          </View>
         </View>
-        <View style={{ flex: 1 }}>
-          <TextField
-            label="Zusatz"
-            value={note}
-            onChangeText={setNote}
-            placeholder="z. B. laktosefrei"
-            maxLength={200}
-            editable={!online.disabled}
-            testID="recurring-note"
-          />
-        </View>
+        {amountProblem ? (
+          <Text variant="small" color="warn" testID="recurring-amount-error">
+            {amountProblem}
+          </Text>
+        ) : null}
       </View>
       <View style={offlineGrey} pointerEvents={online.disabled ? 'none' : 'auto'}>
         <RepeatFields

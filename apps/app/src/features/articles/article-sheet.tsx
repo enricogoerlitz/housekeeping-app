@@ -35,6 +35,7 @@ import {
   TextField,
   toast,
   type SheetAction,
+  type SheetActions,
 } from '@housekeeping/ui';
 import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
@@ -42,7 +43,7 @@ import { View } from 'react-native';
 import { useOpenRecipe } from '@/features/recipes/navigation';
 import { confirmFirst } from '@/features/shell/confirm-dialog';
 import { useOnlineOnly } from '@/features/shell/offline';
-import { RecurringStep } from '@/features/recurring/recurring-form';
+import { useRecurringForm } from '@/features/recurring/recurring-form';
 import { AreaPicker } from '@/features/stores/area-picker';
 
 import { DIET_OPTIONS, RULE_OPTIONS, type RuleChoice } from './labels';
@@ -120,9 +121,14 @@ function MergeStep(props: { article: Article; onPick: (targetId: Id) => void }) 
 export function useArticleEditor(props: ArticleEditorProps): {
   title: string;
   body: ReactNode;
+  /** The buttons below the body, where there is no window (the right column, the item's step). */
   footer: ReactNode;
-  /** "Fertig" of the main step; a window shows it among its actions instead of `footer`. */
-  done?: SheetAction;
+  /**
+   * A window's head instead (spec 0054, REQ-007): "Fertig" of the main step; "Zurück ·
+   * Regelmäßig kaufen · Speichern" of the Dauerposten (I-05, review 0004), with `windowFooter`.
+   */
+  actions?: SheetActions;
+  windowFooter?: ReactNode;
 } {
   const articles = useArticles();
   const areas = useAreas();
@@ -136,6 +142,15 @@ export function useArticleEditor(props: ArticleEditorProps): {
   const recurring = recurringItems.find((item) => item.articleId === props.articleId);
 
   const [step, setStep] = useState<Step>('main');
+  // Every opening of "Regelmäßig kaufen" starts from what is stored (useRecurringForm `session`).
+  const [recurringSession, setRecurringSession] = useState(0);
+  const recurringForm = useRecurringForm({
+    recurringId: recurring?.id,
+    articleId: props.articleId,
+    onDone: () => setStep('main'),
+    onOpen: () => setStep('recurring'),
+    session: recurringSession,
+  });
   const [name, setName] = useState(article?.name ?? '');
   const [synonym, setSynonym] = useState('');
   const [synonymError, setSynonymError] = useState<string | undefined>();
@@ -232,18 +247,27 @@ export function useArticleEditor(props: ArticleEditorProps): {
     };
   }
   if (step === 'recurring') {
+    const back: SheetAction = {
+      label: 'Zurück',
+      icon: 'chevron-left',
+      onPress: () => setStep('main'),
+      testID: 'article-step-back',
+    };
+    const remove = recurringForm.remove ? (
+      <Button {...recurringForm.remove} variant="ghost" />
+    ) : null;
     return {
       title: recurring ? 'Dauerposten bearbeiten' : 'Regelmäßig kaufen',
-      body: (
-        <RecurringStep
-          recurringId={recurring?.id}
-          articleId={article.id}
-          onBack={() => setStep('main')}
-          onDone={() => setStep('main')}
-          onOpen={() => setStep('recurring')}
-        />
+      body: recurringForm.body,
+      footer: (
+        <Row gap={10} wrap style={{ justifyContent: 'flex-end' }}>
+          <Button {...back} variant="secondary" />
+          {remove}
+          <Button {...recurringForm.save} />
+        </Row>
       ),
-      footer: null,
+      actions: { primary: recurringForm.save, cancel: back },
+      windowFooter: remove,
     };
   }
   if (step === 'merge') {
@@ -425,7 +449,10 @@ export function useArticleEditor(props: ArticleEditorProps): {
                   }`
                 : 'Regelmäßig kaufen'
             }
-            onPress={() => setStep('recurring')}
+            onPress={() => {
+              setRecurringSession((session) => session + 1);
+              setStep('recurring');
+            }}
             testID="article-recurring"
           />
         </List>
@@ -536,7 +563,7 @@ export function useArticleEditor(props: ArticleEditorProps): {
         <Button {...doneAction} />
       </Row>
     ),
-    done: doneAction,
+    actions: { primary: doneAction },
   };
 }
 
@@ -549,8 +576,8 @@ export function ArticleSheet(props: ArticleEditorProps & { visible: boolean }) {
       size="m"
       title={editor.title}
       onClose={props.onClose}
-      footer={editor.done ? undefined : editor.footer}
-      actions={editor.done ? { primary: editor.done } : undefined}
+      footer={editor.actions ? editor.windowFooter : editor.footer}
+      actions={editor.actions}
       testID="article-sheet"
     >
       {editor.body}

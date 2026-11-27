@@ -3,6 +3,7 @@ import {
   useEffect,
   useEffectEvent,
   useLayoutEffect,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -170,24 +171,28 @@ export function TabSwipeArea(props: {
   });
   useLayoutEffect(() => arrive(), [shown]);
 
-  // A finished swipe reaches the screen through this state, like a tap on the tab.
-  const [swiped, setSwiped] = useState<{ step: -1 | 1; count: number }>();
-  const step = useEffectEvent((direction: -1 | 1) => {
+  // A finished swipe changes the tab like a tap on it: straight from the gesture's end, outside
+  // React's render and effects, so the screen's `onStep` may render the new tab at once and move
+  // the cursor into its field (`focusAfterChange` flushes synchronously; review 0004, I-01/I-02).
+  const latest = useRef({ swipe: props.swipe, chrome: props.chrome });
+  useLayoutEffect(() => {
+    latest.current = { swipe: props.swipe, chrome: props.chrome };
+  });
+  const springBack = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(springBack.current), []);
+  const [report] = useState(() => (direction: -1 | 1) => {
+    const before = index.get();
     // The content left towards the finger, so the new tab arrives from the other side.
     arriving = {
       step: direction,
       at: Date.now(),
       previewed: panesApi.drawn(direction),
-      chrome: props.chrome,
+      chrome: latest.current.chrome,
     };
-    props.swipe.onStep(direction);
-  });
-  useEffect(() => {
-    if (!swiped) return;
-    const before = index.get();
-    step(swiped.step);
+    latest.current.swipe.onStep(direction);
     // The tab did not change after all (e.g. the address was not taken): bring the content back.
-    const timer = setTimeout(() => {
+    clearTimeout(springBack.current);
+    springBack.current = setTimeout(() => {
       if (index.get() !== before) return;
       arriving = undefined;
       offset.set(
@@ -197,12 +202,9 @@ export function TabSwipeArea(props: {
       );
       opacity.set(withTiming(1, { ...TIMING, duration: FADE_MS }));
     }, ARRIVE_WITHIN_MS);
-    return () => clearTimeout(timer);
-  }, [swiped, index, offset, opacity, panesApi]);
+  });
 
   const [responder] = useState(() => {
-    const report = (direction: -1 | 1) =>
-      setSwiped((previous) => ({ step: direction, count: (previous?.count ?? 0) + 1 }));
     // Back to the tab; the neighbour beside it goes once the content stands still.
     const settle = (velocity = 0) =>
       offset.set(

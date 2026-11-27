@@ -317,7 +317,9 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
 
   const links = (
     <Row gap={16} wrap align="center">
-      {extras.has('photo') || !CAN_PICK_PHOTO ? null : (
+      {/* The recipe's own photo only on "Websuche": on "KI-Rezept" the photos are what the AI
+          reads, and it can make three (review 0004). */}
+      {extras.has('photo') || !CAN_PICK_PHOTO || (!collection && tab === 'prompt') ? null : (
         <Button
           label="Foto"
           icon="camera"

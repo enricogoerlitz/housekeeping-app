@@ -39,6 +39,11 @@ function proxyField(): HTMLInputElement {
   input.type = 'text';
   input.setAttribute('aria-hidden', 'true');
   input.setAttribute('autocomplete', 'off');
+  // Nothing for iOS to mark or correct in it: its suggestion and selection marks showed as a light
+  // blue box over the window (I-03, review 0004).
+  input.setAttribute('autocorrect', 'off');
+  input.setAttribute('autocapitalize', 'off');
+  input.setAttribute('spellcheck', 'false');
   input.name = 'hksearchkeyboard';
   input.tabIndex = -1;
   // In the page and focusable (not display: none), out of sight; 16 px so iOS does not zoom.
@@ -54,6 +59,11 @@ function proxyField(): HTMLInputElement {
     padding: '0',
     pointerEvents: 'none',
     caretColor: 'transparent',
+    color: 'transparent',
+    background: 'transparent',
+    outline: 'none',
+    userSelect: 'none',
+    webkitUserSelect: 'none',
   });
   document.body.append(input);
   proxy = input;

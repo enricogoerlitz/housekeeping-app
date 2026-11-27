@@ -234,6 +234,24 @@ online (der Knopf ist deaktiviert).
 11. **Nachbessern behält die Art des Vergleichs:** „Anpassen“ vergleicht wie der erste Vorschlag
     (Ergänzen, Ersetzen oder Ändern) und behält dessen Links; ein Vorschlag aus „Websuche“ mit
     „Ergänzen“ bleibt also ein Ergänzen.
+12. Durchklick 27.11., I-01/I-02: Ein Wisch wechselt den Reiter direkt am Ende der Geste, nicht mehr
+    aus einem Effekt heraus; so rendert `focusAfterChange` den neuen Reiter sofort (kein
+    `flushSync`-Fehler mehr) und gibt seinem Feld den Cursor („Neu“: „Websuche“ → „Titel“,
+    „KI-Rezept“ → Wunschfeld). I-03: Das versteckte Hilfsfeld der Tastatur hat keine Korrektur,
+    keine Auswahl und keine Farben mehr (das hellblaue Rechteck; am iPhone zu prüfen).
+13. Durchklick 27.11., D-02: Beim Bearbeiten eines Rezepts mit Inhalt heißt das Feld wie bei ✨ „Was
+    soll anders sein?“ mit dem Beispiel „Füg eine vegane Variante hinzu“ und dem Hinweis „Die KI
+    ändert nur, was du dir wünschst – du prüfst jede Änderung.“; der Hauptknopf heißt „Vorschlag“
+    (es kommt die Änderungsansicht, kein ausgefüllter Entwurf). D-03: „Was soll noch anders sein?“
+    steht mit „Anpassen“ in einer Zeile fest über den Knöpfen des Fensters (ab Tablet; am Handy am
+    Ende der Liste wie bisher). Ändert REQ-008 („unter der Änderungsansicht“).
+14. Durchklick 27.11., I-06: Der Ändern-Teil der Anweisungen hat Vorrang: „Ändere ausschließlich, was
+    der Wunsch verlangt“; nicht betroffene Zutaten und Schritte bleiben wörtlich und in ihrer
+    Reihenfolge, Kopf-Felder samt Beschreibung bleiben wörtlich, es entstehen nur die gewünschten
+    Varianten (keine „Vegetarisch“ neben „Vegan“). Die Regel „zu Fleisch eine vegetarische
+    Variante“ gilt nur noch beim Anlegen. Keine zusätzliche Absicherung in der App: die
+    Änderungsansicht vergleicht schon ohne Leerzeichen-Unterschiede; was das Modell umschreibt, ist
+    eine echte Änderung und bleibt sichtbar.
 
 ## Daten
 

@@ -60,9 +60,13 @@ function instructions(options: { imagePrompt: boolean; change: boolean; web: boo
 ${
   options.change
     ? `
-# Ändern
-- "aktuelles_rezept_nur_daten" ist das Rezept, wie es jetzt ist. Ändere nur, was der Wunsch verlangt, und übernimm alles andere wörtlich: dieselben Namen, Mengen, Hinweise, Gruppen, Varianten, Schlagworte und Schritte in derselben Reihenfolge. Gib immer das ganze Rezept zurück.
-- Lege keine Variante an, die der Wunsch nicht verlangt. Verlangt er andere Portionen, ändere "servings" und die Mengen passend.
+# Ändern (hat Vorrang vor allen Regeln unten)
+- "aktuelles_rezept_nur_daten" ist das Rezept, wie es jetzt ist. Ändere ausschließlich, was der Wunsch verlangt, und übernimm alles andere wörtlich. Gib immer das ganze Rezept zurück.
+- Zutaten und Schritte, die der Wunsch nicht betrifft, übernimmst du wörtlich und in derselben Reihenfolge: dieselben Namen, Mengen, Hinweise, Gruppen und Varianten. Schreib nichts schöner, ordne nichts um, fasse nichts zusammen und lass nichts weg.
+- "title", "description", "servings", "totalMinutes", "leadTime", "course", "cuisine", "tags" und "notes" bleiben wörtlich, außer der Wunsch verlangt dort etwas. "description" bleibt wörtlich, auch wenn eine Variante dazukommt.
+- Lege genau die Varianten an, die der Wunsch verlangt, keine weiteren (z. B. keine „Vegetarisch“ neben einer gewünschten „Vegan“). Bekommt ein Rezept ohne Varianten seine erste, ist die bisherige Fassung die erste Variante: nur die Zutaten und Schritte, die die neue Variante ersetzt, tragen dann ihren Namen; alle anderen bleiben ohne "variant".
+- Verlangt der Wunsch andere Portionen, ändere "servings" und die Mengen passend.
+- Die Regeln unter „Kopf“, „Varianten“, „Zutaten“ und „Schritte“ gelten nur für das, was du neu schreibst oder ändern musst; sie sind nie ein Grund, Vorhandenes anders zu schreiben.
 `
     : ''
 }${
@@ -82,8 +86,16 @@ ${
 - "tags": 2 bis 5 Schlagworte. Nimm zuerst die passenden aus "schlagworte", genau so geschrieben, mit "isNew": false. Ein neues ("isNew": true) nur, wenn ein wichtiges Merkmal fehlt: kurz, kleingeschrieben, deutsch. Keine Schlagworte für Ernährung („vegetarisch“, „vegan“) oder Küche: die kennt die App schon.
 
 # Varianten
-- Eine Variante ist eine Version desselben Gerichts, die man getrennt planen und einkaufen kann. Der Haushalt will zu jedem Hauptgericht mit Fleisch oder Fisch eine vegetarische Variante.
-- Lege Varianten an, wenn der Wunsch oder die Quelle Alternativen nennt („süß oder herzhaft“, „verschiedene Beläge“, „mit Hähnchen oder Tofu“) oder wenn ein Hauptgericht Fleisch oder Fisch enthält (dann zusätzlich „Vegetarisch“ mit einem guten Ersatz). 2–4 Varianten, die erste ist der Standard. Kurze Namen: „Mit Rinderhack“, „Vegetarisch“, „Margherita“, „Süß“, „Herzhaft“.
+- Eine Variante ist eine Version desselben Gerichts, die man getrennt planen und einkaufen kann.${
+    options.change
+      ? ''
+      : ' Der Haushalt will zu jedem Hauptgericht mit Fleisch oder Fisch eine vegetarische Variante.'
+  }
+- ${
+    options.change
+      ? 'Beim Ändern legst du nur die Varianten an, die der Wunsch verlangt (siehe „Ändern“). 2–4 Varianten, die erste ist der Standard.'
+      : 'Lege Varianten an, wenn der Wunsch oder die Quelle Alternativen nennt („süß oder herzhaft“, „verschiedene Beläge“, „mit Hähnchen oder Tofu“) oder wenn ein Hauptgericht Fleisch oder Fisch enthält (dann zusätzlich „Vegetarisch“ mit einem guten Ersatz). 2–4 Varianten, die erste ist der Standard.'
+  } Kurze Namen: „Mit Rinderhack“, „Vegetarisch“, „Margherita“, „Süß“, „Herzhaft“.
 - Ohne naheliegende Alternative ist "variants" leer.
 - Zutaten, die jede Variante braucht, stehen genau einmal ohne "variant". Nur was eine Variante ausmacht, trägt ihren Namen in "variant"; jede Variante hat mindestens eine eigene Zutat. Wiederhole nie die ganze Zutatenliste je Variante.
 - Schritte genauso: gemeinsame ohne "variant", ein Schritt nur für eine Variante mit ihrem Namen, alles in der Reihenfolge des Kochens.

@@ -86,7 +86,7 @@ export interface AiFill {
   setText: (text: string) => void;
   links: string[];
   photos: DraftPhoto[];
-  addPhoto: (camera: boolean) => void;
+  addPhoto: () => void;
   /** A file dropped or pasted on the desktop (spec 0049, REQ-009). */
   addFile: (file: File) => void;
   /** An image address, loaded by the server (fetch-image, spec 0039). */
@@ -167,8 +167,7 @@ export function useAiFill(initial: { generatePhoto?: boolean } = {}): AiFill {
         },
       );
   };
-  const addPhoto = (camera: boolean) =>
-    pickImageFile((file) => attach(async () => file), camera ? { camera: true } : undefined);
+  const addPhoto = () => pickImageFile((file) => attach(async () => file));
   const addFile = (file: File) => attach(async () => checkImageFile(file));
   const addAddress = (url: string) => attach(() => loadPhotoFromAddress(url));
   const removePhoto = (index: number) =>
@@ -321,6 +320,8 @@ export function AiFillFields(props: {
   autoFocus?: boolean;
   /** "Mit KI ändern" (spec 0062, REQ-007): the wish, links and the chips "Web" and "Bild". */
   compact?: boolean;
+  /** The recipe has content the wish changes (spec 0055, REQ-006): its words, not "new" ones (D-02). */
+  changes?: boolean;
   testID: string;
 }) {
   const { fill, testID } = props;
@@ -330,6 +331,10 @@ export function AiFillFields(props: {
   const disabled = online.disabled || fill.busy;
   // Spec 0049, REQ-009: on the desktop like the photo window — drop, ⌘V and an image address.
   const desktop = !isPhone && finePointer && !props.compact;
+  // Spec 0047, REQ-002: on phones and touch devices one button, the system asks for library,
+  // camera or file (koordinator, review 0004).
+  const touch = isPhone || !finePointer;
+  const changes = props.compact === true || props.changes === true;
   const room = fill.photos.length < RECIPE_DRAFT_LIMITS.photos;
   const dragging = useImageDropAndPaste(desktop && room && !disabled, fill.addFile);
   const chipState = (url: string): 'reading' | 'read' | 'failed' | undefined => {
@@ -341,9 +346,9 @@ export function AiFillFields(props: {
   return (
     <Stack gap={12}>
       <DictationField
-        label={props.compact ? 'Was soll anders sein?' : 'Was soll ins Rezept?'}
+        label={changes ? 'Was soll anders sein?' : 'Was soll ins Rezept?'}
         placeholder={
-          props.compact
+          changes
             ? 'z. B. „Füg eine vegane Variante hinzu“'
             : 'z. B. „Omas Apfelkuchen für 4 mit Streuseln“ oder einen Link einfügen'
         }
@@ -355,7 +360,9 @@ export function AiFillFields(props: {
         hint={
           props.compact
             ? undefined
-            : 'Text, bis zu 3 Links und 4 Fotos – die KI füllt den Entwurf, du prüfst und speicherst.'
+            : changes
+              ? 'Die KI ändert nur, was du dir wünschst – du prüfst jede Änderung.'
+              : 'Text, bis zu 3 Links und 4 Fotos – die KI füllt den Entwurf, du prüfst und speicherst.'
         }
         autoFocus={props.autoFocus}
         inputRef={props.inputRef}
@@ -426,26 +433,14 @@ export function AiFillFields(props: {
       ) : null}
       {!props.compact && fill.photos.length < RECIPE_DRAFT_LIMITS.photos ? (
         <Row gap={8} wrap>
-          {isPhone ? (
-            <Button
-              label="Foto aufnehmen"
-              icon="camera"
-              variant="secondary"
-              size="sm"
-              disabled={disabled || fill.preparing}
-              hint={online.hint}
-              onPress={() => fill.addPhoto(true)}
-              testID={`${testID}-camera`}
-            />
-          ) : null}
           <Button
-            label={isPhone ? 'Fotomediathek' : 'Foto wählen'}
+            label={touch ? 'Foto auswählen' : 'Foto wählen'}
             icon="image"
             variant="secondary"
             size="sm"
             disabled={disabled || fill.preparing}
             hint={online.hint}
-            onPress={() => fill.addPhoto(false)}
+            onPress={fill.addPhoto}
             testID={`${testID}-photo`}
           />
         </Row>
@@ -622,6 +617,7 @@ export function AiFillSheet(props: {
   useEffect(() => searchTitle(), []);
   const id = changing ? 'recipe-ai-change' : 'recipe-ai-fill';
   const name = changing ? 'Mit KI ändern' : 'Mit KI ausfüllen';
+  const proposes = changing || props.hasContent;
   const submit = () => {
     if (!fill.ready || fill.busy) return;
     const generatePhoto = fill.generatePhoto;
@@ -675,11 +671,12 @@ export function AiFillSheet(props: {
           tab === 'web'
             ? webSearchPrimary(search, online, take, `${id}-web`)
             : {
+                // A recipe with content gets a proposal to check, not a filled draft (review 0004).
                 label: fill.busy
-                  ? changing
+                  ? proposes
                     ? 'Wird vorgeschlagen …'
                     : 'Wird ausgefüllt …'
-                  : changing
+                  : proposes
                     ? 'Vorschlag'
                     : 'Ausfüllen',
                 icon: 'sparkles',
@@ -709,6 +706,7 @@ export function AiFillSheet(props: {
           <AiFillFields
             fill={fill}
             compact={changing}
+            changes={props.hasContent}
             autoFocus={defaults.tab === 'prompt'}
             inputRef={tabs.promptField}
             testID={`${id}-field`}

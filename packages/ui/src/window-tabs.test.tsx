@@ -96,6 +96,93 @@ describe('focusAfterChange (spec 0055, REQ-001)', () => {
   });
 });
 
+/** The window's size for react-native-web (jsdom reports 0 × 0): a phone, so the swipe is on. */
+function setWindow(width: number, height: number) {
+  const root = document.documentElement;
+  Object.defineProperty(root, 'clientWidth', { configurable: true, value: width });
+  Object.defineProperty(root, 'clientHeight', { configurable: true, value: height });
+  act(() => {
+    window.dispatchEvent(new Event('resize'));
+  });
+}
+
+// react-native-web builds PanResponder's gestures from mouse events with their time stamps.
+let stamp = 1000;
+function mouse(target: Element, type: 'mousedown' | 'mousemove' | 'mouseup', x: number) {
+  stamp += 100;
+  const event = new MouseEvent(type, {
+    bubbles: true,
+    cancelable: true,
+    clientX: x,
+    clientY: 300,
+    button: 0,
+    buttons: type === 'mouseup' ? 0 : 1,
+  });
+  Object.defineProperty(event, 'timeStamp', { value: stamp });
+  act(() => {
+    target.dispatchEvent(event);
+  });
+}
+function swipeLeft(target: Element) {
+  mouse(target, 'mousedown', 300);
+  for (const x of [280, 240, 200, 160]) mouse(target, 'mousemove', x);
+  mouse(target, 'mouseup', 160);
+}
+
+/** The window's tabs as "Mit KI ausfüllen" wires them: a swipe moves the cursor while typing. */
+function SwipeTabs() {
+  const [tab, setTab] = useState<'web' | 'prompt'>('web');
+  const field = useRef<ComponentRef<typeof TextInput>>(null);
+  const index = tab === 'web' ? 0 : 1;
+  return (
+    <TabSwipeContent
+      swipe={{
+        index,
+        count: 2,
+        onStep: (step) =>
+          focusAfterChange(
+            () => setTab(index + step === 0 ? 'web' : 'prompt'),
+            () => field.current,
+            { onlyWhenTyping: true },
+          ),
+      }}
+    >
+      {tab === 'web' ? (
+        <TextInput key="web" ref={field} testID="web-field" />
+      ) : (
+        <TextInput key="prompt" ref={field} testID="prompt-field" />
+      )}
+      <Text>Inhalt</Text>
+    </TabSwipeContent>
+  );
+}
+
+describe('a swipe between the tabs while typing (spec 0055, REQ-002; review 0004, I-01/I-02)', () => {
+  beforeEach(() => setWindow(390, 844));
+  afterEach(() => setWindow(0, 0));
+
+  it('AC-007: the field of the new tab has the cursor, and React warns of nothing', () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    render(<SwipeTabs />);
+    (screen.getByTestId('web-field') as HTMLInputElement).focus();
+    swipeLeft(screen.getByText('Inhalt'));
+    act(() => vi.advanceTimersByTime(50));
+    expect(document.activeElement).toBe(screen.getByTestId('prompt-field'));
+    expect(errors.mock.calls.flat().join(' ')).not.toMatch(/flushSync/);
+    errors.mockRestore();
+  });
+
+  it('AC-007 on an iPhone: the hidden field holds the keyboard and goes once the new field has it', () => {
+    asIPhone();
+    render(<SwipeTabs />);
+    (screen.getByTestId('web-field') as HTMLInputElement).focus();
+    swipeLeft(screen.getByText('Inhalt'));
+    act(() => vi.advanceTimersByTime(50));
+    expect(document.activeElement).toBe(screen.getByTestId('prompt-field'));
+    expect(document.querySelectorAll('input')).toHaveLength(1);
+  });
+});
+
 describe('TabSwipeContent (spec 0055, REQ-002)', () => {
   it('AC-006: inside a window the content pans only vertically, so a sideways finger swipes', () => {
     render(

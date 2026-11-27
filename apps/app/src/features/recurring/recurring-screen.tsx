@@ -7,15 +7,14 @@ import {
 } from '@housekeeping/core';
 import {
   Button,
+  CreateButton,
   EmptyState,
-  IconButton,
   List,
   ListRow,
   Screen,
   ScreenHeader,
   Sheet,
   Text,
-  useBreakpoint,
 } from '@housekeeping/ui';
 import { useState } from 'react';
 import { View } from 'react-native';
@@ -46,7 +45,11 @@ function RecurringSheet(props: {
       size="m"
       title={form.title}
       onClose={props.onClose}
-      actions={{ primary: form.save }}
+      // "Abbrechen · Speichern" like every form, also at the bottom on wide screens (review 0004).
+      actions={{
+        primary: form.save,
+        cancel: { label: 'Abbrechen', onPress: props.onClose, testID: 'recurring-cancel' },
+      }}
       footer={form.remove ? <Button {...form.remove} variant="ghost" /> : undefined}
       testID="recurring-sheet"
     >
@@ -90,7 +93,6 @@ export function RecurringScreen() {
   const articlesById = useArticlesById();
   const today = useToday();
   const online = useOnlineOnly();
-  const { isPhone } = useBreakpoint();
   const { params } = usePageParams('dauerposten');
   // "‹ Liste" from the list's ⋯ (`von=liste`), otherwise "‹ Verwalten".
   const { label: backLabel, back } = useOriginBack(params.von, 'verwalten');
@@ -104,21 +106,9 @@ export function RecurringScreen() {
     })
     .sort((a, b) => a.name.localeCompare(b.name, 'de'));
 
-  const addButton = isPhone ? (
-    <IconButton
-      icon="plus"
-      label="Neuer Dauerposten"
-      variant="soft"
-      disabled={online.disabled}
-      hint={online.hint}
-      onPress={startNew}
-      testID="recurring-new"
-    />
-  ) : (
-    <Button
-      label="Dauerposten"
-      icon="plus"
-      size="sm"
+  const addButton = (
+    <CreateButton
+      label="Dauerposten anlegen"
       disabled={online.disabled}
       hint={online.hint}
       onPress={startNew}
@@ -153,7 +143,7 @@ export function RecurringScreen() {
             testID="recurring-empty"
           >
             <Button
-              label="Dauerposten"
+              label="Dauerposten anlegen"
               icon="plus"
               disabled={online.disabled}
               hint={online.hint}

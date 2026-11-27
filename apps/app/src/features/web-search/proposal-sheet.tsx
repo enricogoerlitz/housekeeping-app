@@ -57,28 +57,33 @@ function RefineLine(props: { refine: ProposalRefine; testID: string }) {
   };
   return (
     <Stack gap={8}>
-      <DictationField
-        label="Was soll noch anders sein?"
-        placeholder={'z. B. „nimm Räuchertofu statt Bohnen“'}
-        value={wish}
-        onChangeText={(text) => setWish(text.slice(0, REFINE_MAX))}
-        maxLength={REFINE_MAX}
-        editable={!refine.busy && !online.disabled}
-        onSubmitEditing={send}
-        returnKeyType="send"
-        testID={`${testID}-text`}
-      />
-      <View style={{ alignItems: 'flex-start' }}>
-        <Button
-          label={refine.busy ? 'Wird angepasst …' : 'Anpassen'}
-          icon="sparkles"
-          variant="secondary"
-          size="sm"
-          disabled={refine.busy || online.disabled || wish.trim() === ''}
-          hint={online.hint}
-          onPress={send}
-          testID={`${testID}-send`}
-        />
+      {/* One line: the field and "Anpassen" beside it (D-03, review 0004). */}
+      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8 }}>
+        <View style={{ flex: 1 }}>
+          <DictationField
+            label="Was soll noch anders sein?"
+            placeholder={'z. B. „nimm Räuchertofu statt Bohnen“'}
+            value={wish}
+            onChangeText={(text) => setWish(text.slice(0, REFINE_MAX))}
+            maxLength={REFINE_MAX}
+            editable={!refine.busy && !online.disabled}
+            onSubmitEditing={send}
+            returnKeyType="send"
+            testID={`${testID}-text`}
+          />
+        </View>
+        <View style={{ minHeight: 50, justifyContent: 'center' }}>
+          <Button
+            label={refine.busy ? 'Wird angepasst …' : 'Anpassen'}
+            icon="sparkles"
+            variant="secondary"
+            size="sm"
+            disabled={refine.busy || online.disabled || wish.trim() === ''}
+            hint={online.hint}
+            onPress={send}
+            testID={`${testID}-send`}
+          />
+        </View>
       </View>
       {refine.busy ? (
         <LoadingLines label="Die KI passt den Vorschlag an …" testID={`${testID}-busy`} />
@@ -250,7 +255,7 @@ function RowLine(props: {
 
 /**
  * AC-016 – AC-021: the proposal with its sticky summary; "Übernehmen" gives the ids the person
- * took back, "Alles verwerfen" closes without a change.
+ * took back, "Abbrechen" closes without a change ("Alles verwerfen" did the same; review 0004).
  */
 export function ProposalSheet(props: {
   proposal: ChangeProposal;
@@ -305,13 +310,6 @@ export function ProposalSheet(props: {
           <Text variant="smallStrong" testID={`${testID}-summary`}>
             {summary}
           </Text>
-          <Button
-            label="Alles verwerfen"
-            variant="link"
-            size="sm"
-            onPress={props.onClose}
-            testID={`${testID}-discard`}
-          />
         </View>
       }
       actions={{
@@ -324,6 +322,10 @@ export function ProposalSheet(props: {
         },
         cancel: { label: 'Abbrechen', onPress: props.onClose, testID: `${testID}-cancel` },
       }}
+      // D-03 (review 0004): reachable without scrolling past every row; on phones it ends the list.
+      footer={
+        props.refine ? <RefineLine refine={props.refine} testID={`${testID}-refine`} /> : undefined
+      }
       testID={testID}
     >
       <Stack gap={16}>
@@ -373,7 +375,6 @@ export function ProposalSheet(props: {
             </Stack>
           ),
         )}
-        {props.refine ? <RefineLine refine={props.refine} testID={`${testID}-refine`} /> : null}
       </Stack>
     </Sheet>
   );
