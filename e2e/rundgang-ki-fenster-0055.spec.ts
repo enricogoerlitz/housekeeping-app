@@ -321,10 +321,10 @@ test.describe('REQ-006 – REQ-008: „Prompt“ on the recipe, the web search, 
     const send = tid(page, 'recipe-proposal-refine-send');
     await expect(send).toHaveAccessibleName('Anpassen');
     await expect(send).toHaveText('');
-    const frame = await tid(page, 'recipe-proposal-refine-text').locator('..').boundingBox();
-    const button = await send.boundingBox();
-    expect(button!.x + button!.width).toBeLessThanOrEqual(frame!.x + frame!.width);
-    expect(button!.y).toBeGreaterThanOrEqual(frame!.y);
+    // The button sits inside the field's frame, not in a row beside it.
+    const frame = tid(page, 'recipe-proposal-refine-text').locator('..');
+    await expect(frame.locator('[data-testid="recipe-proposal-refine-send"]')).toHaveCount(1);
+    await expect(frame.locator('[data-testid="recipe-proposal-refine-text-mic"]')).toHaveCount(1);
     await tid(page, 'recipe-proposal-refine-text').fill('nimm Linsen statt Tofu');
     await tid(page, 'recipe-proposal-refine-send').click();
     await expect(tid(page, 'recipe-proposal-refine-error')).toBeVisible();
