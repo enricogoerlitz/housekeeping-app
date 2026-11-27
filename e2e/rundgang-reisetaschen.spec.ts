@@ -50,7 +50,7 @@ function tripBag(page: Page, name: string): Locator {
 async function openMallorca(page: Page): Promise<void> {
   await open(page, '/');
   await openManaged(page, 'trips');
-  await tid(page, `trip-${MALLORCA}-open`).click();
+  await tid(page, `trip-${MALLORCA}`).click();
   await expect(tid(page, 'trip-window-title')).toHaveText('Urlaub Mallorca');
 }
 
@@ -252,7 +252,7 @@ test('AC-031 / AC-033 / AC-034: an item, a bag added and a bag removed after ask
 test('AC-019: "Dienstreise Hamburg" has no packing list yet', async ({ page }) => {
   await open(page, '/');
   await openManaged(page, 'trips');
-  await tid(page, `trip-${HAMBURG}-open`).click();
+  await tid(page, `trip-${HAMBURG}`).click();
   await expect(tid(page, `trip-empty-${HAMBURG}`)).toContainText('Noch keine Packliste');
   await expect(tid(page, `trip-add-bag-open-${HAMBURG}`)).toBeVisible();
   await tid(page, 'trip-window-close').click();

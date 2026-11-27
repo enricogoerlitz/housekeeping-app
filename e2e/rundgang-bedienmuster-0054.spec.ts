@@ -156,7 +156,7 @@ test('AC-016 / AC-017: "Reisen" has no bin in a row; deleting goes through the t
   await expect(row).toBeVisible();
   await expect(tid(page, `trip-${HAMBURG}-remove`)).toHaveCount(0);
   await expect(row.getByRole('button', { name: /löschen/i })).toHaveCount(0);
-  await tid(page, `trip-${HAMBURG}-open`).click();
+  await tid(page, `trip-${HAMBURG}`).click();
   await tid(page, 'trip-more').click();
   await expect(tid(page, 'trip-more-delete')).toHaveText('Reise löschen');
 });
@@ -169,7 +169,7 @@ test.describe('phone', () => {
   }) => {
     await open(page, '/');
     await openManaged(page, 'trips');
-    await tid(page, `trip-${HAMBURG}-open`).click();
+    await tid(page, `trip-${HAMBURG}`).click();
     await tid(page, 'trip-more').click();
     await tid(page, 'trip-more-delete').click();
     const head = tid(page, 'confirm-delete-trip-header');

@@ -271,7 +271,7 @@ test('AC-034 (0016), AC-007 (0022): "Reisen" lives at /reisen, a trip opens as ?
   await openManaged(page, 'trips');
   await expect(page).toHaveURL(/\/reisen$/);
   await expect(tid(page, 'trips-screen')).toContainText('Reisen');
-  await tid(page, `trip-${mallorca}-open`).click();
+  await tid(page, `trip-${mallorca}`).click();
   await expect(page).toHaveURL(new RegExp(`/reisen\\?reise=${mallorca}`));
   await page.reload();
   await expect(tid(page, 'trip-window-title')).toHaveText('Urlaub Mallorca');

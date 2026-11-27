@@ -1,5 +1,5 @@
 ---
-status: freigegeben
+status: umgesetzt
 datum: 2026-11-27
 ---
 
@@ -151,7 +151,8 @@ Titel und ✕. Jedes Fenster hat ein sichtbares Schließen. Umgestellt werden di
 
 **REQ-008 — Akzent nur für die Hauptaktion.** Zerstörende oder verlassende Text-Knöpfe sind nicht
 im Akzent, sondern in Tinte (`Button variant="link" quiet`): „Verlassen“, „Entfernen“,
-„Zurückziehen“ bei den Mitgliedern und „Löschen“ im Fenster einer Aufgabe. Quelle: Abschnitt
+„Zurückziehen“ bei den Mitgliedern, „Löschen“ im Fenster einer Aufgabe und bei den Arten der
+Aktivitäten, „Foto entfernen“ im Formular-Foto. Quelle: Abschnitt
 „Farbe / Akzent“. Offline: unverändert.
 
 - AC-021: Angenommen ein Text-Knopf mit `quiet` · Wenn er gezeichnet wird · Dann hat sein Text die
@@ -189,6 +190,15 @@ bei den Bausteinen. Quelle: Auftrag. Offline: entfällt.
    „Hinweis“); Tinte ist ruhig und trotzdem lesbar. Die API von `Button` bleibt rückwärtskompatibel.
 7. OFFEN: Sollen „Märkte & Bereiche“ und „Artikel“ im ⋯ der Einkaufsliste wie „Reisen“ im Kalender
    entfallen? Sie stehen nicht auf der Seite (nur hinter ⊞), daher bleiben sie, bis Enrico es sagt.
+8. **„Rezept löschen?“ mit Zutaten auf der Liste bleibt, wie es ist.** Drei Antworten („Zutaten auch
+   von der Liste nehmen“, „Nur löschen“, „Abbrechen“) passen nicht in einen Kopf; sie stehen
+   untereinander unten. So steht es als Ausnahme in DESIGN.md.
+9. **Abgrenzung:** „Foto entfernen“ im Fenster „Foto“ (`photo-window.tsx`, Spec 0055) bleibt im
+   Akzent, und der Kommentar „which the ⋯ menu opens too“ in `recipe-cover.tsx` (Spec 0056) bleibt
+   stehen; beides räumen die jeweiligen Specs mit auf. Hier wird in `photo-window.tsx` nur der nicht
+   mehr genutzte Export von `confirmPhotoRemoval` entfernt.
+10. **Reisen-Zeile ohne eigene Knöpfe:** Ohne Mülleimer ist die ganze Zeile der Knopf; ihre Test-ID
+    ist jetzt `trip-<id>` statt `trip-<id>-open` (e2e angepasst).
 
 ## Daten
 
@@ -198,14 +208,26 @@ nicht mehr geschrieben.
 
 ## Umsetzung
 
-- [ ] 1. Rot: Vitest für `CreateButton` (AC-001–AC-003) und `Button quiet` (AC-021); dann bauen
-- [ ] 2. `CreateButton` auf allen Seiten aus REQ-001, Essen ohne `FoodNewMenu` (AC-004–AC-007)
-- [ ] 3. ⋯ von Rezept, Sammlung, Restaurant, Aktivität (AC-008–AC-010)
-- [ ] 4. Kalender ohne ⋯, `householdRow` raus aus Einstellungen und Ansichten (AC-011–AC-013)
-- [ ] 5. Restaurant-Notiz, Reisen ohne Mülleimer (AC-014–AC-017)
-- [ ] 6. Fensterköpfe der Rückfragen und Mitteilungen (AC-018–AC-020), `quiet` (AC-022)
-- [ ] 7. DESIGN.md „Bedienmuster“, Showroom (AC-023)
-- [ ] 8. e2e `e2e/rundgang-bedienmuster-0054.spec.ts`; bestehende e2e auf die neuen Wege anpassen
+- [x] 1. Rot: Vitest für `CreateButton` (AC-001–AC-003) und `Button quiet` (AC-021); dann bauen
+- [x] 2. `CreateButton` auf allen Seiten aus REQ-001, Essen ohne `FoodNewMenu` (AC-004–AC-007)
+- [x] 3. ⋯ von Rezept, Sammlung, Restaurant, Aktivität (AC-008–AC-010)
+- [x] 4. Kalender ohne ⋯, `householdRow` raus aus Einstellungen und Ansichten (AC-011–AC-013)
+- [x] 5. Restaurant-Notiz, Reisen ohne Mülleimer (AC-014–AC-017)
+- [x] 6. Fensterköpfe der Rückfragen und Mitteilungen (AC-018–AC-020), `quiet` (AC-022)
+- [x] 7. DESIGN.md „Bedienmuster“, Showroom (AC-023)
+- [x] 8. e2e `e2e/rundgang-bedienmuster-0054.spec.ts`; bestehende e2e auf die neuen Wege angepasst
       (läuft beim Koordinator)
-- [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün; Screenshots Desktop
+- [x] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün; Screenshots Desktop
       1440×900 und Handy 390×844 in `tmp/review-0004/0054/`
+
+## Nachweis
+
+- Rot (27.11.2026): `packages/ui/src/create-button.test.tsx` — 4 von 4 rot (AC-001–AC-003: kein
+  Knopf gefunden; AC-021: `rgb(180, 65, 31)` statt `rgb(43, 33, 25)`); danach 4 von 4 grün.
+- `pnpm format:check && pnpm check` grün (Lint, Typen inkl. e2e, Unit-Tests, knip); `pnpm build:web`
+  grün.
+- Eigener Dev-Server, Desktop 1440×900 und Handy 390×844 angesehen: Essen mit „Rezept anlegen“ und
+  Fenster „Neu“, Restaurants, ⋯ der Rezeptseite, Kalender Woche/Monat ohne ⋯ mit Haushaltszeile,
+  Reisen ohne Mülleimer, „Reise löschen?“ mit Fensterkopf, Mitteilungen mit „Schließen“, Mitglieder
+  in Tinte, Märkte/Bereiche/Reisetaschen/Artikel/Haushalt mit `CreateButton`.
+- e2e geschrieben, nicht ausgeführt (setzt die Datenbank zurück): läuft beim Koordinator.
