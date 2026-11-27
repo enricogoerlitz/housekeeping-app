@@ -105,7 +105,7 @@ export function isNewTag(tag: string, known: readonly string[]): boolean {
  * or a synonym of a household article gets that article, one of a starter entry the entry (both
  * like a pasted line); every other one is marked new and becomes an article only on "Speichern".
  * Each link sent becomes a link of the recipe, a TikTok link as the address it resolved to
- * (AC-016) or as sent when it could not be read (AC-017). Spec 0045: the variants get ids, the
+ * (AC-016) or as sent when it could not be read (AC-017), a YouTube link as its watch address. Spec 0045: the variants get ids, the
  * first is the standard, rows and steps find theirs by name (a name the draft does not have is
  * shared, AC-009); tags follow the household's spelling.
  */
@@ -156,11 +156,14 @@ export function draftToPageInput(
     if (step.timerMinutes !== undefined) made.timerMinutes = step.timerMinutes;
     return made;
   });
-  const links = sources.map((source): RecipeLink =>
-    source.kind === 'tiktok'
-      ? { url: source.resolvedUrl ?? source.url, label: 'TikTok' }
-      : { url: source.url },
-  );
+  const links = sources.map((source): RecipeLink => {
+    if (source.kind === 'page') return { url: source.url };
+    // Spec 0064, AC-009: a YouTube link as its normalized watch address.
+    return {
+      url: source.resolvedUrl ?? source.url,
+      label: source.kind === 'tiktok' ? 'TikTok' : 'YouTube',
+    };
+  });
   const input: PageDraftInput = {
     title: draft.title,
     description: draft.description,
@@ -210,7 +213,8 @@ export function isDictationStopWord(segment: string): boolean {
 
 /**
  * Spec 0049, AC-042: with "Foto generieren" off, a link still gives the photo its page shows — the
- * first page photo, else a TikTok cover — like the web search's „Original“. Undefined with it on.
+ * first page photo, else a TikTok cover or a YouTube thumbnail (spec 0064, AC-010) — like the web
+ * search's „Original“. Undefined with it on.
  */
 export function draftPagePhotoUrl(
   sources: readonly RecipeDraftSource[],

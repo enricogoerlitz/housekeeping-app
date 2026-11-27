@@ -92,12 +92,34 @@ gespeichert außer dem Link und dem gewählten Foto des Rezepts.
 
 ## Umsetzung
 
-- [ ] 1. `_shared/youtube.ts`: Erkennen und Normalisieren (AC-001–003), Lesen mit oEmbed-Rückfall
+- [x] 1. `_shared/youtube.ts`: Erkennen und Normalisieren (AC-001–003), Lesen mit oEmbed-Rückfall
       (AC-004–006), Rezept-Link aus der Beschreibung (AC-007, AC-008); Deno-Tests mit
       nachgebildeten Antworten (rot zuerst)
-- [ ] 2. `ai-recipe-draft`: YouTube wie TikTok einbinden, Quelle `youtube` mit `coverUrl`; Vertrag
+- [x] 2. `ai-recipe-draft`: YouTube wie TikTok einbinden, Quelle `youtube` mit `coverUrl`; Vertrag
       und App (AC-009, AC-010)
-- [ ] 3. e2e mit `page.route`: Link im KI-Feld → Entwurf mit Link und Foto-Wahl „Original“
+- [x] 3. e2e mit `page.route`: Link im KI-Feld → Entwurf mit Link und Foto-Wahl „Original“
+      (`e2e/rundgang-youtube-0064.spec.ts`, läuft beim Mergen)
 - [ ] 4. Auf der Vorschau mit 3 echten Videos prüfen (Video, Short, `youtu.be`), Ergebnis hier
       eintragen
-- [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün
+  - **Lokal (27.11., deutscher Anschluss, `readYouTube` aus `_shared/youtube.ts`):** alle drei über
+    die Video-Seite gelesen, ohne oEmbed-Rückfall, je 0,8–1 s, Seiten 1,45–1,63 MB.
+    `youtu.be/gkgJAPBrwT8` → „Lasagne Bolognese - Das Original! | Chefkoch.de“, 1025 Zeichen,
+    kein Zutatenteil, Rezept-Link `https://www.chefkoch.de/rezepte/1112181217260303/…` (AC-007),
+    Bild `vi_webp/…/maxresdefault.webp`. `shorts/SPQiIhwEtzo` → „Lasagne in 3 einfachen Schritten“,
+    2602 Zeichen, Zutatenteil erkannt („👉 Zutaten:“, „750g Hackfleisch …“), kein Nachladen
+    (AC-008), Bild `vi/…/maxresdefault.jpg`. `watch?v=dQw4w9WgXcQ` → Rick Astley, 2375 Zeichen,
+    kein Rezept-Link, Bild `maxresdefault.webp`. Die Adresse war jeweils
+    `https://www.youtube.com/watch?v=<ID>`.
+  - **Vorschau (Supabase-Server):** offen, prüft der Koordinator nach dem Deploy.
+- [x] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün (27.11., lokal)
+
+## Nachweis
+
+- Rot zuerst: `_shared/youtube.test.ts` scheiterte ohne Modul (kein `youtube.ts`), danach 17/17
+  grün; `ai-recipe-draft/handler.test.ts` 4 neue Tests rot (Quelle `page` statt `youtube`, kein
+  Rezeptseiten-Text), danach grün; in `core` scheiterten AC-004 (Vertrag ohne `youtube`) und
+  AC-009 (Link `youtu.be…` ohne Bezeichnung), danach grün.
+- Das größte Vorschaubild ist bei vielen Videos WebP (`vi_webp/…/maxresdefault.webp`); `fetch-image`
+  erkennt WebP (`imageTypeOf`), die App verkleinert es wie jedes Foto.
+- Die Anweisung an die KI nennt jetzt „TikTok- und YouTube-Texte“ als Quellen; gegen das echte
+  Modell nicht geprüft (kein bezahlter Aufruf).
