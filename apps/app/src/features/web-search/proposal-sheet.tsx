@@ -63,7 +63,7 @@ function RefineLine(props: { refine: ProposalRefine; testID: string }) {
       {/* A composer (spec 0062, decision 14): one round field with the mic and „Anpassen“ inside. */}
       <DictationField
         label="Was soll noch anders sein?"
-        placeholder={'z. B. „nimm Räuchertofu statt Bohnen“'}
+        placeholder="z. B. „Linsen statt Tofu“"
         value={wish}
         onChangeText={(text) => setWish(text.slice(0, REFINE_MAX))}
         maxLength={REFINE_MAX}
@@ -79,7 +79,7 @@ function RefineLine(props: { refine: ProposalRefine; testID: string }) {
           <IconButton
             icon="send"
             label="Anpassen"
-            variant="filled"
+            variant="soft"
             disabled={disabled}
             hint={online.hint}
             onPress={send}

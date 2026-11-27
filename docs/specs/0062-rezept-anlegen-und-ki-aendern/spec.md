@@ -273,7 +273,7 @@ auf der lesenden Seite; „Übernehmen“ speichert das gewählte Foto sofort (�
 14. Vorschau-Review 27.11.2026 (Review 0004, Enrico: die Zeile wirkte gequetscht): „Was soll noch
     anders sein?“ (Spec 0055, REQ-008) ist ein Eingabefeld wie beim Assistenten: rund, volle Breite,
     eine Zeile, die bis vier Zeilen wächst (`TextField grow`), darin rechts das Mikrofon und das
-    Senden-Symbol (`send`, gefüllt, Name „Anpassen“) statt „✨ Anpassen“ als Text-Knopf (AC-032,
+    Senden-Symbol (`send`, `soft`, Name „Anpassen“; nicht im Akzent, denn die Hauptaktion des Fensters ist „Übernehmen“) statt „✨ Anpassen“ als Text-Knopf (AC-032,
     AC-033). Return sendet, Umschalt+Return am Desktop macht eine neue Zeile. Am Handy und am
     Desktop gleich. Fortschritt zeigen weiter die Ladezeilen darunter. „Was soll anders sein?“ bei
     den Fotovorschlägen ist kein solches Feld (optionaler Zusatz zu „Neu generieren“, leer erlaubt)
