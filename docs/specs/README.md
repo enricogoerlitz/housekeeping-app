@@ -72,6 +72,7 @@ Ablauf und Regeln: siehe `AGENTS.md`, Abschnitt „Workflow per feature“.
 | [0063](0063-vorschlaege-beim-planen/spec.md)                | Vorschläge beim Planen                                                 | umgesetzt   |
 | [0064](0064-youtube-rezepte/spec.md)                        | Rezepte aus YouTube-Videos                                             | freigegeben |
 | [0065](0065-ki-rezept-foto-der-quelle/spec.md)              | KI-Rezept: Foto der Quelle aus der Websuche                            | freigegeben |
+| [0066](0066-ki-agent/spec.md)                               | KI-Agent: Recherche-Chat für Restaurants und Aktivitäten (Schritt 1)   | freigegeben |
 | [0067](0067-housekeeping-agent/spec.md)                     | Housekeeping-Agent: ein zentraler KI-Agent für den ganzen Haushalt     | freigegeben |
 | [0068](0068-senden-waehrend-diktat/spec.md)                 | Senden während des Diktats                                             | umgesetzt   |
 

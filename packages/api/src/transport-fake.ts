@@ -38,6 +38,10 @@ import {
   normalizeText,
   SeriesRuleSchema,
   RECIPE_LIMITS,
+  sseData,
+  type AgentLoadReply,
+  type AgentSendRequest,
+  type AgentStreamEvent,
   type AiImageReply,
   type AiImageRequest,
   type AiSearchRequest,
@@ -143,6 +147,7 @@ type RpcName =
   | 'ai-recipe-draft'
   | 'ai-image'
   | 'web-search'
+  | 'ai-agent'
   | 'storage_upload'
   | 'storage_download'
   | 'storage_remove'
@@ -158,6 +163,13 @@ export interface FakeAi {
   /** Spec 0049; throw a TransportError to play a provider that is down. */
   webSearch?: (request: Extract<WebSearchRequest, { mode: 'search' }>) => WebSearchReply;
   placePreview?: (request: Extract<WebSearchRequest, { mode: 'place' }>) => PlacePreviewReply;
+  /**
+   * Spec 0066: the events of one answer of the KI-Agent. A `chat` event creates the chat's row as
+   * ai-agent would; throw a TransportError for a refusal before the stream.
+   */
+  agent?: (request: AgentSendRequest) => AgentStreamEvent[];
+  /** The messages `ai-agent` loads for a chat. */
+  agentMessages?: (chatId: string) => AgentLoadReply['messages'];
 }
 
 interface FailureRule {
@@ -3613,6 +3625,10 @@ export function createFakeServer(): FakeServer {
           ) {
             throw reject('media_remaining');
           }
+          // Spec 0066, REQ-010: the KI-Agent chats are deleted through ai-agent first.
+          if (Object.keys(data.get(householdId)?.ai_chats ?? {}).length > 0) {
+            throw reject('ai_chats_remaining');
+          }
           // One transaction with the cascade: rows, members, invitations, tombstones.
           households.delete(householdId);
           members = members.filter((member) => member.household_id !== householdId);
@@ -3714,6 +3730,57 @@ export function createFakeServer(): FakeServer {
             throw new TransportError('permanent', 'forbidden', 403);
           if (!ai.webSearch) throw new TransportError('transient', 'search_unavailable', 503);
           return ai.webSearch(request);
+        }),
+      agentSend: (request) =>
+        run(userId, 'ai-agent', () => {
+          requireUser(userId);
+          if (!isMember(userId, request.householdId))
+            throw new TransportError('permanent', 'forbidden', 403);
+          if (!ai.agent) throw aiUnavailable();
+          const events = ai.agent(request);
+          const created = events.find((event) => event.type === 'chat');
+          if (created?.type === 'chat') {
+            const before = data.get(request.householdId) ?? {};
+            commit(
+              request.householdId,
+              before,
+              withRow(before, 'ai_chats', {
+                id: created.chatId,
+                household_id: request.householdId,
+                conversation_id: `conv_${created.chatId.replace(/-/g, '')}`,
+                title: created.title,
+                place_label: request.place.label,
+                created_by: userId,
+                response_ids: ['resp_fake'],
+              }),
+            );
+          }
+          const encoder = new TextEncoder();
+          return new ReadableStream<Uint8Array>({
+            start(stream) {
+              for (const event of events) stream.enqueue(encoder.encode(sseData(event)));
+              stream.close();
+            },
+          });
+        }),
+      agentLoad: (householdId, chatId) =>
+        run(userId, 'ai-agent', () => {
+          requireUser(userId);
+          if (!isMember(userId, householdId) || !data.get(householdId)?.ai_chats?.[chatId])
+            throw new TransportError('permanent', 'forbidden', 403);
+          return { messages: ai.agentMessages ? ai.agentMessages(chatId) : [] };
+        }),
+      agentDelete: (householdId, chatId) =>
+        run(userId, 'ai-agent', () => {
+          requireUser(userId);
+          if (!isMember(userId, householdId))
+            throw new TransportError('permanent', 'forbidden', 403);
+          const before = data.get(householdId) ?? {};
+          const ids = chatId ? [chatId] : Object.keys(before.ai_chats ?? {});
+          if (chatId && !before.ai_chats?.[chatId])
+            throw new TransportError('permanent', 'forbidden', 403);
+          commit(householdId, before, withoutRows(before, 'ai_chats', ids, false));
+          return ids.length;
         }),
       placePreview: (request) =>
         run(userId, 'web-search', () => {

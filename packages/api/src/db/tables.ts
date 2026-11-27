@@ -35,6 +35,8 @@ export const ID_TABLES = [
   // Spec 0013, 0051: one row per member, readable only by herself (RLS); created by the server;
   // her acknowledged notices, written only through acknowledge_notices.
   'notification_settings',
+  // Spec 0066: chat references of the KI-Agent, written only by ai-agent through its RPCs.
+  'ai_chats',
 ] as const;
 
 /**
@@ -217,6 +219,8 @@ export const WRITABLE_COLUMNS = {
   ],
   // Spec 0051: nothing is patched; acknowledged_notices changes only through acknowledge_notices.
   notification_settings: [],
+  // Spec 0066: written only by ai-agent through its RPCs (RPC_ONLY in changes.ts).
+  ai_chats: [],
 } as const satisfies Record<IdTable | 'households', readonly string[]>;
 
 export type WritableTable = keyof typeof WRITABLE_COLUMNS;

@@ -270,6 +270,13 @@ export const PAGE_PARAMS = {
   verwalten: {},
   // Spec 0060: "Dauerposten" under "Verwalten", also from the list's ⋯.
   dauerposten: { von: Von },
+  // Spec 0066: the KI-Agent, from "Restaurants" (von=essen) or "Aktivitäten"; the chat shown and
+  // the windows "Verlauf" and "In der Nähe von".
+  'ki-agent': {
+    von: Von,
+    chat: one(Uuid),
+    fenster: one(oneOf(['verlauf', 'ort'])),
+  },
   einstellungen: {
     abschnitt: one(oneOf(['profil', 'darstellung', 'ki'])),
     fenster: one(oneOf(['profil'])),

@@ -23,3 +23,5 @@ neue abgelöst.
 | [0015](0015-auslieferung-und-betrieb.md)                              | Azure Static Web Apps, Vorschau aus `develop`, Kalender-Version, Mindestversion, Sicherung in Azure | angenommen          |
 | [0016](0016-bildmodell-und-abruf-fremder-seiten.md)                   | Fremde Adressen nur über `fetch-public`, Bilder mit FLUX.2-pro, nächtliches Aufräumen der Fotos     | angenommen          |
 | [0017](0017-mitteilungen-in-der-app.md)                               | Mitteilungen nur in der App (Glocke), Bestätigungen je Mitglied; Web Push entfällt                  | angenommen          |
+| [0018](0018-ki-agent-chats-online.md)                                 | KI-Agent: Chatinhalt nur in Foundry, online gelesen; der Verlauf im Cache                           | angenommen          |
+| [0019](0019-foundry-agenten-als-code-je-umgebung.md)                  | Foundry-Agenten als YAML je Umgebung, Upsert in der Pipeline über REST mit OIDC, Version gepinnt    | angenommen          |

@@ -505,6 +505,8 @@ export const ErrorCodeSchema = z.enum([
   'video_exists',
   /** web-search (spec 0049, AC-023): neither Serper nor Brave answered usably. */
   'search_unavailable',
+  /** ai-agent (spec 0066, AC-035): the chat has its 20 answers; a new chat goes on. */
+  'chat_too_long',
 ]);
 export type ErrorCode = z.infer<typeof ErrorCodeSchema>;
 

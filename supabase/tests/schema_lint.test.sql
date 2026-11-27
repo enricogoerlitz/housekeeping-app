@@ -44,6 +44,10 @@ insert into lint_private_functions_for_authenticated values
   ('private.begin_household_deletion(uuid)'), -- security invoker, reads storage.objects under RLS
   ('private.close_household_for_deletion(uuid)'), -- definer, rechecks last member under a lock
   ('private.delete_household(uuid)'),
+  -- Spec 0066: the chat references of ai-agent.
+  ('private.create_ai_chat(uuid,text,text,text)'),
+  ('private.record_ai_chat_turn(uuid,text,text)'),
+  ('private.delete_ai_chat(uuid)'),
   ('private.assert_members(uuid,uuid[])'), -- security invoker, called by member-check triggers
   ('private.set_recipe_favorite(uuid,boolean)'),
   ('private.set_recipe_rating(uuid,numeric)'),

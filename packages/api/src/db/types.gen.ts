@@ -372,6 +372,58 @@ export type Database = {
           },
         ];
       };
+      ai_chats: {
+        Row: {
+          conversation_id: string;
+          created_at: string;
+          created_by: string | null;
+          household_id: string;
+          id: string;
+          place_label: string | null;
+          response_ids: string[];
+          title: string;
+          updated_at: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          conversation_id: string;
+          created_at?: string;
+          created_by?: string | null;
+          household_id: string;
+          id?: string;
+          place_label?: string | null;
+          response_ids?: string[];
+          title: string;
+          updated_at?: string;
+        };
+        Update: {
+          conversation_id?: string;
+          created_at?: string;
+          created_by?: string | null;
+          household_id?: string;
+          id?: string;
+          place_label?: string | null;
+          response_ids?: string[];
+          title?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'ai_chats_created_by_fkey';
+            columns: ['household_id', 'created_by'];
+            isOneToOne: false;
+            referencedRelation: 'household_members';
+            referencedColumns: ['household_id', 'profile_id'];
+          },
+          {
+            foreignKeyName: 'ai_chats_household_id_fkey';
+            columns: ['household_id'];
+            isOneToOne: false;
+            referencedRelation: 'households';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       areas: {
         Row: {
           created_at: string;
@@ -2068,6 +2120,10 @@ export type Database = {
       clear_checked_items: { Args: { p_household_id: string }; Returns: Json };
       clear_shopping_list: { Args: { p_household_id: string }; Returns: Json };
       consume_ai_quota: { Args: { amount: number; kind: string }; Returns: boolean };
+      create_ai_chat: {
+        Args: { conversation_id: string; household_id: string; place_label: string; title: string };
+        Returns: string;
+      };
       create_household: { Args: { name: string; starter: Json }; Returns: string };
       create_store: {
         Args: { p_copy_from: string; p_household_id: string; p_name: string; p_store_id: string };
@@ -2075,6 +2131,7 @@ export type Database = {
       };
       decline_invitation: { Args: { invitation_id: string }; Returns: undefined };
       delete_activity: { Args: { activity_id: string; today: string }; Returns: Json };
+      delete_ai_chat: { Args: { chat_id: string }; Returns: undefined };
       delete_article: { Args: { p_article_id: string }; Returns: Json };
       delete_chore: { Args: { chore_id: string }; Returns: undefined };
       delete_household: { Args: { household_id: string }; Returns: undefined };
@@ -2087,6 +2144,10 @@ export type Database = {
       merge_areas: { Args: { p_source_id: string; p_target_id: string }; Returns: number };
       merge_articles: { Args: { p_source_id: string; p_target_id: string }; Returns: Json };
       min_app_version: { Args: Record<PropertyKey, never>; Returns: string };
+      record_ai_chat_turn: {
+        Args: { chat_id: string; response_id: string; title: string };
+        Returns: undefined;
+      };
       remove_contributions: { Args: { p_ids: string[] }; Returns: number };
       remove_item_contributions: { Args: { p_ids: string[]; p_item_id: string }; Returns: Json };
       remove_member: { Args: { household_id: string; profile_id: string }; Returns: undefined };

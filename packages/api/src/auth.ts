@@ -518,6 +518,11 @@ export function startAuth(
     cacheStorage?: Storage;
     /** The app's own version (spec 0014): starts the version check, signed in or not. */
     appVersion?: string;
+    /**
+     * What the app keeps on the device besides the cache (kept drafts, the KI-Agent's recent
+     * places): cleared with the local data on every sign-out, also a forced one (spec 0066, AC-013).
+     */
+    clearDevice?: () => void;
   } = {},
 ): AuthController {
   if (controller) return controller;
@@ -561,6 +566,7 @@ export function startAuth(
       });
     },
     resetData: async () => {
+      options.clearDevice?.();
       await resetLocalData();
       // Also when no engine runs (e.g. it never started): nothing of the cache may remain.
       await cacheStorage.clear();

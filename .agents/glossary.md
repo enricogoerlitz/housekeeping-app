@@ -1277,6 +1277,48 @@ gespeichert, bevor die Person „Speichern“ tippt.
 - **Nicht verwenden:** Google-Suche, Internetsuche, KI-Suche (das ist die Suche in den eigenen
   Rezepten, Spec 0003)
 
+### KI-Agent
+
+Die eigene Seite für Recherchen mit KI (Spec 0066), geöffnet mit ✨ im Kopf von „Restaurants“ und
+„Aktivitäten“: Nachricht, Ort, Antwort mit Text und Vorschlagskarten. Dahinter steht ein
+Foundry-Agent mit Websuche (`places-agent` in `foundry/agents/`, je Umgebung
+`places-agent-local`, `-preview`, `-prod`; ADR-0019). In Schritt 1 nur Restaurants und
+Aktivitäten, ohne Haushaltsdaten.
+
+- **Im Code:** `AgentScreen`, `ai-agent` (Edge Function), `places-agent` (Foundry), `features.aiAgent`
+- **Nicht verwenden:** KI-Chat (Name des PoC), Assistent (das ist Spec 0003), Chatbot
+
+### Recherche-Chat
+
+Ein Gespräch mit dem KI-Agent: Titel (Titel der ersten Karten oder Anfang der ersten Nachricht),
+Ort, wer ihn gestartet hat. Gehört dem Haushalt, alle Mitglieder sehen und setzen ihn fort. Der
+Inhalt liegt nur in Foundry; bei uns steht nur der Verweis. Im „Verlauf“ der Seite.
+
+- **Im Code:** `AiChat`, `ai_chats`, `useAiChats`, `sendAgentMessage`, `loadAgentChat`,
+  `deleteAgentChat`
+- **Nicht verwenden:** Konversation (außer für die Foundry-Conversation), Recherche (allein), Thread
+
+### Vorschlagskarte
+
+Ein Ort, den der KI-Agent vorschlägt, als Karte im Karussell unter der Antwort: Foto, Name, Sterne,
+Preis, Art, Öffnungsstatus, warum er passt, „Google Maps“ und „Speichern“. Sterne, Foto und
+Maps-Link kommen aus der Google-Suche (Serper), nie vom Agent. „Speichern“ legt ein Restaurant oder
+eine Aktivität an.
+
+- **Im Code:** `AgentCard`, `PlaceCard`, `show_suggestions` (Funktion des Agents),
+  `enrichmentFromHits`
+- **Nicht verwenden:** Treffer (das ist die Websuche), Ergebniskarte
+
+### Bezugspunkt (KI-Agent)
+
+Wo der KI-Agent sucht: der aktuelle Standort des Geräts (Standard), ein gewählter Ort (Adresse oder
+Google-Maps-Link), eine Reise (ihre Notiz) oder ein Ort von „Zuletzt“, mit dem Umkreis „Zu Fuß“,
+„Öffis“, „Auto“ oder „Ganze Stadt“. Geht nur mit der Nachricht an den Agent; gespeichert wird nur
+die Bezeichnung am Chat.
+
+- **Im Code:** `AgentPlace`, `AGENT_RADII`, `contextBlock` (`[KONTEXT]`-Block), `placeChipLabel`
+- **Nicht verwenden:** Pin, Standort (allein, für einen gewählten Ort)
+
 ### Prompt (Reiter)
 
 Der Reiter von „Mit KI ausfüllen“ neben „Websuche“ (früher „Eigene Angaben“, Spec 0055): ein Wunsch

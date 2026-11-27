@@ -16,6 +16,7 @@ under Node.
 | `fetch-video`       | `FetchVideoRequestSchema`  | none      | TikTok and its CDNs only, then Storage as the caller |
 | `web-search`        | `WebSearchRequestSchema`   | none      | Serper.dev, else Brave; recipe pages; Foundry LLM    |
 | `media-sweep`       | `{ names, videos? }`       | none      | Storage API (deletes orphan photos and videos)       |
+| `ai-agent`          | `AgentRequestSchema`       | 5 / turn  | Foundry places agent (SSE), Serper maps              |
 
 Every function: CORS allowlist → POST only → JWT verified with `auth.getClaims()` and
 `role = authenticated` (the anon key gets 401) → body ≤ 64 KB (6 MB for `ai-recipe-draft` and
@@ -103,6 +104,32 @@ is refused the file is removed again (`false`, the same link saved meanwhile: 40
 which the app loads through `fetch-image` as the video's poster. No server key, no quota. Nothing
 about the link or the video is logged.
 
+**`ai-agent`** (spec 0066, ADR-0018, "KI-Agent"): the common path (64 KB, `AgentRequestSchema` from
+core `ai-agent.ts`, copied by `pnpm gen:edge`), membership of `householdId` (403), then one of four
+actions. `send`: the chat row under the caller's RLS **and** the conversation's metadata
+(`household_id`) must name the household (403; the Foundry key can read every conversation of the
+project), at most 20 answers per chat (409 `chat_too_long`), quota 5 units per answer, open
+`function_call`s of an interrupted answer closed first, a new chat gets a conversation with that
+metadata and its row (`create_ai_chat`). Then the pinned agent (`FOUNDRY_PLACES_AGENT`,
+`FOUNDRY_PLACES_AGENT_VERSION`) answers in `FOUNDRY_PROJECT_ENDPOINT` with `stream: true`; the
+message carries a `[KONTEXT]` block (place, coordinates rounded to 3 decimals, radius, local time),
+because a request may not override an agent's instructions. The function answers
+`text/event-stream` with its own events (`AgentStreamEvent`: chat, step, text without citation
+tokens, cards_pending, cards, sources, done, error) — never Foundry's objects, which carry the
+instructions. Every `show_suggestions` call is validated (zod), its cards enriched by one Serper
+maps search each (stars, `cid` link, photo, coordinates; nothing from the agent), and closed with a
+`function_call_output` holding that enrichment (else the next message is refused with 400). Each
+answer id is recorded (`record_ai_chat_turn`). The person's "Anhalten" closes the request and
+aborts the run; 120 s at most. `load`: the conversation's items (5 pages of 100), turned into
+messages by core `messagesFromItems` (without the context block). `delete`: each recorded answer
+that belongs to this conversation, the conversation, then `delete_ai_chat`; a Foundry failure
+keeps the row (503). `purge`: every chat of the household, before "Haushalt endgültig löschen".
+Logs carry a step and a status, never a message, a place or a body. Household tools (step 2) plug
+into `ai-agent/tools.ts`. The agent itself: `foundry/agents/places-agent.yaml`, deployed per
+environment by `@housekeeping/foundry` (ADR-0019, `docs/architecture/betrieb.md`); the pipeline sets
+`FOUNDRY_PLACES_AGENT` and the pinned `FOUNDRY_PLACES_AGENT_VERSION`, locally an empty version means
+the latest.
+
 **Exception `media-sweep`** (spec 0039, REQ-005): called nightly by pg_net from
 `private.run_media_orphan_sweep()` (job `media-orphan-sweep`, 02:30 UTC), signed with an HMAC
 (`x-sweep-timestamp`, `x-sweep-signature`, secret `MEDIA_SWEEP_SECRET`; `_shared/signature.ts`).
@@ -150,6 +177,8 @@ Read by the functions (names only; values live in `.env`, never in the app):
 - `FOUNDRY_IMAGE_DEPLOYMENT` — the FLUX.2-pro deployment (`ai-image`); the resource is the first
   label of `FOUNDRY_OPENAI_BASE_URL`'s host, the key `FOUNDRY_API_KEY`.
 - `FOUNDRY_SPEECH_REGION`, `FOUNDRY_STT_LANGUAGE`, `FOUNDRY_STT_MODEL` (optional) — speech token.
+- `FOUNDRY_PROJECT_ENDPOINT`, `FOUNDRY_PLACES_AGENT`, `FOUNDRY_PLACES_AGENT_VERSION` — the KI-Agent
+  (`ai-agent`, spec 0066); with `FOUNDRY_API_KEY` and, for the cards, `SERPER_API_KEY`.
 - `ALLOWED_ORIGINS` — comma-separated browser origins, e.g. `http://localhost:8081`.
 - `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEYS` (or legacy `SUPABASE_ANON_KEY`) — set by Supabase.
 - `media-sweep` reads only `MEDIA_SWEEP_SECRET`, `SUPABASE_URL` and the server key

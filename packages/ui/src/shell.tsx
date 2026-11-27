@@ -562,7 +562,12 @@ export function ScreenHeader(props: ScreenHeaderProps) {
           {props.title}
         </Text>
         {props.subtitle && !collapsed ? (
-          <Text variant="small" color="muted" style={{ marginTop: 4 }}>
+          <Text
+            variant="small"
+            color="muted"
+            style={{ marginTop: 4 }}
+            testID={props.testID ? `${props.testID}-subtitle` : undefined}
+          >
             {props.subtitle}
           </Text>
         ) : null}
