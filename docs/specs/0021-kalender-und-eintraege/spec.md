@@ -199,7 +199,8 @@ Menge)“, „Grillabend (mit Nachbarn) · 3 Rezepte“, mit Uhrzeit „Trattori
 
 **REQ-009 — Schließen speichert.** Jedes Schließen des Eintragsfensters (Fertig, ✕, Escape, nach unten
 Ziehen, Android-Zurück) speichert alle geänderten Felder (Freitext, Zusatz, Uhrzeit, Esser, Gäste,
-Portionen, Varianten mit Liste, Text der Erinnerung) in einem Aufruf; Tag, Tageszeit, „Wer kocht?“
+Portionen, Varianten mit Liste, Text der Erinnerung) in einem Aufruf — geändert heißt: anders als
+beim Öffnen des Fensters; ohne Änderung wird nichts gesendet (Entscheidung 24); Tag, Tageszeit, „Wer kocht?“
 und Schalter, Tag und Uhrzeit der Erinnerung speichern weiter sofort. „Zusatz speichern“ entfällt;
 Enter speichert ein Feld sofort. Ungültige Eingabe: Fenster bleibt offen mit dem Grund; ein zweites
 ✕/Escape schließt, speichert das Gültige und zeigt „Nicht gespeichert: Was gibt es?“. Ablehnung durch den
@@ -214,6 +215,11 @@ Quelle: K-03, K-01, K-05. Offline: Schließen schließt nur.
 - AC-027: Angenommen Zusatz „doppelte Menge“ getippt, Nadja hat „Lasagne“ inzwischen entfernt · Wenn
   ich ✕ wähle · Dann bleibt das Fenster offen mit „doppelte Menge“ und „Hat nicht geklappt – bitte
   noch einmal versuchen“.
+- AC-049: Angenommen „Lasagne“ offen, Nadja ändert inzwischen Portionen und Zusatz, und mein Gerät
+  gleicht ab · Wenn ich ohne Änderung „Fertig“ wähle · Dann bleiben Nadjas Portionen und Zusatz · Wenn
+  ich danach im neu geöffneten Fenster nur „+“ bei den Portionen wähle und Nadja den Zusatz wieder
+  ändert · Dann wird nur die Portionenzahl gespeichert, Nadjas Zusatz bleibt; ein Feld, das ich
+  zurück auf den alten Wert stelle, gilt als nicht geändert.
 
 **REQ-010 — Tag und Tageszeit lassen das Fenster offen.** Tages-Chips, Tageszeit-Chips, „Vormerken“
 und die Wahl in „Anderes Datum …“ verschieben sofort, das Fenster bleibt offen und zeigt den neuen
@@ -442,6 +448,18 @@ Beim Bau entschieden (Claude, 22.11.2026, jeweils die einfachste zur Spec passen
     ist als Abzeichen und Text (ein Tag ≈ 145 px) — das ist „solange er passt“; kein Umbau nötig.
     Der e2e-Rundgang prüft es (`rundgang-kalender-0021.spec.ts`).
 
+Nachtrag e2e-Reparatur (27.11.2026, Claude):
+
+24. Schließen sendet nur, was sich gegenüber dem Stand beim Öffnen geändert hat (A), statt alle
+    Felder mit dem Cache beim Schließen zu vergleichen (B). Fehler: Das Fenster übernimmt seinen
+    Entwurf beim Öffnen aus dem Cache und schrieb Esser, Gäste und Portionen immer zurück; kam
+    während das Fenster offen war ein neuerer Stand per Abgleich (nach einem Neuladen vor dem
+    Abgleich oder nach einer Änderung auf einem anderen Gerät), überschrieb ein bloßes Schließen
+    ihn. Die Regel ist die reine Funktion `changedEntryFields` in `packages/core/src/entry-changes.ts`:
+    Texte getrimmt, Esser als Menge, Varianten nach Portionen (Zeilen mit 0 zählen nicht); ohne
+    Änderung kein Aufruf. Das Fenster zeigt weiter seinen Stand beim Öffnen, nicht geänderte Felder
+    bleiben auf dem Server, wie sie sind (zuletzt Gespeichertes gilt je Feld).
+
 OFFEN: keine.
 
 ## Daten
@@ -475,6 +493,7 @@ neu fassen (Uhrzeit am Restaurant-Eintrag, ohne eigene Erinnerung), neu „Uhrze
 | Mehr als 20 Zutaten scheitern an der Löschgrenze               | eine Domänen-Operation, zählt als eine Löschung      | pgTAP `entry_contributions`, api `commands-plan.backend.test.ts` |
 | Nachricht in Core und SQL verschieden                          | Paritätstest                                         | pgTAP `notification_parity` (AC-037)                             |
 | Alte Reservierungs-Nachricht kommt doppelt oder weiter         | Funktion und Art entfallen                           | pgTAP `notification_scheduler` (AC-039)                          |
+| Veralteter Entwurf im Fenster überschreibt neueren Serverstand | nur seit dem Öffnen Geändertes senden (Entsch. 24)   | core `entry-changes.test.ts`, e2e `eintraege-0021` (AC-049)      |
 
 ## Umsetzung
 
@@ -492,6 +511,7 @@ neu fassen (Uhrzeit am Restaurant-Eintrag, ohne eigene Erinnerung), neu „Uhrze
 - [x] 8. Aufräumen: Entfallenes aus „Daten“ im Code entfernen
 - [x] 9. Nachtrag Review 0002: Aufgaben erledigen und Fenster im Kalender, Aufgaben in Monat und
       Jahr, fester Handy-Kopf mit „Heute ›“, Wischen blättert (AC-042–AC-048)
+- [x] 10. Nachtrag e2e-Reparatur: Schließen sendet nur Geändertes (AC-049, Entscheidung 24)
 - [x] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün, pgTAP 39 Dateien/2261 Tests
       grün (über den DB-Lock), e2e nur typgeprüft; `/security-check` (22.11.: 0 kritisch/hoch/mittel,
       der niedrige Befund „Format-Zeichen im Zusatz“ ist behoben, `*_no_format`); `/ui-verify` in 0028

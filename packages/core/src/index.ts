@@ -11,6 +11,7 @@ export * from './ingredient-typing';
 export * from './areas';
 export * from './diet';
 export * from './recipes';
+export * from './entry-changes';
 export * from './entry-edit';
 export * from './meal-plan';
 export * from './calendar';

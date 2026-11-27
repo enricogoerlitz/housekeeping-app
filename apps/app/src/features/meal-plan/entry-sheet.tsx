@@ -18,6 +18,7 @@ import {
 import {
   showsRoute,
   canMarkNotDone,
+  changedEntryFields,
   checkEntryNote,
   checkEntryText,
   entryListShare,
@@ -37,6 +38,7 @@ import {
   weekDates,
   weekdayShort,
   type DropTarget,
+  type EntryDraft,
   type Id,
   type ISODate,
   type TimeOfDay,
@@ -104,8 +106,10 @@ const zutaten = (count: number) => (count === 1 ? '1 Zutat' : `${count} Zutaten`
  * mit?", guests, portions and variants, day and Tageszeit, "Wer kocht?" and "Erinnern". Day,
  * Tageszeit, cook and the switch, day and time of the reminder are saved at once and the window
  * stays open (REQ-010); everything else is saved in one call when it closes, however it closes
- * (REQ-009), and the shopping list follows the portions (REQ-007). An invalid field keeps it open
- * with its reason; a second ✕ closes it with what is valid. Offline it only closes.
+ * (REQ-009), and the shopping list follows the portions (REQ-007). Only what was changed since
+ * the window opened is sent, so a draft from a stale cache never overwrites newer server state
+ * (Entscheidung 24). An invalid field keeps it open with its reason; a second ✕ closes it with
+ * what is valid. Offline it only closes.
  */
 export function EntrySheet(props: {
   entryId: Id;
@@ -139,16 +143,11 @@ export function EntrySheet(props: {
   const entry = current ?? last;
   const recipe = entry?.recipeId ? recipesById[entry.recipeId] : undefined;
 
-  // The typed fields (REQ-008, REQ-013), saved on closing.
-  const [text, setText] = useState(entry?.text ?? '');
-  const [note, setNote] = useState(entry?.note ?? '');
-  const [startsAt, setStartsAt] = useState<TimeOfDay | undefined>(entry?.startsAt);
-  const [errors, setErrors] = useState<Partial<Record<TypedField, string>>>({});
-  const [refused, setRefused] = useState<string>();
-  const [saving, setSaving] = useState(false);
-  // A second ✕ after a hint closes with what is valid (REQ-009, AC-026).
-  const hinted = useRef(false);
-  const portions = usePortions(recipe?.kind === 'recipe' ? recipe : undefined, () => ({
+  // What the window opened with: closing sends only what differs from it (AC-049).
+  const [opened] = useState<EntryDraft>(() => ({
+    text: entry?.text ?? '',
+    note: entry?.note ?? '',
+    startsAt: entry?.startsAt,
     eaterIds: entry?.eaterIds ?? [],
     guests: entry?.guests ?? 0,
     portions: entry?.portions ?? 0,
@@ -156,6 +155,22 @@ export function EntrySheet(props: {
       recipe?.kind === 'recipe'
         ? variantRows(recipe, entry?.variants ?? [], entry?.portions ?? 0)
         : [],
+    reminderText: entry?.reminder?.text ?? '',
+  }));
+  // The typed fields (REQ-008, REQ-013), saved on closing.
+  const [text, setText] = useState(opened.text);
+  const [note, setNote] = useState(opened.note);
+  const [startsAt, setStartsAt] = useState<TimeOfDay | undefined>(opened.startsAt);
+  const [errors, setErrors] = useState<Partial<Record<TypedField, string>>>({});
+  const [refused, setRefused] = useState<string>();
+  const [saving, setSaving] = useState(false);
+  // A second ✕ after a hint closes with what is valid (REQ-009, AC-026).
+  const hinted = useRef(false);
+  const portions = usePortions(recipe?.kind === 'recipe' ? recipe : undefined, () => ({
+    eaterIds: opened.eaterIds,
+    guests: opened.guests,
+    portions: opened.portions,
+    variants: opened.variants,
   }));
   const reminder = useReminderForm({
     entryDate: entry?.date ?? today,
@@ -209,39 +224,34 @@ export function EntrySheet(props: {
     return <RouteSheet restaurant={routeTarget} visible onClose={() => setRouteOpen(false)} />;
   }
 
-  /** The typed fields that changed, and the hint of each invalid one. */
+  /**
+   * The fields changed since the window opened (AC-049; "Wer ist dabei?" and "Gäste" of an
+   * activity: spec 0041, REQ-005), and the hint of each invalid one.
+   */
   const collect = (): { fields: EntryFields; invalid: Partial<Record<TypedField, string>> } => {
-    const fields: EntryFields = {};
+    const fields: EntryFields = changedEntryFields(entry.kind, opened, {
+      text,
+      note,
+      startsAt,
+      ...portions.state,
+      reminderText: reminder.draft.on ? reminder.draft.text : opened.reminderText,
+    });
     const invalid: Partial<Record<TypedField, string>> = {};
-    if (entry.kind === 'text' && text.trim() !== (entry.text ?? '')) {
-      const check = checkEntryText(text);
-      if (check.ok) fields.text = text;
-      else invalid.text = check.error;
+    if (fields.text !== undefined) {
+      const check = checkEntryText(fields.text);
+      if (!check.ok) {
+        invalid.text = check.error;
+        delete fields.text;
+      }
     }
-    if (note.trim() !== (entry.note ?? '')) {
-      const check = checkEntryNote(note);
-      if (check.ok) fields.note = note;
-      else invalid.note = check.error;
+    if (fields.note !== undefined) {
+      const check = checkEntryNote(fields.note);
+      if (!check.ok) {
+        invalid.note = check.error;
+        delete fields.note;
+      }
     }
-    if (timed && startsAt !== entry.startsAt) fields.startsAt = startsAt ?? null;
-    const state = portions.state;
-    if (eats) {
-      fields.eaterIds = state.eaterIds;
-      fields.guests = state.guests;
-      fields.portions = state.portions;
-      if (state.variants.length > 0) fields.variants = state.variants;
-    } else if (entry.kind === 'activity') {
-      // Spec 0041, REQ-005: "Wer ist dabei?" and "Gäste".
-      fields.eaterIds = state.eaterIds;
-      fields.guests = state.guests;
-    }
-    if (
-      reminder.draft.on &&
-      entry.reminder &&
-      reminder.draft.text !== (entry.reminder.text ?? '')
-    ) {
-      fields.reminderText = reminder.draft.text;
-    }
+    if (!entry.reminder) delete fields.reminderText;
     return { fields, invalid };
   };
 
@@ -292,10 +302,13 @@ export function EntrySheet(props: {
       setErrors(invalid);
       return;
     }
-    send(fields, () => {
+    const finish = () => {
       props.onClose();
       if (names.length > 0) toast.show({ message: `Nicht gespeichert: ${names.join(', ')}` });
-    });
+    };
+    // Nothing changed: no write at all (AC-049).
+    if (Object.keys(fields).length === 0) finish();
+    else send(fields, finish);
   };
 
   /** Enter saves one field at once (REQ-009); the window stays open. */
