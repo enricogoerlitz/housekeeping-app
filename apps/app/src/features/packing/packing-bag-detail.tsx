@@ -32,6 +32,7 @@ import {
   Text,
   TextField,
   toast,
+  openKeyboardNow,
 } from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
@@ -106,7 +107,11 @@ function BagActions(props: {
         label="Reisetasche umbenennen"
         disabled={online.disabled}
         hint={online.hint}
-        onPress={() => setRenaming(true)}
+        onPress={() => {
+          // The keyboard opens with the tap, the window does not wait for it (Nachklick 27.11., B-01).
+          openKeyboardNow();
+          setRenaming(true);
+        }}
         testID="bag-rename"
       />
       <Menu<BagAction>

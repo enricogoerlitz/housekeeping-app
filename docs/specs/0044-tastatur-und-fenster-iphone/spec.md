@@ -229,6 +229,11 @@ Befund 7. Offline: offline vollständig.
     Den Cursor setzen nur Anlegen-Fenster und gezielte Aktionen („Notiz hinzufügen“, Umbenennen,
     Suchen).
 
+- **Nachklick 27.11., B-01:** „Reisetasche umbenennen“, „Bereich umbenennen“ und die Namensfenster
+  zum Anlegen (Reisetasche, Markt, Bereich) öffnen die Tastatur mit dem Tipp (`openKeyboardNow`), statt
+  den Cursor erst nach dem Hereingleiten zu setzen; vorher rückte das Fenster für eine Tastatur hoch,
+  die in Safari nicht kam, und fiel zurück.
+
 ## Daten
 
 Entfällt: nur Oberfläche. Neu im Browser-Speicher: die zuletzt gemessene Tastaturhöhe je

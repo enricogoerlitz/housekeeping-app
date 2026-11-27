@@ -17,6 +17,7 @@ import {
   toast,
   useBreakpoint,
   ViewTabs,
+  openKeyboardNow,
 } from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
@@ -75,7 +76,10 @@ function StoresList(props: {
             icon="plus"
             disabled={online.disabled}
             hint={online.hint}
-            onPress={() => setCreating(true)}
+            onPress={() => {
+              openKeyboardNow();
+              setCreating(true);
+            }}
             testID="stores-empty-new"
           />
         </EmptyState>
@@ -206,7 +210,10 @@ export function StoresScreen() {
                 label="Bereich anlegen"
                 disabled={online.disabled}
                 hint={online.hint}
-                onPress={() => setCreating('area')}
+                onPress={() => {
+                  openKeyboardNow();
+                  setCreating('area');
+                }}
                 testID="areas-new"
               />
             ) : (
@@ -214,7 +221,10 @@ export function StoresScreen() {
                 label="Markt anlegen"
                 disabled={online.disabled}
                 hint={online.hint}
-                onPress={() => setCreating('store')}
+                onPress={() => {
+                  openKeyboardNow();
+                  setCreating('store');
+                }}
                 testID="store-new"
               />
             )
