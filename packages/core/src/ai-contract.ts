@@ -306,6 +306,11 @@ export const RecipeDraftReplySchema = z.strictObject({
   sources: z.array(RecipeDraftSourceSchema).max(RECIPE_DRAFT_LIMITS.links),
   /** Spec 0055, REQ-007: only when the web search was asked for. */
   webContext: z.enum(['used', 'unavailable']).optional(),
+  /**
+   * Spec 0065, REQ-001: the photo of the first page the web search read that shows one, else the
+   * image of a recipe hit; „Original“ of the photo choice.
+   */
+  webPhotoUrl: HttpsUrl.optional(),
 });
 export type RecipeDraftReply = z.infer<typeof RecipeDraftReplySchema>;
 

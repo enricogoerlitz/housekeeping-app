@@ -7,6 +7,7 @@
 // Spec 0055: `current` is a recipe to change by the wish (the edit mode's, or the last proposal);
 // `webQuery` searches the web once (Serper, else Brave) and hands a few snippets and pages to the
 // model as data, limited in number, size and time; new ingredients bring an area and a diet.
+// Spec 0065: the photo of what it found comes back as `webPhotoUrl`, for „Original“.
 // Spec 0064: a YouTube video gives its title, description and thumbnail (no download, no API key),
 // and, when the description has no ingredients, the text of the one recipe page it links to.
 import { loadDraftContext } from '../_shared/context.ts';
@@ -227,7 +228,7 @@ async function webContext(
   deps: Deps,
   query: string,
   ownLinks: readonly string[],
-): Promise<WebContext | undefined> {
+): Promise<{ data: WebContext; photoUrl?: string } | undefined> {
   let hits: WebHit[];
   try {
     hits = (await searchWithFallback(configuredProviders(deps), (provider) => provider.web(query)))
@@ -243,13 +244,23 @@ async function webContext(
     .filter((url) => isRecipePage(url) && !ownLinks.includes(url))
     .slice(0, WEB_PAGES);
   const pages = await Promise.all(pageUrls.map((url) => readPage(url, deps, WEB_PAGE_TIMEOUT_MS)));
+  // Spec 0065, REQ-001: the photo of a page read, else the image of a recipe hit (not the model's).
+  const photoUrl =
+    pages.find((page) => page.source.imageUrl)?.source.imageUrl ??
+    top
+      .filter((hit) => isRecipePage(hit.url) && !ownLinks.includes(hit.url))
+      .map((hit) => httpsWithin(hit.imageUrl))
+      .find(Boolean);
   return {
-    treffer: top.map((hit) => ({
-      titel: hit.title,
-      quelle: hit.url,
-      ...(hit.snippet ? { ausschnitt: hit.snippet } : {}),
-    })),
-    seiten: pages.map((page) => page.text.slice(0, WEB_PAGE_CHARS)).filter(Boolean),
+    data: {
+      treffer: top.map((hit) => ({
+        titel: hit.title,
+        quelle: hit.url,
+        ...(hit.snippet ? { ausschnitt: hit.snippet } : {}),
+      })),
+      seiten: pages.map((page) => page.text.slice(0, WEB_PAGE_CHARS)).filter(Boolean),
+    },
+    ...(photoUrl ? { photoUrl } : {}),
   };
 }
 
@@ -261,6 +272,7 @@ async function draft(
   draft: RecipeDraft;
   sources: RecipeDraftSource[];
   webContext?: 'used' | 'unavailable';
+  webPhotoUrl?: string;
 }> {
   const [context, links, web] = await Promise.all([
     loadDraftContext(client, input.householdId),
@@ -274,7 +286,7 @@ async function draft(
         ? dataPart({ quelle: link.source.url, art: link.source.kind, fehler: 'nicht lesbar' })
         : dataPart({ quelle: link.source.url, art: link.source.kind, inhalt_nur_daten: link.text }),
     ),
-    ...(web ? [dataPart({ websuche_nur_daten: web })] : []),
+    ...(web ? [dataPart({ websuche_nur_daten: web.data })] : []),
     ...(input.current ? [dataPart({ aktuelles_rezept_nur_daten: input.current })] : []),
     ...input.photos.map((photo): FoundryContentPart => ({ type: 'input_image', image_url: photo })),
     dataPart({ wunsch: input.text }),
@@ -298,6 +310,7 @@ async function draft(
     draft: result,
     sources: links.map((link) => link.source),
     ...(input.webQuery ? { webContext: web ? ('used' as const) : ('unavailable' as const) } : {}),
+    ...(web?.photoUrl ? { webPhotoUrl: web.photoUrl } : {}),
   };
 }
 

@@ -7,7 +7,9 @@ import {
   AI_DRAFT_UNREACHABLE_MESSAGE,
   defaultImagePrompt,
   draftPagePhotoUrl,
+  draftPhotoPlan,
   draftLinks,
+  draftWantsImagePrompt,
   draftToPageInput,
   imageFailureNotice,
   insertAtCursor,
@@ -573,5 +575,75 @@ describe('draftPagePhotoUrl', () => {
       draftPagePhotoUrl([page({ imageUrl: 'https://img.example/a.jpg' })], true),
     ).toBeUndefined();
     expect(draftPagePhotoUrl([page({}), page({ read: false })], false)).toBeUndefined();
+  });
+});
+
+describe('draftPhotoPlan (spec 0065, REQ-003)', () => {
+  const LINK_PHOTO = 'https://img.example/link.jpg';
+  const WEB_PHOTO = 'https://img.example/web.jpg';
+  const linked: RecipeDraftSource = {
+    url: 'https://www.chefkoch.de/rezepte/1/lasagne.html',
+    kind: 'page',
+    read: true,
+    imageUrl: LINK_PHOTO,
+  };
+
+  it('AC-006: "Original" takes the photo of an own link first, else the web search photo', () => {
+    expect(
+      draftPhotoPlan(
+        { sources: [linked], webPhotoUrl: WEB_PHOTO },
+        { generatePhoto: true, webPhoto: 'source' },
+      ),
+    ).toEqual({ pageUrl: LINK_PHOTO, generate: false, generateWhenPageFails: true });
+    expect(
+      draftPhotoPlan(
+        { sources: [], webPhotoUrl: WEB_PHOTO },
+        { generatePhoto: false, webPhoto: 'source' },
+      ),
+    ).toEqual({ pageUrl: WEB_PHOTO, generate: false, generateWhenPageFails: true });
+  });
+
+  it('AC-007: "Original" without any photo makes three suggestions', () => {
+    expect(draftPhotoPlan({ sources: [] }, { generatePhoto: false, webPhoto: 'source' })).toEqual({
+      generate: true,
+      generateWhenPageFails: false,
+    });
+  });
+
+  it('AC-008: "KI-Bild" makes suggestions and takes no page photo; "Keins" takes nothing', () => {
+    const reply = { sources: [linked], webPhotoUrl: WEB_PHOTO };
+    expect(draftPhotoPlan(reply, { generatePhoto: false, webPhoto: 'ai' })).toEqual({
+      generate: true,
+      generateWhenPageFails: false,
+    });
+    expect(draftPhotoPlan(reply, { generatePhoto: true, webPhoto: 'none' })).toEqual({
+      generate: false,
+      generateWhenPageFails: false,
+    });
+  });
+
+  it('AC-009: with the web search the image prompt is asked for "Original" and "KI-Bild" only', () => {
+    expect(draftWantsImagePrompt({ generatePhoto: false, webPhoto: 'source' })).toBe(true);
+    expect(draftWantsImagePrompt({ generatePhoto: false, webPhoto: 'ai' })).toBe(true);
+    expect(draftWantsImagePrompt({ generatePhoto: true, webPhoto: 'none' })).toBe(false);
+  });
+
+  it('AC-010: without the web search "Foto generieren" decides as before', () => {
+    const reply = { sources: [linked], webPhotoUrl: WEB_PHOTO };
+    expect(draftPhotoPlan(reply, { generatePhoto: true })).toEqual({
+      generate: true,
+      generateWhenPageFails: false,
+    });
+    // Spec 0049, AC-042: switched off, an own link still gives its photo; the web photo never.
+    expect(draftPhotoPlan(reply, { generatePhoto: false })).toEqual({
+      pageUrl: LINK_PHOTO,
+      generate: false,
+      generateWhenPageFails: false,
+    });
+    expect(
+      draftPhotoPlan({ sources: [], webPhotoUrl: WEB_PHOTO }, { generatePhoto: false }),
+    ).toEqual({ generate: false, generateWhenPageFails: false });
+    expect(draftWantsImagePrompt({ generatePhoto: true })).toBe(true);
+    expect(draftWantsImagePrompt({ generatePhoto: false })).toBe(false);
   });
 });

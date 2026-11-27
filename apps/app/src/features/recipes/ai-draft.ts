@@ -5,9 +5,10 @@ import {
   preparePhoto,
 } from '@housekeeping/api';
 import {
-  draftPagePhotoUrl,
+  draftPhotoPlan,
   IMAGE_EDIT_MAX_SIDE,
   type AiImageContext,
+  type DraftPhotoChoice,
   type Id,
   type PageDraftInput,
   type Recipe,
@@ -103,19 +104,22 @@ function set(recipeId: Id, next: PhotoSuggestions | undefined): void {
 }
 
 /**
- * Spec 0049, AC-042: "Eigene Angaben" with a link and "Foto generieren" off takes the page's photo
- * (through fetch-image, like the web search's „Original“); undefined without one or when it fails.
+ * The draft's photo (spec 0065, REQ-003): the photo the plan names, loaded through fetch-image
+ * like the web search's „Original“ (spec 0049, AC-042), and whether three suggestions follow.
+ * `keepOwn`: a photo chosen in "Neu" stays, so no page photo is loaded and „Original“ makes none.
  */
-export async function draftPagePhoto(
+export async function draftPhoto(
   reply: RecipeDraftReply,
-  generatePhoto: boolean,
-): Promise<Blob | undefined> {
-  const url = draftPagePhotoUrl(reply.sources, generatePhoto);
-  if (!url) return undefined;
+  choice: DraftPhotoChoice,
+  options: { keepOwn?: boolean } = {},
+): Promise<{ photo?: Blob; generate: boolean }> {
+  const plan = draftPhotoPlan(reply, choice);
+  if (!plan.pageUrl) return { generate: plan.generate };
+  if (options.keepOwn) return { generate: false };
   try {
-    return await preparePhoto(await loadPhotoFromAddress(url));
+    return { photo: await preparePhoto(await loadPhotoFromAddress(plan.pageUrl)), generate: false };
   } catch {
-    return undefined;
+    return { generate: plan.generateWhenPageFails };
   }
 }
 
