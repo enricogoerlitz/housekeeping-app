@@ -244,6 +244,7 @@ export function MemberList() {
             <Button
               label={self ? 'Verlassen' : 'Entfernen'}
               variant="link"
+              quiet
               size="sm"
               disabled={online.disabled || busy}
               hint={online.hint}
@@ -289,6 +290,7 @@ export function MemberList() {
               <Button
                 label="Zurückziehen"
                 variant="link"
+                quiet
                 size="sm"
                 disabled={online.disabled || busy}
                 hint={online.hint}

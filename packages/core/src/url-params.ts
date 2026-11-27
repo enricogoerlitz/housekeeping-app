@@ -183,6 +183,8 @@ export const PAGE_PARAMS = {
   },
   kochen: {
     id: one(Uuid),
+    // The recipe's origin, so the highlight stays there while cooking (spec 0057, AC-015).
+    von: Von,
     schritt: one(PositiveInt),
     variante: one(Uuid),
     portionen: one(PositiveInt),

@@ -42,3 +42,15 @@ export function domTextWidth(node: unknown): number {
     ? range.getBoundingClientRect().width
     : 0;
 }
+
+/**
+ * Whether a word of a title is wider than its box (spec 0057, REQ-004): titles break only between
+ * words, so a too long word overflows instead of being cut; one rounding pixel does not count.
+ */
+export function wordOverflows(
+  node: { scrollWidth?: number; clientWidth?: number } | null | undefined,
+): boolean {
+  const scroll = node?.scrollWidth ?? 0;
+  const client = node?.clientWidth ?? 0;
+  return client > 0 && scroll > client + 1;
+}

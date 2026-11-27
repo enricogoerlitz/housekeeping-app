@@ -27,7 +27,7 @@ import { MemberRatings } from '@/features/shell/member-ratings';
 import { useOnlineOnly } from '@/features/shell/offline';
 import { PantryCheckSheet } from '@/features/shopping/pantry-check-sheet';
 import { shareTarget } from '@/lib/share';
-import { usePageParams } from '@/lib/url-state';
+import { originFor, usePageParams } from '@/lib/url-state';
 import { useBrowseSwipe } from '@/lib/browse-order';
 
 import { AddToCollectionSheet } from './add-to-collection-sheet';
@@ -40,7 +40,7 @@ import { HeadSection } from './sections/head-section';
 import { IngredientsSection } from './sections/ingredients-section';
 import { LinksSection } from './sections/links-section';
 import { NotesSection } from './sections/notes-section';
-import { EditControls, EditError } from './sections/edit-controls';
+import { DraftBackupNotice, EditControls, EditError } from './sections/edit-controls';
 import { StepsSection } from './sections/steps-section';
 import { usePageEditor } from './sections/use-page-editor';
 import { RecipePhoto } from './recipe-cover';
@@ -189,8 +189,10 @@ function RecipeDetailBody(props: {
   const canGoOnList = canPutRecipeOnList(recipe, shownServings, shownVariants);
 
   // The cooking mode cooks the portions shown here (spec 0018, AC-004).
+  // It keeps the recipe's origin, so the highlight stays there (spec 0057, AC-015).
   const startCooking = () => {
-    const params = { id: recipe.id, portionen: String(shownServings) };
+    const von = originFor('essen');
+    const params = { id: recipe.id, portionen: String(shownServings), ...(von ? { von } : {}) };
     router.push({
       pathname: '/rezept/[id]/kochen',
       params: activeVariantId ? { ...params, variante: activeVariantId } : params,
@@ -228,10 +230,8 @@ function RecipeDetailBody(props: {
       <EditControls editor={editor} />
       <RecipeMoreMenu
         recipe={recipe}
-        photo={photo}
         onDelete={remove}
         onAddToCollection={() => setAddingToCollection(true)}
-        onShare={share}
       />
       {deleteDialog}
     </>
@@ -240,6 +240,8 @@ function RecipeDetailBody(props: {
   const head = (
     <Stack gap={16} style={{ flex: 1, minWidth: 0 }}>
       <HeadSection recipe={recipe} desktop={desktop} editor={editor} />
+      {/* Phones and tablets: right under the title, reachable without scrolling (spec 0056, REQ-004). */}
+      {desktop || editing ? null : actions}
       <ClassificationSection
         recipe={recipe}
         diet={diet}
@@ -257,7 +259,6 @@ function RecipeDetailBody(props: {
           testID="recipe-rating"
         />
       )}
-      {desktop || editing ? null : <View style={{ marginTop: 4 }}>{actions}</View>}
     </Stack>
   );
 
@@ -294,6 +295,7 @@ function RecipeDetailBody(props: {
     >
       <View testID="recipe-detail" style={{ gap: isPhone ? 24 : 32, paddingTop: 8 }}>
         <EditError editor={editor} />
+        <DraftBackupNotice editor={editor} />
         <AiPageTools recipe={recipe} editor={editor} />
         <UnfinishedCard
           recipe={recipe}
@@ -330,6 +332,7 @@ function RecipeDetailBody(props: {
                 photo={photo}
                 onShare={share}
                 pending={editor.chosenPhoto}
+                compact
               />
             </View>
             {head}

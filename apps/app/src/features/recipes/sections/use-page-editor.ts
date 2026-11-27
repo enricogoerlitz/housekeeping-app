@@ -13,11 +13,14 @@ import {
   fillPageDraft,
   pageDraft,
   pageDraftChanged,
+  pageDraftBackupNotice,
   pageEditorReducer,
+  pastedSaveNotice,
   validatePageDraft,
   withSection,
   type CollectionContent,
   type Id,
+  type IngredientRow,
   type OpenDraft,
   type OpenDraftProblem,
   type PageDraft,
@@ -39,6 +42,11 @@ import { BackHandler, Platform } from 'react-native';
 import { confirmFirst } from '@/features/shell/confirm-dialog';
 import { errorMessage, FAILED_MESSAGE } from '@/features/shell/error-message';
 import { OFFLINE_EDIT_HINT } from '@/features/shell/offline';
+import {
+  readPageDraftBackup,
+  removePageDraftBackup,
+  writePageDraftBackup,
+} from '@/lib/page-draft-backup';
 
 import {
   dismissPhotoSuggestions,
@@ -111,6 +119,21 @@ export interface PageEditor {
   unsaved: boolean;
   /** The message for a field after a failed "Speichern" ("Titel fehlt"). */
   problem: (field: OpenDraftProblem['field'], key?: string) => string | undefined;
+  /** The page as stored, every section: what the read view's windows start from (spec 0056). */
+  stored: () => PageDraft;
+  /**
+   * "+ Zutat", "Mehrere einfügen" and "+ Link" in the read view (spec 0056, REQ-001, REQ-002):
+   * saves this one section of the stored page at once. `open` rows (orange) open the edit mode
+   * once the rest is saved; `saved` counts the new rows for the notice. Returns why nothing was
+   * sent (offline, a problem) for the window to show; a refusal opens the edit mode with the
+   * section and the message (AC-004).
+   */
+  saveNow: (
+    section: OpenDraft,
+    options?: { open?: readonly IngredientRow[]; saved?: number },
+  ) => string | undefined;
+  /** A kept draft of this recipe from before (spec 0056, REQ-006), offered while reading. */
+  backup: { notice: string; resume: () => void; discard: () => void } | undefined;
 }
 
 let idSeq = 0;
@@ -165,11 +188,21 @@ export function usePageEditor(
   }, []);
 
   const changed = state.draft !== undefined && pageDraftChanged(state.draft);
+  // Spec 0056, REQ-006: a changed draft is kept in the tab; saved or discarded it goes. A recipe
+  // that is only a draft (spec 0040) is not kept: after a reload it is gone anyway.
+  const [kept, setKept] = useState(() => (unsaved ? undefined : readPageDraftBackup(recipeId)));
+  useEffect(() => {
+    if (unsaved || !state.draft) return;
+    if (changed) writePageDraftBackup(state.draft);
+    else removePageDraftBackup(recipeId);
+  }, [unsaved, state.draft, changed, recipeId]);
   const close = useCallback(() => {
     photo.current = undefined;
     setChosenPhoto(undefined);
     setIntent(undefined);
     dismissPhotoSuggestions(recipeId);
+    removePageDraftBackup(recipeId);
+    setKept(undefined);
     dispatch({ type: 'close' });
   }, [recipeId]);
   const onDiscard = options.onDiscard;
@@ -373,6 +406,49 @@ export function usePageEditor(
   );
   const clearIntent = useCallback(() => setIntent(undefined), []);
 
+  // The read view saves one section at once (spec 0056): from the page as stored, so only that
+  // section's new rows go out and another device's changes elsewhere stay (AC-005).
+  const saveNow: PageEditor['saveNow'] = (section, nowOptions = {}) => {
+    const page = withSection(pageDraft(recipe, contents), section);
+    let result: ReturnType<typeof saveRecipePage>;
+    try {
+      result = saveRecipePage(page);
+    } catch (error) {
+      return error instanceof OfflineError
+        ? OFFLINE_EDIT_HINT
+        : errorMessage(error, FAILED_MESSAGE);
+    }
+    if (!result) return undefined;
+    const { open } = result;
+    result.confirmed.then(
+      ({ changedMeanwhile }) => {
+        if (!mounted.current) return;
+        const rows = [...open, ...(nowOptions.open ?? [])];
+        if (rows.length > 0) {
+          // After the save, so the edit mode's draft has the rows just saved (Entscheidung 3).
+          const now = latest.current;
+          const next = pageDraft(now.recipe, now.contents);
+          dispatch({
+            type: 'open',
+            draft: withSection(next, addIngredientRows(next.ingredients, rows)),
+          });
+        }
+        toast.show({
+          message:
+            pastedSaveNotice(nowOptions.saved ?? 0, rows) ??
+            (changedMeanwhile ? CHANGED_MEANWHILE_NOTICE : 'Gespeichert'),
+        });
+      },
+      () => {
+        // AC-004: nothing is saved; the edit mode opens with what was typed and the message.
+        if (!mounted.current) return;
+        dispatch({ type: 'open', draft: page });
+        dispatch({ type: 'failed', error: WRITE_REJECTED_MESSAGE });
+      },
+    );
+    return undefined;
+  };
+
   const problems = state.attempted && state.draft ? validatePageDraft(state.draft) : [];
   return {
     draft: state.draft,
@@ -407,5 +483,21 @@ export function usePageEditor(
     unsaved,
     problem: (field, key) =>
       problems.find((problem) => problem.field === field && problem.key === key)?.message,
+    stored: () => pageDraft(recipe, contents),
+    saveNow,
+    backup:
+      kept && !state.draft
+        ? {
+            notice: pageDraftBackupNotice(kept.savedAt, new Date()),
+            resume: () => {
+              dispatch({ type: 'open', draft: kept.draft });
+              setKept(undefined);
+            },
+            discard: () => {
+              removePageDraftBackup(recipeId);
+              setKept(undefined);
+            },
+          }
+        : undefined,
   };
 }

@@ -321,6 +321,15 @@ describe('resolveAddressedId', () => {
   });
 });
 
+describe('kochen (spec 0057, AC-015)', () => {
+  it('carries the origin of the recipe', () => {
+    expect(readPageParams('kochen', { id: LASAGNE, von: 'uebersicht' }).values).toEqual({
+      id: LASAGNE,
+      von: 'uebersicht',
+    });
+  });
+});
+
 describe('sectionOfOrigin', () => {
   it('AC-018: an unknown origin gives the own section', () => {
     expect(sectionOfOrigin('quatsch', 'essen')).toBe('essen');

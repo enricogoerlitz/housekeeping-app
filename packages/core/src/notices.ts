@@ -1,17 +1,42 @@
-import { choreDueState, choreMemberIds, type ChoreAway } from './chore-schedule';
+import {
+  choreDueOn,
+  choreDueState,
+  choreIsPaused,
+  choreMemberIds,
+  type ChoreAway,
+} from './chore-schedule';
 import type { RecipeBook } from './collections';
-import { addDays, daysBetween, parseISODate, toISODate } from './dates';
+import {
+  addDays,
+  daysBetween,
+  formatShortDate,
+  parseISODate,
+  toISODate,
+  weekdayShort,
+} from './dates';
 import { formatTime, type NotificationTarget } from './notifications';
+import { packingProgress } from './packing';
 import { prepLines } from './prep';
 import { entryWhen, planEntryTitle } from './reminder';
-import { isOnTrip } from './trips';
-import type { Chore, Id, ISODate, MealPlanEntry, MealSlot, TimeOfDay } from './types';
+import { isOnTrip, stripeText, tripMemberIds } from './trips';
+import type {
+  Chore,
+  Id,
+  ISODate,
+  MealPlanEntry,
+  MealSlot,
+  PackingItem,
+  PackingListBag,
+  TimeOfDay,
+} from './types';
 
 // Spec 0051 "Mitteilungen in der App statt Push": what is due now for the signed-in person,
 // derived from the local cache alone (works offline), on the household's clock. Five kinds
-// (Decision 2); a notice disappears when it is acknowledged, done or its day is over.
+// (Decision 2), and since spec 0059 the Vorwarnung of a chore (`deadline`) and packing on the eve
+// of a trip (`packing`); a notice disappears when it is acknowledged, done or its day is over.
 
-export type NoticeKind = 'entryReminder' | 'chore' | 'prep' | 'cook' | 'activity';
+export type NoticeKind =
+  'entryReminder' | 'chore' | 'prep' | 'cook' | 'activity' | 'deadline' | 'packing';
 
 export interface Notice {
   /** `<kind>:<id>[:<more>]:<day>` (Decision 5); what an acknowledgement stores. */
@@ -31,7 +56,10 @@ export interface NoticeInput {
   /** The household's day and time ("HH:MM" or "HH:MM:SS"). */
   today: ISODate;
   now: string;
-  /** The plan, with the Termine of the series around today (spec 0041). */
+  /**
+   * The plan, with the Termine of the series from yesterday to SERIES_NOTICE_DAYS ahead (spec
+   * 0041; spec 0059: a Termin reminds up to 30 days before).
+   */
   entries: readonly MealPlanEntry[];
   chores: readonly Chore[];
   book: RecipeBook;
@@ -42,10 +70,17 @@ export interface NoticeInput {
   away: ChoreAway;
   /** The own acknowledged keys (notification_settings.acknowledged_notices). */
   acknowledged: readonly string[];
+  /** The packing lists of the trips (spec 0059, REQ-005); none = no packing notices. */
+  packing?: { listBags: readonly PackingListBag[]; items: readonly PackingItem[] };
 }
+
+/** How far ahead the bell needs the Termine of the series (spec 0059, Decision 2). */
+export const SERIES_NOTICE_DAYS = 30;
 
 /** Activities of tomorrow show from this time on (spec 0013, "Aktivitäten am Vortag"). */
 const ACTIVITY_EVE: TimeOfDay = '19:00';
+/** Packing on the eve of a trip shows from this time on (spec 0059, REQ-005). */
+const PACKING_EVE: TimeOfDay = '18:00';
 const START_OF_DAY: TimeOfDay = '00:00';
 /** Acknowledgements of days more than this many days ago fall away (Decision 8). */
 export const ACKNOWLEDGED_KEEP_DAYS = 14;
@@ -208,6 +243,8 @@ export function dueNotices(input: NoticeInput): Notice[] {
   }
 
   for (const chore of input.chores) {
+    const deadline = deadlineNotice(chore, input);
+    if (deadline) notices.push(deadline);
     const time = chore.dueTime;
     if (time === undefined || chore.remindAtDueTime === false) continue;
     if (choreDueState(chore, today, away) !== 'today') continue;
@@ -226,10 +263,78 @@ export function dueNotices(input: NoticeInput): Notice[] {
     });
   }
 
+  notices.push(...packingNotices(input));
+
   const acknowledged = new Set(input.acknowledged);
   return notices
     .filter((notice) => !acknowledged.has(notice.key))
     .sort((a, b) =>
       a.since === b.since ? a.title.localeCompare(b.title, 'de') : a.since < b.since ? 1 : -1,
     );
+}
+
+/** Whether a chore concerns `me` today: "egal wer" everyone, otherwise whoever is up. */
+function choreIsMine(chore: Chore, me: Id, today: ISODate, away: ChoreAway): boolean {
+  return chore.assignment.type === 'anyone' || choreMemberIds(chore, today, away).includes(me);
+}
+
+/**
+ * Spec 0059, REQ-004: the Vorwarnung of a chore from `noticeDaysBefore` days before its Termin
+ * (after trips) until the Termin; on the Termin a chore that reminds at its time anyway stays the
+ * only notice (Decision 4). One key per Termin, so an acknowledgement holds (AC-020).
+ */
+function deadlineNotice(chore: Chore, input: NoticeInput): Notice | undefined {
+  const days = chore.noticeDaysBefore;
+  const { type } = chore.recurrence;
+  if (days === undefined || days <= 0 || type === 'flexible' || type === 'asNeeded') return;
+  const { today, away, me } = input;
+  const due = choreDueOn(chore, away);
+  if (due === undefined || due < today || choreIsPaused(chore, due)) return;
+  const start = addDays(due, -days);
+  if (start > today || isOnTrip(me, due, away.trips)) return;
+  if (due === today && chore.dueTime !== undefined && chore.remindAtDueTime !== false) return;
+  if (!choreIsMine(chore, me, today, away)) return;
+  const ahead = daysBetween(today, due);
+  const day = `${weekdayShort(due)} ${formatShortDate(due)}`;
+  return {
+    key: `deadline:${chore.id}:${due}`,
+    kind: 'deadline',
+    title: chore.title,
+    detail:
+      ahead === 0
+        ? 'heute fällig'
+        : ahead === 1
+          ? `fällig morgen · ${day}`
+          : `fällig in ${ahead} Tagen · ${day}`,
+    target: { screen: 'chore', choreId: chore.id },
+    since: `${start} ${START_OF_DAY}`,
+  };
+}
+
+/**
+ * Spec 0059, REQ-005: on the eve of a trip (not a draft) from 18:00, for who travels, while a
+ * Packstück of its packing list is open: "Morgen geht's los · 12 von 30 gepackt".
+ */
+function packingNotices(input: NoticeInput): Notice[] {
+  const { packing, today, me } = input;
+  if (!packing || `${today} ${input.now.slice(0, 5)}` < `${today} ${PACKING_EVE}`) return [];
+  const tomorrow = addDays(today, 1);
+  return input.away.trips.flatMap((trip): Notice[] => {
+    if (trip.draft || trip.from !== tomorrow || !tripMemberIds(trip).includes(me)) return [];
+    const bags = new Set(
+      packing.listBags.filter((bag) => bag.tripId === trip.id).map((bag) => bag.id),
+    );
+    const progress = packingProgress(packing.items.filter((item) => bags.has(item.listBagId)));
+    if (progress.total === 0 || progress.packed === progress.total) return [];
+    return [
+      {
+        key: `packing:${trip.id}:${trip.from}`,
+        kind: 'packing',
+        title: stripeText(trip),
+        detail: `Morgen geht's los · ${progress.label}`,
+        target: { screen: 'trip', tripId: trip.id },
+        since: `${today} ${PACKING_EVE}`,
+      },
+    ];
+  });
 }

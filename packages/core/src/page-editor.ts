@@ -10,6 +10,7 @@ import { scaleAmount } from './amounts';
 import {
   addIngredientRows,
   addMissingIngredientRows,
+  openRows,
   sectionChanged,
   sectionDraft,
   validateSectionDraft,
@@ -27,6 +28,7 @@ import {
 import { ingredientsForVariant } from './recipe-variants';
 import { normalizeText } from './text';
 import type {
+  Article,
   Course,
   Id,
   Recipe,
@@ -160,6 +162,20 @@ export function withNewContents(
     rows: [...draft.rows, ...rows],
     base: [...draft.base, ...added.map((content) => content.row)],
   });
+}
+
+/**
+ * "+ Zutat" and "Mehrere einfügen" in the read view save at once (spec 0056, REQ-001, REQ-002):
+ * the section with every row that can be saved, and the orange rows (no article, a duplicate, an
+ * article gone meanwhile) the edit mode opens with afterwards.
+ */
+export function readViewSave(
+  next: IngredientsDraft,
+  articles: readonly Article[],
+): { section: IngredientsDraft; open: IngredientRow[] } {
+  const open = openRows(next, articles);
+  const openKeys = new Set(open.map((row) => row.key));
+  return { section: { ...next, rows: next.rows.filter((row) => !openKeys.has(row.key)) }, open };
 }
 
 // ---------- A draft from outside ----------

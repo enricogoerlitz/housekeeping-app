@@ -257,6 +257,9 @@ export type Database = {
           household_id: string;
           id: string;
           note: string | null;
+          reminder_at: string | null;
+          reminder_day_offset: number | null;
+          reminder_text: string | null;
           rule: NonNullable<Json>;
           slot_id: string;
           starts_at: string | null;
@@ -273,6 +276,9 @@ export type Database = {
           household_id: string;
           id?: string;
           note?: string | null;
+          reminder_at?: string | null;
+          reminder_day_offset?: number | null;
+          reminder_text?: string | null;
           rule: NonNullable<Json>;
           slot_id: string;
           starts_at?: string | null;
@@ -288,6 +294,9 @@ export type Database = {
           household_id?: string;
           id?: string;
           note?: string | null;
+          reminder_at?: string | null;
+          reminder_day_offset?: number | null;
+          reminder_text?: string | null;
           rule?: NonNullable<Json>;
           slot_id?: string;
           starts_at?: string | null;
@@ -553,6 +562,7 @@ export type Database = {
           last_done_on: string | null;
           next_assignee_id: string | null;
           next_due_on: string | null;
+          notice_days_before: number | null;
           recurrence: NonNullable<Json>;
           remind_at_due_time: boolean;
           room: string | null;
@@ -571,6 +581,7 @@ export type Database = {
           last_done_on?: string | null;
           next_assignee_id?: string | null;
           next_due_on?: string | null;
+          notice_days_before?: number | null;
           recurrence: NonNullable<Json>;
           remind_at_due_time?: boolean;
           room?: string | null;
@@ -588,6 +599,7 @@ export type Database = {
           last_done_on?: string | null;
           next_assignee_id?: string | null;
           next_due_on?: string | null;
+          notice_days_before?: number | null;
           recurrence?: NonNullable<Json>;
           remind_at_due_time?: boolean;
           room?: string | null;

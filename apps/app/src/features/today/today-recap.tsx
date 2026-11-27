@@ -15,15 +15,17 @@ import {
   recapDayLabel,
   recapEarlierLabel,
   recapItems,
+  recapStackIndex,
   type ISODate,
   type RecapItem,
 } from '@housekeeping/core';
 import {
+  ARRIVE,
   Badge,
   Button,
+  IconButton,
   List,
   ListRow,
-  RowTransition,
   Section,
   Stars,
   Text,
@@ -33,6 +35,7 @@ import {
 import { useIsFocused } from 'expo-router';
 import { useEffect, useEffectEvent, useState } from 'react';
 import { View } from 'react-native';
+import Animated from 'react-native-reanimated';
 
 import { EntryPicture } from '@/features/meal-plan/entry-picture';
 import { kindBadge } from '@/features/meal-plan/kind-badges';
@@ -53,7 +56,9 @@ function rate(item: RecapItem, stars: number): void {
 
 /**
  * "Wie war's?" (spec 0011, REQ-003), only while today is shown: what the signed-in member has not
- * rated from the last three days, in half stars. Each tap on the stars holds the row in the check
+ * rated from the last three days, in half stars. A stack in one card (spec 0057, REQ-001): one
+ * entry at a time, "2 von 5" with ‹ › to leaf through; a rated entry leaves after its window and
+ * the next one moves to its place. Each tap on the stars holds the row in the check
  * window (`set`); 2 s after the last tap every row is saved once with its final value and leaves
  * (AC-017, AC-019). Leaving the page saves at once. The stars start empty; an earlier own rating
  * stands faded beside them, and "Passt so" taps it (spec 0020, REQ-009). "Nicht gemacht" marks
@@ -70,6 +75,10 @@ export function TodayRecap(props: { today: ISODate; slotOrder: string[] }) {
   // The value a row shows while its window runs, and after saving until the row has left, so it
   // never flickers back to the old stars.
   const [values, setValues] = useState<Record<string, number>>({});
+  // The stack's place: the entry last touched, the one shown, and where it stood (Decision 3).
+  const [place, setPlace] = useState<{ touched?: string; shown?: string; index: number }>({
+    index: 0,
+  });
 
   const items = recapItems({
     entries,
@@ -120,16 +129,25 @@ export function TodayRecap(props: { today: ISODate; slotOrder: string[] }) {
     );
   }
 
-  if (check.rows.length === 0) return null;
+  const ids = check.rows.map(rowId);
+  const index = recapStackIndex(ids, [place.touched, place.shown], place.index);
+  const item = check.rows[index];
+  if (item === undefined) return null;
+  const id = rowId(item);
+  if (place.shown !== id || place.index !== index) setPlace({ ...place, shown: id, index });
 
-  const onStars = (item: RecapItem, stars: number) => {
-    setValues((current) => ({ ...current, [rowId(item)]: stars }));
-    check.set(item, true);
+  const touch = (target: RecapItem) =>
+    setPlace((current) => ({ ...current, touched: rowId(target) }));
+  const onStars = (target: RecapItem, stars: number) => {
+    touch(target);
+    setValues((current) => ({ ...current, [rowId(target)]: stars }));
+    check.set(target, true);
   };
-  const notDone = (item: RecapItem) => {
-    setValues((current) => withoutKey(current, rowId(item)));
+  const notDone = (target: RecapItem) => {
+    touch(target);
+    setValues((current) => withoutKey(current, rowId(target)));
     try {
-      updatePlanEntry(item.entry.id, { notDone: true });
+      updatePlanEntry(target.entry.id, { notDone: true });
     } catch (error) {
       toast.show({
         message: error instanceof OfflineError ? (online.hint ?? FAILED) : FAILED,
@@ -137,29 +155,62 @@ export function TodayRecap(props: { today: ISODate; slotOrder: string[] }) {
       return;
     }
     toast.show({
-      message: notDoneMessage(item.title),
+      message: notDoneMessage(target.title),
       actionLabel: 'Rückgängig',
-      onAction: undoAction(() => updatePlanEntry(item.entry.id, { notDone: false })),
+      onAction: undoAction(() => updatePlanEntry(target.entry.id, { notDone: false })),
     });
+  };
+  const count = ids.length;
+  // Leafing works offline too (AC-008); the last leads to the first (AC-004).
+  const leaf = (step: number) => {
+    const next = (index + step + count) % count;
+    setPlace({ touched: ids[next], shown: ids[next], index: next });
   };
 
   return (
-    <Section title="Wie war’s?" testID="today-recap">
-      <List>
-        {check.rows.map((item) => (
-          <RowTransition key={rowId(item)}>
-            <RecapRow
-              item={item}
-              today={props.today}
-              stars={values[rowId(item)] ?? 0}
-              disabled={online.disabled}
-              hint={online.hint}
-              onStars={(stars) => onStars(item, stars)}
-              onKeep={item.stars === undefined ? undefined : () => onStars(item, item.stars ?? 0)}
-              onNotDone={() => notDone(item)}
+    <Section
+      title="Wie war’s?"
+      testID="today-recap"
+      action={
+        count > 1 ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+            <Text variant="small" color="muted" testID="today-recap-position">
+              {`${index + 1} von ${count}`}
+            </Text>
+            <IconButton
+              icon="chevron-left"
+              label="Vorheriger Eintrag"
+              size={32}
+              touchFrame
+              onPress={() => leaf(-1)}
+              testID="today-recap-previous"
             />
-          </RowTransition>
-        ))}
+            <IconButton
+              icon="chevron-right"
+              label="Nächster Eintrag"
+              size={32}
+              touchFrame
+              onPress={() => leaf(1)}
+              testID="today-recap-next"
+            />
+          </View>
+        ) : undefined
+      }
+    >
+      <List>
+        {/* One entry at a time: the next fades in at its place, the old one does not linger. */}
+        <Animated.View key={id} entering={ARRIVE}>
+          <RecapRow
+            item={item}
+            today={props.today}
+            stars={values[id] ?? 0}
+            disabled={online.disabled}
+            hint={online.hint}
+            onStars={(stars) => onStars(item, stars)}
+            onKeep={item.stars === undefined ? undefined : () => onStars(item, item.stars ?? 0)}
+            onNotDone={() => notDone(item)}
+          />
+        </Animated.View>
       </List>
     </Section>
   );

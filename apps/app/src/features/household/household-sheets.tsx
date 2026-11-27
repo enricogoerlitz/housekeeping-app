@@ -13,7 +13,7 @@ import {
   deleteHouseholdPrompt,
   householdRename,
 } from '@housekeeping/core';
-import { Button, Row, Sheet, Stack, Text, TextField, toast } from '@housekeeping/ui';
+import { Button, Sheet, Stack, Text, TextField, toast } from '@housekeeping/ui';
 import { useState } from 'react';
 
 import { useOnlineOnly } from '@/features/shell/offline';
@@ -164,26 +164,23 @@ function DeleteHouseholdSheet(props: { onClose: () => void }) {
       title={prompt.title}
       onClose={close}
       testID="household-delete-sheet"
-      // Deleting stays at the bottom: a destructive confirmation, not a form to save (spec 0032).
-      footer={
-        <Row gap={10} style={{ justifyContent: 'flex-end' }}>
-          <Button
-            label="Abbrechen"
-            variant="secondary"
-            disabled={busy}
-            onPress={close}
-            testID="household-delete-cancel"
-          />
-          <Button
-            label={busy ? 'Wird gelöscht …' : 'Endgültig löschen'}
-            icon="trash"
-            disabled={!matches || busy || online.disabled}
-            hint={online.hint}
-            onPress={() => void confirm()}
-            testID="household-delete-confirm"
-          />
-        </Row>
-      }
+      // "Abbrechen" · question · named button, like every window that decides (spec 0054,
+      // REQ-007; before, spec 0032 kept it at the bottom). Greyed out until the name matches.
+      actions={{
+        cancel: {
+          label: 'Abbrechen',
+          disabled: busy,
+          onPress: close,
+          testID: 'household-delete-cancel',
+        },
+        primary: {
+          label: busy ? 'Wird gelöscht …' : 'Endgültig löschen',
+          disabled: !matches || busy || online.disabled,
+          hint: online.hint,
+          onPress: () => void confirm(),
+          testID: 'household-delete-confirm',
+        },
+      }}
     >
       <Stack gap={14}>
         <Text testID="household-delete-message">{prompt.message}</Text>
