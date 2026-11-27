@@ -2,6 +2,9 @@ import {
   addPlanEntry,
   createActivitySeries,
   defaultEaterIds,
+  OfflineError,
+  planSuggested,
+  snapshot,
   useActivities,
   useArticlesById,
   useHousehold,
@@ -26,18 +29,20 @@ import {
   type EntryReminder,
   type Id,
   type ISODate,
+  type PlanSuggestion,
 } from '@housekeeping/core';
 import { Sheet, Text, toast, type SheetAction } from '@housekeeping/ui';
 import { useReducer, useState } from 'react';
 
 import { DEFAULT_SERVINGS } from '@/features/recipes/recipe-form';
 import { errorMessage, FAILED_MESSAGE } from '@/features/shell/error-message';
-import { useOnlineOnly } from '@/features/shell/offline';
+import { OFFLINE_EDIT_HINT, undoAction, useOnlineOnly } from '@/features/shell/offline';
 
 import { AddEntryCreateBody, addEntryCreateAction, useAddEntryCreate } from './add-entry-create';
 import { AddEntryDetails } from './add-entry-details';
 import { AddEntrySearch, AddEntrySearchHeader } from './add-entry-search';
 import { addSheetTitle } from './labels';
+import { PLAN_ONLINE_HINT } from './plan-suggestions';
 import { useReminderForm } from './reminder-block';
 
 export type AddTarget = AddEntryTarget;
@@ -155,6 +160,37 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
     toast.show({ message: addedNotice(request.title, request.input.date, today) });
   };
 
+  // Spec 0063, REQ-006: "+" plans with the defaults of the second step, then "Rückgängig".
+  const planSuggestion = (suggestion: PlanSuggestion) => {
+    const day = props.target.date;
+    if (online.disabled || day === null) return;
+    const restore = snapshot();
+    try {
+      planSuggested(
+        [
+          {
+            recipeId: suggestion.recipe.id,
+            date: day,
+            plannedLaterEntryId: suggestion.plannedLaterEntryId,
+          },
+        ],
+        props.target.slotId,
+      );
+    } catch (caught) {
+      toast.show({
+        message:
+          caught instanceof OfflineError ? OFFLINE_EDIT_HINT : errorMessage(caught, FAILED_MESSAGE),
+      });
+      return;
+    }
+    props.onClose();
+    toast.show({
+      message: addedNotice(suggestion.recipe.title, day, today),
+      actionLabel: 'Rückgängig',
+      onAction: undoAction(restore),
+    });
+  };
+
   let actions: { primary: SheetAction } | undefined;
   if (creating) {
     const primary = addEntryCreateAction(state, create, online);
@@ -231,6 +267,8 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
           onCreate={create.start}
           onTab={(tab) => dispatch({ type: 'setTab', tab })}
           onToggleOlder={() => dispatch({ type: 'toggleOlderLeftovers' })}
+          onPlanSuggestion={planSuggestion}
+          planHint={online.offline ? PLAN_ONLINE_HINT : online.hint}
         />
       )}
     </Sheet>

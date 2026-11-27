@@ -879,6 +879,23 @@ Konzept auch „Geisterzeile“ genannt.
 
 - **Im Code:** `GhostRow`
 
+### Planvorschlag
+
+Ein Rezept, das die App beim Planen für einen Abend oder eine Woche anbietet, mit Grund und
+Fakten (Spec 0063). Auf dem Gerät berechnet, nie gespeichert, ohne KI; erst ein Tipp plant es ein.
+In der Oberfläche „Vorschläge für Donnerstagabend“.
+
+- **Im Code:** `PlanSuggestion`, `slotSuggestions` (plan-suggestions.ts)
+- **Nicht verwenden:** Empfehlung, Tipp
+- **Abgrenzung:** Ein Vorschlag (`Proposal`) kommt vom Assistenten und ändert etwas Bestehendes.
+
+### Wochenkarte
+
+Das Fenster „Was kochen wir?“ (Spec 0063): eine kurze Auswahl an Gerichten für die freien Abende
+einer Woche; die App verteilt, was man antippt.
+
+- **Im Code:** `weekMenu`, `distributeWeek`, `WeekMenuSheet`
+
 ### Haushaltsgedächtnis
 
 Was der Assistent über den Haushalt weiß, z. B. „unter der Woche höchstens 30 Minuten“. Sichtbar,

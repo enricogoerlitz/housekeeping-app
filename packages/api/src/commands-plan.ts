@@ -564,6 +564,43 @@ export function removePlanEntry(entryId: Id, options: { withList?: boolean } = {
   return share.articles;
 }
 
+// ---------- Planvorschläge (spec 0063) ----------
+
+/** One dish to plan from the suggestions: on a day, or vormerken with date null. */
+export interface SuggestedDish {
+  recipeId: Id;
+  date: ISODate | null;
+  /** The dish is vorgemerkt: that entry moves to the day instead of a second one. */
+  plannedLaterEntryId?: Id;
+}
+
+/**
+ * "+" of a Planvorschlag and "4 Abende einplanen" (spec 0063, REQ-006, REQ-011): every dish in
+ * one change (ADR-0011). A new entry gets the defaults of the second step: everyone of the
+ * household, one portion each, split over the variants. A vorgemerkt dish moves to its day (its
+ * contributions stay); one that stays vorgemerkt is left alone. Returns the ids of the entries now
+ * on a day, in the given order.
+ */
+export function planSuggested(dishes: readonly SuggestedDish[], slotId: Id): Id[] {
+  return commit({ path: 'diff' }, () =>
+    dishes.flatMap((dish) => {
+      if (dish.plannedLaterEntryId !== undefined) {
+        if (dish.date === null) return [];
+        movePlanEntry(dish.plannedLaterEntryId, dish.date, slotId);
+        return [dish.plannedLaterEntryId];
+      }
+      const id = addPlanEntry({
+        date: dish.date,
+        slotId,
+        kind: 'recipe',
+        recipeId: dish.recipeId,
+        eaterIds: defaultEaterIds(),
+      });
+      return dish.date === null ? [] : [id];
+    }),
+  );
+}
+
 // ---------- Create while planning (spec 0004, REQ-008) ----------
 // The new entity and its plan entry are one command, so one apply_changes call: both or neither.
 // Validation errors ("Name fehlt", "Titel fehlt", "Gibt es schon: …") come before anything changes.
