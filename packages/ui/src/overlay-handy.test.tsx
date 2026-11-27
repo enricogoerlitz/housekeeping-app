@@ -449,6 +449,80 @@ describe('Sheet with the keyboard on iPhone (spec 0044, REQ-002, REQ-003)', () =
     expect(document.activeElement).not.toBe(title);
   });
 
+  it('AC-002: its height glides with its place on the keyboard, so its top edge stays put while the keyboard changes (Durchklick 27.11., B-02)', () => {
+    setWindow(390, 844);
+    openSheet();
+    const panel = screen.getByTestId('sheet').style;
+    const layerStyle = screen.getByTestId('sheet-layer').style;
+    expect(layerStyle.transitionProperty).toBe('padding-bottom');
+    expect(panel.transitionProperty).toBe('max-height, height');
+    expect(panel.transitionDuration).toBe(layerStyle.transitionDuration);
+    expect(panel.transitionTimingFunction).toBe(layerStyle.transitionTimingFunction);
+  });
+
+  it('AC-002: its colour goes on below it, so a gap to the moving keyboard never shows the page (Durchklick 27.11.)', () => {
+    setWindow(390, 844);
+    openSheet();
+    const skirt = screen.getByTestId('sheet-skirt').style;
+    expect(skirt.top).toBe('100%');
+    expect(skirt.backgroundColor).toBe(screen.getByTestId('sheet').style.backgroundColor);
+  });
+
+  it('AC-009: closed with the keyboard open, page and window stand without it at once, before WebKit reports it gone (Durchklick 27.11., B-03)', () => {
+    setWindow(390, 844);
+    const view = openSheet();
+    report(464);
+    act(() => vi.advanceTimersByTime(400));
+    const appHeight = () => document.documentElement.style.getPropertyValue('--app-height');
+    expect(appHeight()).toBe('464px');
+    view.rerender(
+      <Sheet visible={false} onClose={() => undefined} title="Neu" size="m" testID="sheet">
+        <TextField label="Titel" autoFocus testID="title" />
+      </Sheet>,
+    );
+    act(() => vi.advanceTimersByTime(0));
+    expect(appHeight()).toBe('');
+  });
+
+  it('AC-009: removed by its page with the cursor in a field, the keyboard goes along at once (B-03)', () => {
+    setWindow(390, 844);
+    // The page (its tab bar) listens to the keyboard as well.
+    function Page(props: { sheet: boolean }) {
+      useKeyboard();
+      return props.sheet ? (
+        <Sheet visible onClose={() => undefined} title="Neu" size="m" testID="sheet">
+          <TextField label="Titel" autoFocus testID="title" />
+        </Sheet>
+      ) : null;
+    }
+    const view = render(<Page sheet />);
+    report(464);
+    act(() => vi.advanceTimersByTime(400));
+    const appHeight = () => document.documentElement.style.getPropertyValue('--app-height');
+    expect(appHeight()).toBe('464px');
+    view.rerender(<Page sheet={false} />);
+    act(() => vi.advanceTimersByTime(0));
+    expect(appHeight()).toBe('');
+  });
+
+  it('AC-009: dragged away, its field lost the cursor without a blur event: the keyboard goes along all the same (B-03)', () => {
+    setWindow(390, 844);
+    const view = openSheet();
+    report(464);
+    act(() => vi.advanceTimersByTime(400));
+    const appHeight = () => document.documentElement.style.getPropertyValue('--app-height');
+    expect(appHeight()).toBe('464px');
+    // WebKit dropped the focus of the field as the window slid away, without telling anyone.
+    const active = vi.spyOn(document, 'activeElement', 'get').mockReturnValue(document.body);
+    view.rerender(
+      <Sheet visible={false} onClose={() => undefined} title="Neu" size="m" testID="sheet">
+        <TextField label="Titel" autoFocus testID="title" />
+      </Sheet>,
+    );
+    expect(appHeight()).toBe('');
+    active.mockRestore();
+  });
+
   it('AC-010: the keyboard gone, the window is at the bottom edge at once and the page at the top', () => {
     setWindow(390, 844);
     const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => undefined);

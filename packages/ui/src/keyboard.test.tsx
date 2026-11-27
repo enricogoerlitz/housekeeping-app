@@ -234,3 +234,105 @@ describe('the cursor moving between fields on iPhone (spec 0044, REQ-005)', () =
     expect(first).not.toBe(document.activeElement);
   });
 });
+
+describe('the keyboard leaving on iPhone (iPhone click-through 27.11., B-03)', () => {
+  const appHeight = () => document.documentElement.style.getPropertyValue('--app-height');
+  /** Cursor in a field, keyboard open, then a tap on a button takes the cursor away. */
+  function typingThenButton() {
+    const field = document.createElement('input');
+    const button = document.createElement('button');
+    document.body.append(field, button);
+    act(() => field.focus());
+    keyboardTo(464);
+    act(() => vi.advanceTimersByTime(200));
+    expect(appHeight()).toBe('464px');
+    act(() => button.focus());
+    return { field, button };
+  }
+
+  it('AC-010: the cursor leaving the last field takes the keyboard as gone at once, before Safari reports it', () => {
+    asIPhone();
+    render(<Listener />);
+    typingThenButton();
+    act(() => vi.advanceTimersByTime(0));
+    expect(appHeight()).toBe('');
+    // Safari reports the keyboard as long as it moves away (a scroll of the visual viewport).
+    act(() => {
+      viewport.dispatchEvent(new Event('scroll'));
+    });
+    expect(appHeight()).toBe('');
+  });
+
+  it('AC-010: a field taking the cursor again within the tap ("Titel fehlt") keeps the keyboard', () => {
+    asIPhone();
+    render(<Listener />);
+    const { field } = typingThenButton();
+    act(() => field.focus());
+    act(() => vi.advanceTimersByTime(0));
+    expect(appHeight()).toBe('464px');
+  });
+
+  it('AC-010: a field taking the cursor while the keyboard leaves takes it as it is', () => {
+    asIPhone();
+    render(<Listener />);
+    const { field } = typingThenButton();
+    act(() => vi.advanceTimersByTime(0));
+    act(() => field.focus());
+    expect(appHeight()).toBe('464px');
+  });
+
+  it('AC-010: still reported after a second, the keyboard counts again', () => {
+    asIPhone();
+    render(<Listener />);
+    typingThenButton();
+    act(() => vi.advanceTimersByTime(0));
+    expect(appHeight()).toBe('');
+    act(() => vi.advanceTimersByTime(1000));
+    expect(appHeight()).toBe('464px');
+  });
+
+  it('AC-008: Safari moving the visible area for a moment (scrolling to a tapped field) does not move a window (Durchklick 27.11.)', () => {
+    function Inset() {
+      return <span data-testid="inset">{useKeyboard().inset}</span>;
+    }
+    const view = render(<Inset />);
+    const inset = () => Number(view.getByTestId('inset').textContent);
+    keyboardTo(464);
+    expect(inset()).toBe(380);
+    viewport.offsetTop = 48;
+    act(() => {
+      viewport.dispatchEvent(new Event('scroll'));
+    });
+    act(() => vi.advanceTimersByTime(160));
+    expect(inset()).toBe(380);
+    viewport.offsetTop = 0;
+    act(() => {
+      viewport.dispatchEvent(new Event('scroll'));
+    });
+    act(() => vi.advanceTimersByTime(1000));
+    expect(inset()).toBe(380);
+  });
+
+  it('AC-008: left moved, the window follows the visible area after all', () => {
+    function Inset() {
+      return <span data-testid="inset">{useKeyboard().inset}</span>;
+    }
+    const view = render(<Inset />);
+    const inset = () => Number(view.getByTestId('inset').textContent);
+    keyboardTo(464);
+    viewport.offsetTop = 48;
+    act(() => {
+      viewport.dispatchEvent(new Event('scroll'));
+    });
+    act(() => vi.advanceTimersByTime(1000));
+    expect(inset()).toBe(332);
+    viewport.offsetTop = 0;
+  });
+
+  it('AC-021: elsewhere the keyboard counts until the viewport says it has gone', () => {
+    render(<Listener />);
+    typingThenButton();
+    act(() => vi.advanceTimersByTime(0));
+    expect(appHeight()).toBe('464px');
+  });
+});

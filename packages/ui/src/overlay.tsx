@@ -44,7 +44,7 @@ import {
   useBottomInset,
 } from './shell';
 import { ToneContext, useBreakpoint, useTheme } from './theme-context';
-import { useKeyboard } from './keyboard';
+import { keyboardLeaving, useKeyboard } from './keyboard';
 import { keyboardSheetFrame, sheetWindowHeight } from './keyboard-state';
 import { handOverKeyboard, holdHandOver } from './keyboard-proxy';
 import { lockPageScroll } from './page-scroll-lock';
@@ -237,11 +237,17 @@ export function Sheet(props: SheetProps) {
 
   // Spec 0044, REQ-003: closed with the cursor in one of its fields, the keyboard goes along with
   // the window instead of after it has gone.
+  const wasVisible = useRef(props.visible);
   useEffect(() => {
-    if (props.visible || typeof document === 'undefined') return;
+    const closing = wasVisible.current && !props.visible;
+    wasVisible.current = props.visible;
+    if (!closing || typeof document === 'undefined') return;
     const box = panel.current as unknown;
     const active = document.activeElement;
     if (box instanceof Node && active instanceof HTMLElement && box.contains(active)) active.blur();
+    // Dragged away, the field may lose the cursor without a blur event: the keyboard goes along
+    // all the same (B-03).
+    keyboardLeaving();
   }, [props.visible]);
 
   // Spec 0036, REQ-014: Enter in a one-line field presses the primary button, unless greyed out.
@@ -307,9 +313,15 @@ export function Sheet(props: SheetProps) {
   });
   useLayoutEffect(
     () => () => {
-      if (open.current.shown) {
-        fadeOutCopy(layer.current, { slide: open.current.slide, ms: CLOSE_MS });
+      if (!open.current.shown) return;
+      // Its field lets go of the cursor first: WebKit drops the focus of a removed field without
+      // a blur event, and the keyboard stayed until it had gone (B-03).
+      const box = layer.current as unknown;
+      const active = typeof document === 'undefined' ? null : document.activeElement;
+      if (box instanceof Node && active instanceof HTMLElement && box.contains(active)) {
+        active.blur();
       }
+      fadeOutCopy(layer.current, { slide: open.current.slide, ms: CLOSE_MS });
     },
     [],
   );
@@ -398,9 +410,28 @@ export function Sheet(props: SheetProps) {
                           boxShadow: upwardShadow(c.shadowRaised),
                         }
                       : null,
+                    isPhone && !reduced ? HEIGHT_GLIDE : null,
                     sheetStyle,
                   ]}
                 >
+                  {isPhone ? (
+                    // Below the window its colour goes on, out of sight: while the keyboard and
+                    // the window move apart for a moment (Safari's keyboard leaves a little ahead),
+                    // the gap shows the window, not the page behind (iPhone click-through 27.11.).
+                    <View
+                      testID={props.testID ? `${props.testID}-skirt` : undefined}
+                      aria-hidden
+                      pointerEvents="none"
+                      style={{
+                        position: 'absolute',
+                        top: '100%',
+                        left: 0,
+                        right: 0,
+                        height: SKIRT,
+                        backgroundColor: c.bg,
+                      }}
+                    />
+                  ) : null}
                   <View {...SHEET_HEAD} style={isPhone ? NO_PAN : null}>
                     {isPhone ? (
                       <View
@@ -505,6 +536,9 @@ export function Sheet(props: SheetProps) {
     </Modal>
   );
 }
+
+/** How far a phone window's colour goes on below it: more than any keyboard. */
+const SKIRT = 600;
 
 /** Room above a phone window while the keyboard is open (spec 0032, AC-004). */
 const TOP_GAP_TYPING = 12;
@@ -663,6 +697,23 @@ const KEYBOARD_GLIDE = (
   Platform.OS === 'web'
     ? {
         transitionProperty: 'padding-bottom',
+        transitionDuration: `${OPEN_MS}ms`,
+        transitionTimingFunction: 'cubic-bezier(0.23, 1, 0.32, 1)',
+      }
+    : null
+) as ViewStyle | null;
+
+/**
+ * On the web: the window's height glides along with its place on the keyboard, the same way, so
+ * its top edge stays put while the keyboard grows or shrinks (the suggestion bar coming as a field
+ * takes over from the hidden one). Before, the height changed at once and only the place glided:
+ * the window dropped by the difference, the page flashed through above it, and it slid back up
+ * (iPhone click-through 27.11., B-02).
+ */
+const HEIGHT_GLIDE = (
+  Platform.OS === 'web'
+    ? {
+        transitionProperty: 'max-height, height',
         transitionDuration: `${OPEN_MS}ms`,
         transitionTimingFunction: 'cubic-bezier(0.23, 1, 0.32, 1)',
       }

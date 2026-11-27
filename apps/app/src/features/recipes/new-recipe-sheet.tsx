@@ -37,8 +37,9 @@ import {
   focusAfterChange,
   toast,
   type SheetAction,
+  type TabSwipe,
 } from '@housekeeping/ui';
-import { useRef, useState } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { Keyboard, View } from 'react-native';
 
 import { discardFirst } from '@/features/shell/confirm-dialog';
@@ -404,74 +405,83 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
         cancel: { label: 'Abbrechen', onPress: dismiss, testID: 'new-recipe-cancel' },
       }}
     >
-      <Stack gap={16}>
-        {collection ? (
-          <>
-            <ChoiceChips
-              label="Art"
-              options={[...NEW_ENTRY_KINDS]}
-              value={kind}
-              onChange={chooseKind}
-              disabled={online.disabled}
-              hint={online.hint}
-              testID="new-recipe-kind"
-            />
-            <NewRecipeFields
-              title={title}
-              kind={kind}
-              onChangeTitle={(next) => {
-                setTitle(next);
-                if (error) setError(undefined);
+      {/* Spec 0055, REQ-002: the tabs swipe — over the whole window down to its bottom, the
+          links below the fields and the empty space included (B-05, Durchklick 27.11.). */}
+      <SwipeTabs swipe={collection ? undefined : tabs.swipe}>
+        <Stack gap={16}>
+          {collection ? (
+            <>
+              <ChoiceChips
+                label="Art"
+                options={[...NEW_ENTRY_KINDS]}
+                value={kind}
+                onChange={chooseKind}
+                disabled={online.disabled}
+                hint={online.hint}
+                testID="new-recipe-kind"
+              />
+              <NewRecipeFields
+                title={title}
+                kind={kind}
+                onChangeTitle={(next) => {
+                  setTitle(next);
+                  if (error) setError(undefined);
+                }}
+                error={error}
+                onSubmit={save}
+                autoFocus
+              />
+            </>
+          ) : tab === 'web' ? (
+            <Stack gap={12}>
+              {titleField}
+              {search.state.status !== 'idle' || search.preview ? (
+                <WebSearchPanel
+                  search={search}
+                  recipeRows={draftInput}
+                  withField={false}
+                  testID="new-recipe-web"
+                />
+              ) : null}
+            </Stack>
+          ) : (
+            <AiFillFields fill={fill} inputRef={tabs.promptField} testID="new-recipe-ai" />
+          )}
+          {extras.has('photo') ? <NewPhotoSlot photo={photo} onChange={setPhoto} /> : null}
+          {!collection && extras.has('ingredients') ? (
+            <IngredientLinesField
+              label="Zutaten einfügen"
+              placeholder={'200 ml Kokosmilch\n1 Mango'}
+              hint="Eine Zutat pro Zeile, z. B. 200 ml Kokosmilch"
+              text={ingredients}
+              onChangeText={setIngredients}
+              picks={picks}
+              onChangePicks={setPicks}
+              onInput={(input) => {
+                ingredientsField.current = input;
               }}
-              error={error}
-              onSubmit={save}
-              autoFocus
+              testID="new-recipe-ingredients"
             />
-          </>
-        ) : (
-          // Spec 0055, REQ-002: the tabs swipe.
-          <TabSwipeContent swipe={tabs.swipe} testID="new-recipe-ai-swipe">
-            {tab === 'web' ? (
-              <Stack gap={12}>
-                {titleField}
-                {search.state.status !== 'idle' || search.preview ? (
-                  <WebSearchPanel
-                    search={search}
-                    recipeRows={draftInput}
-                    withField={false}
-                    testID="new-recipe-web"
-                  />
-                ) : null}
-              </Stack>
-            ) : (
-              <AiFillFields fill={fill} inputRef={tabs.promptField} testID="new-recipe-ai" />
-            )}
-          </TabSwipeContent>
-        )}
-        {extras.has('photo') ? <NewPhotoSlot photo={photo} onChange={setPhoto} /> : null}
-        {!collection && extras.has('ingredients') ? (
-          <IngredientLinesField
-            label="Zutaten einfügen"
-            placeholder={'200 ml Kokosmilch\n1 Mango'}
-            hint="Eine Zutat pro Zeile, z. B. 200 ml Kokosmilch"
-            text={ingredients}
-            onChangeText={setIngredients}
-            picks={picks}
-            onChangePicks={setPicks}
-            onInput={(input) => {
-              ingredientsField.current = input;
-            }}
-            testID="new-recipe-ingredients"
-          />
-        ) : null}
-        {collection && extras.has('recipes') ? (
-          <PickRecipes value={recipeIds} onChange={setRecipeIds} />
-        ) : null}
-        {/* A previewed hit brings its own photo choice and ingredients; "Foto", "Zutaten einfügen"
+          ) : null}
+          {collection && extras.has('recipes') ? (
+            <PickRecipes value={recipeIds} onChange={setRecipeIds} />
+          ) : null}
+          {/* A previewed hit brings its own photo choice and ingredients; "Foto", "Zutaten einfügen"
             and "Sammlung" would not go with "Übernehmen" (review 0004). */}
-        {!collection && tab === 'web' && search.preview ? null : links}
-      </Stack>
+          {!collection && tab === 'web' && search.preview ? null : links}
+        </Stack>
+      </SwipeTabs>
     </Sheet>
+  );
+}
+
+/** The window's content, swiping between its tabs where it has them. */
+function SwipeTabs(props: { swipe: TabSwipe | undefined; children: ReactNode }) {
+  if (!props.swipe) return <>{props.children}</>;
+  return (
+    <TabSwipeContent swipe={props.swipe} testID="new-recipe-ai-swipe">
+      {props.children}
+    </TabSwipeContent>
   );
 }
 

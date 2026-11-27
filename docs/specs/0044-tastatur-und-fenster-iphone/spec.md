@@ -233,6 +233,32 @@ Befund 7. Offline: offline vollständig.
   zum Anlegen (Reisetasche, Markt, Bereich) öffnen die Tastatur mit dem Tipp (`openKeyboardNow`), statt
   den Cursor erst nach dem Hereingleiten zu setzen; vorher rückte das Fenster für eine Tastatur hoch,
   die in Safari nicht kam, und fiel zurück.
+- **Durchklick 27.11., B-02/B-03/B-05 und Enricos iPhone-Befunde** (gemessen im Simulator mit
+  `visualViewport`, Fensterkante je Bild und Videos, Safari und installiert; Bildfolgen in
+  `tmp/review-0004/anlegen-tastatur/`):
+  - **B-02, Nachsacken beim Öffnen.** Das Feld übernimmt die Tastatur vom versteckten Feld, iOS
+    blendet dann die Vorschlagsleiste ein (+27 pt). Die Höhe des Fensters sprang sofort, nur sein
+    Platz glitt: die Oberkante sackte um die Differenz ab und glitt zurück. Jetzt gleiten Höhe und
+    Platz gleich (`max-height, height`, 250 ms), die Oberkante steht. Unter dem Fenster geht seine
+    Farbe weiter (unsichtbar), damit eine kurze Lücke zur Tastatur nie die Seite zeigt.
+  - **B-03 und „Hauptaktion/Lupe ruckelt“.** Safari meldet die Tastatur erst rund 0,5 s nach dem
+    Tipp als weg. Bis dahin blieb die App so hoch wie die Tastatur sie ließ (Seite darunter halb
+    gezeichnet), ein schließendes Fenster glitt nur bis zur Tastatur und blieb stehen. Jetzt: verlässt
+    der Cursor auf dem iPhone das letzte Feld (Tipp auf Abbrechen, Anlegen, Speichern, Lupe, ✓) und
+    nimmt im selben Tipp kein Feld ihn wieder („Titel fehlt“), gilt die Tastatur sofort als weg;
+    spätere Meldungen mit Tastatur werden bis zur Meldung „weg“ (höchstens 1 s) übergangen. Ein
+    Fenster, das schließt oder von seiner Seite entfernt wird, nimmt die Tastatur auch ohne `blur`
+    mit (Wegwischen); seine auslaufende Kopie gleitet bis unter den Bildschirmrand statt nur um die
+    eigene Höhe. Ändert Entscheidung 6 (nur Fokus weg) zu „Fokus und Tastatur weg“.
+  - **„Feld nach der Suche antippen ruckelt hart“.** Safari schiebt den sichtbaren Bereich nach
+    dem Antippen kurz um ~48 pt; die App setzt ihn zurück, nahm aber die verschobene Messung als
+    neue Tastaturhöhe (Fenster sackte ~90 pt ab und kam zurück). Eine Messung, bei der nur der
+    sichtbare Bereich verschoben ist (Höhe gleich), wartet jetzt 600 ms Ruhe (`drift`).
+  - **B-05 und „Wischen zwischen den Reitern geht nicht“.** Im Fenster „Neu“ wischte nur der
+    obere Teil (Felder); die Links und die freie Fläche darunter lagen außerhalb. Jetzt wischt der
+    ganze Inhalt bis zum unteren Rand, mit und ohne Tastatur (ändert Spec 0055, REQ-002).
+  - Gefunden, nicht geändert: B-04 (Titelfoto beim Wechsel in den Bearbeiten-Modus ~3 Bilder leer)
+    — niedrig, eigener Fix. Am echten iPhone prüft Enrico das Wischen in „Neu“.
 
 ## Daten
 

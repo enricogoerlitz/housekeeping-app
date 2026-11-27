@@ -4,6 +4,9 @@
 /** Quiet time after the last report of the visual viewport. */
 export const KEYBOARD_SETTLE_MS = 120;
 
+/** Quiet time before a visible area moved by Safari counts (`drift`, iPhone click-through 27.11.). */
+export const KEYBOARD_DRIFT_MS = 600;
+
 export interface Settler<T> {
   /** A new value; it is taken once no other came for `ms`. */
   push: (value: T) => void;
