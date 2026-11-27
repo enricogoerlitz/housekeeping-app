@@ -477,6 +477,22 @@ describe('ai-recipe-draft: the recipe to change (spec 0055, REQ-006, REQ-008)', 
     expect(instructions).toMatch(/gelten nur für das, was du neu schreibst/);
   });
 
+  it('Nachklick 27.11., iN-01: a first variant makes the recipe as it was „Original“; a note never names a variant', async () => {
+    const { deps, modelBody } = setup();
+    await handler(
+      post({ householdId: HOUSEHOLD_ID, text: WISH, current: CURRENT, imagePrompt: false }),
+      deps,
+    );
+    const instructions = modelBody().instructions;
+    // „Füge eine vegane Variante hinzu“ at a vegetarian Lasagne gave „Vegetarisch“ + „Vegan“ and
+    // „Lasagneplatten, für die vegane Variante ohne Ei“ for every variant.
+    expect(instructions).toMatch(/genau eine Variante mehr/);
+    expect(instructions).toMatch(/heißt „Original“/);
+    expect(instructions).toMatch(/Was ohnehin in alle Varianten passt, bleibt ohne "variant"/);
+    expect(instructions).toMatch(/"note" einer Zutat ohne "variant" gilt für alle Varianten/);
+    expect(instructions).toMatch(/nennt nie eine Variante/);
+  });
+
   it('a new recipe keeps the rule of a vegetarian variant for meat', async () => {
     const { deps, modelBody } = setup();
     await handler(post({ householdId: HOUSEHOLD_ID, text: 'Gulasch' }), deps);

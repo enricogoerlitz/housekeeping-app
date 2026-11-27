@@ -199,6 +199,104 @@ describe('recipeProposal (REQ-005)', () => {
   });
 });
 
+describe('recipeProposal: variants and groups (Nachklick 27.11., N-01)', () => {
+  // „Füge eine vegetarische Variante hinzu“: the recipe as it was becomes „Original“, only the
+  // rows the new variant replaces carry its name (ai-recipe-draft, „Ändern“).
+  function withVariant() {
+    const before = fillPageDraft(
+      pageDraft(bolognese, []),
+      { steps: [{ text: 'Hack anbraten.' }, { text: 'Abschmecken.' }] },
+      newId,
+    );
+    const after = fillPageDraft(
+      before,
+      {
+        variants: [
+          { id: 'd-orig', name: 'Original', isDefault: true },
+          { id: 'd-veg', name: 'Vegetarisch', isDefault: false },
+        ],
+        ingredients: [
+          { ...row('Hackfleisch', '500 g', 'art-hack'), variantId: 'd-orig' },
+          { ...row('Linsen', '200 g'), variantId: 'd-veg' },
+          row('Spaghetti', '', 'art-spaghetti'),
+          row('Möhren', '2', 'art-moehren'),
+        ],
+        steps: [
+          { text: 'Hack anbraten.', variantId: 'd-orig' },
+          { text: 'Linsen kochen.', variantId: 'd-veg' },
+          { text: 'Abschmecken.' },
+        ],
+      },
+      newId,
+      { replace: true, change: true },
+    );
+    return { before, after, proposal: recipeProposal(before, after, { articleName }) };
+  }
+  const shown = (proposal: ReturnType<typeof recipeProposal>, id: string) =>
+    proposal.groups
+      .find((group) => group.id === id)
+      ?.rows.map((entry) => [entry.status, entry.label, entry.section, entry.hint]);
+
+  it('N-01: a row that moves into the new variant „Original“ is one changed row, not removed + new', () => {
+    const { proposal } = withVariant();
+    expect(shown(proposal, 'ingredients')).toEqual([
+      ['same', 'Spaghetti', 'Alle Varianten', undefined],
+      ['same', '2 Möhren', 'Alle Varianten', undefined],
+      ['changed', '500 g Hackfleisch', 'Original', 'jetzt nur in „Original“'],
+      ['new', '200 g Linsen', 'Vegetarisch', undefined],
+    ]);
+    expect(shown(proposal, 'steps')).toEqual([
+      ['same', 'Abschmecken.', 'Alle Varianten', undefined],
+      ['changed', 'Hack anbraten.', 'Original', 'jetzt nur in „Original“'],
+      ['new', 'Linsen kochen.', 'Vegetarisch', undefined],
+    ]);
+    expect(proposalSummaryText(proposalSummary(proposal, new Set()))).toBe(
+      'Vorschlag: 4 neu · 2 geändert',
+    );
+  });
+
+  it('N-01: "Übernehmen" moves the stored row; ↺ keeps it for all variants', () => {
+    const { proposal } = withVariant();
+    const hack = proposal.groups
+      .flatMap((group) => group.rows)
+      .find((entry) => entry.label === '500 g Hackfleisch');
+    const accepted = applyRecipeProposal(proposal, new Set());
+    expect(
+      accepted.ingredients.rows.find((entry) => entry.ingredientId === 'b-hack'),
+    ).toMatchObject({ variantId: 'd-orig' });
+    const kept = applyRecipeProposal(proposal, new Set([hack?.id ?? '']));
+    expect(
+      kept.ingredients.rows.find((entry) => entry.ingredientId === 'b-hack')?.variantId,
+    ).toBeUndefined();
+  });
+
+  it('N-01: a row that only changes its group is "geändert" with the group named, and saved so', () => {
+    const before = pageDraft(bolognese, []);
+    const after = fillPageDraft(
+      before,
+      {
+        ingredients: [
+          { ...row('Hackfleisch', '500 g', 'art-hack'), group: 'Soße' },
+          row('Spaghetti', '', 'art-spaghetti'),
+          row('Möhren', '2', 'art-moehren'),
+        ],
+      },
+      newId,
+      { replace: true, change: true },
+    );
+    const proposal = recipeProposal(before, after, { articleName });
+    expect(shown(proposal, 'ingredients')).toEqual([
+      ['same', 'Spaghetti', undefined, undefined],
+      ['same', '2 Möhren', undefined, undefined],
+      ['changed', '500 g Hackfleisch', 'Soße', 'jetzt unter „Soße“'],
+    ]);
+    expect(applyRecipeProposal(proposal, new Set()).ingredients.rows[0]).toMatchObject({
+      ingredientId: 'b-hack',
+      group: 'Soße',
+    });
+  });
+});
+
 describe('proposesPagePhoto (spec 0049, AC-047)', () => {
   it('AC-047: "Ergänzen" offers the page photo only to a recipe without one; "Ersetzen" always', () => {
     expect(proposesPagePhoto({ hasPhoto: false, replace: false })).toBe(true);

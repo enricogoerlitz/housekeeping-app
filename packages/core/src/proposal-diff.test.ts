@@ -145,6 +145,46 @@ describe('diffRowChanges', () => {
   });
 });
 
+describe('diffRowChanges: a row that only moves (Nachklick 27.11., N-01)', () => {
+  interface Line {
+    name: string;
+    amount: string;
+    part?: string;
+  }
+  const rules = {
+    key: (row: Line) => `${row.part ?? ''}|${row.name}`,
+    loose: (row: Line) => row.name,
+    label: (row: Line) => `${row.amount} ${row.name}`.trim(),
+    same: (a: Line, b: Line) => a.amount === b.amount && a.part === b.part,
+    hint: (a: Line, b: Line) => (a.part === b.part ? undefined : `jetzt nur in „${b.part}“`),
+  };
+
+  it('N-01: a row that only moves to another part is one "geändert" row with a hint', () => {
+    const eier = { name: 'Eier', amount: '4' };
+    const tofu = { name: 'Tofu', amount: '300 g', part: 'Vegan' };
+    const rows = diffRowChanges(
+      'ingredients',
+      [eier],
+      [{ ...eier, part: 'Original' }, tofu],
+      rules,
+    );
+    expect(rows.map((row) => [row.status, row.label, row.beforeLabel, row.hint])).toEqual([
+      ['changed', '4 Eier', undefined, 'jetzt nur in „Original“'],
+      ['new', '300 g Tofu', undefined, undefined],
+    ]);
+    expect(applyRowChanges(rows, new Set([rows[0]?.id ?? '']))).toEqual([eier, tofu]);
+  });
+
+  it('N-01: the same part matches first; only the rest falls back to the loose key', () => {
+    const salz = { name: 'Salz', amount: '1 Prise' };
+    const rows = diffRowChanges('ingredients', [salz], [{ ...salz, part: 'Vegan' }, salz], rules);
+    expect(rows.map((row) => [row.status, row.label])).toEqual([
+      ['new', '1 Prise Salz'],
+      ['same', '1 Prise Salz'],
+    ]);
+  });
+});
+
 describe('proposalSummary', () => {
   const proposal: ChangeProposal = {
     fields: diffFieldChanges(
