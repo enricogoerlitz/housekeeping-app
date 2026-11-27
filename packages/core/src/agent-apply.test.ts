@@ -260,6 +260,27 @@ describe('agent proposals in the household’s data (spec 0067, REQ-009)', () =>
   });
 });
 
+describe('the Tageszeit of a planned place (smoke 28.11.: 14:00 landed in "Abend")', () => {
+  const at = (time?: string) =>
+    resolveAction(
+      {
+        kind: 'plan',
+        target: 'text',
+        name: 'Museum',
+        date: '2026-11-28',
+        ...(time ? { time } : {}),
+      },
+      data(),
+    ).detail;
+  it('without a Tageszeit the time decides: midday until 17:00, then the evening', () => {
+    expect(at('14:00')).toContain('Mittagessen');
+    expect(at('19:30')).toContain('Abendessen');
+  });
+  it('without both the evening, as before', () => {
+    expect(at()).toContain('Abendessen');
+  });
+});
+
 describe('names in an answer (spec 0067, preview feedback 28.11.)', () => {
   it('a bold name that is a recipe, restaurant or activity opens it; others stay text', () => {
     expect(namedEntity('mango-curry', data())).toEqual({

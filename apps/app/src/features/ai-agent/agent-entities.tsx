@@ -26,8 +26,9 @@ function RecipeCard(props: { recipe: Recipe; testID: string }) {
   const image = useRecipeImage(recipe);
   const open = useOpenRecipe();
   const collection = recipe.kind === 'collection';
+  // A collection says so in its badge; its line stays empty.
   const meta = collection
-    ? 'Sammlung'
+    ? ''
     : [
         recipe.course ? COURSE[recipe.course] : '',
         recipe.totalMinutes ? `${recipe.totalMinutes} Min.` : '',

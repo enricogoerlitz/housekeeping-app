@@ -107,11 +107,19 @@ function dayText(date: ISODate | null | undefined, today: ISODate): string {
     : `${weekdayShort(date)} ${formatShortDate(date)}`;
 }
 
-function slotOf(data: ProposalData, name: string | undefined): MealSlot | undefined {
+function slotOf(
+  data: ProposalData,
+  name: string | undefined,
+  time: string | undefined,
+): MealSlot | undefined {
   const slots = [...data.mealSlots].sort((a, b) => a.sort - b.sort);
   if (name) return slots.find((slot) => same(slot.name, name));
-  // Without a Tageszeit the evening: the last slot of the day, as in the calendar's default.
-  return slots[slots.length - 1];
+  const last = slots.length - 1;
+  // Without a Tageszeit the time decides (the household's slots have no hours): the morning
+  // before 11, the middle of the day before 17, then the evening; without both the evening.
+  const hour = time ? Number(time.slice(0, 2)) : 24;
+  const index = hour < 11 ? 0 : hour < 17 ? Math.max(0, last - 1) : last;
+  return slots[index];
 }
 
 const seenOf = (...rows: unknown[]) => JSON.stringify(rows);
@@ -122,7 +130,7 @@ function failed(title: string, detail: string, problem: string, destructive = fa
 
 function resolvePlan(action: AgentAction, data: ProposalData): ResolvedEntry {
   const day = dayText(action.date, data.today);
-  const slot = slotOf(data, action.slot);
+  const slot = slotOf(data, action.slot, action.time);
   const where = slot ? `${day} · ${slot.name}` : day;
   if (!slot) return failed(action.name, where, 'Diese Tageszeit gibt es nicht');
   const date = action.date ?? null;
