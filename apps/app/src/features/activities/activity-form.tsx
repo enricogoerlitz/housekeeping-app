@@ -385,7 +385,7 @@ export function ActivityFormFields(props: {
                 </Text>
               </Row>
             ) : null}
-            {form.reading?.status === 'short' ? (
+            {form.reading?.status === 'short' && !form.linkError ? (
               <Row gap={6}>
                 <Icon name="info" size={16} color="muted" />
                 <Text

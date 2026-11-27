@@ -53,7 +53,7 @@ export function TagFilter(props: {
           />
         ))}
       </Row>
-      {others.length === 0 && query.trim() ? (
+      {query.trim() && !props.facets.some((facet) => fuzzyIncludes(query, facet.label)) ? (
         <Text variant="small" color="muted">
           Kein Schlagwort gefunden.
         </Text>

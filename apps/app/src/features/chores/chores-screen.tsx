@@ -296,15 +296,28 @@ export function ChoresScreen() {
           title="Haushalt"
           right={
             <>
-              <IconButton
-                icon="plus"
-                variant="soft"
-                label="Neue Aufgabe"
-                onPress={startCreating}
-                disabled={online.disabled}
-                hint={online.hint}
-                testID="chore-new"
-              />
+              {isPhone ? (
+                <IconButton
+                  icon="plus"
+                  variant="soft"
+                  label="Neue Aufgabe"
+                  onPress={startCreating}
+                  disabled={online.disabled}
+                  hint={online.hint}
+                  testID="chore-new"
+                />
+              ) : (
+                // Wide screens name the action, like "Aktivität anlegen" (review 0003).
+                <Button
+                  label="Aufgabe anlegen"
+                  icon="plus"
+                  size="sm"
+                  onPress={startCreating}
+                  disabled={online.disabled}
+                  hint={online.hint}
+                  testID="chore-new"
+                />
+              )}
               <StartPageActions />
             </>
           }

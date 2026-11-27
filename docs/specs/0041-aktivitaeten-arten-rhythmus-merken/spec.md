@@ -118,6 +118,12 @@ gemerkt“. Quelle: A-03. Offline: offline lesend.
     Termin-Berechnung auch in SQL stehen.
 13. OFFEN: Ein entferntes Mitglied bleibt in `eater_ids` einer Serie stehen (wie bei
     Planeinträgen); die Oberfläche zeigt nur aktuelle Mitglieder, „Rückgängig“ filtert.
+14. Browser-Durchklick 27.11. (Review 0003, B-05): Der Platzhalter von „Zusatz“ im Planeintrag
+    passt zur Art: Rezept „z. B. doppelte Menge“, Aktivität „z. B. Hohenschönhausen“, Restaurant
+    „z. B. Tisch draußen“, Text und Reste „z. B. mit Salat“.
+15. Browser-Durchklick 27.11. (B-08): Auf Tablet und Desktop heißen die Kopf-Knöpfe mit Wort:
+    „Arten“ neben „Aktivität anlegen“ und unter „Haushalt“ „Aufgabe anlegen“ statt nur „+“
+    (Spec 0026); am Handy bleiben die Symbol-Knöpfe.
 
 ## Daten
 
