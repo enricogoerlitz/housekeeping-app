@@ -493,6 +493,7 @@ neu fassen (Uhrzeit am Restaurant-Eintrag, ohne eigene Erinnerung), neu „Uhrze
 | Mehr als 20 Zutaten scheitern an der Löschgrenze               | eine Domänen-Operation, zählt als eine Löschung      | pgTAP `entry_contributions`, api `commands-plan.backend.test.ts` |
 | Nachricht in Core und SQL verschieden                          | Paritätstest                                         | pgTAP `notification_parity` (AC-037)                             |
 | Alte Reservierungs-Nachricht kommt doppelt oder weiter         | Funktion und Art entfallen                           | pgTAP `notification_scheduler` (AC-039)                          |
+| Veralteter Entwurf im Fenster überschreibt neueren Serverstand | nur seit dem Öffnen Geändertes senden (Entsch. 24)   | core `entry-changes.test.ts`, e2e `eintraege-0021` (AC-049)      |
 
 ## Umsetzung
 
