@@ -103,6 +103,18 @@ test.describe('REQ-001 – REQ-005: the window "Neu"', () => {
     await expect(tid(page, 'new-recipe-ai-generate-photo').locator('input')).toBeChecked();
   });
 
+  test('AC-031: on "KI-Rezept" "Foto generieren" stands above "Websuche"', async ({ page }) => {
+    await newRecipeWindow(page);
+    await tid(page, 'new-recipe-ai-tab-prompt').click();
+    const photo = await tid(page, 'new-recipe-ai-generate-photo').boundingBox();
+    const web = await tid(page, 'new-recipe-ai-web-search').boundingBox();
+    expect(photo!.y).toBeLessThan(web!.y);
+    // With "Websuche" on, its photo choice takes the place above it; the switch stays put.
+    await tid(page, 'new-recipe-ai-web-search').click();
+    const choice = await tid(page, 'new-recipe-ai-web-photo').boundingBox();
+    expect(choice!.y).toBeLessThan((await tid(page, 'new-recipe-ai-web-search').boundingBox())!.y);
+  });
+
   test('AC-005, AC-007: Return searches once; "Übernehmen" of a hit opens the edit mode', async ({
     page,
     allowConsoleError,

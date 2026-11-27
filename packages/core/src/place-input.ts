@@ -1,9 +1,8 @@
 import { parseMapsLink } from './maps-link';
 import { normalizeWebUrl } from './web-link';
 
-// The place field of restaurants, activities and stores (spec 0042, REQ-001, REQ-003): the search
-// in Google Maps behind the pin, and what a pasted text (or the clipboard behind "Einfügen") is —
-// a map link, a web address or an address with a postcode.
+// The place field of restaurants, activities and stores (spec 0042, REQ-001, REQ-003): what a
+// pasted text is — a map link, a web address or an address with a postcode.
 
 /** What a text pasted into the place field is, and which field it belongs in. */
 export type PlaceText =
@@ -43,16 +42,6 @@ export function recognizePlaceText(input: string): PlaceText {
     return { kind: 'address', text: address };
   }
   return { kind: 'none' };
-}
-
-/**
- * Google Maps with the search for name and address, behind the pin (AC-001); undefined when there
- * is nothing to search for (AC-002: the pin is disabled).
- */
-export function mapsSearchUrl(place: { name?: string; address?: string }): string | undefined {
-  const query = [place.name?.trim(), place.address?.trim()].filter(Boolean).join(', ');
-  if (query === '') return undefined;
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
 }
 
 /**

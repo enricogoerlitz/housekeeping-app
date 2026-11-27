@@ -92,7 +92,6 @@ export function StoreEditSheet(props: { store: Store; onClose: () => void }) {
   const online = useOnlineOnly();
   const [name, setName] = useState(props.store.name);
   const [nameError, setNameError] = useState<string | undefined>();
-  const [searchName, setSearchName] = useState('');
   const [link, setLink] = useState(props.store.mapsUrl ?? '');
   const [linkError, setLinkError] = useState<string | undefined>();
   const [saving, setSaving] = useState(false);
@@ -164,13 +163,10 @@ export function StoreEditSheet(props: { store: Store; onClose: () => void }) {
         <PlaceField
           title="Ort (optional)"
           testPrefix="store"
-          entryName={name}
-          searchName={searchName}
-          onSearchNameChange={setSearchName}
           link={link}
           onLinkChange={changeLink}
           linkError={linkError}
-          linkHint={link ? undefined : 'Mit dem Karten-Link zeigt der Markt „Route“.'}
+          linkHint={link ? undefined : 'Mit dem Google Maps Link zeigt der Markt „Route“.'}
           linkStatus={
             reading?.kind === 'short' && !linkError ? (
               <Text variant="small" color="muted" testID="store-link-short">

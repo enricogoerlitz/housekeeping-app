@@ -9,6 +9,7 @@ import {
   Badge,
   Button,
   ChoiceChips,
+  IconButton,
   LoadingLines,
   Photo,
   Sheet,
@@ -56,36 +57,36 @@ function RefineLine(props: { refine: ProposalRefine; testID: string }) {
       if (done) setWish('');
     });
   };
+  const disabled = refine.busy || online.disabled || wish.trim() === '';
   return (
     <Stack gap={8}>
-      {/* One line: the field and "Anpassen" beside it (D-03, review 0004). */}
-      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8 }}>
-        <View style={{ flex: 1 }}>
-          <DictationField
-            label="Was soll noch anders sein?"
-            placeholder={'z. B. „nimm Räuchertofu statt Bohnen“'}
-            value={wish}
-            onChangeText={(text) => setWish(text.slice(0, REFINE_MAX))}
-            maxLength={REFINE_MAX}
-            editable={!refine.busy && !online.disabled}
-            onSubmitEditing={send}
-            returnKeyType="send"
-            testID={`${testID}-text`}
-          />
-        </View>
-        <View style={{ minHeight: 50, justifyContent: 'center' }}>
-          <Button
-            label={refine.busy ? 'Wird angepasst …' : 'Anpassen'}
-            icon="sparkles"
-            variant="secondary"
-            size="sm"
-            disabled={refine.busy || online.disabled || wish.trim() === ''}
+      {/* A composer (spec 0062, decision 14): one round field with the mic and „Anpassen“ inside. */}
+      <DictationField
+        label="Was soll noch anders sein?"
+        placeholder="z. B. „Linsen statt Tofu“"
+        value={wish}
+        onChangeText={(text) => setWish(text.slice(0, REFINE_MAX))}
+        maxLength={REFINE_MAX}
+        editable={!refine.busy && !online.disabled}
+        multiline
+        grow
+        round
+        onSubmitEditing={send}
+        blurOnSubmit
+        returnKeyType="send"
+        testID={`${testID}-text`}
+        trailing={
+          <IconButton
+            icon="send"
+            label="Anpassen"
+            variant="soft"
+            disabled={disabled}
             hint={online.hint}
             onPress={send}
             testID={`${testID}-send`}
           />
-        </View>
-      </View>
+        }
+      />
       {refine.busy ? (
         <LoadingLines label="Die KI passt den Vorschlag an …" testID={`${testID}-busy`} />
       ) : null}

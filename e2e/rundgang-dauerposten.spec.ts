@@ -8,6 +8,7 @@ import {
   only,
   open,
   openItem,
+  openManaged,
   test,
   tid,
   toastMessage,
@@ -116,8 +117,7 @@ test('AC-010 / AC-011: "Regelmäßig kaufen ›" at the article; Reis is used, n
   page,
 }) => {
   await open(page, '/liste');
-  await tid(page, 'list-more').click();
-  await tid(page, 'list-more-articles').click();
+  await openManaged(page, 'articles');
   await tid(page, 'articles-search').fill('Geschenkpapier');
   await tid(page, `article-${seedIds['art-geschenkpapier']}`).click();
   await tid(page, 'article-recurring').click();

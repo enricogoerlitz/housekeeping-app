@@ -75,8 +75,6 @@ export function useRestaurantForm(
   });
   const [linkError, setLinkError] = useState<string | undefined>();
   const [name, setNameValue] = useState(initial.name);
-  // "Name für die Suche" (spec 0042, REQ-001): only for the pin, not stored.
-  const [searchName, setSearchName] = useState('');
   const [nameError, setNameError] = useState<string | undefined>();
   const [cuisine, setCuisine] = useState(restaurant?.cuisine ?? '');
   const [address, setAddress] = useState(restaurant?.address ?? '');
@@ -223,8 +221,6 @@ export function useRestaurantForm(
     name,
     setName,
     nameError,
-    searchName,
-    setSearchName,
     /** Shows an error a command threw at the name field. */
     fail: (error: unknown) => setNameError(message(error)),
     cuisine,
@@ -305,16 +301,13 @@ export function RestaurantFormFields(props: {
       {/* The place field of restaurants, activities and stores (spec 0042, REQ-001). */}
       <PlaceField
         testPrefix="restaurant"
-        entryName={form.name}
-        searchName={form.searchName}
-        onSearchNameChange={form.setSearchName}
         link={form.link}
         onLinkChange={form.changeLink}
         linkError={form.linkError}
         linkHint={
           form.reading || form.link
             ? undefined
-            : 'In der Karten-App auf „Teilen“ tippen und den Link kopieren.'
+            : 'In Google Maps auf „Teilen“ tippen und den Link kopieren.'
         }
         linkAutoFocus={props.focus === 'link'}
         address={{ value: form.address, onChange: form.setAddress }}

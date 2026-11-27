@@ -189,6 +189,20 @@ test('0002 AC-006: text that is not a map link shows an error and leaves the for
   await expect(tid(page, 'restaurant-address')).toHaveValue('');
 });
 
+test('0042 AC-017: the place field has "Google Maps Link" without "Einfügen" and without the Maps button', async ({
+  page,
+}) => {
+  await open(page, '/rezepte?ansicht=restaurants');
+  await newRestaurant(page);
+  const sheet = tid(page, 'restaurant-sheet');
+  await expect(sheet.getByText('Google Maps Link', { exact: true })).toBeVisible();
+  await expect(sheet.getByText('Karten-Link', { exact: true })).toHaveCount(0);
+  await expect(tid(page, 'restaurant-paste')).toHaveCount(0);
+  await expect(tid(page, 'restaurant-maps-search')).toHaveCount(0);
+  await expect(tid(page, 'restaurant-search-name')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'In Google Maps suchen' })).toHaveCount(0);
+});
+
 test('0002 AC-007: saving without a name creates nothing and shows "Name fehlt"', async ({
   page,
 }) => {

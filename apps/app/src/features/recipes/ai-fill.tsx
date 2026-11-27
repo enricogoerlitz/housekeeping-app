@@ -501,16 +501,10 @@ export function AiFillFields(props: {
           />
         </>
       ) : null}
+      {/* "Foto generieren" above "Websuche" (spec 0062, decision 13); with "Websuche" on, its
+          photo choice takes that place, so the switch under the finger does not move. */}
       {props.compact ? null : (
         <>
-          <SwitchRow
-            label="Websuche"
-            description="Sucht vorher einmal im Web nach Titel und Wunsch – als Hintergrund für die KI."
-            value={fill.webSearch}
-            onValueChange={fill.setWebSearch}
-            disabled={disabled}
-            testID={`${testID}-web-search`}
-          />
           {fill.webSearch ? (
             <WebPhotoField fill={fill} changes={changes} testID={testID} />
           ) : (
@@ -523,6 +517,14 @@ export function AiFillFields(props: {
               testID={`${testID}-generate-photo`}
             />
           )}
+          <SwitchRow
+            label="Websuche"
+            description="Sucht vorher einmal im Web nach Titel und Wunsch – als Hintergrund für die KI."
+            value={fill.webSearch}
+            onValueChange={fill.setWebSearch}
+            disabled={disabled}
+            testID={`${testID}-web-search`}
+          />
         </>
       )}
       {fill.error ? (

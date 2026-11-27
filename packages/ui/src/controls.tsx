@@ -38,6 +38,7 @@ import {
   type StarPointerEvent,
   type StarStep,
 } from './star-value';
+import { growHeight, GROW_PADDING } from './field-grow';
 import { revealsError } from './reveal-error';
 import { ScrollRowRevealContext } from './scroll-fade';
 import { SheetFocusContext, SheetSubmitContext } from './sheet-focus';
@@ -783,6 +784,11 @@ export interface TextFieldProps extends Pick<
   left?: ReactNode;
   /** Pill-shaped field for search and composer bars. */
   round?: boolean;
+  /**
+   * With `multiline`: a composer field that starts one line high and grows with its text up to
+   * four lines (spec 0062, decision 14); its buttons on the right stay at the bottom.
+   */
+  grow?: boolean;
   /** false: Enter in this field never saves the window it is in (a search field). */
   submitsWindow?: boolean;
   /** The input itself, e.g. to move the focus into it after a choice. */
@@ -828,6 +834,7 @@ export function TextField(props: TextFieldProps) {
     right,
     left,
     round,
+    grow: growProp,
     style,
     testID,
     accessibilityLabel,
@@ -871,13 +878,17 @@ export function TextField(props: TextFieldProps) {
     }
   }, [autofill.name]);
   const accessibleName = accessibilityLabel ?? label ?? props.placeholder;
+  const grow = growProp === true && props.multiline === true;
+  const [contentHeight, setContentHeight] = useState(0);
+  const lineHeight = theme.type.body.lineHeight ?? 22;
+  const grownHeight = growHeight({ contentHeight, lineHeight, empty: !props.value });
   return (
     <View style={[{ gap: 6 }, style]}>
       {label ? <Text variant="smallStrong">{words(label)}</Text> : null}
       <View
         style={{
           flexDirection: 'row',
-          alignItems: props.multiline ? 'flex-start' : 'center',
+          alignItems: grow ? 'flex-end' : props.multiline ? 'flex-start' : 'center',
           gap: 6,
           minHeight: 50,
           paddingLeft: left ? 12 : 14,
@@ -907,6 +918,14 @@ export function TextField(props: TextFieldProps) {
           onSubmitEditing={enterSaves ? () => submitWindow() : input.onSubmitEditing}
           // A window that stays open (a field is missing) keeps the cursor in the field.
           blurOnSubmit={enterSaves ? false : input.blurOnSubmit}
+          {...(grow
+            ? {
+                numberOfLines: 1,
+                onContentSizeChange: (event: {
+                  nativeEvent: { contentSize: { height: number } };
+                }) => setContentHeight(event.nativeEvent.contentSize.height),
+              }
+            : {})}
           ref={mergeRefs(own, inputRef)}
           nativeID={autofill.id}
           aria-invalid={error || invalid ? true : undefined}
@@ -927,14 +946,16 @@ export function TextField(props: TextFieldProps) {
             {
               flex: 1,
               color: c.text,
-              paddingVertical: props.multiline ? 12 : 0,
-              minHeight: props.multiline ? 96 : 46,
+              paddingVertical: props.multiline ? GROW_PADDING : 0,
+              minHeight: grow ? undefined : props.multiline ? 96 : 46,
+              height: grow ? grownHeight : undefined,
               // The browser's own focus outline would double the border.
               outlineStyle: 'none',
             } as object,
           ]}
         />
-        {right}
+        {/* A growing field keeps its buttons centred on the last line. */}
+        {grow && right ? <View style={{ paddingBottom: 3 }}>{right}</View> : right}
       </View>
       {error ? (
         <View ref={errorRef}>

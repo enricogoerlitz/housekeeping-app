@@ -31,7 +31,6 @@ import {
   GhostRow,
   GroupLabel,
   Icon,
-  IconButton,
   List,
   ListRow,
   Menu,
@@ -43,7 +42,6 @@ import {
   Text,
   toast,
   useBreakpoint,
-  useFinePointer,
   useToastAvoid,
   useTheme,
   type MenuOption,
@@ -83,35 +81,9 @@ function PendingDot(props: { itemId: string }) {
 }
 
 /**
- * ✓ „… erledigt“ where there is no swipe (spec 0025, AC-057, decision 24): with a mouse it shows
- * only while the pointer is over the row or the button has the keyboard focus, so the list keeps
- * its look without checkboxes (D24); on touch screens without the swipe (iPad) it always shows.
- */
-function DoneButton(props: { itemId: string; name: string; rowHovered: boolean }) {
-  const fine = useFinePointer();
-  const [focused, setFocused] = useState(false);
-  const shown = !fine || props.rowHovered || focused;
-  return (
-    <View
-      style={{ opacity: shown ? 1 : 0 }}
-      {...({ onFocus: () => setFocused(true), onBlur: () => setFocused(false) } as object)}
-    >
-      <IconButton
-        icon="check"
-        label={`${props.name} erledigt`}
-        size={36}
-        onPress={() => checkOnList(props.itemId, props.name)}
-        testID={`item-${props.itemId}-done`}
-      />
-    </View>
-  );
-}
-
-/**
  * An open item on "Liste" (D24): no checkbox; "− 2× +" for pure counts, "500 g ›" for
  * quantities. A tap opens "Posten bearbeiten"; on phones a swipe to the left removes it (online)
- * and a swipe to the right marks it as done, offline too (spec 0025, REQ-006); elsewhere a ✓
- * does (AC-057).
+ * and a swipe to the right marks it as done, offline too (spec 0025, REQ-006).
  */
 function ItemRow(props: {
   item: ShoppingItem;
@@ -122,13 +94,9 @@ function ItemRow(props: {
   onOpen: (itemId: string, name: string) => void;
 }) {
   const { item } = props;
-  const [hovered, setHovered] = useState(false);
   const name = props.article?.name ?? 'Unbekannter Artikel';
   const summary = summarizeItem(item);
   const count = itemCount(item);
-  const done = props.swipe ? null : (
-    <DoneButton itemId={item.id} name={name} rowHovered={hovered} />
-  );
   const note = summary.notes.join(', ');
   // The press area speaks what it shows; a count is read by the stepper next to it.
   const label = [note ? `${name} (${note})` : name, count === undefined ? summary.amount : '']
@@ -153,29 +121,12 @@ function ItemRow(props: {
       }
       controls={
         count !== undefined ? (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-            <CountStepper itemId={item.id} name={name} count={count} testID={`item-${item.id}`} />
-            {done}
-          </View>
-        ) : (
-          (done ?? undefined)
-        )
+          <CountStepper itemId={item.id} name={name} count={count} testID={`item-${item.id}`} />
+        ) : undefined
       }
       testID={`item-${item.id}`}
     />
   );
-  if (!props.swipe) {
-    return (
-      <View
-        {...({
-          onPointerEnter: () => setHovered(true),
-          onPointerLeave: () => setHovered(false),
-        } as object)}
-      >
-        {row}
-      </View>
-    );
-  }
   return (
     <SwipeToRemove
       label="Entfernen"
@@ -232,7 +183,7 @@ interface Dictation {
   items: { index: number; item: DictatedItem }[];
 }
 
-type MoreAction = 'clear-done' | 'clear-list' | 'stores' | 'articles' | 'recurring';
+type MoreAction = 'clear-done' | 'clear-list' | 'recurring';
 
 export function ListScreen() {
   const items = useShoppingItems();
@@ -382,18 +333,12 @@ export function ListScreen() {
       disabled: online.disabled || items.length === 0,
       hint: online.hint,
     },
-    { value: 'stores', label: 'Märkte & Bereiche' },
-    { value: 'articles', label: 'Artikel' },
-    // Spec 0060, REQ-001.
+    // Spec 0060, REQ-001. "Artikel" and "Märkte & Bereiche" are under "Verwalten" (spec 0025,
+    // decision 25).
     { value: 'recurring', label: 'Dauerposten' },
   ];
   const onMore = (action: MoreAction) => {
-    // "‹ Liste" on "Märkte & Bereiche" as on "Artikel" (spec 0031, REQ-036).
-    if (action === 'stores') openManageEntry({ pathname: '/maerkte', params: { von: 'liste' } });
-    // "Zurück" on "Artikel" leads to the list again (spec 0007, AC-021).
-    else if (action === 'articles')
-      openManageEntry({ pathname: '/artikel', params: { von: 'liste' } });
-    else if (action === 'recurring')
+    if (action === 'recurring')
       openManageEntry({ pathname: '/dauerposten', params: { von: 'liste' } });
     else if (online.disabled) return;
     else if (action === 'clear-done') clearDone();
