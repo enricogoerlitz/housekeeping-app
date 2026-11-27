@@ -272,9 +272,10 @@ describe('a draft from outside, e.g. "Mit KI ausfüllen" (spec 0040 hooks in her
       },
       newId,
     );
+    // "Ergänzen" (spec 0049, AC-046): title and portions are there, the empty time is filled.
     expect(filled.head).toMatchObject({
-      title: 'Apfelkuchen mit Streuseln',
-      servings: '8',
+      title: 'Apfelkuchen',
+      servings: '2',
       totalMinutes: '70',
     });
     expect(filled.ingredients.rows.map((row) => row.key)).toEqual(['i-mehl', 'k1']);
@@ -407,6 +408,67 @@ describe('"Ergänzen" adds only what is missing (spec 0049, AC-044)', () => {
     );
     expect(replaced.ingredients.rows.map((one) => one.key)).toEqual(['d-mehl']);
     expect(replaced.steps?.steps.map((step) => step.text)).toEqual(['Neu']);
+  });
+});
+
+describe('"Ergänzen" fills only empty fields (spec 0049, AC-046)', () => {
+  let next = 0;
+  const newId = () => `f-${++next}`;
+  const kuchen = makeRecipe({
+    id: 'rec-kuchen',
+    title: 'Omas Kuchen',
+    description: 'Wie bei Oma.',
+    servings: 2,
+    course: 'dessert',
+    notes: 'Warm essen',
+    ingredients: [
+      {
+        id: 'i-mehl',
+        articleId: 'art-mehl',
+        amount: parseAmount('200 g'),
+        shoppingRule: 'recipeAmount',
+      },
+    ],
+  });
+  const input = {
+    title: 'Apfelkuchen mit Streuseln',
+    description: 'Saftig.',
+    servings: 8,
+    totalMinutes: 70,
+    course: 'main' as const,
+    cuisine: 'Deutsch',
+    notes: 'Neu',
+  };
+
+  it('AC-046: existing values stay, empty ones are filled (no new portions for old amounts)', () => {
+    const filled = fillPageDraft(pageDraft(kuchen, []), input, newId);
+    expect(filled.head).toMatchObject({
+      title: 'Omas Kuchen',
+      description: 'Wie bei Oma.',
+      servings: '2',
+      totalMinutes: '70',
+    });
+    expect(filled.classification).toMatchObject({ course: 'dessert', cuisine: 'Deutsch' });
+    expect(filled.notes.notes).toBe('Warm essen');
+  });
+
+  it('AC-046: a recipe without ingredients (only a name so far) takes portions and course of the draft', () => {
+    const quick = makeRecipe({ id: 'rec-quick', title: 'Apfelkuchen', servings: 4 });
+    const filled = fillPageDraft(pageDraft(quick, []), { ...input, course: 'dessert' }, newId);
+    expect(filled.head).toMatchObject({ title: 'Apfelkuchen', servings: '8' });
+    expect(filled.classification?.course).toBe('dessert');
+  });
+
+  it('AC-046: "Ersetzen" still takes every value of the draft', () => {
+    const filled = fillPageDraft(pageDraft(kuchen, []), input, newId, { replace: true });
+    expect(filled.head).toMatchObject({
+      title: 'Apfelkuchen mit Streuseln',
+      description: 'Saftig.',
+      servings: '8',
+      totalMinutes: '70',
+    });
+    expect(filled.classification).toMatchObject({ course: 'main', cuisine: 'Deutsch' });
+    expect(filled.notes.notes).toBe('Neu');
   });
 });
 

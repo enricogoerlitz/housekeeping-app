@@ -5,6 +5,7 @@ import {
   IMAGE_EXTRA_MAX,
   imageFailureNotice,
   proposalIsEmpty,
+  proposesPagePhoto,
   recipeProposal,
   type FieldChange,
   type IngredientRow,
@@ -59,7 +60,10 @@ export function AiPageTools(props: { recipe: Recipe; editor: PageEditor }) {
     const input = draftInput(reply);
     const proposal = recipeProposal(before, editor.filled(input, { replace }), { articleName });
     const hadPhoto = recipe.photoPath !== undefined || recipe.photo !== undefined;
-    if (photo) proposal.fields.push(photoField(hadPhoto));
+    // AC-047 (spec 0049): "Ergänzen" proposes the page's photo only to a recipe without one.
+    const pagePhoto =
+      photo && proposesPagePhoto({ hasPhoto: hadPhoto, replace }) ? photo : undefined;
+    if (pagePhoto) proposal.fields.push(photoField(hadPhoto));
     toastUnreadLinks(reply.sources);
     if (generatePhoto && reply.draft.imagePrompt) {
       startPhotoSuggestions(recipe.id, {
@@ -78,7 +82,7 @@ export function AiPageTools(props: { recipe: Recipe; editor: PageEditor }) {
       toast.show({ message: 'Der Vorschlag ändert nichts am Rezept.' });
       return;
     }
-    setReview({ proposal, ...(photo ? { photo } : {}) });
+    setReview({ proposal, ...(pagePhoto ? { photo: pagePhoto } : {}) });
   };
   return (
     <Stack gap={12}>
