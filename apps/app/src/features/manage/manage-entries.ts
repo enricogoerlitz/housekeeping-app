@@ -1,3 +1,4 @@
+import type { AppView } from '@housekeeping/core';
 import type { IconName } from '@housekeeping/ui';
 import type { Href } from 'expo-router';
 
@@ -100,6 +101,34 @@ export const MANAGE_GROUPS: ManageGroup[] = [
     ],
   },
 ];
+
+/**
+ * Spec 0067, REQ-001/REQ-002: the first group depends on the person's view. "Normal" opens the
+ * agent from here ("Agent", AC-004); "KI zuerst" has the agent in the tab bar and "Haushalt" here
+ * instead, as the first entry (AC-001).
+ */
+export function manageGroups(view: AppView, agent: boolean): ManageGroup[] {
+  if (view === 'ai_first')
+    return [
+      {
+        key: 'areas',
+        title: 'Bereiche',
+        entries: [
+          { key: 'household', label: 'Haushalt', icon: 'list-checks', href: '/haushalt', route: 'haushalt' },
+        ],
+      },
+      ...MANAGE_GROUPS,
+    ];
+  if (!agent) return MANAGE_GROUPS;
+  return [
+    {
+      key: 'agent',
+      title: 'KI',
+      entries: [{ key: 'agent', label: 'Agent', icon: 'sparkles', href: '/ki-agent', route: 'ki-agent' }],
+    },
+    ...MANAGE_GROUPS,
+  ];
+}
 
 /** The developer group, only in development builds (AC-059). */
 export const SHOWROOM_ENTRY: ManageEntry = {

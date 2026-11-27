@@ -24,9 +24,11 @@ export function DictationField(
     dictation: PromptDictation;
     /** After the microphone inside the field, e.g. the send button of a composer. */
     trailing?: ReactNode;
+    /** The cursor or selection, also for the field's owner (the agent's badges, spec 0067). */
+    onSelection?: (selection: { start: number; end: number }) => void;
   },
 ) {
-  const { value, onChangeText, dictation, testID, trailing, ...field } = props;
+  const { value, onChangeText, dictation, testID, trailing, onSelection, ...field } = props;
   const online = useOnlineOnly();
   const { cancel } = dictation;
   useEffect(() => cancel, [cancel]);
@@ -57,7 +59,10 @@ export function DictationField(
           onChangeText(text);
           dictation.typed();
         }}
-        onSelectionChange={(event) => dictation.select(event.nativeEvent.selection)}
+        onSelectionChange={(event) => {
+          dictation.select(event.nativeEvent.selection);
+          onSelection?.(event.nativeEvent.selection);
+        }}
         right={
           trailing ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>

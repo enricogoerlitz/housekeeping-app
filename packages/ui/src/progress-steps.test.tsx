@@ -36,6 +36,28 @@ describe('ProgressSteps (spec 0066, REQ-005)', () => {
     expect(screen.queryByText('romantisch mitte')).toBeNull();
   });
 
+  it('spec 0067, REQ-008: the details of a tool step are filters and fields, shown without quotes', () => {
+    render(
+      <ProgressSteps
+        steps={[
+          {
+            id: 't1',
+            line: 'Liest eure Rezepte · vegetarisch · 12 von 143',
+            details: ['Filter: Ernährung vegan oder vegetarisch', 'Felder: Titel, Zeit'],
+            running: false,
+            quoted: false,
+          },
+        ]}
+        runningLabel="läuft"
+        testID="steps"
+      />,
+    );
+    fireEvent.click(screen.getByTestId('steps-t1-toggle'));
+    expect(screen.getByTestId('steps-t1-details').textContent).toBe(
+      'Filter: Ernährung vegan oder vegetarischFelder: Titel, Zeit',
+    );
+  });
+
   it('a step without details is no button', () => {
     render(<ProgressSteps steps={steps} runningLabel="läuft" testID="steps" />);
     expect(screen.queryByTestId('steps-tool-toggle')).toBeNull();

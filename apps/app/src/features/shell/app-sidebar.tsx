@@ -1,4 +1,10 @@
-import { setOffline, useCurrentMember, useHousehold, useOffline } from '@housekeeping/api';
+import {
+  setOffline,
+  useAppView,
+  useCurrentMember,
+  useHousehold,
+  useOffline,
+} from '@housekeeping/api';
 import {
   Avatar,
   Button,
@@ -19,7 +25,7 @@ import { Pressable, View } from 'react-native';
 
 import { CreateHouseholdForm } from '@/features/household/household-forms';
 import { HouseholdList } from '@/features/household/members-screen';
-import { MANAGE_GROUPS, SHOWROOM_ENTRY } from '@/features/manage/manage-entries';
+import { manageGroups, SHOWROOM_ENTRY } from '@/features/manage/manage-entries';
 import { useOpenManageEntry } from '@/features/manage/navigation';
 import { NoticeBell } from '@/features/notices/notice-bell';
 import { authConfig } from '@/lib/auth-config';
@@ -45,12 +51,13 @@ export function AppSidebar(props: AppSidebarProps) {
   const offline = useOffline();
   const open = useOpenManageEntry();
   const [switching, setSwitching] = useState(false);
+  const view = useAppView();
 
   const groups: SidebarGroup[] = [
     {
       key: 'manage',
       title: 'Verwalten',
-      blocks: MANAGE_GROUPS.map((group) =>
+      blocks: manageGroups(view, features.aiAgent).map((group) =>
         group.entries.map((entry) => ({
           key: entry.key,
           label: entry.label,

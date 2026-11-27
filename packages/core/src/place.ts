@@ -131,6 +131,7 @@ const SECTION_LABEL: Record<Origin, string> = {
   haushalt: 'Haushalt',
   verwalten: 'Verwalten',
   reisen: 'Reisen',
+  agent: 'Agent',
 };
 
 export interface OriginBackPlan {

@@ -327,7 +327,16 @@ export async function back(page: Page): Promise<void> {
 
 /** A page under "Verwalten" (spec 0005, REQ-010): `manage-entry-<key>` / `nav-manage-<key>`. */
 export type ManagedPage =
-  'activities' | 'packing-bags' | 'trips' | 'articles' | 'stores' | 'members' | 'feedback';
+  | 'activities'
+  | 'packing-bags'
+  | 'trips'
+  | 'articles'
+  | 'stores'
+  | 'members'
+  | 'feedback'
+  // Spec 0067: "Agent" in "Normal", "Haushalt" first in "KI zuerst".
+  | 'agent'
+  | 'household';
 
 /** The first pages of the tabs, the only ones with ⊞ in the header on phones (spec 0005, AC-054). */
 const TAB_START_PAGES = new Set(['/', '/rezepte', '/kalender', '/liste', '/haushalt']);

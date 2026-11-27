@@ -721,6 +721,8 @@ export interface NavItem {
   label: string;
   icon: IconName;
   tone?: Tone;
+  /** In the tab bar only the icon; the label stays its accessible name (spec 0067, AC-001). */
+  iconOnly?: boolean;
 }
 
 export interface TabBarProps {
@@ -790,12 +792,14 @@ export function TabBar(props: TabBarProps) {
             >
               <Glyph size={24} color={tint} strokeWidth={theme.shape.stroke} />
             </View>
-            <Text
-              variant="tab"
-              style={{ color: active ? (pill ? c.text : c.accent) : c.textMuted }}
-            >
-              {item.label}
-            </Text>
+            {item.iconOnly ? null : (
+              <Text
+                variant="tab"
+                style={{ color: active ? (pill ? c.text : c.accent) : c.textMuted }}
+              >
+                {item.label}
+              </Text>
+            )}
           </Pressable>
         );
       })}

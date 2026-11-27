@@ -70,6 +70,8 @@ export const ORIGINS = [
   'haushalt',
   'verwalten',
   'reisen',
+  // Spec 0067: the agent, a tab in "KI zuerst".
+  'agent',
 ] as const;
 export type Origin = (typeof ORIGINS)[number];
 const Von = one(oneOf(ORIGINS));
@@ -276,6 +278,10 @@ export const PAGE_PARAMS = {
     von: Von,
     chat: one(Uuid),
     fenster: one(oneOf(['verlauf', 'ort'])),
+    // Spec 0067: ✨ of "Restaurants" and "Aktivitäten" opens a new chat with the badge "Ausgehen";
+    // `aus=aktivitaeten` names the page "Zurück" leads to.
+    badge: one(oneOf(['rezepte', 'ausgehen', 'planen', 'einkaufen', 'haushalt'])),
+    aus: one(oneOf(['aktivitaeten'])),
   },
   einstellungen: {
     abschnitt: one(oneOf(['profil', 'darstellung', 'ki'])),
@@ -580,6 +586,7 @@ export const SECTION_START: Record<Origin, string> = {
   haushalt: '/haushalt',
   verwalten: '/verwalten',
   reisen: '/reisen',
+  agent: '/ki-agent',
 };
 
 export function sectionOfStartPath(pathname: string): Origin | undefined {

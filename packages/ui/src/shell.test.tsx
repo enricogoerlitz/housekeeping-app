@@ -710,6 +710,19 @@ describe('TabBar', () => {
     expect(active.style.backgroundColor).toBe('rgba(0, 0, 0, 0)');
   });
 
+  it('spec 0067, AC-001: the agent tab in the middle shows only its icon and keeps its name', () => {
+    render(
+      <TabBar
+        items={[...items, { key: 'agent', label: 'Agent', icon: 'sparkles', iconOnly: true }]}
+        activeKey="today"
+        onSelect={() => undefined}
+      />,
+    );
+    const tab = screen.getByRole('tab', { name: 'Agent' });
+    expect(tab.textContent).toBe('');
+    expect(screen.getByRole('tab', { name: 'Rezepte' }).textContent).toBe('Rezepte');
+  });
+
   it('stands above the home bar', () => {
     safeArea.insets = { top: 0, right: 0, bottom: 34, left: 0 };
     render(<TabBar items={items} activeKey="today" onSelect={() => undefined} />);
