@@ -17,7 +17,6 @@ export {
   type TextFieldProps,
 } from './controls';
 export { CreateButton } from './create-button';
-export { PathButtons, type PathButtonOption } from './path-buttons';
 export { Section, GroupLabel, List, ListRow, CheckRow, GhostRow } from './lists';
 export {
   Avatar,
@@ -55,7 +54,6 @@ export {
   useToastAvoid,
   useToastClearance,
   type SheetAction,
-  type SheetActions,
 } from './overlay';
 export { pickImageFile } from './pick-image';
 export { useImageDropAndPaste } from './image-drop';

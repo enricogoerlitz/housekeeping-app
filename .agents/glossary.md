@@ -1306,12 +1306,3 @@ Bearbeitungsmodus füllt.
 - **Im Code:** `AiChangeButton`, `AiFillSheet` mit `entry: 'page'`, `PageEditor.apply`,
   `revertPageDraft`
 - **Nicht verwenden:** KI-Bearbeiten, Assistent (das ist „Anpassen“, Spec 0003)
-
-### Wege (beim Anlegen)
-
-Die festen Knöpfe unter dem einen Feld von „Neues Rezept“ („Anlegen · Websuche · KI-Rezept“) und von
-„Restaurant hinzufügen“ und „Aktivität anlegen“ („Anlegen · Websuche“, Spec 0062). Hervorgehoben
-ist der Weg, den die Eingabe nahelegt; Return nimmt ihn.
-
-- **Im Code:** `CreatePath`, `suggestedCreatePath`, `PathButtons`, `OneFieldCreate`
-- **Nicht verwenden:** Modus, Aktion

@@ -28,7 +28,7 @@ import { useOnlineOnly } from '@/features/shell/offline';
 // stays visible, red and struck through, with "↺ behalten"; a new row can be left out with ×.
 // Never colour alone: every change has its word. "Übernehmen" hands what is still active to the
 // edit mode or the form, where "Speichern" stores it (Entscheidung 6); after ✨ "Mit KI ändern" the
-// recipe page saves it at once (spec 0062, REQ-010).
+// recipe page saves it at once (spec 0062, REQ-008).
 
 const WORDS = { new: 'neu', changed: 'geändert', removed: 'entfernt' } as const;
 const PHOTO_SIZE = 96;
@@ -257,9 +257,9 @@ export function ProposalSheet(props: {
   photo?: ProposedPhoto;
   /** Recipes: "Was soll noch anders sein?" below the proposal (spec 0055, REQ-008). */
   refine?: ProposalRefine;
-  /** Spec 0062, REQ-011: a recipe from the web search can add to or replace the one there is. */
+  /** Spec 0062, REQ-009: a recipe from the web search can add to or replace the one there is. */
   mode?: { value: 'add' | 'replace'; onChange: (value: 'add' | 'replace') => void };
-  /** Spec 0062, REQ-011: only the rows that change, not the unchanged ones of a group. */
+  /** Spec 0062, REQ-009: only the rows that change, not the unchanged ones of a group. */
   onlyChanges?: boolean;
   onApply: (rejected: ReadonlySet<string>) => void;
   onClose: () => void;

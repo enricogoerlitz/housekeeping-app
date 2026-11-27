@@ -619,7 +619,7 @@ describe('"+ Zutat" and "Mehrere einfügen" in the read view save at once (spec 
   });
 });
 
-describe('"Rückgängig" after "Mit KI ändern" (spec 0062, REQ-010)', () => {
+describe('"Rückgängig" after "Mit KI ändern" (spec 0062, REQ-008)', () => {
   const chili = makeRecipe({
     id: 'rec-chili',
     title: 'Chili con Carne',
@@ -658,7 +658,7 @@ describe('"Rückgängig" after "Mit KI ändern" (spec 0062, REQ-010)', () => {
     ],
   });
 
-  it('AC-031: the page as saved now, with every value from before', () => {
+  it('AC-023: the page as saved now, with every value from before', () => {
     const revert = revertPageDraft(pageDraft(chili, []), pageDraft(changed, []));
     expect(revert.seenUpdatedAt).toBe('2026-11-27T08:05:00Z');
     expect(revert.head.title).toBe('Chili con Carne');
@@ -681,7 +681,7 @@ describe('"Rückgängig" after "Mit KI ändern" (spec 0062, REQ-010)', () => {
     ).toEqual(['classification', 'head', 'ingredients', 'steps']);
   });
 
-  it('AC-031: saving it gives the ingredients and variants from before', () => {
+  it('AC-023: saving it gives the ingredients and variants from before', () => {
     const revert = revertPageDraft(pageDraft(chili, []), pageDraft(changed, []));
     const patch = sectionPatch(changed, revert.ingredients, { ...context(), articles }).recipe;
     expect(patch.variants).toEqual([]);

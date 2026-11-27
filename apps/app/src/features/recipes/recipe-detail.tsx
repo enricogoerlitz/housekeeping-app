@@ -175,7 +175,7 @@ function RecipeDetailBody(props: {
   const editing = editor.draft !== undefined;
   // Spec 0061: whether the page opened on an unfinished recipe ("Ausgearbeitet" after saving).
   const [openedUnfinished] = useState(() => isUnfinishedRecipe(recipe));
-  // ✨ "Mit KI ändern" is open (spec 0062, REQ-009).
+  // ✨ "Mit KI ändern" is open (spec 0062, REQ-007).
   const [changing, setChanging] = useState(false);
   // While the page is edited nothing leads away without asking (AC-005).
   const swipe = editing ? undefined : browse;
@@ -229,7 +229,7 @@ function RecipeDetailBody(props: {
         onPress={() => toggleFavorite(recipe.id)}
       />
       {desktop ? actions : null}
-      {/* Spec 0062, REQ-009: ✨ beside the pen. */}
+      {/* Spec 0062, REQ-007: ✨ beside the pen. */}
       <AiChangeButton recipe={recipe} onPress={() => setChanging(true)} />
       <EditControls editor={editor} />
       <RecipeMoreMenu

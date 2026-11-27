@@ -42,10 +42,7 @@ function ingredientRows(scope: Locator): Locator {
   );
 }
 
-/**
- * "+" on "Essen" opens "Neues Rezept"; "Sammlung" under its field makes it a collection (spec
- * 0062, REQ-001, REQ-007).
- */
+/** "+" on "Essen" opens "Neu"; a collection is chosen there (spec 0054, REQ-002; spec 0009). */
 async function newFromMenu(page: Page, option: 'recipe' | 'collection'): Promise<void> {
   await tid(page, 'recipe-new').click();
   await expect(tid(page, 'new-recipe-sheet')).toBeVisible();
@@ -135,10 +132,10 @@ test('AC-021 (0001) / AC-003 (0008) / AC-060 (0006): "Neu" → "Rezept" creates 
   await expect(count).toHaveText(/^\d+ Rezepte · \d+ Sammlungen$/);
   const before = Number((await count.innerText()).match(/\d+/)?.[0]);
 
-  // Spec 0062, AC-001: "+" opens "Neues Rezept" with the one field; "Sammlung" stays reachable.
+  // Spec 0062, AC-001: "+" opens "Neu" on "Websuche" with the title; "Sammlung" stays reachable.
   await tid(page, 'recipe-new').click();
   await expect(tid(page, 'new-recipe-open-collection')).toBeVisible();
-  await expect(tid(page, 'new-recipe-save')).toHaveAttribute('aria-disabled', 'true');
+  await expect(tid(page, 'new-recipe-ai-tab-web')).toHaveAttribute('aria-selected', 'true');
   await tid(page, 'new-recipe-title').fill('Linsen-Dal');
   await tid(page, 'new-recipe-save').click();
   await expect(tid(page, 'recipe-title')).toHaveText('Linsen-Dal');
@@ -152,11 +149,10 @@ test('AC-021 (0001) / AC-003 (0008) / AC-060 (0006): "Neu" → "Rezept" creates 
   expect(await cards.first().getAttribute('data-testid')).not.toBe(card('rec-linsen-dal'));
   await expect(count).toHaveText(new RegExp(`^${before + 1} Rezepte`));
 
-  // Spec 0062, AC-001: without text no way can be taken; a collection still asks for its title.
-  await newFromMenu(page, 'collection');
+  await newFromMenu(page, 'recipe');
   await tid(page, 'new-recipe-save').click();
   await expect(tid(page, 'new-recipe-title-error')).toHaveText('Titel fehlt');
-  await tid(page, 'new-recipe-sheet-close').click();
+  await tid(page, 'new-recipe-cancel').click();
   await expect(count).toHaveText(new RegExp(`^${before + 1} Rezepte`));
 });
 

@@ -303,7 +303,6 @@ test('AC-006: a Google Maps link fills in the place with coordinates; the name s
   const name = `Eislaufen mit Freunden ${unique()}`;
   await open(page, '/aktivitaeten');
   await tid(page, 'activity-add').click();
-  await tid(page, 'activity-start-path-create').click();
   await expect(tid(page, 'activity-sheet')).toBeVisible();
   await tid(page, 'activity-link').fill(
     'https://www.google.com/maps/place/Eisstadion+Hohensch%C3%B6nhausen/@52.55,13.5,17z',
@@ -325,7 +324,6 @@ test('AC-007: saving without a name creates nothing and shows "Name fehlt"', asy
   const count = tid(page, 'activity-count');
   const before = await count.innerText();
   await tid(page, 'activity-add').click();
-  await tid(page, 'activity-start-path-create').click();
   await tid(page, 'activity-save').click();
   await expect(tid(page, 'activity-name-error')).toHaveText('Name fehlt');
   await expect(tid(page, 'activity-sheet')).toBeVisible();
@@ -339,7 +337,6 @@ test('AC-008: "bouldern" offers "Gibt es schon: Bouldern" with "Öffnen" instead
   await open(page, '/aktivitaeten');
   const before = await tid(page, 'activity-count').innerText();
   await tid(page, 'activity-add').click();
-  await tid(page, 'activity-start-path-create').click();
   await tid(page, 'activity-name').fill('bouldern');
   await expect(tid(page, 'activity-duplicate')).toContainText('Gibt es schon: Bouldern');
   await expect(tid(page, 'activity-duplicate-open')).toHaveText(/Öffnen/);

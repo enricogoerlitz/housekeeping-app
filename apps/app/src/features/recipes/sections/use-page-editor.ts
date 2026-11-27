@@ -116,7 +116,7 @@ export interface PageEditor {
   /** The page as it stands: the edit mode's draft, else as stored (spec 0062). */
   page: () => PageDraft;
   /**
-   * "Übernehmen" of "Mit KI ändern" (spec 0062, REQ-010): saves `draft` from the reading page at
+   * "Übernehmen" of "Mit KI ändern" (spec 0062, REQ-008): saves `draft` from the reading page at
    * once, then "Rezept geändert" with "Rückgängig". A draft with problems, offline or a refusal
    * opens the edit mode with it and the reason instead (AC-033, AC-034); nothing is lost.
    */

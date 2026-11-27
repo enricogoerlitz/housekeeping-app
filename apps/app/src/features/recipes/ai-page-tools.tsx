@@ -59,7 +59,7 @@ function offersAi(recipe: Recipe): boolean {
 }
 
 /**
- * ✨ "Mit KI ändern" in the header of the reading recipe page (spec 0062, REQ-009): on phones the
+ * ✨ "Mit KI ändern" in the header of the reading recipe page (spec 0062, REQ-007): on phones the
  * symbol, from tablet width with its text; greyed out offline. The keyboard comes with the tap
  * for the window's field (spec 0055, AC-004).
  */
@@ -173,7 +173,7 @@ export function AiPageTools(props: {
         context: draftImageContext(reply.draft),
       });
     }
-    // Spec 0062, REQ-011: "Ergänzen" may change nothing where "Ersetzen" would.
+    // Spec 0062, REQ-009: "Ergänzen" may change nothing where "Ersetzen" would.
     if (proposalIsEmpty(proposal) && !result.fromWeb) {
       toast.show({ message: 'Der Vorschlag ändert nichts am Rezept.' });
       return;
@@ -190,7 +190,7 @@ export function AiPageTools(props: {
       ...(pagePhoto ? { photo: pagePhoto } : {}),
     });
   };
-  // Spec 0062, REQ-011: "Ergänzen · Ersetzen" compares the same answer again.
+  // Spec 0062, REQ-009: "Ergänzen · Ersetzen" compares the same answer again.
   const switchMode = (mode: 'add' | 'replace') => {
     if (!review) return;
     const replace = mode === 'replace';
@@ -281,7 +281,7 @@ export function AiPageTools(props: {
             const next = applyRecipeProposal(review.proposal, rejected);
             const photo = review.photo && !rejected.has(PHOTO_FIELD) ? review.photo : undefined;
             setReview(undefined);
-            // Spec 0062, REQ-010: from the reading page "Übernehmen" saves at once.
+            // Spec 0062, REQ-008: from the reading page "Übernehmen" saves at once.
             if (review.direct && !editor.draft) {
               editor.apply(next, photo);
               return;
@@ -307,7 +307,7 @@ interface Review {
   reply: RecipeDraftReply;
   replace: boolean;
   change: boolean;
-  /** ✨ "Mit KI ändern": "Übernehmen" saves (spec 0062, REQ-010). */
+  /** ✨ "Mit KI ändern": "Übernehmen" saves (spec 0062, REQ-008). */
   direct: boolean;
   /** From the web search for a recipe with ingredients: "Ergänzen · Ersetzen" (REQ-011). */
   fromWeb: boolean;
@@ -370,7 +370,7 @@ const TILE_MAX = 200;
  * AC-010: three suggestions; "Übernehmen" makes one the draft's photo (saved with "Speichern").
  * Spec 0045: the tiles pulse while the photos are made (REQ-005); "Neu generieren" with an
  * optional wish makes three new ones (REQ-006) and replaces "Keins davon". On the reading page
- * (after ✨, spec 0062, REQ-012) "Übernehmen" saves the photo at once and "Ausblenden" closes.
+ * (after ✨, spec 0062, REQ-010) "Übernehmen" saves the photo at once and "Ausblenden" closes.
  */
 function PhotoSuggestionsPanel(props: { recipe: Recipe; editor: PageEditor }) {
   const { recipe, editor } = props;

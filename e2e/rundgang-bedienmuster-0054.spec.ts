@@ -42,7 +42,7 @@ test('AC-001 / AC-002 / AC-005 / AC-006: "Rezept anlegen" opens "Neu" at once; "
   await create.click();
   await expect(menuItems(page)).toHaveCount(0);
   await expect(tid(page, 'new-recipe-sheet')).toBeVisible();
-  // Spec 0062, REQ-007: "Sammlung" under the one field turns the window into "Neue Sammlung".
+  // Spec 0062, REQ-007: "Sammlung" under the tabs turns the window into a new collection.
   await expect(tid(page, 'new-recipe-title')).toBeFocused();
   await tid(page, 'new-recipe-open-collection').click();
   await expect(tid(page, 'new-recipe-kind-collection')).toHaveAttribute('aria-checked', 'true');
@@ -61,9 +61,6 @@ test('AC-007: "Restaurant anlegen" opens the restaurant window with the cursor i
   await tid(page, 'restaurant-new').click();
   await expect(menuItems(page)).toHaveCount(0);
   await expect(tid(page, 'restaurant-sheet')).toBeVisible();
-  // Spec 0062, REQ-008: first the one field "Name oder Link", then the form.
-  await expect(tid(page, 'restaurant-start-text')).toBeFocused();
-  await tid(page, 'restaurant-start-path-create').click();
   await expect(tid(page, 'restaurant-name')).toBeFocused();
 });
 

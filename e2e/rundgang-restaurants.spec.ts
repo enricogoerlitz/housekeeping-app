@@ -43,14 +43,10 @@ async function toTestHousehold(page: Page): Promise<void> {
   await switchHousehold(page, seedIds['hh-test']);
 }
 
-/**
- * "+" on "Restaurants" creates a restaurant at once (spec 0054, AC-007); "Anlegen" of the first
- * step shows the empty form (spec 0062, REQ-008).
- */
+/** "+" on "Restaurants" creates a restaurant at once (spec 0054, AC-007). */
 async function newRestaurant(page: Page): Promise<void> {
   await tid(page, 'restaurant-new').click();
   await expect(tid(page, 'restaurant-sheet')).toBeVisible();
-  await tid(page, 'restaurant-start-path-create').click();
 }
 
 /** Plans Trattoria Da Enzo on `date` (evening) from the calendar; returns the new entry's id. */

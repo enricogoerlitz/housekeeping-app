@@ -67,10 +67,7 @@ const CARD_MIN_WIDTH = 320;
 /** The list column next to an open restaurant on wide screens ("Liste und Detail"). */
 const LIST_COLUMN_WIDTH = 380;
 
-type SheetRequest = Pick<
-  AddRestaurantSheetProps,
-  'initialText' | 'initialName' | 'focus' | 'start'
->;
+type SheetRequest = Pick<AddRestaurantSheetProps, 'initialText' | 'initialName' | 'focus'>;
 
 /** "↕ Zuletzt ▾": the short text for "Zuletzt besucht", else the menu text (T2, decision 6). */
 function sortShortLabel(sort: RestaurantListSort): string {
@@ -102,8 +99,6 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
   // Where "Restaurant hinzufügen" puts the cursor: a new restaurant starts with its name; only
   // "Link einfügen" in the empty state starts with the link. The window stands in the address.
   const [focus, setFocus] = useState<SheetRequest['focus']>('name');
-  // "+" starts with the one field (spec 0062, REQ-008); the empty state's steps go to the form.
-  const [start, setStart] = useState(true);
 
   // On wide screens the chosen restaurant stands in the address and replaces the entry (spec 0019,
   // REQ-014, AC-043); on phones the same address opens its page, with the list underneath (AC-044).
@@ -126,17 +121,11 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
   const shared = params.link !== undefined || params.name !== undefined;
   const sheetRequest: SheetRequest | undefined =
     params.fenster === 'neu-restaurant'
-      ? {
-          initialText: params.link,
-          initialName: params.name,
-          focus: shared ? 'name' : focus,
-          start: start && !shared,
-        }
+      ? { initialText: params.link, initialName: params.name, focus: shared ? 'name' : focus }
       : undefined;
-  const setSheet = (request: { focus: SheetRequest['focus']; start?: boolean }) => {
+  const setSheet = (request: { focus: SheetRequest['focus'] }) => {
     openKeyboardNow();
     setFocus(request.focus);
-    setStart(request.start === true);
     address.open({ fenster: 'neu-restaurant' });
   };
 
@@ -189,7 +178,7 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
             label="Restaurant anlegen"
             disabled={online.disabled}
             hint={online.hint}
-            onPress={() => setSheet({ focus: 'name', start: true })}
+            onPress={() => setSheet({ focus: 'name' })}
             testID="restaurant-new"
           />
           <StartPageActions />

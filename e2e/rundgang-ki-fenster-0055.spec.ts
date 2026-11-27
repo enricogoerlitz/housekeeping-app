@@ -54,13 +54,12 @@ async function stubDraft(
   return bodies;
 }
 
-/** "+", a title in the one field, "Mehr" (spec 0062, REQ-006: the full "Mit KI ausfüllen"). */
+/** "+" and a title: "Neu" shows "Websuche" and "KI-Rezept" at once (spec 0062, REQ-002). */
 async function newRecipeWithAi(page: Page, title: string): Promise<void> {
   await open(page, '/rezepte');
   await tid(page, 'recipe-new').click();
   await expect(tid(page, 'new-recipe-sheet')).toBeVisible();
   await tid(page, 'new-recipe-title').fill(title);
-  await tid(page, 'new-recipe-more').click();
 }
 
 /** The edit mode of the Bolognese and "Mit KI ausfüllen". */
@@ -78,9 +77,9 @@ test.describe('REQ-001, REQ-004: the tabs and the cursor', () => {
   }) => {
     await newRecipeWithAi(page, 'Pasta');
     await expect(tid(page, 'new-recipe-ai-tab-web')).toHaveText('Websuche');
-    await expect(tid(page, 'new-recipe-ai-tab-prompt')).toHaveText('Prompt');
-    await expect(tid(page, 'new-recipe-web-query')).toHaveValue('Pasta');
-    await expect(tid(page, 'new-recipe-web-query')).toBeFocused();
+    await expect(tid(page, 'new-recipe-ai-tab-prompt')).toHaveText('KI-Rezept');
+    await expect(tid(page, 'new-recipe-title')).toHaveValue('Pasta');
+    await expect(tid(page, 'new-recipe-title')).toBeFocused();
     await tid(page, 'new-recipe-ai-tab-prompt').click();
     await expect(tid(page, 'new-recipe-ai-generate-photo')).toBeChecked();
   });
@@ -90,7 +89,7 @@ test.describe('REQ-001, REQ-004: the tabs and the cursor', () => {
     await tid(page, 'new-recipe-ai-tab-prompt').click();
     await expect(tid(page, 'new-recipe-ai-text')).toBeFocused();
     await tid(page, 'new-recipe-ai-tab-web').click();
-    await expect(tid(page, 'new-recipe-web-query')).toBeFocused();
+    await expect(tid(page, 'new-recipe-title')).toBeFocused();
   });
 
   test('AC-005: with results, „Websuche“ shows them again without the cursor in the field', async ({
@@ -103,7 +102,7 @@ test.describe('REQ-001, REQ-004: the tabs and the cursor', () => {
     await tid(page, 'new-recipe-ai-tab-prompt').click();
     await tid(page, 'new-recipe-ai-tab-web').click();
     await expect(tid(page, 'new-recipe-web-card-0')).toBeVisible();
-    await expect(tid(page, 'new-recipe-web-query')).not.toBeFocused();
+    await expect(tid(page, 'new-recipe-title')).not.toBeFocused();
   });
 
   test('AC-004, AC-014, AC-020: editing a recipe with ingredients opens on „Prompt“, without „Ergänzen oder ersetzen?“', async ({
@@ -113,8 +112,8 @@ test.describe('REQ-001, REQ-004: the tabs and the cursor', () => {
     await expect(tid(page, 'recipe-ai-fill-tab-prompt')).toHaveAttribute('aria-selected', 'true');
     await expect(tid(page, 'recipe-ai-fill-field-text')).toBeFocused();
     await expect(tid(page, 'recipe-ai-fill-mode')).toHaveCount(0);
-    // Spec 0062, REQ-011: the question moved into the proposal of the web search.
     await tid(page, 'recipe-ai-fill-tab-web').click();
+    // Spec 0062, REQ-011: the question moved into the proposal of the web search.
     await expect(tid(page, 'recipe-ai-fill-mode')).toHaveCount(0);
   });
 });
@@ -257,10 +256,9 @@ test.describe('REQ-010: the magnifier beside „Name“', () => {
       queries.push((route.request().postDataJSON() as { query: string }).query);
       await route.fulfill({ json: { ...searchReply, query: 'Coccodrillo', results: [] } });
     });
-    await open(page, '/rezepte?ansicht=restaurants');
+    await open(page, '/rezepte');
+    await tid(page, 'food-switch-restaurants').click();
     await tid(page, 'restaurant-new').click();
-    // Spec 0062, REQ-008: "Anlegen" in the first step leads to the form.
-    await tid(page, 'restaurant-start-path-create').click();
     await tid(page, 'restaurant-name').fill('Coccodrillo');
     await expect(tid(page, 'restaurant-web-open')).toHaveCount(0);
     await tid(page, 'restaurant-web-name-search').click();
@@ -279,7 +277,6 @@ test.describe('REQ-010: the magnifier beside „Name“', () => {
     });
     await open(page, '/aktivitaeten');
     await tid(page, 'activity-add').click();
-    await tid(page, 'activity-start-path-create').click();
     await tid(page, 'activity-web-name-search').click();
     await expect(tid(page, 'activity-web-sheet')).toBeVisible();
     await expect(tid(page, 'activity-web-query')).toHaveValue('');

@@ -113,8 +113,6 @@ export interface AiFill {
     prefix?: string;
     current?: RecipeDraft;
     title?: string;
-    /** Instead of the field's text: the one field of "Neues Rezept" (spec 0062, REQ-005). */
-    text?: string;
   }) => Promise<RecipeDraftReply | undefined>;
   reset: () => void;
 }
@@ -184,15 +182,14 @@ export function useAiFill(initial: { generatePhoto?: boolean } = {}): AiFill {
     setBusy(true);
     setError(undefined);
     setSources([]);
-    const wish = options.text ?? text;
-    const webQuery = webSearch ? promptWebQuery(options.title ?? '', wish) : undefined;
+    const webQuery = webSearch ? promptWebQuery(options.title ?? '', text) : undefined;
     try {
       const reply = await draftRecipeAsync({
-        text: [options.prefix?.trim(), wish.trim()]
+        text: [options.prefix?.trim(), text.trim()]
           .filter(Boolean)
           .join('\n')
           .slice(0, RECIPE_DRAFT_LIMITS.text),
-        links: options.text === undefined ? links : draftLinks(options.text),
+        links,
         photos: photos.map((entry) => entry.photo),
         imagePrompt: generatePhoto,
         ...(options.current ? { current: options.current } : {}),
@@ -322,7 +319,7 @@ export function AiFillFields(props: {
   fill: AiFill;
   inputRef?: Ref<FieldRef>;
   autoFocus?: boolean;
-  /** "Mit KI ändern" (spec 0062, REQ-009): the wish, links and the chips "Web" and "Bild". */
+  /** "Mit KI ändern" (spec 0062, REQ-007): the wish, links and the chips "Web" and "Bild". */
   compact?: boolean;
   testID: string;
 }) {
@@ -381,7 +378,7 @@ export function AiFillFields(props: {
         </Row>
       ) : null}
       {props.compact ? (
-        // Spec 0062, REQ-009: "Web" holds context from one web search, "Bild" makes three photos.
+        // Spec 0062, REQ-007: "Web" holds context from one web search, "Bild" makes three photos.
         <Row gap={8} wrap>
           <Chip
             label="Web"
@@ -508,7 +505,7 @@ export function AiFillFields(props: {
 }
 
 /** The two tabs of "Mit KI ausfüllen" (spec 0049, REQ-001; spec 0055, REQ-004: „Prompt“). */
-export const AI_FILL_TABS: { value: AiFillTab; label: string }[] = [
+const AI_FILL_TABS: { value: AiFillTab; label: string }[] = [
   { value: 'web', label: 'Websuche' },
   { value: 'prompt', label: 'Prompt' },
 ];
@@ -521,7 +518,7 @@ export const AI_FILL_TABS: { value: AiFillTab; label: string }[] = [
 export function useAiFillTabs(
   initial: AiFillTab,
   search: WebSearch,
-  /** "Mit KI ändern" shows "Prompt" first (spec 0062, REQ-009). */
+  /** "Mit KI ändern" shows "Prompt" first (spec 0062, REQ-007). */
   order: readonly { value: AiFillTab; label: string }[] = AI_FILL_TABS,
 ) {
   const [tab, setTab] = useState<AiFillTab>(initial);
@@ -570,7 +567,7 @@ export interface AiFillResult {
    */
   change?: boolean;
   /**
-   * Spec 0062, REQ-011: a recipe from the web search for one with ingredients; the
+   * Spec 0062, REQ-009: a recipe from the web search for one with ingredients; the
    * Änderungsansicht offers "Ergänzen · Ersetzen".
    */
   fromWeb?: boolean;
@@ -581,7 +578,7 @@ export interface AiFillResult {
   imageWish?: string;
 }
 
-/** "Mit KI ändern" (spec 0062, REQ-009): "Prompt" first. */
+/** "Mit KI ändern" (spec 0062, REQ-007): "Prompt" first. */
 const CHANGE_TABS: { value: AiFillTab; label: string }[] = [
   { value: 'prompt', label: 'Prompt' },
   { value: 'web', label: 'Websuche' },
@@ -591,7 +588,7 @@ const CHANGE_TABS: { value: AiFillTab; label: string }[] = [
  * The AI window of a recipe page: "Websuche" (spec 0049, prefilled with the title) and „Prompt“
  * (the field of spec 0040). Spec 0055: a recipe with content opens on „Prompt“ and sends itself
  * as `current` (REQ-005, REQ-006); „Foto generieren“ starts off when it has a photo. `entry`
- * "page" is ✨ "Mit KI ändern" of the reading page (spec 0062, REQ-009): "Prompt" first with the
+ * "page" is ✨ "Mit KI ändern" of the reading page (spec 0062, REQ-007): "Prompt" first with the
  * chips "Web" and "Bild" and "Vorschlag"; "edit" is "Mit KI ausfüllen" in the edit mode. Neither
  * asks "Ergänzen oder ersetzen?" any more: the proposal of the web search offers it (REQ-011).
  */

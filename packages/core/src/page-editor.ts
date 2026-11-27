@@ -179,7 +179,7 @@ export function readViewSave(
 }
 
 /**
- * "Rückgängig" after "Mit KI ändern" saved a proposal (spec 0062, REQ-010): `now` as stored after
+ * "Rückgängig" after "Mit KI ändern" saved a proposal (spec 0062, REQ-008): `now` as stored after
  * the save, with every value of `before` (the page as stored before it). A row of `before` that
  * is still stored edits it; one that is gone meanwhile comes back as a new row. Saved like
  * "Speichern", so only the sections that differ go out and `seenUpdatedAt` is the current one.
