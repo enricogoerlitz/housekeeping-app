@@ -5,6 +5,7 @@ import {
   googleCalendarUrl,
   icsFileName,
   planEntryCalendarEvent,
+  calendarSlotIndex,
   toICalendar,
   tripCalendarEvent,
   utf8Length,
@@ -68,22 +69,57 @@ describe('toICalendar (REQ-001)', () => {
     ).toContain('DTEND;TZID=Europe/Berlin:20261129T010000');
   });
 
-  it('AC-002: without a time the entry is all-day and needs no VTIMEZONE', () => {
+  it('AC-002 (Enrico 27.11.): without a time the entry starts at its Tageszeit, one hour', () => {
     const lasagne = entry({ id: 'e-lasagne', date: '2026-11-30' });
-    const all = lines(
-      planEntryCalendarEvent({ entry: lasagne, title: 'Lasagne', slotName: 'Abend' }),
-    );
+    const at = (slotIndex: number) =>
+      lines(
+        planEntryCalendarEvent({ entry: lasagne, title: 'Lasagne', slotName: 'Abend', slotIndex }),
+      );
+    expect(at(0)).toContain('DTSTART;TZID=Europe/Berlin:20261130T090000');
+    expect(at(0)).toContain('DTEND;TZID=Europe/Berlin:20261130T100000');
+    expect(at(1)).toContain('DTSTART;TZID=Europe/Berlin:20261130T130000');
+    expect(at(2)).toContain('DTSTART;TZID=Europe/Berlin:20261130T170000');
+    expect(at(2)).toContain('DTEND;TZID=Europe/Berlin:20261130T180000');
+    expect(at(3)).toContain('DTSTART;TZID=Europe/Berlin:20261130T210000');
+    expect(at(2)).toContain('BEGIN:VTIMEZONE');
+    expect(at(2)).toContain('DESCRIPTION:Abend');
+  });
+
+  it('AC-002: the position of a Tageszeit follows its sort order; unknown is undefined', () => {
+    const slots = [
+      { id: 'abend', sort: 30 },
+      { id: 'vormittag', sort: 10 },
+      { id: 'mittag', sort: 20 },
+    ];
+    expect(calendarSlotIndex(slots, 'vormittag')).toBe(0);
+    expect(calendarSlotIndex(slots, 'abend')).toBe(2);
+    expect(calendarSlotIndex(slots, 'weg')).toBeUndefined();
+  });
+
+  it('AC-002: a later Tageszeit never starts after 22:00', () => {
+    const late = entry({ id: 'e-late-slot', date: '2026-11-30' });
+    expect(
+      lines(
+        planEntryCalendarEvent({ entry: late, title: 'Snack', slotName: 'Nacht', slotIndex: 5 }),
+      ),
+    ).toContain('DTSTART;TZID=Europe/Berlin:20261130T220000');
+  });
+
+  it('AC-002 (edge): without a known Tageszeit the entry stays all-day', () => {
+    const lasagne = entry({ id: 'e-lasagne', date: '2026-11-30' });
+    const all = lines(planEntryCalendarEvent({ entry: lasagne, title: 'Lasagne', slotName: '' }));
     expect(all).toContain('DTSTART;VALUE=DATE:20261130');
     expect(all).toContain('DTEND;VALUE=DATE:20261201');
     expect(all).not.toContain('BEGIN:VTIMEZONE');
-    expect(all).toContain('DESCRIPTION:Abend');
   });
 
-  it('AC-002: a recipe with a time stays all-day (only restaurants and activities have one)', () => {
+  it('AC-002: a recipe ignores a stray time and starts at its Tageszeit', () => {
     const odd = entry({ id: 'e-odd', startsAt: '18:00' });
-    expect(lines(planEntryCalendarEvent({ entry: odd, title: 'Lasagne', slotName: '' }))).toContain(
-      'DTSTART;VALUE=DATE:20261128',
-    );
+    expect(
+      lines(
+        planEntryCalendarEvent({ entry: odd, title: 'Lasagne', slotName: 'Abend', slotIndex: 2 }),
+      ),
+    ).toContain('DTSTART;TZID=Europe/Berlin:20261128T170000');
   });
 
   it('AC-003: a trip is all-day over every day, the end exclusive', () => {
