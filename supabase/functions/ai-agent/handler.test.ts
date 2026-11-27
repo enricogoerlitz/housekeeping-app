@@ -815,6 +815,30 @@ describe('ai-agent: household tools (spec 0067)', () => {
     expect(all.at(-1)).toEqual({ type: 'done' });
   });
 
+  it('cost: at most 10 household calls per round run, the rest is closed as too many and shown', async () => {
+    const { deps, state, client } = setup({
+      state: {
+        stream: toolTurn(
+          Array.from({ length: 14 }, (_, n) => ({
+            name: 'list_chores',
+            callId: `call_${n}`,
+            args: {},
+          })),
+        ),
+      },
+    });
+    const all = await events(await handler(send({ chatId: CHAT_ID }), deps));
+    const outputs = outputsOf(state, 1);
+    expect(outputs).toHaveLength(14);
+    expect(outputs.filter((item) => item.output === '{"error":"too_many_calls"}')).toHaveLength(4);
+    expect(client.selects.filter((entry) => entry.table === 'chores')).toHaveLength(10);
+    const skipped = all.filter(
+      (event) => event.type === 'step' && event.step.detail === 'übersprungen (zu viele Abfragen)',
+    );
+    expect(skipped).toHaveLength(4);
+    expect(all.at(-1)).toEqual({ type: 'done' });
+  });
+
   it('a read that fails tells the model and shows "konnte nicht lesen", the answer goes on', async () => {
     const { deps, state, client } = setup({
       state: { stream: toolTurn([{ name: 'list_chores', callId: 'call_h', args: {} }]) },

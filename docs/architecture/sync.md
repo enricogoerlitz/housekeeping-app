@@ -547,6 +547,12 @@ Der Versand aufs Gerät (ADR-0014) ist mit Spec 0051 entfallen. Mitteilungen ers
   Zeilen „HH:MM:SS“ wie Postgres sie liefert, damit Diff und Server dasselbe vergleichen.
   `CACHE_VERSION` 8 (neue Tabelle und Spalten); Warteschlange und Haushaltswahl überleben das.
 
+**Nachtrag Spec 0067 — Ansicht je Person:** Die eigene Zeile trägt seit Spec 0067 auch
+`app_view` („normal“ oder „ai_first“ = „KI zuerst“). Geschrieben wird sie nur über
+`set_app_view(view)` (security definer, nur `auth.uid()`, alle eigenen Zeilen auf einmal: die Ansicht
+gehört der Person, nicht dem Haushalt); ein neuer Haushalt übernimmt sie beim Eintritt. Lesen wie
+die Zeile: nur die Person selbst, offline aus dem Cache. `CACHE_VERSION` 27.
+
 ## Nachtrag Spec 0025 — Laden-Aktionen auf der Liste, ein Posten je Artikel
 
 - „Abhaken“, „Posten hinzufügen“ und „Bereich zuordnen“ gehen auch auf „Liste“ und in „Posten

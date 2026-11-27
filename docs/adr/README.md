@@ -25,3 +25,4 @@ neue abgelöst.
 | [0017](0017-mitteilungen-in-der-app.md)                               | Mitteilungen nur in der App (Glocke), Bestätigungen je Mitglied; Web Push entfällt                  | angenommen          |
 | [0018](0018-ki-agent-chats-online.md)                                 | KI-Agent: Chatinhalt nur in Foundry, online gelesen; der Verlauf im Cache                           | angenommen          |
 | [0019](0019-foundry-agenten-als-code-je-umgebung.md)                  | Foundry-Agenten als YAML je Umgebung, Upsert in der Pipeline über REST mit OIDC, Version gepinnt    | angenommen          |
+| [0020](0020-ein-agent-fuer-den-haushalt.md)                           | Ein Foundry-Agent für den Haushalt; ✨ öffnet ihn mit „Ausgehen“, `places-agent` entfällt           | angenommen          |

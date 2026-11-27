@@ -41,6 +41,9 @@ import { loadToolBase, runHouseholdTool, type ToolBase } from './tools.ts';
 const TURN_MS = 120_000;
 /** Model runs of one answer: the first and up to four rounds of household tools (spec 0067). */
 const MAX_TOOL_ROUNDS = 5;
+/** Household calls run per model run and per answer; more are closed unrun (cost, spec 0067). */
+const MAX_CALLS_PER_ROUND = 10;
+const MAX_CALLS_PER_ANSWER = 20;
 /** The body of a send with its photos and files (spec 0067, REQ-005). */
 const MAX_SEND_BODY_BYTES = AGENT_LIMITS.attachmentChars + 256 * 1024;
 const SERPER_ZOOM = 14;
@@ -388,6 +391,7 @@ async function streamTurn(
     }
     return id;
   };
+  let callsRun = 0;
   for (let roundNo = 0; roundNo < MAX_TOOL_ROUNDS; roundNo += 1) {
     const round = await streamRound({
       foundry,
@@ -449,8 +453,28 @@ async function streamTurn(
       }
     }
     // The household id is the chat's, checked by requireMember; never an argument (AC-014).
+    const allowed = Math.max(0, Math.min(MAX_CALLS_PER_ROUND, MAX_CALLS_PER_ANSWER - callsRun));
+    callsRun += Math.min(allowed, dataCalls.length);
     const dataOutputs = await Promise.all(
-      dataCalls.map(async (call) => {
+      dataCalls.map(async (call, index) => {
+        if (index >= allowed) {
+          emit({
+            type: 'step',
+            step: {
+              id: stepFor(call.callId),
+              kind: 'tool',
+              label: toolLabel(call.name),
+              detail: 'übersprungen (zu viele Abfragen)',
+              details: [],
+              status: 'done',
+            },
+          });
+          return {
+            type: 'function_call_output',
+            call_id: call.callId,
+            output: '{"error":"too_many_calls"}',
+          };
+        }
         const result = await runHouseholdTool(call, {
           client,
           householdId: chat.household_id,
