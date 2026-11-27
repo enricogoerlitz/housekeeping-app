@@ -98,6 +98,54 @@ describe('Sheet leaving with its page (spec 0029, REQ-001)', () => {
     }
   });
 
+  it('removed while it stood on the keyboard: the copy slides down past the screen edge, not only to the keyboard (Durchklick 27.11., B-03)', async () => {
+    const { unmount } = render(
+      <Sheet visible onClose={() => undefined} title="Zutat" size="m" testID="sheet">
+        <Text>Inhalt</Text>
+      </Sheet>,
+    );
+    const frames: Keyframe[][] = [];
+    // jsdom has no Web Animations: a stand-in records what the copy asks for.
+    Object.defineProperty(HTMLElement.prototype, 'animate', {
+      configurable: true,
+      value(keyframes: Keyframe[]) {
+        frames.push(keyframes);
+        return {} as Animation;
+      },
+    });
+    // The window 372 high, on a keyboard: from 12 to 384 of a screen 714 high.
+    const panel = screen.getByTestId('sheet');
+    Object.defineProperty(document.documentElement, 'clientHeight', {
+      configurable: true,
+      value: 714,
+    });
+    Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
+      configurable: true,
+      get() {
+        return (this as HTMLElement).dataset.sheetPart === 'panel' ? 372 : 714;
+      },
+    });
+    const rect = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockImplementation(function measure(this: HTMLElement) {
+        // The modal's own root has no height of its own.
+        const panelPart = this.dataset.sheetPart === 'panel';
+        return { top: panelPart ? 12 : 0, bottom: panelPart ? 384 : 0 } as DOMRect;
+      });
+    expect(panel).toBeTruthy();
+    try {
+      unmount();
+      await Promise.resolve();
+      const slide = frames.find((keyframes) => String(keyframes[1]?.transform).includes('px'));
+      expect(String(slide?.[1]?.transform)).toMatch(/ translateY\(702px\)$/);
+    } finally {
+      Reflect.deleteProperty(HTMLElement.prototype, 'animate');
+      rect.mockRestore();
+      Reflect.deleteProperty(HTMLElement.prototype, 'offsetHeight');
+      Reflect.deleteProperty(document.documentElement, 'clientHeight');
+    }
+  });
+
   it('closed before it is removed: no copy, it has faded out already', async () => {
     const { rerender, unmount } = render(
       <Sheet visible onClose={() => undefined} title="Einplanen" size="m" />,

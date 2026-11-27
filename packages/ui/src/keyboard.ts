@@ -9,3 +9,8 @@ export function useKeyboard(): KeyboardState {
 export function expectKeyboard(_ms: number): void {
   return undefined;
 }
+
+/** A window closed while the keyboard was open (web only, B-03). */
+export function keyboardLeaving(): void {
+  return undefined;
+}

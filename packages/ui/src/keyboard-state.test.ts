@@ -80,6 +80,15 @@ describe('keyboardStep (spec 0044, REQ-002, decision 2)', () => {
   it('AC-004: while a keyboard is expected, a full viewport does not cancel it', () => {
     expect(keyboardStep(expectedKeyboard(844, 380), open(844))).toBe('keep');
   });
+
+  it('AC-008: the open keyboard unchanged and only the visible area moved (Safari scrolling to a tapped field) waits longer (Durchklick 27.11.)', () => {
+    const moved = keyboardState({ windowHeight: 844, visibleHeight: 464, offsetTop: 48 });
+    expect(keyboardStep(open(464), moved)).toBe('drift');
+  });
+
+  it('AC-008: a reading the same as the keyboard taken changes nothing', () => {
+    expect(keyboardStep(open(464), open(464))).toBe('same');
+  });
 });
 
 describe('expectedKeyboard (spec 0044, REQ-002, decision 4)', () => {
@@ -106,5 +115,12 @@ describe('sheetWindowHeight (iPhone click-through, I-04)', () => {
 
   it('without the keyboard the window height stays', () => {
     expect(sheetWindowHeight(812, NO_KEYBOARD)).toBe(812);
+  });
+
+  it('AC-010: the keyboard taken as gone before Safari reports it, a window is sized by the whole screen at once (B-03)', () => {
+    // React Native Web still reports the 384 px the keyboard left; the layout is 714 high.
+    expect(
+      sheetWindowHeight(384, { open: false, inset: 0, visibleHeight: 714, leaving: true }),
+    ).toBe(714);
   });
 });

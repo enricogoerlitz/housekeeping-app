@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react';
 
 import { isAppleTouchBrowser } from './field-autofill';
-import { createSettler, KEYBOARD_SETTLE_MS } from './keyboard-settle';
+import { createSettler, KEYBOARD_DRIFT_MS, KEYBOARD_SETTLE_MS } from './keyboard-settle';
 import { keyboardRevealScrollTop } from './keyboard-reveal';
 import {
   expectedKeyboard,
@@ -102,7 +102,10 @@ function take(next: KeyboardState) {
   apply(next);
   remember(next);
   const same =
-    next.open === state.open && next.inset === state.inset && next.expected === state.expected;
+    next.open === state.open &&
+    next.inset === state.inset &&
+    next.expected === state.expected &&
+    next.leaving === state.leaving;
   if (same) return;
   state = next;
   listeners.forEach((listener) => listener());
@@ -110,13 +113,28 @@ function take(next: KeyboardState) {
 }
 
 const settler = createSettler<KeyboardState>(KEYBOARD_SETTLE_MS, take);
+const drift = createSettler<KeyboardState>(KEYBOARD_DRIFT_MS, take);
 
 function update() {
   // Whatever iOS scrolls meanwhile goes back at once.
   scrollBack();
   const next = read();
+  if (leaving !== undefined) {
+    // WebKit reports the keyboard until it has gone; a field taking the cursor ends this early.
+    if (next.open) return;
+    endLeaving();
+  }
   const step = keyboardStep(state, next);
   if (step === 'keep') return;
+  if (step === 'drift') {
+    drift.push(next);
+    return;
+  }
+  drift.cancel();
+  if (step === 'same') {
+    settler.cancel();
+    return;
+  }
   if (step === 'settle') {
     settler.push(next);
     return;
@@ -148,12 +166,50 @@ export function expectKeyboard(ms: number): void {
   if (typeof document === 'undefined' || state.open) return;
   if ((document.documentElement.clientWidth || window.innerWidth) >= PHONE_MAX_WIDTH) return;
   settler.cancel();
+  drift.cancel();
   const height = windowHeight();
   const last = measuredInsets()[sizeKey()];
   // A stored value is a claim: only a keyboard lower than the window counts.
   take(expectedKeyboard(height, last !== undefined && last < height ? last : undefined));
   clearTimeout(expectation);
   expectation = setTimeout(endExpectation, ms);
+}
+
+// ---------- A window closing takes the keyboard along (B-03) ----------
+
+/** How long a keyboard said to be leaving may still be reported before the app believes it. */
+const LEAVING_MS = 1000;
+let leaving: ReturnType<typeof setTimeout> | undefined;
+
+function endLeaving() {
+  clearTimeout(leaving);
+  leaving = undefined;
+}
+
+/**
+ * The cursor left the last field on iPhone: the keyboard goes now. Safari reports it gone only
+ * about 0.5 s later; until then a window floated where the keyboard had been and dropped after it,
+ * a closing window slid out only down to there, and the page stayed as high as the keyboard left
+ * it, half drawn as the keyboard went (iPhone click-through 27.11., B-03). The app takes it as gone
+ * at once; readings that still show it are ignored until one shows it gone, a field takes the
+ * cursor again, or `LEAVING_MS` have passed. A window closing calls it too: dragged away, its
+ * field can lose the cursor without a blur event.
+ *
+ * @public `Sheet` calls it as it closes.
+ */
+export function keyboardLeaving(): void {
+  if (typeof document === 'undefined' || !isAppleTouchBrowser(navigator)) return;
+  if (!state.open || state.expected || isTextField(document.activeElement)) return;
+  settler.cancel();
+  drift.cancel();
+  clearTimeout(expectation);
+  expectation = undefined;
+  endLeaving();
+  leaving = setTimeout(() => {
+    leaving = undefined;
+    take(read());
+  }, LEAVING_MS);
+  take({ open: false, inset: 0, visibleHeight: windowHeight(), leaving: true });
 }
 
 // ---------- The field with the cursor (REQ-004) ----------
@@ -245,6 +301,15 @@ const TAP_KEYBOARD_MS = 1500;
 
 function onFocusIn(event: FocusEvent) {
   if (!isTextField(event.target)) return;
+  if (leaving !== undefined) {
+    // The cursor came back before the keyboard went: whatever the viewport says.
+    endLeaving();
+    const now = read();
+    if (now.open) {
+      take(now);
+      return;
+    }
+  }
   if (state.open) {
     revealSoon();
     return;
@@ -264,10 +329,24 @@ function onFocusIn(event: FocusEvent) {
 // The field is put in place before it takes the focus: iOS decides then which neighbours ˄ ˅
 // reach, and only offers visible ones (iPhone click-through, review 0003).
 let refocusing = false;
+let leavingCheck: ReturnType<typeof setTimeout> | undefined;
+
 function onBlur(event: FocusEvent) {
   const next = event.relatedTarget;
   // The cursor left all fields before the expected keyboard came: none is coming.
   if (state.expected && !refocusing && !isTextField(next)) endExpectation();
+  // A tap on a button: once its handler has run (it may give a field the cursor again within the
+  // tap, "Titel fehlt"), the keyboard goes unless a field has the cursor (B-03).
+  if (
+    state.open &&
+    !refocusing &&
+    !isTextField(next) &&
+    isTextField(event.target) &&
+    isAppleTouchBrowser(navigator)
+  ) {
+    clearTimeout(leavingCheck);
+    leavingCheck = setTimeout(keyboardLeaving, 0);
+  }
   if (refocusing || !isTextField(next) || !isAppleTouchBrowser(navigator)) return;
   refocusing = true;
   try {
@@ -326,6 +405,9 @@ function subscribe(listener: () => void): () => void {
     if (listeners.size === 0) {
       listen(false);
       settler.cancel();
+      drift.cancel();
+      endLeaving();
+      clearTimeout(leavingCheck);
     }
   };
 }

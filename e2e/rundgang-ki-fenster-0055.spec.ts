@@ -134,9 +134,9 @@ test.describe('REQ-001, REQ-004: the tabs and the cursor', () => {
 test.describe('REQ-002: swiping between the tabs', () => {
   test.use({ hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 } });
 
-  async function swipe(page: Page, dx: number) {
+  async function swipe(page: Page, dx: number, at: 'top' | 'bottom' = 'top') {
     const box = await tid(page, 'new-recipe-ai-swipe').boundingBox();
-    const y = (box?.y ?? 400) + 40;
+    const y = at === 'top' ? (box?.y ?? 400) + 40 : (box?.y ?? 400) + (box?.height ?? 400) - 40;
     const x = 200;
     const cdp = await page.context().newCDPSession(page);
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
@@ -170,6 +170,26 @@ test.describe('REQ-002: swiping between the tabs', () => {
     await swipe(page, 160);
     await expect(tid(page, 'new-recipe-title')).toBeFocused();
     expect(warnings.filter((text) => text.includes('flushSync'))).toEqual([]);
+  });
+
+  test('AC-006: the empty space at the bottom of the window swipes too, below the links (Durchklick 27.11., B-05)', async ({
+    page,
+  }) => {
+    await newRecipeWithAi(page, 'Pasta');
+    const window = await tid(page, 'new-recipe-sheet').boundingBox();
+    const area = await tid(page, 'new-recipe-ai-swipe').boundingBox();
+    const links = await tid(page, 'new-recipe-open-photo').boundingBox();
+    // Down to the window's bottom, the links inside.
+    expect((area?.y ?? 0) + (area?.height ?? 0)).toBeGreaterThan(
+      (window?.y ?? 0) + (window?.height ?? 0) - 60,
+    );
+    expect((links?.y ?? 0) + (links?.height ?? 0)).toBeLessThan(
+      (area?.y ?? 0) + (area?.height ?? 0),
+    );
+    await swipe(page, -160, 'bottom');
+    await expect(tid(page, 'new-recipe-ai-tab-prompt')).toHaveAttribute('aria-selected', 'true');
+    await swipe(page, 160, 'bottom');
+    await expect(tid(page, 'new-recipe-ai-tab-web')).toHaveAttribute('aria-selected', 'true');
   });
 
   test('Durchklick 27.11.: „KI-Rezept“ on a phone has one photo button and no link „Foto“', async ({
