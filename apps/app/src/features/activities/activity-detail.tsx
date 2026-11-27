@@ -19,7 +19,17 @@ import {
   type Activity,
   type Id,
 } from '@housekeeping/core';
-import { Button, EmptyState, Icon, IconButton, Menu, Row, Stack, Text } from '@housekeeping/ui';
+import {
+  Button,
+  EmptyState,
+  Icon,
+  IconButton,
+  Menu,
+  Row,
+  Stack,
+  Text,
+  useLargeTitle,
+} from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
 import { View } from 'react-native';
@@ -102,6 +112,7 @@ export function ActivityDetail(props: ActivityDetailProps) {
 function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity }) {
   const { activity } = props;
   const online = useOnlineOnly();
+  const largeTitle = useLargeTitle();
   const kindsById = useActivityKindsById();
   const icon = useActivityIcon(activity);
   const kind = activity.kindId === undefined ? undefined : kindsById[activity.kindId];
@@ -223,11 +234,9 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
         />
 
         <Stack gap={10} style={{ marginTop: 16, marginBottom: 24 }}>
-          {props.onBack ? null : (
-            <Text variant="title" heading testID="activity-title">
-              {activity.name}
-            </Text>
-          )}
+          <Text ref={largeTitle} variant="title" heading wholeWords testID="activity-title">
+            {activity.name}
+          </Text>
           {kind ? (
             <Row gap={6}>
               <Icon name={icon} size={16} color="muted" />

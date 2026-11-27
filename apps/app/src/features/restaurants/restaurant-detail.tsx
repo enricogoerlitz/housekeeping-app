@@ -29,6 +29,7 @@ import {
   Section,
   Stack,
   Text,
+  useLargeTitle,
   openKeyboardNow,
 } from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
@@ -114,6 +115,7 @@ export function RestaurantDetail(props: RestaurantDetailProps) {
 function RestaurantDetailBody(props: RestaurantDetailProps & { restaurant: Restaurant }) {
   const { restaurant } = props;
   const online = useOnlineOnly();
+  const largeTitle = useLargeTitle();
   const me = useCurrentMember();
   const members = useMembers();
   const entries = usePlanEntries();
@@ -226,11 +228,9 @@ function RestaurantDetailBody(props: RestaurantDetailProps & { restaurant: Resta
         />
 
         <Stack gap={10} style={{ marginTop: 16, marginBottom: 24 }}>
-          {props.onBack ? null : (
-            <Text variant="title" heading testID="restaurant-title">
-              {restaurant.name}
-            </Text>
-          )}
+          <Text ref={largeTitle} variant="title" heading wholeWords testID="restaurant-title">
+            {restaurant.name}
+          </Text>
           {meta ? (
             <Text color="muted" testID="restaurant-meta">
               {meta}
