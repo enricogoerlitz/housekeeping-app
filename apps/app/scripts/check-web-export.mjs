@@ -4,7 +4,7 @@
 // - index.html has the CSP <meta> with default-src 'self', script-src 'self' (only hashes besides,
 //   nothing unsafe; script-src-elem and script-src-attr, when present, the same), object-src
 //   'none', base-uri 'self' and connect-src with the Supabase origin of the build and no wildcard
-//   or bare scheme (`*`, `https:` …); in a build against a non-local Supabase, connect-src names
+//   or bare scheme (`*`, `https:` …) except blob: (spec 0040, "Aus diesem Foto"); in a build against a non-local Supabase, connect-src names
 //   neither localhost nor 127.0.0.1 (spec 0014, AC-035); media-src exactly 'self' blob: (spec
 //   0043: the recipe video plays from a blob: URL);
 // - index.html has no inline script (any <script> without a src attribute, in any letter case);
@@ -304,7 +304,13 @@ export function checkExport({
     if (supabaseUrl && !connect.includes(new URL(supabaseUrl).origin)) {
       problems.push('connect-src does not contain the Supabase origin');
     }
-    const open = connect.filter((value) => value === '*' || /^[a-z][a-z0-9+.-]*:$/i.test(value));
+    // blob: is the one bare scheme allowed: only this page can create or read its blob: URLs.
+    if (!connect.includes('blob:')) {
+      problems.push('connect-src must allow blob: (spec 0040, "Aus diesem Foto")');
+    }
+    const open = connect.filter(
+      (value) => value === '*' || (value !== 'blob:' && /^[a-z][a-z0-9+.-]*:$/i.test(value)),
+    );
     if (open.length > 0) {
       problems.push(`connect-src allows any host: ${open.join(' ')}`);
     }

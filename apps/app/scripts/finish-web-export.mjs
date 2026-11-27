@@ -85,6 +85,9 @@ function contentSecurityPolicy(html) {
     'font-src': ["'self'"],
     'connect-src': [
       "'self'",
+      // Spec 0040, AC-015: "Aus diesem Foto" reads the shown photo from its blob: URL. Only this
+      // page can create or read its blob: URLs, so this reaches no other host.
+      'blob:',
       ...supabaseOrigins(),
       'https://*.stt.speech.microsoft.com',
       'wss://*.stt.speech.microsoft.com',
