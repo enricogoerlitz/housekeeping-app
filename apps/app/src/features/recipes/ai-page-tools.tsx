@@ -268,28 +268,35 @@ export function AiPageTools(props: {
       onDraft={(result) => propose(result, entry === 'page')}
     />
   );
+  // The panel and the windows show nothing in place on the reading page, so no empty slot takes
+  // the page's gap above the photo (Nachklick 27.11.: 24 pt gap under the head).
+  const panel = <PhotoSuggestionsPanel recipe={recipe} editor={editor} />;
   return (
-    <Stack gap={12}>
+    <>
       {editing ? (
-        <View style={{ alignItems: 'flex-start' }}>
-          <Button
-            // Nachklick 27.11., iN-05: the name of the window it opens.
-            label={hasContent ? 'Mit KI ändern' : 'Mit KI ausfüllen'}
-            icon="sparkles"
-            variant="link"
-            size="sm"
-            disabled={online.disabled || editor.saving}
-            hint={online.hint}
-            onPress={() => {
-              // Spec 0055, AC-004: the keyboard comes with the tap, for the field of the window.
-              openKeyboardNow();
-              setFilling(true);
-            }}
-            testID="recipe-ai-fill-open"
-          />
-        </View>
-      ) : null}
-      <PhotoSuggestionsPanel recipe={recipe} editor={editor} />
+        <Stack gap={12}>
+          <View style={{ alignItems: 'flex-start' }}>
+            <Button
+              // Nachklick 27.11., iN-05: the name of the window it opens.
+              label={hasContent ? 'Mit KI ändern' : 'Mit KI ausfüllen'}
+              icon="sparkles"
+              variant="link"
+              size="sm"
+              disabled={online.disabled || editor.saving}
+              hint={online.hint}
+              onPress={() => {
+                // Spec 0055, AC-004: the keyboard comes with the tap, for the field of the window.
+                openKeyboardNow();
+                setFilling(true);
+              }}
+              testID="recipe-ai-fill-open"
+            />
+          </View>
+          {panel}
+        </Stack>
+      ) : (
+        panel
+      )}
       {(filling || workOut) && editing ? window('edit', closeFill) : null}
       {props.changing && !editing ? window('page', props.onChangeClose) : null}
       {review ? (
@@ -312,7 +319,7 @@ export function AiPageTools(props: {
           onClose={() => setReview(undefined)}
         />
       ) : null}
-    </Stack>
+    </>
   );
 }
 
