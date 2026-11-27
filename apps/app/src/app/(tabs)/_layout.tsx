@@ -24,7 +24,7 @@ import { phoneTabOptions } from '@/features/shell/stack-transition';
 import { UpdateBanner, useUpdateBannerVisible } from '@/features/shell/update-banner';
 import { useAssistant } from '@/lib/assistant';
 import { features } from '@/lib/features';
-import { useActiveSection, useOpenSection } from '@/lib/url-state';
+import { useActiveSection, usePressSection } from '@/lib/url-state';
 
 // The keys stay the test ids of the tab bar and the sidebar (`tab-rezepte`, `nav-liste`); the
 // areas with their own stack are route groups, so their pages keep their addresses.
@@ -134,20 +134,29 @@ function Navigation(props: BottomTabBarProps) {
   const keyboard = useKeyboard();
   const segments = useSegments();
   const activeRoute = props.state.routes[props.state.index]?.name ?? 'index';
-  // A page highlights its own section, a detail page too: `von` only names "Zurück" (spec 0035,
-  // REQ-002). A page under "Verwalten" highlights no tab (spec 0005, AC-054).
+  // A page opened from another section highlights that one while "Zurück" leads there (spec
+  // 0057, REQ-003). A page under "Verwalten" opened from there highlights no tab (spec 0005,
+  // AC-054).
   const section = useActiveSection();
   const activeKey = (section && KEY_OF_SECTION[section]) ?? '';
-  const openSection = useOpenSection();
-  // A section always shows its start page as last left, without detail or window (REQ-005).
+  const pressSection = usePressSection();
+  // A section always shows its start page as last left, without detail or window (REQ-005); on
+  // that start page a second tap scrolls it to the top (spec 0057, REQ-002).
   const select = (key: string) => {
     const target = SECTION_OF_KEY[key];
-    if (target) openSection(target);
+    if (target) pressSection(target);
   };
 
   if (!isPhone) {
     return (
-      <AppSidebar items={NAV} activeKey={activeKey} onSelect={select} activeRoute={activeRoute} />
+      <AppSidebar
+        items={NAV}
+        activeKey={activeKey}
+        onSelect={select}
+        // One mark only: an entry under "Verwalten" only while no tab is highlighted (spec 0057,
+        // AC-017; spec 0035, K-04).
+        activeRoute={activeKey ? '' : activeRoute}
+      />
     );
   }
   if (FULL_SCREEN_PAGES.has(segments[segments.length - 1] ?? '')) return null;

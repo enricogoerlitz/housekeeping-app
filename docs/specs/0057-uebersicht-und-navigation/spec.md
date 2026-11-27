@@ -1,5 +1,5 @@
 ---
-status: freigegeben
+status: umgesetzt
 datum: 2026-11-27
 ---
 
@@ -166,15 +166,27 @@ Keine Schema-Änderung. Gelesen und geschrieben wird wie bisher (`rateRecipe`, `
 
 ## Umsetzung
 
-- [ ] 1. core: `recapStackIndex` (AC-004, AC-005, AC-006), `overviewTitle` mit kurzer Form
+- [x] 1. core: `recapStackIndex` (AC-003–AC-007), `overviewTitle` mit kurzer Form
       (AC-025–AC-027), `placeAfter` mit Hervorhebung nach `von` (AC-014–AC-019),
       `tabPressAction` (AC-009–AC-012, AC-020), `kochen` mit `von` — Tests rot, dann grün
-- [ ] 2. ui: Anmeldung „nach oben“ in `Screen` und `InfiniteList` (AC-009, AC-010, AC-013), Titel
-      ohne automatische Trennung und `wholeWords` (AC-021–AC-024) — Tests rot, dann grün
-- [ ] 3. app: Tab-Leiste/Seitenleiste (`(tabs)/_layout.tsx`, `app-sidebar.tsx`), Kochmodus mit
-      `von`, „Wie war's?“ als Stapel und neue Reihenfolge, `wholeWords` in Heute-geplant-Karte,
-      Rezepte-Raster und Tageskachel, Datumstitel
-- [ ] 4. e2e: `rundgang-uebersicht-0057.spec.ts` (AC-001–AC-004, AC-007, AC-009–AC-011, AC-014,
-      AC-017, AC-021, AC-025), angepasste Tests zu „Wie war's?“
-- [ ] 5. Ansehen: Desktop 1440 × 900 und Handy 390 × 844, Screenshots in `tmp/review-0004/0057/`
-- [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün
+- [x] 2. ui: Anmeldung „nach oben“ in `Screen` und `InfiniteList` (`scroll-top.ts`, AC-009,
+      AC-010, AC-013), Titel ohne automatische Trennung und `wholeWords` (AC-021–AC-024) — Tests
+      rot, dann grün
+- [x] 3. app: Tab-Leiste/Seitenleiste (`(tabs)/_layout.tsx`, `usePressSection`), Kochmodus mit
+      `von` (eine Zeile in `recipe-detail.tsx`), „Wie war's?“ als Stapel und neue Reihenfolge,
+      `wholeWords` in Heute-geplant-Karte, `MediaCard` (Rezepte-Raster) und Tageskachel,
+      Datumstitel
+- [x] 4. e2e: `rundgang-uebersicht-0057.spec.ts` (AC-001, AC-002, AC-004, AC-007, AC-009–AC-011,
+      AC-014, AC-017, AC-018, AC-020, AC-021, AC-025, AC-026); die bestehenden Tests zu „Wie
+      war's?“ (AC-036, AC-040 von Spec 0020) gelten unverändert. Nicht selbst ausgeführt (setzt die
+      lokale Datenbank zurück), läuft beim Mergen.
+- [x] 5. Ansehen: Desktop 1440 × 900 und Handy 390 × 844 gegen den eigenen Dev-Server,
+      Screenshots in `tmp/review-0004/0057/` (`after-*.png`)
+
+**Nachweis (27.11.2026):** Rot zuerst: `tmp/review-0004/0057/core-red.txt` (18 rote core-Tests),
+`ui-red.txt` (5 rote Tests, 3 Dateien ohne Modul). Danach `pnpm format:check && pnpm check` grün
+(17/17 Aufgaben), `pnpm build:web` grün. Am Dev-Server geprüft: Handy-Titel „Fr., 27. Nov.“
+einzeilig; „Wie war's?“ unter „Zu tun“ und „Einkauf“ (Handy 177 px hoch, Desktop 183 px); erneuter
+Tipp auf „Übersicht“ bzw. „Essen“ scrollt von 464 px bzw. 1200 px auf 0; ein Eintrag aus der
+Übersicht hebt „Übersicht“ hervor (Handy und Desktop), „Übersicht“ führt von dort zurück zu `/`;
+eine Aktivität mit `von=kalender` markiert am Desktop nur „Kalender“, ohne `von` nur „Aktivitäten“.
