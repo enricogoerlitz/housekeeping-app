@@ -51,7 +51,9 @@ test.describe('new themes (spec 0058)', () => {
     await expect(tid(page, 'theme-lavendel-selected')).toBeVisible();
     // The card stays where it was.
     expect((await cards(page)).indexOf('lavendel')).toBe(7);
+    // A fresh start of the app: the settings page has no profile button, so start from the Übersicht.
     await page.reload();
+    await open(page, '/');
     await openSettings(page);
     expect(await cards(page)).toEqual(['lavendel', 'markthalle', 'klar']);
     await expect(tid(page, 'theme-lavendel-selected')).toBeVisible();
@@ -66,16 +68,18 @@ test.describe('new themes (spec 0058)', () => {
       'content',
       '#F2D3DB',
     );
-    const sky = await page.evaluate(() => {
-      let element = document.getElementById('root')?.firstElementChild ?? null;
-      while (element) {
-        const style = getComputedStyle(element);
-        if (style.backgroundImage.includes('gradient')) return style.backgroundColor;
-        element = element.firstElementChild;
-      }
-      return null;
-    });
-    expect(sky).toBe(hexToRgb('#F2D3DB'));
+    // The page fill of the shown screen carries the sky; any element of the page may hold it.
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          for (const element of document.querySelectorAll('#root *')) {
+            const style = getComputedStyle(element);
+            if (style.backgroundImage.includes('gradient')) return style.backgroundColor;
+          }
+          return null;
+        }),
+      )
+      .toBe(hexToRgb('#F2D3DB'));
     await openSettings(page);
     expect(await cards(page)).toEqual(['wolke', 'markthalle', 'klar']);
   });
