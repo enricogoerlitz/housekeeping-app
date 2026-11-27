@@ -257,16 +257,7 @@ export function ArticlesScreen() {
         title="Noch keine Artikel"
         text="Artikel entstehen, wenn du etwas auf die Liste setzt oder Zutaten in ein Rezept schreibst."
         testID="articles-empty"
-      >
-        <Button
-          label="Artikel anlegen"
-          icon="plus"
-          disabled={online.disabled}
-          hint={online.hint}
-          onPress={() => startCreating()}
-          testID="articles-empty-new"
-        />
-      </EmptyState>
+      />
     ) : query.trim() ? (
       <EmptyState
         icon="search"

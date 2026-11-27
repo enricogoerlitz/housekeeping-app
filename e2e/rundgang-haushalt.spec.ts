@@ -237,7 +237,7 @@ test.describe('Haushalt and Übersicht at phone width', () => {
     await expect(tid(page, 'chore-facts')).toBeVisible();
   });
 
-  test('AC-048 (0011): the household "Test" without chores offers "Aufgabe anlegen"', async ({
+  test('AC-048 (0011): the household "Test" without chores offers "Aufgabe anlegen" once, in the head', async ({
     page,
   }) => {
     await open(page, '/');
@@ -245,7 +245,9 @@ test.describe('Haushalt and Übersicht at phone width', () => {
     await nav(page, 'haushalt');
     await tid(page, 'chores-tab-all').click();
     await expect(tid(page, 'chores-empty')).toContainText('Noch keine Aufgaben');
-    await expect(tid(page, 'chores-empty-new')).toHaveText(/Aufgabe anlegen/);
+    // Nachklick 27.11.: no second button in the empty state.
+    await expect(tid(page, 'chore-new')).toBeVisible();
+    await expect(tid(page, 'chores-empty-new')).toHaveCount(0);
   });
 
   test('AC-039: feedback "Liste nach Rezept gruppieren" appears as "neu"; empty feedback cannot be sent', async ({

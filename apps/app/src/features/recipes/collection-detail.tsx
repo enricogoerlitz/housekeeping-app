@@ -233,7 +233,7 @@ export function CollectionDetailBody(props: {
  * under the head. There is no "Kochen" and no "Anpassen"; offline both are greyed out.
  */
 function CollectionActions(props: {
-  /** Why "Auf die Liste" is greyed out; undefined when there is something to buy. */
+  /** Why there is nothing to buy; undefined when there is something ("Auf die Liste" shows). */
   listHint: string | undefined;
   onPlan: () => void;
   onList: () => void;
@@ -257,23 +257,19 @@ function CollectionActions(props: {
           hint={online.hint}
           testID="recipe-plan"
         />
-        <Row gap={8}>
+        {/* Nachklick 27.11. (as N-03 for recipes): nothing to buy, no "Auf die Liste". */}
+        {props.listHint === undefined ? (
           <Button
             label="Auf die Liste"
             icon="shopping-basket"
             variant="secondary"
             size={size}
             onPress={props.onList}
-            disabled={online.disabled || props.listHint !== undefined}
-            hint={online.hint ?? props.listHint}
+            disabled={online.disabled}
+            hint={online.hint}
             testID="recipe-to-list"
           />
-          {props.listHint ? (
-            <Text variant="caption" color="muted" testID="recipe-to-list-hint">
-              {props.listHint}
-            </Text>
-          ) : null}
-        </Row>
+        ) : null}
       </Row>
     </View>
   );

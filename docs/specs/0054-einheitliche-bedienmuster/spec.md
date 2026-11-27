@@ -209,6 +209,12 @@ bei den Bausteinen. Quelle: Auftrag. Offline: entfällt.
     Das Modal gibt ihr beim Öffnen per Tastatur (Escape auf „Neu“ → Rückfrage) den Fokus; der
     Browser-Rahmen lag dann um die ganze Seite.
 
+- **Nachklick 27.11. (Koordinator):** Leere Zustände von Artikeln und Aufgaben haben keinen zweiten
+  „… anlegen“-Knopf mehr, er steht schon im Kopf (wie N-11 bei den Dauerposten); bei den Aufgaben
+  bleiben die Vorlagen („Nehmt eine Vorlage oder legt eine eigene Aufgabe an.“). Eine Sammlung ohne
+  etwas zu kaufen zeigt „Auf die Liste“ nicht (wie N-03 bei Rezepten); ändert hier die Ausnahme
+  „leere Zustände behalten ihren eigenen ersten Schritt“.
+
 ## Daten
 
 Keine Schema-Änderung. Auf dem Gerät entfällt der Wert `householdRow` in
