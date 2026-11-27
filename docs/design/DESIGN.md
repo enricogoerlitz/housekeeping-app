@@ -2,11 +2,11 @@
 
 > Gilt für alle Bildschirme. Umsetzung: `packages/ui` (Tokens und Bausteine), Entscheidung:
 > [ADR-0010](../adr/0010-styling-und-themes.md). Entstanden aus den drei Design-Richtungen von
-> Spec 0001; Enrico hat alle drei als wählbare Themes übernommen.
+> Spec 0001; Enrico hat alle drei als wählbare Themes übernommen, Spec 0058 brachte sechs weitere.
 
 ## 1. Grundsätze
 
-1. **Eine App, drei Gesichter.** Inhalt, Abläufe und Bausteine sind in allen Themes gleich. Ein
+1. **Eine App, viele Gesichter.** Inhalt, Abläufe und Bausteine sind in allen Themes gleich. Ein
    Theme ändert Farben, Schriften, Rundungen und die Rahmung von Abschnitten und Listen, nie die
    Bedienung.
 2. **Zuerst fürs Handy, aber jede Breite ist gestaltet.** Handy (< 700 px): Tab-Leiste unten,
@@ -23,14 +23,22 @@
 
 ## 2. Themes
 
-| Theme                         | Charakter                                  | Schrift                                                     | Rahmung                                                           | Standard |
-| ----------------------------- | ------------------------------------------ | ----------------------------------------------------------- | ----------------------------------------------------------------- | -------- |
-| **Markthalle** (`markthalle`) | warm, appetitlich, wie ein gutes Kochbuch  | Fraunces (Titel, Rezeptnamen) · Instrument Sans (Bedienung) | feine Linien, Fotos oben auf Karten, Abschnitte ohne Rahmen       | ja       |
-| **Klar** (`klar`)             | ruhig, vertraut, wie die Apps des Geräts   | Systemschrift (SF Pro / Roboto / Segoe)                     | gruppierte weiße Karten, Abschnittstitel als graue Großbuchstaben | —        |
-| **Frisch** (`frisch`)         | frisch, ruhig, eine Bereichsfarbe je Seite | Bricolage Grotesque (Titel) · DM Sans (Bedienung)           | weiße Kacheln auf warmem Grund, eine Kachel je Listenzeile        | —        |
+| Theme                           | Charakter                                                         | Schrift                                                     | Rahmung                                                                                       | Standard |
+| ------------------------------- | ----------------------------------------------------------------- | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------- | -------- |
+| **Markthalle** (`markthalle`)   | warm, appetitlich, wie ein gutes Kochbuch                         | Fraunces (Titel, Rezeptnamen) · Instrument Sans (Bedienung) | feine Linien, Fotos oben auf Karten, Abschnitte ohne Rahmen                                   | ja       |
+| **Klar** (`klar`)               | ruhig, vertraut, wie die Apps des Geräts                          | Systemschrift (SF Pro / Roboto / Segoe)                     | gruppierte weiße Karten, Abschnittstitel als graue Großbuchstaben                             | —        |
+| **Frisch** (`frisch`)           | frisch, ruhig, eine Bereichsfarbe je Seite                        | Bricolage Grotesque (Titel) · DM Sans (Bedienung)           | weiße Kacheln auf warmem Grund, eine Kachel je Listenzeile                                    | —        |
+| **Wolke** (`wolke`)             | rosa Wolkenhimmel, weich und verspielt; dunkel „Mondnacht“        | Nunito (Titel 800, Bedienung)                               | sehr rund (Karte 24, Pille), Icon-Knöpfe und aktiver Tab auf „Blasen“, Himmel als Seitengrund | —        |
+| **Mitternacht** (`mitternacht`) | Tiefblau mit Messing, für den Abend; dunkel ist der Hauptmodus    | DM Serif Display (Titel) · Inter (Bedienung)                | eher kantig (Karte 12), Fotos als Bild neben dem Text                                         | —        |
+| **Zitrus** (`zitrus`)           | sommerlich: Kobalt auf Creme, Zitrone, Mandarine                  | Outfit                                                      | rund (Karte 20), gruppierte Karten ohne Rand                                                  | —        |
+| **Salbei** (`salbei`)           | ruhig und natürlich, Leinen und Salbeigrün                        | Lora (Titel) · Work Sans (Bedienung)                        | feine Linien, eckige Abhakfelder                                                              | —        |
+| **Lavendel** (`lavendel`)       | luftig und still, Violett auf hellem Flieder                      | Lexend                                                      | rund (Karte 20), gruppierte Karten ohne Rand                                                  | —        |
+| **Espresso** (`espresso`)       | dunkel geröstet mit Crema und Karamell; dunkel ist der Hauptmodus | Space Grotesk (Titel) · Manrope (Bedienung)                 | kantig (Karte 8, Knopf 6), eckige Abhakfelder                                                 | —        |
 
 Jedes Theme gibt es hell und dunkel. Auswahl unter **Einstellungen → Darstellung**; gespeichert wird
-nur auf dem Gerät. Ein unbekannter gespeicherter Wert fällt auf „Markthalle“ zurück.
+nur auf dem Gerät. Ein unbekannter gespeicherter Wert fällt auf „Markthalle“ zurück. Die Auswahl
+zeigt drei Themes, das gewählte zuoberst, den Rest hinter „Mehr anzeigen“ (Spec 0058); die
+Reihenfolge wird beim Öffnen festgelegt, damit keine Karte unter dem Finger wegspringt.
 
 ## 3. Farben
 
@@ -56,11 +64,28 @@ Rollen statt Farbnamen. Alle Paare erfüllen WCAG AA (Text ≥ 4,5:1), geprüft 
 | `tones.{essen,plan,liste,haushalt,ki}`                | Bereichsfarben; nur „Frisch“ nutzt sie, siehe unten                                                            |
 | `kinds.{recipe,collection,restaurant,activity,chore}` | Arten im Kalender (Spec 0010, D19): nur als 3-px-Kante oder Punkt, nie als Fläche; ≥ 3:1 gegen Seite und Karte |
 
-| Theme      | Hell: Hintergrund · Akzent                   | Dunkel: Hintergrund · Akzent |
-| ---------- | -------------------------------------------- | ---------------------------- |
-| Markthalle | `#FAF6EE` · `#B4411F` Terrakotta             | `#1B1613` · `#EC8A66`        |
-| Klar       | `#F2F2F7` · `#0B7A63` Grün                   | `#000000` · `#30C9A0`        |
-| Frisch     | `#FAF8F5` · `#15151B` Tinte, Bereiche farbig | `#111116` · `#F6F5F2`        |
+| Theme       | Hell: Hintergrund · Akzent                   | Dunkel: Hintergrund · Akzent   |
+| ----------- | -------------------------------------------- | ------------------------------ |
+| Markthalle  | `#FAF6EE` · `#B4411F` Terrakotta             | `#1B1613` · `#EC8A66`          |
+| Klar        | `#F2F2F7` · `#0B7A63` Grün                   | `#000000` · `#30C9A0`          |
+| Frisch      | `#FAF8F5` · `#15151B` Tinte, Bereiche farbig | `#111116` · `#F6F5F2`          |
+| Wolke       | `#F2D3DB` (Himmel) · `#5B3B41` Mauve         | `#241A1D` · `#F4B6C4` Rosé     |
+| Mitternacht | `#F4F2EC` · `#1F3A68` Marine                 | `#0E1322` · `#E2B866` Messing  |
+| Zitrus      | `#FFF8EC` · `#2C4BD6` Kobalt                 | `#12131C` · `#93A6FF`          |
+| Salbei      | `#F2F3EC` · `#3D6A4D` Salbei                 | `#131A15` · `#93C7A2`          |
+| Lavendel    | `#F4F1F9` · `#5B3FA0` Violett                | `#17131F` · `#C4AEF5`          |
+| Espresso    | `#EEEAE6` · `#3B2418` Espresso               | `#120D0A` · `#D9A46A` Karamell |
+
+**Seitengrund mit Verlauf (`backdrop`, Spec 0058):** Ein Theme kann hinter den Seiten ein
+CSS-Hintergrundbild aus Verläufen zeigen, nur im Web; nur „Wolke“ tut es (hell rosa Himmel mit
+weißen Wolken, dunkel ein Mondschimmer oben rechts). Der Verlauf beginnt oben in `bg`, so sind
+Statusleiste und Seitenanfang eine Farbe, und jede Farbe darin hält die Textpaare von `bg` (Test).
+Er hat die Größe des Fensters und hängt an dessen Oberkante: Die Kopfzeile, die auf dem Handy über
+dem Inhalt liegt, zeigt genau das Stück dahinter. Karten, Leisten und Sheets bleiben deckend.
+
+**Blasen (`shape.bubble`, Spec 0058):** In „Wolke“ sitzen alle Icon-Knöpfe auf einer organischen
+Blase in `surfaceSunken` (nicht ganz rund, wie die Symbole auf einem Handy-Startbildschirm) und der
+aktive Tab auf einer Blase in `accentSoft` (`tabActive: 'bubble'`). Alle anderen Themes zeigen Kreise.
 
 **Frisch ruhiger (Spec 0005, D4):** Je Bildschirm färbt nur die Bereichsfarbe des Bereichs, zu dem
 er gehört (`Screen tone`), die Linie unter dem aktiven Ansichts-Tab, den Akzent der Kopfzeile und
@@ -87,16 +112,20 @@ Zeilenabstand, z. B. der Schritt im Kochmodus (Spec 0023, REQ-010).
 
 - Bedienelemente, Beschriftungen und Daten nutzen immer die Bedienschrift, nie die Titelschrift.
 - Zahlen in Mengen und Fortschritt mit gleich breiten Ziffern, wo möglich.
-- Schriften liegen im App-Paket (`@expo-google-fonts/*`) und werden einmal beim Start geladen
-  (die Theme-Vorschau in den Einstellungen braucht alle). Keine Anfrage an Google Fonts oder andere
+- Schriften liegen im App-Paket (`@expo-google-fonts/*`, Abhängigkeit von `packages/ui`). Beim
+  Start lädt die App nur die Schriften des gewählten Themes und wartet einmal darauf; die eines
+  anderen Themes lädt erst die Karte der Theme-Auswahl, die es zeigt (`useThemeFonts`, Spec 0058).
+  Ein Theme-Wechsel baut die App nicht neu auf; fehlt eine Schrift, gilt die Systemschrift. Der
+  Service Worker hält alle Schriftdateien für offline. Keine Anfrage an Google Fonts oder andere
   fremde Server.
 
 ## 5. Form und Abstand
 
 - **Abstände:** Skala `space` = 2 · 4 · 8 · 12 · 16 · 20 · 24 · 32. Seitenrand auf dem Handy 16–20
   (Theme), ab Tablet 36.
-- **Rundungen** je Theme: Karte 14 / 14 / 22, Knopf 10 / 12 / Pille, Abhakfeld Kreis / Kreis /
-  abgerundetes Quadrat.
+- **Rundungen** je Theme (`shape.radius`): Markthalle / Klar / Frisch Karte 14 / 14 / 22, Knopf
+  10 / 12 / Pille, Abhakfeld Kreis / Kreis / abgerundetes Quadrat; die Themes aus Spec 0058 reichen
+  von Wolke (Karte 24, Pille) bis Espresso (Karte 8, Knopf 6, eckiges Abhakfeld).
 - **Tippflächen** mindestens 44 × 44 pt; Listenzeilen mindestens 56 pt hoch.
 - **Tiefe:** Schatten nur am Assistent-Knopf, an Sheets und an dem, was beim Ziehen schwebt
   (`shadowRaised`); sonst Flächen und Linien.
