@@ -34,6 +34,7 @@ jobs:
       BACKUP_STORAGE_ACCOUNT: ${{ vars.BACKUP_STORAGE_ACCOUNT }}
       # Public defaults of the local Supabase database (identical on every machine, not secrets).
       RESTORE_DB: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+      RESTORE_ADMIN_DB: postgresql://supabase_admin:postgres@127.0.0.1:54322/postgres
     steps:
       # Keep the Supabase ports (54321–54329) out of the range Linux uses for outgoing connections:
       # a download on the runner can otherwise hold 54322 and the database cannot bind it
@@ -104,6 +105,20 @@ jobs:
       - name: Einspielen
         run: |
           cd "$W/backup"
+          # The image's platform schemas (auth, storage, …) can lag behind the hosted project
+          # (27.11.2026: two new auth columns). align.mjs reads the COPY headers only and adds what
+          # is missing there as text; public and private are never patched. Names only in the log.
+          if ! psql "$RESTORE_DB" -XAt -c "select table_schema || '.' || table_name || '.' || column_name from information_schema.columns" \
+            > "$W/columns.txt" 2> "$W/psql.err"; then
+            echo "::error::Spalten der Wegwerf-Datenbank nicht lesbar"
+            exit 1
+          fi
+          node "$GITHUB_WORKSPACE/scripts/backup/align.mjs" --data data.sql --columns "$W/columns.txt" > "$W/align.sql"
+          # The platform tables belong to their service roles: only supabase_admin may alter them.
+          if ! psql "$RESTORE_ADMIN_DB" -X -v ON_ERROR_STOP=1 --file "$W/align.sql" > /dev/null 2> "$W/psql.err"; then
+            echo "::error::Abgleich der Plattform-Schemas gescheitert"
+            exit 1
+          fi
           if ! psql "$RESTORE_DB" -X --single-transaction -v ON_ERROR_STOP=1 \
             --file roles.sql --file schema.sql \
             --command 'SET session_replication_role = replica' \

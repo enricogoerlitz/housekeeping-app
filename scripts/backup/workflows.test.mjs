@@ -250,6 +250,18 @@ describe('restore-test.yml', () => {
     );
   });
 
+  test('AC-056: platform columns the image lacks are added (as supabase_admin) before the data', () => {
+    const start = index(/\bsupabase db start\b/);
+    const align = index(/node "\$GITHUB_WORKSPACE\/scripts\/backup\/align\.mjs" --data/);
+    const restore = index(/session_replication_role = replica/);
+    assert.ok(start >= 0 && align > start && restore > align, String([start, align, restore]));
+    const apply = index(/psql "\$RESTORE_ADMIN_DB" .*--file "\$W\/align\.sql"/);
+    assert.ok(apply > align && restore > apply, String([align, apply, restore]));
+    assert.match(cmds[apply], /\s>\s*\/dev\/null/);
+    assert.match(cmds[apply], /\s2>\s*"[^"]+"/);
+    assert.match(cmds[restore], /--single-transaction/);
+  });
+
   test('AC-056: no psql output reaches the log', () => {
     const psql = cmds.filter((c) => /\bpsql "\$RESTORE_DB"/.test(c));
     assert.ok(psql.length >= 2);
