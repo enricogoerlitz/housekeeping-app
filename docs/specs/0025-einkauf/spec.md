@@ -337,6 +337,10 @@ Alle nach Enricos Regel „Empfehlung nehmen“ (Claude, 22.11.2026).
     „Milch steht auf der Liste“ — die Zeile liegt oft außerhalb des Bilds oder wird mit einer
     vorhandenen zusammengelegt (2× → 3×), sonst sieht man nichts. Das Feld hält Meldungen von
     sich fern (`useToastAvoid`), auch „1 gekauft · 13 bleiben“ nach „Fertig“.
+23. iPhone-Durchklick Runde 2 (27.11., I-12, I-21): Nach „Rückgängig“ auf „Fertig“ sagt eine
+    Meldung, wo die Posten sind: „Wieder da – abgehakt unter „Erledigt““ (vorher kamen sie
+    unsichtbar unter das zugeklappte „Erledigt“ zurück). „Bereich“ auf „Artikel“ ohne eigenes „▾“ —
+    das Menü zeichnet seinen Pfeil selbst (vorher „Bereich ▾ ⌄“).
 
 ## Daten
 

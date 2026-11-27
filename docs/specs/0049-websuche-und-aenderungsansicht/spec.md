@@ -312,6 +312,9 @@ blob:`); das Foto einer Karte wird bei „Übernehmen“ zum Foto des Eintrags.
 19. Durchklick iPhone (27.11., Review 0003, I-15): Die Platzhalter im Suchfeld passen neben dem
     Mikrofon aufs Handy: „z. B. „Spaghetti Bolognese““, „z. B. „Kletterhalle““ (vorher
     abgeschnitten).
+20. iPhone-Durchklick Runde 2 (27.11., I-20): „Im Web suchen“ in „Aktivität/Restaurant anlegen“
+    ohne Namen öffnet mit Cursor im Suchfeld und Tastatur (vorher erst ein zweiter Tipp ins Feld);
+    mit Namen bleibt es wie bisher (der Name steht schon drin).
 
 ## Daten
 

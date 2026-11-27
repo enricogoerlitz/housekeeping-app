@@ -1,7 +1,7 @@
 import { useRef, useState, type RefObject } from 'react';
 import type { HostInstance, LayoutChangeEvent } from 'react-native';
 
-import { titleOnOwnLine } from './title-fit';
+import { domTextWidth, naturalTitleWidth, titleOnOwnLine } from './title-fit';
 
 type Handler = (event: LayoutChangeEvent) => void;
 
@@ -34,7 +34,9 @@ export function useTitleFit(layout: { padding: number; gap: number; actions: num
     titleRef,
     onTitle: () => {
       const node = titleRef.current as unknown as { scrollWidth?: number } | null;
-      const title = Math.ceil(node?.scrollWidth ?? 0);
+      const title = naturalTitleWidth(
+        node ? { scrollWidth: node.scrollWidth, textWidth: () => domTextWidth(node) } : null,
+      );
       setSizes((current) => (current.title === title ? current : { ...current, title }));
     },
     onAction: (index) => (event) => {

@@ -35,6 +35,7 @@ import {
 import { useRef, useState, type ComponentRef } from 'react';
 import { View, type TextInput } from 'react-native';
 
+import { discardFirst } from '@/features/shell/confirm-dialog';
 import { UnitsHint } from '@/features/shell/units-hint';
 
 import { STARTER_DETAIL, useArticleSearch } from './article-search';
@@ -179,12 +180,21 @@ export function IngredientSheet(props: {
           .filter(Boolean)
           .join(' · ') || 'Ohne Bereich';
 
+  // Typed or chosen something: closing asks first (I-07).
+  const dirty =
+    chosen !== initialChosen ||
+    query.trim() !== (row && !initialChosen ? (row.name ?? '') : '').trim() ||
+    amountText !== (row?.amountText ?? '') ||
+    shoppingNote !== (row?.shoppingNote ?? '') ||
+    prepNote !== (row?.prepNote ?? '') ||
+    group !== (row?.group ?? '');
+
   return (
     <Sheet
       visible
       size="m"
       title={row ? 'Zutat bearbeiten' : 'Neue Zutat'}
-      onClose={props.onClose}
+      onClose={() => discardFirst(dirty, props.onClose)}
       testID="ingredient-sheet"
       actions={{
         primary: {

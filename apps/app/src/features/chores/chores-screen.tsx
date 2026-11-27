@@ -297,9 +297,9 @@ export function ChoresScreen() {
           right={
             <>
               {isPhone ? (
+                // Like "+" on Essen and the other icons of the header: no tinted circle (I-17).
                 <IconButton
                   icon="plus"
-                  variant="soft"
                   label="Neue Aufgabe"
                   onPress={startCreating}
                   disabled={online.disabled}

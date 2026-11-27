@@ -5,6 +5,7 @@ import { useState } from 'react';
 
 import { IngredientLinesField } from './ingredient-lines-field';
 import { rowsFromText } from './sections/ingredient-handover';
+import { discardFirst } from '@/features/shell/confirm-dialog';
 
 /**
  * "Mehrere einfügen" in the open section "Zutaten" (spec 0007, REQ-002; spec 0008, E9): a block,
@@ -38,7 +39,7 @@ export function IngredientsPasteSheet(props: {
   return (
     <Sheet
       visible
-      onClose={props.onClose}
+      onClose={() => discardFirst(text.trim() !== '', props.onClose)}
       title="Zutaten einfügen"
       testID="ingredients-paste-sheet"
       size="m"

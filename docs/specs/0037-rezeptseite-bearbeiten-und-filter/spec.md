@@ -154,6 +154,12 @@ p_seen_updated_at, p_ops)`: sie sperrt das Rezept, vergleicht sein `updated_at` 
 15. Browser-Durchklick 27.11. (B-04, REQ-002): Im Fenster „Neu“ fragen Escape, Tipp daneben und
     „Abbrechen“ „Änderungen verwerfen?“ („Weiter bearbeiten“ / „Verwerfen“), sobald Titel, Zutaten,
     Rezepte oder ein Foto eingegeben sind; ein leeres Fenster schließt sofort.
+16. iPhone-Durchklick Runde 2 (27.11., I-07, I-19): Die Fenster „Neue Zutat“/„Zutat bearbeiten“,
+    „Zutaten einfügen“ und „Link“ fragen mit geändertem Inhalt vor dem Schließen (Abbrechen,
+    daneben tippen, herunterziehen) „Änderungen verwerfen?“ wie „Neu“ (Entscheidung 15; gemeinsam
+    `discardFirst`). Der Titel in der Kopfzeile kommt nach „Bearbeiten → Abbrechen“ wieder in die
+    Zeile „‹ Essen · Lasagne · ♥ ✎ ⋯“: gemessen wird die Breite des Texts, nicht seines Kastens
+    (der auf eigener Zeile so breit ist wie die Zeile).
 
 ## Daten
 

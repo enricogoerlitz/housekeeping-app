@@ -7,6 +7,7 @@ import {
 } from '@housekeeping/api';
 import {
   defaultPlanChoice,
+  slotSideFor,
   pagePlanChoice,
   planButtonLabel,
   plannedNotice,
@@ -85,7 +86,13 @@ export function PlanSheet(props: {
 
   const [weekOffset, setWeekOffset] = useState(0);
   const [choice, setChoice] = useState<PlanChoice>(() =>
-    defaultPlanChoice(today, household.mealSlots, members, props.slot),
+    defaultPlanChoice(
+      today,
+      household.mealSlots,
+      members,
+      // Breakfast opens with the first Tageszeit (I-16).
+      props.slot ?? slotSideFor(recipe?.course),
+    ),
   );
   // AC-055, AC-056: members that arrive later count while the eaters are untouched.
   const [touched, setTouched] = useState(false);

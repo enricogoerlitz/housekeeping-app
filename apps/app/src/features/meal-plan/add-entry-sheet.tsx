@@ -89,7 +89,8 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
   const remindable = offersReminder(date, today);
 
   const choose = (next: AddEntryChoice) => {
-    dispatch({ type: 'choose', choice: next, eaterIds: defaultEaterIds(), context });
+    const firstSlotId = [...slots].sort((a, b) => a.sort - b.sort)[0]?.id;
+    dispatch({ type: 'choose', choice: next, eaterIds: defaultEaterIds(), context, firstSlotId });
     reminder.reset();
   };
 

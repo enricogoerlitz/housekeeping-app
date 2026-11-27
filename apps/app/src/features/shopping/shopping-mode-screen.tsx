@@ -233,7 +233,11 @@ export function ShoppingModeScreen() {
       toast.show({
         message: summary.label,
         actionLabel: 'Rückgängig',
-        onAction: undoAction(restore),
+        // The items come back checked, under the folded "Erledigt": say where (I-12).
+        onAction: undoAction(() => {
+          restore();
+          toast.show({ message: 'Wieder da – abgehakt unter „Erledigt“', duration: 3000 });
+        }),
       });
     }
     close();

@@ -19,3 +19,26 @@ export function titleOnOwnLine(input: {
   const room = input.row - input.padding - actions - input.gap * input.actions.length;
   return input.title > room;
 }
+
+/**
+ * The natural width of a title node: its text's own width where it can be measured, else its
+ * `scrollWidth`. On its own line the title's box is as wide as the row, so `scrollWidth` alone
+ * kept it there after the buttons beside it had shrunk (leaving the edit mode; I-19).
+ */
+export function naturalTitleWidth(
+  node: { scrollWidth?: number; textWidth?: () => number } | null,
+): number {
+  if (!node) return 0;
+  const text = node.textWidth?.() ?? 0;
+  return Math.ceil(text > 0 ? text : (node.scrollWidth ?? 0));
+}
+
+/** The width of a DOM node's laid-out text (a Range around its contents), 0 elsewhere. */
+export function domTextWidth(node: unknown): number {
+  if (typeof document === 'undefined' || !(node instanceof Node)) return 0;
+  const range = document.createRange();
+  range.selectNodeContents(node);
+  return typeof range.getBoundingClientRect === 'function'
+    ? range.getBoundingClientRect().width
+    : 0;
+}

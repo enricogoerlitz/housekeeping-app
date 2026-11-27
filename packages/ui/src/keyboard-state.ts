@@ -69,3 +69,14 @@ export function keyboardSheetFrame(
     maxHeight: Math.min(frame.maxHeight, room),
   };
 }
+
+/**
+ * The window height a sheet's size is taken from. React Native Web reports the visible area as
+ * the window, so with the keyboard open a small window ("s", half the height) shrank to half of
+ * what the keyboard leaves and cut its second field (iPhone click-through, I-04): the sizes go by
+ * the whole screen, the keyboard frame then bounds them.
+ */
+export function sheetWindowHeight(windowHeight: number, keyboard: KeyboardState): number {
+  if (!keyboard.open) return windowHeight;
+  return Math.max(windowHeight, keyboard.visibleHeight + keyboard.inset);
+}

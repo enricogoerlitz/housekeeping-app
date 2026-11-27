@@ -56,6 +56,17 @@ describe('openKeyboardNow (spec 0033, REQ-006, decision 10)', () => {
     expect(focused()).toBe(field);
   });
 
+  it('handed over, the hidden field leaves the page: a window closing gives the focus back to it, which kept the keyboard open (I-05)', () => {
+    asIPhone();
+    openKeyboardNow();
+    const proxy = focused() as HTMLInputElement;
+    expect(handOverKeyboard(field)).toBe(true);
+    expect(proxy.isConnected).toBe(false);
+    // react-native-web's modal hands the focus back to what had it before it opened.
+    proxy.focus();
+    expect(focused()).not.toBe(proxy);
+  });
+
   it('gives up after a while when no window took the keyboard', () => {
     asIPhone();
     openKeyboardNow();
@@ -73,15 +84,34 @@ describe('openKeyboardNow (spec 0033, REQ-006, decision 10)', () => {
     expect(handOverKeyboard(field)).toBe(false);
   });
 
-  it('AC-018: a window opened by such a tap puts the cursor into its field at once', () => {
+  it('AC-018: a window opened by such a tap puts the cursor into its field once it stands (I-04)', () => {
     asIPhone();
     openKeyboardNow();
+    const proxy = focused();
     render(
       <Sheet visible onClose={() => undefined} title="Neues Rezept" size="m">
         <TextField label="Titel" value="" onChangeText={() => undefined} autoFocus testID="title" />
       </Sheet>,
     );
+    // While it slides in, the hidden field keeps the keyboard.
+    expect(focused()).toBe(proxy);
+    act(() => vi.advanceTimersByTime(300));
     expect(focused()).toBe(screen.getByTestId('title'));
+  });
+
+  it('a field of a window that focuses itself (no claim) takes the keyboard once the window stands', () => {
+    asIPhone();
+    openKeyboardNow();
+    function Search() {
+      return <input data-testid="search" ref={(node) => node?.focus()} />;
+    }
+    render(
+      <Sheet visible onClose={() => undefined} title="Suchen" size="m">
+        <Search />
+      </Sheet>,
+    );
+    act(() => vi.advanceTimersByTime(300));
+    expect(focused()).toBe(screen.getByTestId('search'));
   });
 
   it('AC-020: a window that only shows takes nothing; the keyboard is let go', () => {

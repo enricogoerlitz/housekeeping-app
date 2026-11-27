@@ -92,6 +92,26 @@ export function confirmFirst(request: ConfirmRequest): void {
   confirmSlot.open(request);
 }
 
+/**
+ * Closing a window with typed text (Escape, a tap outside, "Abbrechen", pulled down) asks
+ * "Änderungen verwerfen?" first; an untouched window just closes (review 0003: B-04 for "Neu",
+ * I-07 for the windows on the recipe page).
+ */
+export function discardFirst(dirty: boolean, close: () => void, testID = 'confirm-discard'): void {
+  if (!dirty) {
+    close();
+    return;
+  }
+  confirmFirst({
+    title: 'Änderungen verwerfen?',
+    confirmLabel: 'Verwerfen',
+    cancelLabel: 'Weiter bearbeiten',
+    needsNetwork: false,
+    onConfirm: close,
+    testID,
+  });
+}
+
 /** Shows the open `confirmFirst` request; mounted once at the root, over every window. */
 export function ConfirmHost() {
   const request = useSyncExternalStore(

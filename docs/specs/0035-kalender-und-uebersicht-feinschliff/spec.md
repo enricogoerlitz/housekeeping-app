@@ -114,6 +114,13 @@ Wochentag und Datum. Quelle: H-02. Offline: offline vollständig.
    der Essen-Liste. Mit `von` aus einem anderen Bereich zeigt die Kopfzeile dort „‹ Kalender“, und
    ✕ führt wie „‹ Kalender“ zurück (`quickViewOrigin`, core); ohne `von` schließt ✕ nur den
    Schnellblick.
+7. iPhone-Durchklick Runde 2 (27.11., I-16, I-18): Ein Frühstücksrezept (Gerichtart
+   „Frühstück“) beginnt beim Einplanen in der ersten Tageszeit („Vormittag“) statt in „Abend“ —
+   im Fenster „+ Hinzufügen“ unter einem Tag und in „Einplanen“ auf der Rezeptseite; eine
+   angetippte Tageszeit bleibt (`slotSideFor`, `firstSlotId`). „Gäste“ ist derselbe Zähler wie
+   „Portionen“ (runde Knöpfe, eigene Zeile) statt bloßer − und + neben den Namen. „Was steht
+   an?“ bekommt den Cursor nur mit Maus/Trackpad: am Handy kam keine Tastatur, es blieb nur ein
+   Fokusrahmen, und die Liste darunter ist das, was man zuerst antippt.
 
 ## Daten
 

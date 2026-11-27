@@ -48,6 +48,7 @@ function scrollBack() {
 // ---------- The last measured height, per window size (decision 4) ----------
 
 const STORE_KEY = 'housekeeping.keyboard.v1';
+/** Kept in memory where the storage is unavailable (private mode). */
 let measured: Record<string, number> | undefined;
 
 function sizeKey(): string {
@@ -55,26 +56,30 @@ function sizeKey(): string {
 }
 
 function measuredInsets(): Record<string, number> {
-  if (measured) return measured;
-  measured = {};
   try {
+    const read: Record<string, number> = {};
     const stored: unknown = JSON.parse(window.localStorage.getItem(STORE_KEY) ?? '{}');
     if (stored && typeof stored === 'object') {
       for (const [key, value] of Object.entries(stored)) {
-        if (typeof value === 'number' && value > 0) measured[key] = value;
+        if (typeof value === 'number' && value > 0) read[key] = value;
       }
     }
+    measured = read;
   } catch {
-    // Storage can be unavailable (private mode); the estimate applies.
+    // Storage can be unavailable (private mode); the memory or the estimate applies.
+    measured ??= {};
   }
-  return measured;
+  return measured ?? {};
 }
 
 function remember(next: KeyboardState) {
   if (!next.open || next.expected) return;
   const insets = measuredInsets();
   const key = sizeKey();
-  if (insets[key] === next.inset) return;
+  // The tallest keyboard seen (with suggestions) stands for the next one: a guess too small lets
+  // Safari push the whole page up until the app sets it back (iPhone click-through, review 0003);
+  // one too tall only leaves a gap until the real height comes.
+  if ((insets[key] ?? 0) >= next.inset) return;
   insets[key] = next.inset;
   try {
     window.localStorage.setItem(STORE_KEY, JSON.stringify(insets));

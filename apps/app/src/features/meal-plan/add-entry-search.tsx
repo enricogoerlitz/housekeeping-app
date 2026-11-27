@@ -46,6 +46,7 @@ import {
   Text,
   TextField,
   ViewTabs,
+  useFinePointer,
 } from '@housekeeping/ui';
 import { View } from 'react-native';
 
@@ -120,6 +121,9 @@ export function AddEntrySearchHeader(props: {
   onQuery: (query: string) => void;
   onTab: (tab: AddEntryTab) => void;
 }) {
+  // With a finger the list is what one taps first and no keyboard opens by itself: a cursor
+  // waiting in the field only showed a focus ring without a keyboard (I-18).
+  const finePointer = useFinePointer();
   return (
     <View style={{ gap: 6, paddingTop: 4 }}>
       <TextField
@@ -128,7 +132,7 @@ export function AddEntrySearchHeader(props: {
         placeholder="Was steht an?"
         accessibilityLabel="Was steht an?"
         round
-        autoFocus
+        autoFocus={finePointer}
         left={<Icon name="search" size={19} color="muted" />}
         testID="add-entry-search"
       />

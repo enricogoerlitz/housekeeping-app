@@ -414,6 +414,8 @@ export function WebSearchPanel(props: {
   onLink?: (link: string) => void;
   /** Recipes: how the preview matches ingredients to the household's articles. */
   recipeRows?: RecipeRows;
+  /** The field takes the cursor when the window opens (nothing to search for yet). */
+  autoFocus?: boolean;
   testID: string;
 }) {
   const { search, testID } = props;
@@ -437,7 +439,7 @@ export function WebSearchPanel(props: {
         }}
         onSubmitEditing={search.search}
         returnKeyType="search"
-        autoFocus={search.focusRequest > 0}
+        autoFocus={props.autoFocus === true || search.focusRequest > 0}
         editable={!online.disabled && search.state.status !== 'searching'}
         maxLength={WEB_SEARCH_LIMITS.query}
         testID={`${testID}-query`}
