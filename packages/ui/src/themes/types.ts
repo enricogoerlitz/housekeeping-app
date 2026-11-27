@@ -125,10 +125,10 @@ export interface ThemeShape {
   cardBorder: boolean;
   checkBorderWidth: number;
   /**
-   * Active tab: tinted icon and label, an ink pill behind the icon, or the icon on a soft bubble
-   * (`bubble`, spec 0058).
+   * Active tab: tinted icon and label, or an ink pill behind the icon. "Wolke" tints like the
+   * others (owner, 27.11.2026: no shape around the active tab).
    */
-  tabActive: 'tint' | 'pill' | 'bubble';
+  tabActive: 'tint' | 'pill';
   /**
    * One area colour per screen (spec 0005, D4): the area of the screen colours its primary
    * button, its header's filled icon button and the line under the active view tab. Off = accent.

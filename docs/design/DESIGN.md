@@ -84,8 +84,9 @@ Er hat die Größe des Fensters und hängt an dessen Oberkante: Die Kopfzeile, d
 dem Inhalt liegt, zeigt genau das Stück dahinter. Karten, Leisten und Sheets bleiben deckend.
 
 **Blasen (`shape.bubble`, Spec 0058):** In „Wolke“ sitzen alle Icon-Knöpfe auf einer organischen
-Blase in `surfaceSunken` (nicht ganz rund, wie die Symbole auf einem Handy-Startbildschirm) und der
-aktive Tab auf einer Blase in `accentSoft` (`tabActive: 'bubble'`). Alle anderen Themes zeigen Kreise.
+Blase in `surfaceSunken` (nicht ganz rund, wie die Symbole auf einem Handy-Startbildschirm). Der
+aktive Tab der Tab-Leiste hat keine Form, er ist wie in den anderen Themes nur eingefärbt (Symbol und
+Text in `accent`, Enrico 27.11.2026). Alle anderen Themes zeigen Kreise.
 
 **Frisch ruhiger (Spec 0005, D4):** Je Bildschirm färbt nur die Bereichsfarbe des Bereichs, zu dem
 er gehört (`Screen tone`), die Linie unter dem aktiven Ansichts-Tab, den Akzent der Kopfzeile und

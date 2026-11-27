@@ -27,14 +27,7 @@ import { TabPreviewContext } from './tab-preview';
 import { TabSwipeArea, arrivingChrome } from './tab-swipe-area';
 import { icons, type IconName } from './icons';
 import { Divider, Icon, Text } from './primitives';
-import {
-  AreaToneContext,
-  ToneContext,
-  bubbleCorners,
-  pageFill,
-  useBreakpoint,
-  useTheme,
-} from './theme-context';
+import { AreaToneContext, ToneContext, pageFill, useBreakpoint, useTheme } from './theme-context';
 import type { Tone } from './themes';
 import { useTitleFit } from './use-title-fit';
 
@@ -643,8 +636,6 @@ export function TabBar(props: TabBarProps) {
         const active = item.key === props.activeKey;
         // "Frisch" marks the active tab with an ink pill, never with an area colour (D4).
         const pill = active && theme.shape.tabActive === 'pill';
-        // "Wolke" sets the active icon on a soft bubble (spec 0058, REQ-004).
-        const bubble = active && theme.shape.tabActive === 'bubble';
         const Glyph = icons[item.icon];
         const tint = pill ? c.onAccent : active ? c.accent : c.textMuted;
         return (
@@ -669,17 +660,14 @@ export function TabBar(props: TabBarProps) {
             ]}
           >
             <View
-              style={[
-                {
-                  height: 30,
-                  paddingHorizontal: 14,
-                  borderRadius: 15,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: pill ? c.accent : bubble ? c.accentSoft : 'transparent',
-                },
-                bubble ? bubbleCorners(theme) : null,
-              ]}
+              style={{
+                height: 30,
+                paddingHorizontal: 14,
+                borderRadius: 15,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: pill ? c.accent : 'transparent',
+              }}
             >
               <Glyph size={24} color={tint} strokeWidth={theme.shape.stroke} />
             </View>

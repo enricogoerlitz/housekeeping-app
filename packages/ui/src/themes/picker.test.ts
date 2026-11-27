@@ -51,7 +51,7 @@ describe('new themes (spec 0058)', () => {
   it('AC-008 – AC-010: only "Wolke" shows bubbles', () => {
     const bubbly = themeFamilies.filter((family) => family.light.shape.bubble !== undefined);
     expect(ids(bubbly)).toEqual(['wolke']);
-    expect(getTheme('wolke', 'light').shape.tabActive).toBe('bubble');
+    expect(getTheme('wolke', 'light').shape.tabActive).toBe('tint');
     expect(getTheme('markthalle', 'light').shape.tabActive).toBe('tint');
   });
 });
