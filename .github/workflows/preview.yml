@@ -165,7 +165,7 @@ jobs:
         run: |
           for name in FOUNDRY_AZURE_CLIENT_ID FOUNDRY_AZURE_TENANT_ID FOUNDRY_PROJECT_ENDPOINT; do
             if [ -z "${!name}" ]; then
-              echo "::error::Variable $name der Umgebung preview fehlt (Foundry-Agenten, docs/architecture/betrieb.md, „KI-Agent“)"
+              echo "::error::Variable $name der Umgebung preview fehlt (Foundry-Agenten, Abschnitt KI-Agent in docs/architecture/betrieb.md)"
               exit 1
             fi
           done
