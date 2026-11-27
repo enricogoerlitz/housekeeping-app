@@ -10,6 +10,7 @@ import {
   recurrenceLabel,
   withTime,
   type Chore,
+  householdItemTitle,
   type HouseholdRowItem,
   type ISODate,
 } from '@housekeeping/core';
@@ -205,7 +206,7 @@ function PlannedChores(props: { items: HouseholdRowItem[]; chores: Chore[] }) {
             <RowTransition key={item.key}>
               <CheckRow
                 testID={`today-chore-${item.key}`}
-                title={item.approximate ? `${item.title}, etwa` : item.title}
+                title={householdItemTitle(item)}
                 checked={check.isChecked(chore)}
                 disabled={online.disabled}
                 onToggle={() => check.toggle(chore)}
@@ -247,7 +248,7 @@ function ChoreToLookAt(props: { item: HouseholdRowItem }) {
   const membersById = useMembersById();
   const [doneOpen, setDoneOpen] = useState(false);
   const people = item.memberIds.flatMap((id) => membersById[id] ?? []);
-  const title = item.approximate ? `${item.title}, etwa` : item.title;
+  const title = householdItemTitle(item);
   const eventId = item.eventId;
   return (
     <>

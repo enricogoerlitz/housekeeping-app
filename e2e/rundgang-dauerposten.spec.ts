@@ -52,6 +52,8 @@ function recurringRow(page: Page, name: string) {
 test('AC-001 / AC-002: empty page, then "Reis 2×" weekly, next time tomorrow', async ({ page }) => {
   await open(page, '/dauerposten');
   await expect(tid(page, 'recurring-empty')).toContainText('Noch keine Dauerposten');
+  // Durchklick 27.11., D-04: the pattern of every page.
+  await expect(tid(page, 'recurring-new')).toHaveAttribute('aria-label', 'Dauerposten anlegen');
   await createRecurring(page, 'Reis', '2');
   await expect(toastMessage(page)).toHaveText('Dauerposten „Reis“ angelegt');
   const row = recurringRow(page, 'Reis');
@@ -80,7 +82,8 @@ test('AC-007: "viel" is no amount', async ({ page }) => {
   await open(page, '/dauerposten');
   await recurringRow(page, 'Reis').click();
   await tid(page, 'recurring-amount').fill('viel');
-  await expect(tid(page, 'recurring-sheet')).toContainText(
+  // Durchklick 27.11., D-05: below the row of "Menge" and "Zusatz".
+  await expect(tid(page, 'recurring-amount-error')).toHaveText(
     'Menge nicht erkannt – z. B. 500 g oder 2',
   );
   await expect(tid(page, 'recurring-save')).toBeDisabled();
@@ -109,6 +112,10 @@ test('AC-010 / AC-011: "Regelmäßig kaufen ›" at the article; Reis is used, n
   await tid(page, 'articles-search').fill('Geschenkpapier');
   await tid(page, `article-${seedIds['art-geschenkpapier']}`).click();
   await tid(page, 'article-recurring').click();
+  // Durchklick 27.11., I-05: the head of every form, "Zurück · Regelmäßig kaufen · Speichern".
+  await expect(tid(page, 'article-sheet-header')).toContainText('Regelmäßig kaufen');
+  await expect(tid(page, 'article-sheet-header')).toContainText('Zurück');
+  await expect(tid(page, 'article-sheet-header')).toContainText('Speichern');
   await tid(page, 'recurring-amount').fill('1');
   await tid(page, `repeat-weekday-${TOMORROW_WEEKDAY}`).click();
   await tid(page, `repeat-weekday-${TODAY_WEEKDAY}`).click();

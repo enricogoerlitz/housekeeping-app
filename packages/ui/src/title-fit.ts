@@ -2,6 +2,9 @@
 // "‹ Essen · Titel · Abbrechen Speichern"): when the buttons leave too little room, the title
 // takes a line of its own below them instead of shrinking to "Q…" (review 0003).
 
+/** Pixels the measured widths may be off by, rounded (review 0004, I-04). */
+const ROUNDING_SLACK = 2;
+
 /**
  * Whether the title goes on its own line: its natural width is more than the row leaves beside
  * the actions. Widths in px; `padding` is both sides together, `gap` the space between parts.
@@ -17,7 +20,9 @@ export function titleOnOwnLine(input: {
   if (input.row <= 0 || input.title <= 0) return false;
   const actions = input.actions.reduce((sum, width) => sum + width, 0);
   const room = input.row - input.padding - actions - input.gap * input.actions.length;
-  return input.title > room;
+  // The parts are laid out in whole pixels (offsetWidth), so the room may seem up to a pixel or
+  // two wider than it is: a title that fits only that closely is cut (I-04, review 0004).
+  return input.title > room - ROUNDING_SLACK;
 }
 
 /**

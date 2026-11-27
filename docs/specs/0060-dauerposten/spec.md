@@ -193,6 +193,13 @@ schreibt nur der Server. Quelle: Regel 5, `30-database.md`. Offline: entfällt.
 13. Beim Bau: Am Artikel ist „Regelmäßig kaufen“ ein Schritt von „Artikel bearbeiten“ (kein Fenster
     über dem Fenster); auf der Seite „Dauerposten“ ein eigenes Fenster. Der Zeitplaner übergeht
     Haushalte mit einer Zeitzone, die Postgres nicht kennt (Security-Check, siehe Risiken).
+14. Durchklick 27.11., D-04: Der Anlegen-Knopf ist `CreateButton` „Dauerposten anlegen“ wie auf
+    jeder Seite (Spec 0054, REQ-001; ändert AC-001 „+ Dauerposten“), der leere Zustand ebenso.
+    D-05: Die Meldung zur Menge steht unter der Zeile „Menge · Zusatz“ in voller Breite, das Feld
+    ist orange umrandet (`TextField invalid`); sie sagt auch ohne gewählten Artikel „Menge nicht
+    erkannt …“. I-05: Der Schritt „Regelmäßig kaufen“ am Artikel hat den Fensterkopf aller
+    Formulare: „Zurück · Regelmäßig kaufen · Speichern“ (ab Tablet unten), „Löschen“ als letzter
+    Knopf im Fenster; jedes Öffnen beginnt mit dem gespeicherten Stand.
 
 ## Daten
 

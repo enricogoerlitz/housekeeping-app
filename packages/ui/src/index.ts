@@ -54,6 +54,7 @@ export {
   useToastAvoid,
   useToastClearance,
   type SheetAction,
+  type SheetActions,
 } from './overlay';
 export { pickImageFile } from './pick-image';
 export { useImageDropAndPaste } from './image-drop';

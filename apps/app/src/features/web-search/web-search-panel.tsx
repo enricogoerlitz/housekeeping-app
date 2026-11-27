@@ -349,20 +349,37 @@ function Preview(props: { search: WebSearch; rows?: RecipeRows; testID: string }
   if (!preview) return null;
   const { card } = preview;
   const id = `${testID}-preview`;
+  const loading = preview.status === 'loading';
+  const heading = (
+    <Stack gap={2}>
+      <Text variant="cardTitle">
+        {preview.status === 'place' && preview.proposal.name ? preview.proposal.name : card.title}
+      </Text>
+      <Text variant="caption" color="muted">
+        {card.source}
+      </Text>
+    </Stack>
+  );
   return (
     <View style={{ gap: 12 }} testID={id}>
-      <CardImage photo={search.photos[card.url]} alt={card.title} />
-      <PhotoChoice search={search} testID={`${id}-photo`} />
-      <Stack gap={2}>
-        <Text variant="cardTitle">
-          {preview.status === 'place' && preview.proposal.name ? preview.proposal.name : card.title}
-        </Text>
-        <Text variant="caption" color="muted">
-          {card.source}
-        </Text>
-      </Stack>
+      {/* D-01 (review 0004): while the hit is read the photo stays small beside the title, so the
+          loading lines stand in sight at once; the big photo and its choice come with the preview. */}
+      {loading ? (
+        <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
+          <View style={{ width: THUMB }}>
+            <CardImage photo={search.photos[card.url]} size={THUMB} alt={card.title} />
+          </View>
+          <View style={{ flex: 1 }}>{heading}</View>
+        </View>
+      ) : (
+        <>
+          <CardImage photo={search.photos[card.url]} alt={card.title} />
+          <PhotoChoice search={search} testID={`${id}-photo`} />
+          {heading}
+        </>
+      )}
       {/* Spec 0055, REQ-003: placeholders that breathe until the preview is read. */}
-      {preview.status === 'loading' ? (
+      {loading ? (
         <LoadingLines
           label={
             search.kind === 'recipe' ? 'Das Rezept wird gelesen …' : 'Der Ort wird eingeordnet …'

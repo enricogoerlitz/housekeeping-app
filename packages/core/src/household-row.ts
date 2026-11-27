@@ -32,6 +32,14 @@ export interface HouseholdRowItem {
   eventId?: Id;
 }
 
+/**
+ * The title a row shows: a flexible chore's date is approximate, said after a dot like other
+ * details ("Pflanzen gießen · ungefähr"); a trailing ", etwa" read like cut-off text (D-09).
+ */
+export function householdItemTitle(item: HouseholdRowItem): string {
+  return item.approximate ? `${item.title} · ungefähr` : item.title;
+}
+
 // Guards the stepping through a rhythm against broken dates; a range is at most a year.
 const MAX_STEPS = 400;
 

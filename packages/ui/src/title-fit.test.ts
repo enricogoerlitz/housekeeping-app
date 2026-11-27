@@ -16,6 +16,17 @@ describe('titleOnOwnLine (review 0003: "Einplan…" and "Q…" beside long actio
     );
   });
 
+  it('I-04 (review 0004): a title that would fit only to the rounded pixel moves too', () => {
+    // 402 wide: "Weiter bearbeiten" 115.47 and "Verwerfen" 66.44 are laid out as 115 and 66, so
+    // the row seemed to leave 181 for "Änderungen verwerfen?" (180.77 → 181); really it had 180.09.
+    expect(titleOnOwnLine({ row: 402, padding: 24, gap: 8, actions: [115, 66], title: 181 })).toBe(
+      true,
+    );
+    expect(titleOnOwnLine({ row: 402, padding: 24, gap: 8, actions: [115, 66], title: 178 })).toBe(
+      false,
+    );
+  });
+
   it('nothing is decided before the row and the title are measured', () => {
     expect(titleOnOwnLine({ row: 0, padding: 24, gap: 8, actions: [80, 80], title: 500 })).toBe(
       false,

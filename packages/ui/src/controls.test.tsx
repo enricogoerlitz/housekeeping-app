@@ -129,6 +129,15 @@ describe('keyboard focus ring (spec 0019, REQ-002)', () => {
     matches.mockRestore();
   });
 
+  it('D-07 (review 0004): while a text field has the cursor no button shows a ring', () => {
+    // A button's `focused` may still be true from a window that moved the focus on; the text
+    // field is :focus-visible, but the ring belongs to the field, not to the button.
+    render(<TextField label="Name" testID="name" />);
+    act(() => (screen.getByTestId('name') as HTMLInputElement).focus());
+    expect(keyboardFocused(true)).toBe(false);
+    expect(keyboardFocusRing(theme, true)).toBeNull();
+  });
+
   it('a control focused by keyboard draws the outline', () => {
     render(<Button label="Speichern" />);
     const button = screen.getByRole('button', { name: 'Speichern' });
@@ -528,6 +537,19 @@ describe('TextField', () => {
     expect(onChangeText).toHaveBeenCalledWith('Paella');
     expect(screen.getByText('Titel')).toBeTruthy();
     expect(screen.getByText('Kurz und klar')).toBeTruthy();
+  });
+
+  it('D-05 (review 0004): `invalid` marks a narrow field whose message stands below its row', () => {
+    render(
+      <>
+        <TextField label="Menge" value="viel" invalid testID="amount" />
+        <TextField label="Zusatz" value="" testID="note" />
+      </>,
+    );
+    const frame = (id: string) => screen.getByTestId(id).parentElement as HTMLElement;
+    expect(frame('amount').style.borderTopColor).not.toBe(frame('note').style.borderTopColor);
+    expect(screen.getByTestId('amount').getAttribute('aria-invalid')).toBe('true');
+    expect(screen.queryByTestId('amount-error')).toBeNull();
   });
 
   it('without a label: accessibilityLabel, else the placeholder names it', () => {

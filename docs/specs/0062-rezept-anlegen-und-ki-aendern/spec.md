@@ -217,6 +217,10 @@ auf der lesenden Seite; „Übernehmen“ speichert das gewählte Foto sofort (�
     Fenster (Spec 0032, REQ-003; Spec 0054); hier wird kein neues Layout dafür gebaut. „Neu“ gibt
     „Abbrechen“ ausdrücklich an, damit ab Tablet unten „Abbrechen“ links und „Anlegen“ rechts steht
     statt eines Knopfs über die ganze Breite (Test-ID `new-recipe-cancel`).
+11. Durchklick 27.11. (Koordinator): Im Reiter „KI-Rezept“ fehlt der Link „Foto“ (Foto des
+    Rezepts); dort sind die Fotos für die KI und „Foto generieren“ der Weg. Im Reiter „Websuche“
+    bleibt er. Zeigt „Websuche“ die Vorschau eines Treffers, fehlen „Foto“, „Zutaten einfügen“ und
+    „Sammlung“: „Übernehmen“ nimmt Foto und Zutaten des Treffers, die Links gingen nicht mit.
 
 ## Daten
 

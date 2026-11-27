@@ -933,6 +933,12 @@ Dass die Einstellungen keinen Abschnitt „Abwesenheit“ mehr haben, regelt Spe
   Persönliches enthalten. Beides sehen wie bisher nur Mitglieder des eigenen Haushalts (RLS aus
   Spec 0003); neue Felder gibt es nicht.
 
+## Entscheidungen
+
+1. Durchklick 27.11., D-09: Ein flexibler Termin heißt „Bettwäsche wechseln · ungefähr“ statt
+   „Bettwäsche wechseln, etwa“ (las sich wie abgeschnittener Text); gestrichelt bleibt er
+   (`householdItemTitle`). Ändert die Schreibweise in REQ-006.
+
 ## Offene Fragen
 
 | #   | Frage                                                                                                                                                                                                             | Optionen                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Empfehlung                                                                                                          | Status           |

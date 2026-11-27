@@ -7,6 +7,7 @@ import {
   lineTooltip,
   stripeText,
   type TripStripe,
+  householdItemTitle,
   type HouseholdRowItem,
   type Id,
   type MealPlanEntry,
@@ -279,10 +280,6 @@ function withPeople(label: string, people: string, series: boolean): string {
     .join(', ');
 }
 
-function choreTitle(item: HouseholdRowItem): string {
-  return item.approximate ? `${item.title}, etwa` : item.title;
-}
-
 function People(props: { ids: Id[]; data: CalendarData }) {
   const people = props.ids.flatMap((id) => props.data.membersById[id] ?? []);
   return people.length > 0 ? <AvatarStack members={people} size="xs" /> : null;
@@ -315,7 +312,7 @@ function ChoreLine(props: {
     <>
       <KindLine
         kind="chore"
-        title={choreTitle(item)}
+        title={householdItemTitle(item)}
         quiet
         dashed={item.approximate}
         size={props.compact ? 'compact' : 'row'}
@@ -323,8 +320,8 @@ function ChoreLine(props: {
         trailing={props.peopleBelow ? undefined : people}
         detail={props.peopleBelow ? people : undefined}
         onPress={onPress}
-        tooltip={lineTooltip('chore', choreTitle(item))}
-        accessibilityLabel={`Erledigt: ${choreTitle(item)}`}
+        tooltip={lineTooltip('chore', householdItemTitle(item))}
+        accessibilityLabel={`Erledigt: ${householdItemTitle(item)}`}
         testID={`chore-occ-${item.key}`}
       />
       {doneOpen && item.eventId !== undefined ? (
@@ -376,7 +373,7 @@ export function HouseholdDay(props: {
           <RowTransition key={item.key}>
             <KindLine
               kind="chore"
-              title={choreTitle(item)}
+              title={householdItemTitle(item)}
               quiet
               struck={checked}
               dashed={item.approximate}
@@ -393,8 +390,8 @@ export function HouseholdDay(props: {
               trailing={props.peopleBelow ? undefined : people}
               detail={props.peopleBelow ? people : undefined}
               onPress={() => props.onOpenChore(chore.id)}
-              tooltip={lineTooltip('chore', choreTitle(item))}
-              accessibilityLabel={`${choreTitle(item)}, Details`}
+              tooltip={lineTooltip('chore', householdItemTitle(item))}
+              accessibilityLabel={`${householdItemTitle(item)}, Details`}
               testID={`chore-occ-${item.key}`}
             />
           </RowTransition>

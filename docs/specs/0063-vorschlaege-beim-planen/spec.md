@@ -222,6 +222,8 @@ etwas nicht auf der Liste ist. Offline: nur online (Knopf ausgegraut mit Hinweis
 10. Die Zeile „n Gerichte nicht auf der Liste“ erscheint nur nach „einplanen“ aus C in derselben
     Sitzung (kein dauerhafter Hinweis, kein Slop); sie zählt die eben geplanten Einträge, die
     noch keine Zutat auf der Liste haben (`entriesOnList`).
+11. Durchklick 27.11., D-06: Eine gewählte Zeile behält unter dem Mauszeiger ihre Auswahlfarbe
+    (`ListRow selected` ohne Hover-Fläche), damit alle gewählten Gerichte gleich aussehen.
 
 ## Daten
 

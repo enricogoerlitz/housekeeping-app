@@ -302,7 +302,7 @@ vorher nur die gezeigte Woche). Gilt in Symbol und Farbe als Rezept, wird nicht 
 
 Die dünne, graue Zeile im Kalender über den Tageszeiten mit den Aufgaben eines Tages: an
 vergangenen Tagen die Erledigungen, heute das Fällige zum Abhaken, an künftigen Tagen die
-berechneten Termine (bei flexiblem Rhythmus gestrichelt mit „etwa“). Standard: Woche an, Monat aus,
+berechneten Termine (bei flexiblem Rhythmus gestrichelt mit „· ungefähr“). Standard: Woche an, Monat aus,
 Jahr nie; die Wahl liegt auf dem Gerät (Spec 0010, D18).
 
 - **Im Code (vorläufig):** `HouseholdRow` (Baustein); künftige Termine berechnet `packages/core`
