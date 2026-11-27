@@ -27,7 +27,8 @@ import { useOnlineOnly } from '@/features/shell/offline';
 // "neu" / "geändert"; an old value stands small, red and struck through with ↺; a removed row
 // stays visible, red and struck through, with "↺ behalten"; a new row can be left out with ×.
 // Never colour alone: every change has its word. "Übernehmen" hands what is still active to the
-// edit mode or the form, where "Speichern" stores it (Entscheidung 6).
+// edit mode or the form, where "Speichern" stores it (Entscheidung 6); after ✨ "Mit KI ändern" the
+// recipe page saves it at once (spec 0062, REQ-010).
 
 const WORDS = { new: 'neu', changed: 'geändert', removed: 'entfernt' } as const;
 const PHOTO_SIZE = 96;

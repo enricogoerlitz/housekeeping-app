@@ -131,7 +131,8 @@ Formular. Die Lupe neben „Name“ (Spec 0055, REQ-010) bleibt im Formular und 
 Globus-Symbol der Websuche. Offline: nur online.
 
 - AC-019: Angenommen Essen → Restaurants · Wenn ich „Restaurant anlegen“ drücke · Dann hat „Name
-  oder Link“ den Cursor, darunter „Anlegen“ und „Websuche“
+  oder Link“ den Cursor, darunter „Anlegen“ und „Websuche“; „Anlegen“ ohne Namen zeigt das leere
+  Formular (Entscheidung 9)
 - AC-020: Angenommen „Coccodrillo“ im Feld · Wenn ich Return drücke · Dann wird nach „Coccodrillo“
   gesucht und die Treffer stehen im selben Fenster
 - AC-021: Angenommen die Treffer aus AC-020 · Wenn ich einen öffne und „Übernehmen“ drücke · Dann
@@ -240,6 +241,14 @@ auf der lesenden Seite; „Übernehmen“ speichert das gewählte Foto sofort (�
    Bearbeitungsmodus, unverändert bis auf REQ-011).
 8. **Desktop-Knopf „Mit KI ändern“** als `ghost`-Knopf mit Text neben dem Stift, Handy nur ✨ —
    wie das Konzept; keine Akzentfarbe (Bedienmuster „Akzent“).
+9. **Orte: „Anlegen“ auch ohne Namen.** Ein leeres Formular bleibt so ohne Umweg erreichbar (Link
+   einfügen, Foto zuerst); beim Rezept braucht „Anlegen“ den Titel, also bleibt es dort aus.
+10. **Alte Test-IDs bleiben:** das eine Feld heißt `new-recipe-title`, „Anlegen“ `new-recipe-save`,
+    damit die bestehenden e2e-Abläufe weiter passen; neu sind `new-recipe-quick-path-web|ai`,
+    `new-recipe-more`, `new-recipe-open-collection`, `restaurant-start-*`, `activity-start-*`,
+    `recipe-ai-change-*`.
+11. **Kacheln statt `Button`** für die Wege: Drei Text-Knöpfe mit Symbol passen am Handy
+    (390 px) nicht nebeneinander („KI-Rezept“ brach um); Symbol über Text wie im Konzept.
 
 ## Daten
 
@@ -263,4 +272,14 @@ Keine Schema-Änderung. Gelesen und geschrieben wird wie bisher: `createRecipe`,
 
 ### Nachweis
 
-(folgt)
+- Rot vor Grün (Vitest, 27.11.2026): `packages/core/src/create-path.test.ts` rot (Modul fehlte),
+  `page-editor.test.ts` 3 rot (`revertPageDraft is not a function`),
+  `packages/ui/src/path-buttons.test.tsx` rot (Modul fehlte); danach 12 + 3 + 4 grün.
+- `pnpm format:check && pnpm check` grün (Lint, Typen inkl. e2e, Unit-Tests, knip).
+- e2e `e2e/rundgang-anlegen-0062.spec.ts` geschrieben (KI und Suche mit `page.route`), bestehende
+  e2e auf die neuen Wege angepasst (`rundgang-essen`, `-bedienmuster-0054`, `-ki-fenster-0055`,
+  `-restaurants`, `-aktivitaeten`, `-backend-ki`); nicht lokal gelaufen (setzt die DB zurück).
+- Screenshots (eigener Dev-Server, Functions mit `page.route`, nichts gespeichert):
+  `tmp/review-0004/0062/` — Desktop 1440×900 und Handy 390×844: „Neues Rezept“ leer, Websuche
+  hervorgehoben, Treffer im Fenster, KI-Rezept hervorgehoben und ladend, „Mehr“, Restaurant-Start
+  mit Treffer, Rezeptkopf mit ✨, „Mit KI ändern“, Vorschlag nur mit Änderungen.

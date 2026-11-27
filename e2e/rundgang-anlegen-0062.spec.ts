@@ -24,7 +24,7 @@ type SearchBody = { query?: string; mode?: string };
 function draft(title: string, extra: Partial<RecipeDraft> = {}): RecipeDraft {
   return {
     title,
-    description: '',
+    description: 'Ein schnelles Gericht.',
     servings: 4,
     course: 'main',
     tags: [],
