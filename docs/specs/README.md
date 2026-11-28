@@ -75,6 +75,8 @@ Ablauf und Regeln: siehe `AGENTS.md`, Abschnitt „Workflow per feature“.
 | [0066](0066-ki-agent/spec.md)                               | KI-Agent: Recherche-Chat für Restaurants und Aktivitäten (Schritt 1)   | freigegeben |
 | [0067](0067-housekeeping-agent/spec.md)                     | Housekeeping-Agent: ein zentraler KI-Agent für den ganzen Haushalt     | freigegeben |
 | [0068](0068-senden-waehrend-diktat/spec.md)                 | Senden während des Diktats                                             | umgesetzt   |
+| [0069](0069-agent-2/spec.md)                                | Agent 2: Fokusansicht, Suchen ohne Agent, alles bearbeitbar            | freigegeben |
+| [0070](0070-erleben/spec.md)                                | Erleben: Rezepte, Restaurants, Aktivitäten und Auswahl                 | freigegeben |
 
 ## Welle 2 (0019–0028): Bau-Reihenfolge und Regeln
 

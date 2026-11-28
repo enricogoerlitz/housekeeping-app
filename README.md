@@ -103,4 +103,4 @@ Einmal pro Rechner bestätigen.
 Stand 23.11.2026: Specs 0019–0031 sind auf `develop`; offen ist die erste produktive Version
 (Spec 0028). Übersicht aller Specs:
 [docs/specs/README.md](docs/specs/README.md), nächste Schritte:
-[docs/handover/2026-11-23-copilot.md](docs/handover/2026-11-23-copilot.md).
+[docs/handover/2026-11-28-copilot.md](docs/handover/2026-11-28-copilot.md).
