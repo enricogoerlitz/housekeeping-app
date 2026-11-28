@@ -165,6 +165,7 @@ export function AgentInput(props: AgentInputProps) {
         grow
         growLines={4.5}
         round
+        composer
         top={chips}
         left={
           <IconButton
@@ -182,7 +183,6 @@ export function AgentInput(props: AgentInputProps) {
           if (menu && first) choose(first.slug);
           else props.onSubmit();
         }}
-        blurOnSubmit={!menu}
         returnKeyType="send"
         inputRef={props.inputRef}
         testID="agent-input"

@@ -1073,7 +1073,7 @@ export function ComposerBar(props: {
 }) {
   const theme = useTheme();
   const { isPhone } = useBreakpoint();
-  const padding = props.dense ? 6 : 10;
+  const padding = props.dense ? 8 : 10;
   return (
     <View
       testID={props.testID}
@@ -1092,7 +1092,7 @@ export function ComposerBar(props: {
           width: '100%',
           maxWidth: CONTENT_MAX_WIDTH,
           alignSelf: 'center',
-          gap: props.dense ? 6 : 8,
+          gap: 8,
         }}
       >
         {props.children}

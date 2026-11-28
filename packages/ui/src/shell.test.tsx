@@ -865,7 +865,7 @@ describe('ComposerBar', () => {
     expect(within(screen.getByTestId('composer')).getByText('Artikel hinzufügen')).toBeTruthy();
   });
 
-  it('spec 0067: dense keeps the chat in view while typing (half the padding)', () => {
+  it('spec 0067: dense keeps the chat in view while typing (8 pt like the gaps of the composer)', () => {
     render(
       <>
         <ComposerBar testID="dense" dense>
@@ -877,7 +877,7 @@ describe('ComposerBar', () => {
       </>,
     );
     const padding = (id: string) => parseFloat(screen.getByTestId(id).style.paddingTop);
-    expect(padding('dense')).toBe(6);
+    expect(padding('dense')).toBe(8);
     expect(padding('normal')).toBe(10);
   });
 

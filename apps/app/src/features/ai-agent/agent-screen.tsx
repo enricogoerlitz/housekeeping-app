@@ -310,8 +310,8 @@ export function AgentScreen() {
           width: '100%',
           maxWidth: CHAT_WIDTH - 2 * WIDE_GUTTER,
           alignSelf: 'center',
-          paddingBottom: keyboard.open ? 0 : Math.max(0, bottom - 6),
-          gap: 6,
+          paddingBottom: keyboard.open ? 0 : Math.max(0, bottom - 8),
+          gap: 8,
         }}
       >
         {disabled ? (
