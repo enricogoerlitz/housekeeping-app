@@ -121,6 +121,31 @@ describe('useBottomInset (spec 0029, REQ-002)', () => {
   });
 });
 
+describe('Screen: compact header (spec 0067, UI review 27.11.)', () => {
+  it('on a phone the header is the narrow bar while asked, the full one otherwise', () => {
+    const page = (compact: boolean) => (
+      <Screen header={header} compactHeader={compact}>
+        <Text>Chat</Text>
+      </Screen>
+    );
+    const { rerender } = render(page(true));
+    expect(screen.queryByText('12 Rezepte')).toBeNull();
+    expect(screen.queryByText('Montag')).toBeNull();
+    rerender(page(false));
+    expect(screen.getByText('12 Rezepte')).toBeTruthy();
+  });
+
+  it('wider screens keep their header', () => {
+    setWindow(...DESKTOP);
+    render(
+      <Screen header={header} compactHeader>
+        <Text>Chat</Text>
+      </Screen>,
+    );
+    expect(screen.getByText('12 Rezepte')).toBeTruthy();
+  });
+});
+
 describe('Screen (spec 0005, REQ-002)', () => {
   it('spec 0057 AC-009: a tap on the active tab scrolls the shown page to the top', () => {
     const probe = measurable();
@@ -710,6 +735,29 @@ describe('TabBar', () => {
     expect(active.style.backgroundColor).toBe('rgba(0, 0, 0, 0)');
   });
 
+  it('spec 0067 (decision 35): the agent tab has its label in its own tone; chosen it is bolder, never a pill', () => {
+    const agent = {
+      key: 'agent',
+      label: 'AI Agent',
+      icon: 'sparkles',
+      tone: 'ki',
+      featured: true,
+    } as const;
+    const { rerender } = render(
+      <TabBar items={[...items, agent]} activeKey="today" onSelect={() => undefined} />,
+    );
+    const tab = screen.getByRole('tab', { name: 'AI Agent' });
+    expect(tab.textContent).toBe('AI Agent');
+    const label = () => within(screen.getByRole('tab', { name: 'AI Agent' })).getByText('AI Agent');
+    const other = within(screen.getByRole('tab', { name: 'Rezepte' })).getByText('Rezepte');
+    expect(label().style.color).not.toBe(other.style.color);
+    const quiet = label().style.fontWeight;
+    rerender(<TabBar items={[...items, agent]} activeKey="agent" onSelect={() => undefined} />);
+    expect(Number(label().style.fontWeight)).toBeGreaterThan(Number(quiet || 400));
+    const face = screen.getByRole('tab', { name: 'AI Agent' }).firstElementChild as HTMLElement;
+    expect(face.style.backgroundColor).toBe('rgba(0, 0, 0, 0)');
+  });
+
   it('stands above the home bar', () => {
     safeArea.insets = { top: 0, right: 0, bottom: 34, left: 0 };
     render(<TabBar items={items} activeKey="today" onSelect={() => undefined} />);
@@ -815,6 +863,22 @@ describe('ComposerBar', () => {
       </ComposerBar>,
     );
     expect(within(screen.getByTestId('composer')).getByText('Artikel hinzufügen')).toBeTruthy();
+  });
+
+  it('spec 0067: dense keeps the chat in view while typing (8 pt like the gaps of the composer)', () => {
+    render(
+      <>
+        <ComposerBar testID="dense" dense>
+          <Text>Nachricht</Text>
+        </ComposerBar>
+        <ComposerBar testID="normal">
+          <Text>Nachricht</Text>
+        </ComposerBar>
+      </>,
+    );
+    const padding = (id: string) => parseFloat(screen.getByTestId(id).style.paddingTop);
+    expect(padding('dense')).toBe(8);
+    expect(padding('normal')).toBe(10);
   });
 
   it('wider screens too', () => {

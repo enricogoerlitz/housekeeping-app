@@ -108,7 +108,10 @@ test('AC-013, AC-016: „Mit KI ausarbeiten“ searches the title at once; the p
 
 test('AC-005, AC-007, AC-008, AC-010, AC-017 – AC-020: the chip, „Ausarbeiten“ and „Weiter zum nächsten“', async ({
   page,
+  allowConsoleError,
 }) => {
+  // A taken hit without a photo asks for photo suggestions (ai-image); none is made here.
+  allowConsoleError(/^Failed to load resource: the server responded with a status of 503/);
   const queries = await stubAi(page);
   // „Chili“ and „Bami Goreng“ come from the tests above.
   await titleOnly(page, 'Apfelstrudel');
@@ -143,7 +146,7 @@ test('AC-005, AC-007, AC-008, AC-010, AC-017 – AC-020: the chip, „Ausarbeite
   // AC-018: skip „Bami Goreng“ — close the window and the edit mode, then on.
   await tid(page, 'recipe-ai-fill-cancel').click();
   await tid(page, 'recipe-edit-cancel').click();
-  await expect(tid(page, 'recipe-unfinished-others')).toHaveText('Noch 2 weitere unfertig');
+  await expect(tid(page, 'recipe-unfinished-others')).toHaveText('Noch 1 weiteres unfertig');
   await tid(page, 'recipe-unfinished-next').click();
   await expect(tid(page, 'recipe-ai-fill-web-query')).toHaveValue('Chili');
 
@@ -153,14 +156,17 @@ test('AC-005, AC-007, AC-008, AC-010, AC-017 – AC-020: the chip, „Ausarbeite
   await tid(page, 'recipe-unfinished-next').click();
   await expect(tid(page, 'recipe-ai-fill-web-query')).toHaveValue('Bami Goreng');
 
-  // AC-020: the last one.
+  // AC-020 (changed 27.11.): after the last one the card goes away, no "all done" text.
   await takeFirstHitAndSave(page);
-  await expect(tid(page, 'recipe-worked-out-text')).toHaveText('Alle Rezepte sind ausgearbeitet');
-  await expect(tid(page, 'recipe-unfinished-next')).toHaveCount(0);
+  await expect(tid(page, 'recipe-ingredients')).toBeVisible();
+  await expect(tid(page, 'recipe-worked-out')).toHaveCount(0);
+  await expect(tid(page, 'recipe-unfinished')).toHaveCount(0);
+  await expect(page.getByText('Alle Rezepte sind ausgearbeitet')).toHaveCount(0);
 
-  // AC-009: the list with the filter on and nothing left.
+  // AC-009 (changed 27.11.): the list with the filter on and nothing left is a plain empty filter.
   await open(page, '/rezepte?unfertig=1');
-  await expect(tid(page, 'recipes-no-results')).toContainText('Alle Rezepte sind ausgearbeitet');
+  await expect(tid(page, 'recipes-no-results')).toContainText('Keine Rezepte für diese Filter');
+  await expect(page.getByText('Alle Rezepte sind ausgearbeitet')).toHaveCount(0);
   await expect(tid(page, 'recipe-quick-unfinished')).toHaveText('Unfertig (0)');
   await tid(page, 'recipes-reset-filters').click();
   await expect(tid(page, 'recipe-quick-unfinished')).toHaveCount(0);

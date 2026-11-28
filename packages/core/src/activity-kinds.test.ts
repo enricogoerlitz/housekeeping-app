@@ -2,13 +2,16 @@ import { describe, expect, it } from 'vitest';
 
 import {
   ACTIVITY_ICONS,
+  activityEmptyState,
   activityIconOf,
   DEFAULT_ACTIVITY_ICON,
+  countRememberFilters,
   DEFAULT_ACTIVITY_KINDS,
   filterRemembered,
   findDuplicateKind,
   isActivityIcon,
   kindNameProblem,
+  leavesActivityList,
   REMEMBER_FILTERS,
 } from './activity-kinds';
 import type { Activity, ActivityKind } from './types';
@@ -84,6 +87,18 @@ describe('Merken', () => {
     expect(filterRemembered([autofahren, bouldern], 'forgotten')).toEqual([autofahren]);
   });
 
+  it('AC-016: the counts of "Gemerkt", "Alle" and "Nicht gemerkt" add up', () => {
+    expect(countRememberFilters([autofahren, bouldern, activity({ id: 'c' })])).toEqual({
+      remembered: 2,
+      all: 3,
+      forgotten: 1,
+    });
+  });
+
+  it('AC-016: no activities, no counts', () => {
+    expect(countRememberFilters([])).toEqual({ remembered: 0, all: 0, forgotten: 0 });
+  });
+
   it('AC-013: the filter starts with "Gemerkt"', () => {
     expect(REMEMBER_FILTERS.map((filter) => filter.label)).toEqual([
       'Gemerkt',
@@ -91,5 +106,54 @@ describe('Merken', () => {
       'Nicht gemerkt',
     ]);
     expect(REMEMBER_FILTERS[0]?.value).toBe('remembered');
+  });
+});
+
+describe('Merken: leaving the list and the empty list (filter check 0067 D)', () => {
+  it('AC-013: an activity opened from the list is not leaving it, so "Alle" stays on the way back', () => {
+    expect(leavesActivityList('/aktivitaeten')).toBe(false);
+    expect(leavesActivityList('/aktivitaet/0067d000-0000-4000-8000-000000000003')).toBe(false);
+  });
+
+  it('AC-013: another page leaves the list, so it opens with "Gemerkt" again', () => {
+    expect(leavesActivityList('/verwalten')).toBe(true);
+    expect(leavesActivityList('/rezepte')).toBe(true);
+    expect(leavesActivityList('/')).toBe(true);
+    expect(leavesActivityList('/aktivitaeten-alt')).toBe(true);
+  });
+
+  it('a search without hits names the word and offers "Alle zeigen" only while a filter narrows', () => {
+    expect(activityEmptyState('  xyzzy ', 'remembered', false)).toEqual({
+      title: 'Keine Aktivitäten für „xyzzy“',
+      text: 'Probiere ein anderes Wort.',
+      showAll: true,
+    });
+    expect(activityEmptyState('xyzzy', 'all', false)).toEqual({
+      title: 'Keine Aktivitäten für „xyzzy“',
+      text: 'Probiere ein anderes Wort.',
+      showAll: false,
+    });
+  });
+
+  it('AC-012: no remembered activity, no search: names "Gemerkt" and asks for no word', () => {
+    expect(activityEmptyState('', 'remembered', false)).toEqual({
+      title: 'Keine Aktivitäten unter „Gemerkt“',
+      showAll: true,
+    });
+    expect(activityEmptyState(' ', 'forgotten', false)).toEqual({
+      title: 'Keine Aktivitäten unter „Nicht gemerkt“',
+      showAll: true,
+    });
+  });
+
+  it('AC-016: "Favoriten" without hits is a plain empty filter', () => {
+    expect(activityEmptyState('', 'remembered', true)).toEqual({
+      title: 'Keine Aktivitäten für diese Filter',
+      showAll: true,
+    });
+    expect(activityEmptyState('', 'all', true)).toEqual({
+      title: 'Keine Aktivitäten für diese Filter',
+      showAll: true,
+    });
   });
 });

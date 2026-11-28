@@ -44,6 +44,17 @@ insert into lint_private_functions_for_authenticated values
   ('private.begin_household_deletion(uuid)'), -- security invoker, reads storage.objects under RLS
   ('private.close_household_for_deletion(uuid)'), -- definer, rechecks last member under a lock
   ('private.delete_household(uuid)'),
+  -- Spec 0066: the chat references of ai-agent.
+  ('private.create_ai_chat(uuid,text,text,text)'),
+  ('private.record_ai_chat_turn(uuid,text,text)'),
+  ('private.delete_ai_chat(uuid)'),
+  -- Spec 0067: one answer per chat (AC-024) and the log of deleted chats.
+  ('private.my_ai_chat(uuid)'),
+  ('private.begin_ai_chat_answer(uuid,uuid)'),
+  ('private.end_ai_chat_answer(uuid,uuid)'),
+  ('private.ai_chat_answering(uuid)'),
+  ('private.pending_ai_chat_deletions(uuid)'),
+  ('private.forget_ai_chat_deletions(uuid,uuid[])'),
   ('private.assert_members(uuid,uuid[])'), -- security invoker, called by member-check triggers
   ('private.set_recipe_favorite(uuid,boolean)'),
   ('private.set_recipe_rating(uuid,numeric)'),
@@ -88,7 +99,8 @@ insert into lint_private_functions_for_authenticated values
   ('private.add_recipe_video(uuid,uuid,jsonb)'),           -- spec 0046: the only ways to write recipes.videos
   ('private.set_recipe_video_poster(uuid,uuid,text,text)'),
   ('private.remove_recipe_video(uuid,uuid,text)'),
-  ('private.acknowledge_notices(uuid,text[])'); -- spec 0051: the only way to acknowledge notices
+  ('private.acknowledge_notices(uuid,text[])'), -- spec 0051: the only way to acknowledge notices
+  ('private.set_app_view(text)');               -- spec 0067: the only way to set the person's view
 
 create temp view lint_public_tables as
   select c.oid, c.relname as name, c.relrowsecurity as rls

@@ -86,7 +86,7 @@ export function RecipeGrid(props: RecipeGridProps) {
 /**
  * One tile of the recipe grid on "Essen" (spec 0008, AC-014): photo on top in 4:3 in every theme,
  * so two tiles fit side by side on phones; the title grows on wider screens. The meta line shows
- * minutes, the diet and the average rating ("★ 4,8", AC-040).
+ * the course (spec 0038, AC-007), minutes, the diet and the average rating ("★ 4,8", AC-040).
  */
 export function RecipeTile(props: {
   recipe: Recipe;
@@ -105,7 +105,12 @@ export function RecipeTile(props: {
       photoAspectRatio={4 / 3}
       size={isPhone ? 'm' : 'l'}
       meta={
-        <RecipeCardMeta recipe={recipe} articlesById={props.articlesById} contents={contents} />
+        <RecipeCardMeta
+          recipe={recipe}
+          articlesById={props.articlesById}
+          contents={contents}
+          course
+        />
       }
       onPress={() => props.onOpen(recipe.id)}
     />

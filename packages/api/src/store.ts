@@ -1,4 +1,5 @@
 import type {
+  AiChat,
   Activity,
   ActivityKind,
   ActivitySeries,
@@ -30,6 +31,7 @@ import type {
 } from '@housekeeping/core';
 import { useSyncExternalStore } from 'react';
 
+import { WRITE_REJECTED_MESSAGE } from './engine-context';
 import type { ChangeOp, Transport } from './transport';
 
 /** Everything that belongs to one household (one tenant). */
@@ -51,6 +53,8 @@ export interface HouseholdData {
   items: ShoppingItem[];
   /** Spec 0060: "Dauerposten" in creation order. */
   recurringItems: RecurringItem[];
+  /** Spec 0066: the household's KI-Agent chats, last used first. */
+  aiChats: AiChat[];
   chores: Chore[];
   choreEvents: ChoreEvent[];
   /** Spec 0022: trips with their people (rows of trips and trip_members). */
@@ -291,6 +295,39 @@ export async function commitConfirmed<T>(spec: CommitSpec<T>, run: () => T): Pro
   return result;
 }
 
+/** The changes `commitWatched` waits for; set only while its command runs. */
+let watching: Promise<void>[] | undefined;
+
+/**
+ * Spec 0067, REQ-009: runs one of the app's commands as it is (its own commit and RPC) and
+ * resolves once the server took every change it made; rejects with the command's own hint
+ * ("Den Artikel gibt es nicht mehr …") when the server refused one. A validation error of the
+ * command rejects at once, before anything changed.
+ */
+export async function commitWatched<T>(run: () => T): Promise<T> {
+  const outcomes: Promise<void>[] = [];
+  watching = outcomes;
+  let result: T;
+  try {
+    result = run();
+  } finally {
+    watching = undefined;
+  }
+  await Promise.all(outcomes);
+  return result;
+}
+
+function watch<T>(spec: CommitSpec<T>): { report: CommitOutcome; outcome: Promise<void> } {
+  let report: CommitOutcome = () => {};
+  const outcome = new Promise<void>((resolve, reject) => {
+    report = (error) =>
+      error === undefined
+        ? resolve()
+        : reject(new Error(spec.rejectedMessage?.(error) ?? WRITE_REJECTED_MESSAGE));
+  });
+  return { report, outcome };
+}
+
 function record<T>(
   hooks: BackendHooks,
   spec: CommitSpec<T>,
@@ -311,13 +348,15 @@ function record<T>(
     committing = false;
   }
   const after = getState();
+  const watched = !onOutcome && watching ? watch(spec) : undefined;
   try {
-    hooks.recordChange(spec, before, after, result, onOutcome);
+    hooks.recordChange(spec, before, after, result, onOutcome ?? watched?.report);
   } catch (error) {
     state = before;
     notify();
     throw error;
   }
+  if (watched) watching?.push(watched.outcome);
   return result;
 }
 

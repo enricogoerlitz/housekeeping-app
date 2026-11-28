@@ -21,8 +21,11 @@ export * from './commands-recurring';
 export * from './commands-places';
 export * from './commands-packing';
 export * from './commands-notices';
+export * from './commands-view';
 export * from './assistant';
 export * from './ai';
+export * from './ai-agent';
+export * from './agent-actions';
 export { photoSource, useRecipeImage } from './photos';
 export {
   PHOTO_UPLOAD_FAILED_MESSAGE,

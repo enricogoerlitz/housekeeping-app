@@ -92,6 +92,27 @@ Functions. Betroffen: `supabase`, `core`, `api`, `app`, `e2e`.
 - Zutatenliste eines Rezepts gilt beim gleichzeitigen Bearbeiten als ein Feld (letzte Änderung
   gewinnt), dokumentiert.
 
+### Nachtrag 27.11.2026: Diktat und `worker-src` (Befund aus Produktion, v2026.11.3)
+
+Beim Diktieren meldete die Konsole „Creating a worker from 'data:text/javascript;base64,…'
+violates … worker-src 'self'“. Das Speech SDK startet für seine Zeitgeber einen Worker aus einer
+`data:`-Adresse, sobald es das Audio drosselt (nach 5 s Sprache). Die CSP blockiert ihn. Sichtbar
+kaputt war nichts, aber die Wartezeiten des SDK hängen an diesem Worker; dass es ohne ihn sauber
+weiterläuft, ist nicht zugesichert.
+
+**Entscheidung:** Die CSP bleibt `worker-src 'self'`. Die App schaltet den Worker über die
+vorgesehene Einstellung des SDK ab (`PropertyId.WebWorkerLoadType = "off"`, seit SDK 1.32); die
+Zeitgeber laufen dann im Hauptthread (`setTimeout`), wie das SDK es ohne Worker ohnehin tut.
+**Begründung:** `data:` in `worker-src` erlaubte jedem eingeschleusten Skript, Code als Worker zu
+starten, den `script-src` nie prüft (ein `data:`-Worker ist eine zweite Skript-Quelle ohne Hash);
+das schwächt genau die strikte CSP, unter der ADR-0003 die Sitzung im Browser-Speicher akzeptiert.
+Der Nachteil (Zeitgeber im Hintergrund-Tab gedrosselt) zählt nicht: Diktat läuft nur bei
+sichtbarer Seite. `check-web-export.mjs` verlangt jetzt `worker-src` exakt `'self'` und lehnt
+`data:`, `blob:`, `*` und jedes andere Schema ab (Test in `check-web-export.test.mjs`, rot →
+grün). Das e2e `rundgang-diktat-csp-0003.spec.ts` diktiert gegen den Produktions-Export mit CSP
+und prüft, dass kein `data:`-Worker entsteht und keine CSP-Meldung kommt (rot mit genau der
+Meldung aus Produktion, grün mit der Einstellung).
+
 ### Bewusste Regel-Ausnahmen (stehen im plan.md)
 
 Ohne `household_id`: `profiles`, `households`, `deleted_records` (hat sie, aber ohne Trigger),
@@ -180,7 +201,7 @@ Löschen. Jede Zeile hat einen Test; `/security-check` läuft über alle ★-Auf
 | Ausführbare Funktionen, `search_path`-Übernahme                     | Default-Rechte inkl. PUBLIC entzogen, Schema `private`, `search_path = ''`                                                         | Schema-Linter                                |
 | Datenabfluss über Realtime                                          | private Topics, RLS auf `realtime.messages`, Nachricht ohne Zeilendaten                                                            | pgTAP + E2E                                  |
 | Entferntes Mitglied behält Daten                                    | Mitgliedschaft in jedem Pull, Cursor je Haushalt, Haushalt wird vom Gerät gelöscht                                                 | vitest C1 + E2E AC-012                       |
-| Sitzungsdiebstahl im Web (XSS)                                      | keine Skripte Dritter, strikte CSP, kein HTML von Nutzern                                                                          | Build-Check CSP + `/security-check`          |
+| Sitzungsdiebstahl im Web (XSS)                                      | keine Skripte Dritter, strikte CSP (auch `worker-src 'self'`, Nachtrag 27.11.), kein HTML von Nutzern                              | Build-Check CSP + `/security-check`          |
 | Daten bleiben nach Abmelden oder Kontowechsel                       | Speicher an User-ID gebunden; Abmelden löscht Speicher, Warteschlange, Sitzung                                                     | api-Test + E2E AC-003                        |
 | Foundry-Schlüssel gelangt in die App                                | nur Supabase-Secrets, kurzlebiges Speech-Token                                                                                     | Bundle-Scan + E2E AC-028                     |
 | KI-Kosten durch Missbrauch oder Schleifen                           | atomares Kontingent vor Foundry, Eingabegrenzen, begrenzte Wiederholungen                                                          | pgTAP T7 + vitest E1                         |

@@ -41,6 +41,50 @@ const REQUIRED_CHECKS = [
 /** Jobs that skip on a docs-only pull request (AC-011); the others always run. */
 const HEAVY = ['Prüfungen', 'Datenbank (pgTAP)', 'Integration (API)'];
 
+/** Spec 0066: the agent secrets of a run, from the upsert step's outputs. */
+const AGENT_SECRETS =
+  '"FOUNDRY_PROJECT_ENDPOINT=$FOUNDRY_PROJECT_ENDPOINT" "FOUNDRY_HOUSEHOLD_AGENT=$FOUNDRY_HOUSEHOLD_AGENT" "FOUNDRY_HOUSEHOLD_AGENT_VERSION=$FOUNDRY_HOUSEHOLD_AGENT_VERSION"';
+
+/**
+ * Spec 0066, ADR-0019: the build job (no environment) builds the agents and the upsert of our own
+ * code; the job with the environment checks its variables, logs in with OIDC to the Foundry
+ * tenant, upserts before the functions are deployed and hands the version to the secrets.
+ */
+function assertFoundryUpsert(workflow, buildId, deployId, env) {
+  const build = workflow.doc.jobs[buildId];
+  const deploy = workflow.doc.jobs[deployId];
+  assert.equal(build.environment, undefined, `${buildId} has no environment`);
+  assert.ok(runs(build).includes('pnpm --filter @housekeeping/foundry build'));
+  assert.ok(steps(build).some((step) => step.with?.name === 'foundry-agents'));
+  assert.equal(deploy.permissions['id-token'], 'write');
+  for (const name of [
+    'FOUNDRY_AZURE_CLIENT_ID',
+    'FOUNDRY_AZURE_TENANT_ID',
+    'FOUNDRY_PROJECT_ENDPOINT',
+  ])
+    assert.equal(deploy.env[name], `\${{ vars.${name} }}`);
+  const check = stepIndex(
+    deploy,
+    /for name in FOUNDRY_AZURE_CLIENT_ID FOUNDRY_AZURE_TENANT_ID FOUNDRY_PROJECT_ENDPOINT/,
+  );
+  assert.match(steps(deploy)[check].run, /::error::.*fehlt[\s\S]*exit 1/);
+  const login = steps(deploy).findIndex(
+    (step) =>
+      step.uses?.startsWith('azure/login@') &&
+      step.with?.['client-id'] === '${{ vars.FOUNDRY_AZURE_CLIENT_ID }}' &&
+      step.with?.['tenant-id'] === '${{ vars.FOUNDRY_AZURE_TENANT_ID }}',
+  );
+  const upsertAt = stepIndex(deploy, new RegExp(`foundry-agents\\.cjs" --env ${env} --agents`));
+  const deployAt = stepIndex(deploy, /^supabase functions deploy/);
+  const secretsAt = stepIndex(deploy, /^supabase secrets set/);
+  assert.ok(check < login && login < upsertAt && upsertAt < deployAt && deployAt < secretsAt);
+  assert.equal(steps(deploy)[upsertAt].id, 'foundry');
+  assert.deepEqual(steps(deploy)[secretsAt].env, {
+    FOUNDRY_HOUSEHOLD_AGENT: '${{ steps.foundry.outputs.household_agent_name }}',
+    FOUNDRY_HOUSEHOLD_AGENT_VERSION: '${{ steps.foundry.outputs.household_agent_version }}',
+  });
+}
+
 describe('all workflows', () => {
   test('the old ci.yml is replaced by checks.yml', () => {
     assert.equal(byFile('ci.yml'), undefined);
@@ -584,13 +628,35 @@ describe('preview.yml (Task 7)', () => {
     assert.equal((preview.text.match(/PREVIEW_INVITE_EMAILS }}/g) ?? []).length, 1);
   });
 
-  test('decision 8: the preview sets only ALLOWED_ORIGINS, no AI values', () => {
+  test('decision 8 (changed by spec 0066): the preview sets the origin and its agent, never an AI key', () => {
     const job = jobs['supabase-vorschau'];
     assert.equal(
       steps(job)[stepIndex(job, /supabase secrets set/)].run,
-      `supabase secrets set ${REMOTE_REF} --yes "ALLOWED_ORIGINS=$PREVIEW_WEB_ORIGIN"`,
+      `supabase secrets set ${REMOTE_REF} --yes "ALLOWED_ORIGINS=$PREVIEW_WEB_ORIGIN" ${AGENT_SECRETS}`,
     );
-    assert.doesNotMatch(JSON.stringify(preview.doc), /FOUNDRY_/);
+    assert.doesNotMatch(
+      JSON.stringify(preview.doc),
+      /FOUNDRY_API_KEY|SERPER_API_KEY|secrets\.FOUNDRY/,
+    );
+  });
+
+  test('spec 0066, AC-043, AC-044: the agents are upserted as -preview before the functions go live', () => {
+    assertFoundryUpsert(preview, 'web-bauen', 'supabase-vorschau', 'preview');
+  });
+
+  test('spec 0067, decision 13: the preview deletes its own Foundry chats before its reset', () => {
+    const job = jobs['supabase-vorschau'];
+    const login = steps(job).findIndex(
+      (step) =>
+        step.uses?.startsWith('azure/login@') &&
+        step.with?.['client-id'] === '${{ vars.FOUNDRY_AZURE_CLIENT_ID }}',
+    );
+    const purgeAt = stepIndex(job, /foundry-agents\.cjs" --purge-conversations preview$/);
+    const resetAt = stepIndex(job, /^supabase db reset/);
+    assert.ok(login !== -1 && purgeAt !== -1, 'login and purge exist');
+    assert.ok(login < purgeAt && purgeAt < resetAt, 'logged in, purged, then reset');
+    // Nothing of the step can print a token: no shell tracing, no echo of the login.
+    assert.doesNotMatch(steps(job)[purgeAt].run, /set -x|echo|az account get-access-token/);
   });
 
   test('AC-013: before it reads its own token, the web job proves it cannot read the production one', () => {
@@ -835,9 +901,16 @@ describe('release.yml (Task 8)', () => {
     assert.doesNotMatch(runs(job).join('\n'), /--dry-run|--include-seed|--include-all/);
     assert.equal(
       steps(job)[stepIndex(job, /supabase secrets set/)].run,
-      `supabase secrets set ${REMOTE_REF} --yes "ALLOWED_ORIGINS=$PRODUCTION_WEB_ORIGIN"`,
+      `supabase secrets set ${REMOTE_REF} --yes "ALLOWED_ORIGINS=$PRODUCTION_WEB_ORIGIN" ${AGENT_SECRETS}`,
     );
-    assert.doesNotMatch(JSON.stringify(release.doc), /FOUNDRY_/);
+    assert.doesNotMatch(
+      JSON.stringify(release.doc),
+      /FOUNDRY_API_KEY|SERPER_API_KEY|secrets\.FOUNDRY/,
+    );
+  });
+
+  test('spec 0066, AC-043, AC-044: the agents are upserted as -prod before the functions go live', () => {
+    assertFoundryUpsert(release, 'web-bauen', 'supabase-ausliefern', 'prod');
   });
 
   test('AC-064: verification with the version and the commit, then the tag with the change list and the package', () => {

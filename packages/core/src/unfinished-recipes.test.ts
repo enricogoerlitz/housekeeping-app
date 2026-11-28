@@ -125,15 +125,14 @@ describe('REQ-002: the quick chip "Unfertig"', () => {
     expect(recipeListToParams(recipeListFromParams({})).unfertig).toBeUndefined();
   });
 
-  it('AC-009: with the filter on and nothing left, the chip stays with 0 and the list says so', () => {
+  it('AC-009 (geändert 27.11.): with the filter on and nothing left, the chip stays with 0 and the list has no "all done" text', () => {
     const filter = toggleQuickFilter(EMPTY_RECIPE_LIST_FILTER, 'unfinished');
     expect(shownQuickFilters(filter, 0).at(-1)).toEqual({
       value: 'unfinished',
       label: 'Unfertig (0)',
     });
-    expect(recipeEmptyLabel('', { allWorkedOut: true })).toBe('Alle Rezepte sind ausgearbeitet');
     expect(recipeEmptyLabel('')).toBe('Keine Rezepte für diese Filter');
-    expect(recipeEmptyLabel('dal', { allWorkedOut: true })).toBe('Keine Rezepte für „dal“');
+    expect(recipeEmptyLabel('dal')).toBe('Keine Rezepte für „dal“');
   });
 });
 
@@ -143,9 +142,13 @@ describe('REQ-003, REQ-005: the texts', () => {
     expect(unfinishedListLabel(1)).toBe('Noch 1 unfertig');
   });
 
-  it('AC-017, AC-020: after saving', () => {
+  it('AC-017: after saving, the ones left', () => {
     expect(workedOutLabel(2)).toBe('Ausgearbeitet · noch 2 unfertig');
-    expect(workedOutLabel(0)).toBe('Alle Rezepte sind ausgearbeitet');
+    expect(workedOutLabel(1)).toBe('Ausgearbeitet · noch 1 unfertig');
+  });
+
+  it('AC-020 (geändert 27.11.): after saving the last one there is no text, the card goes away', () => {
+    expect(workedOutLabel(0)).toBeUndefined();
   });
 
   it('AC-018: on an unfinished recipe, the others', () => {
@@ -213,6 +216,28 @@ describe('REQ-005: the next unfinished recipe', () => {
     expect(nextUnfinished(recipes, ['r-apfel'], 'r-auflauf')).toEqual({
       next: 'r-dal',
       remaining: 2,
+    });
+  });
+
+  it('spec 0067, decision 36: the recipes chosen in the agent go one after the other, then it stops', () => {
+    const dal = titleOnly('r-dal', 'Dal');
+    const recipes = [apfel, bami, chili, dal];
+    const chosen = ['r-chili', 'r-apfel'];
+    expect(nextUnfinished(recipes, chosen, 'r-chili', { onlyOrder: true })).toEqual({
+      next: 'r-apfel',
+      remaining: 1,
+    });
+    // After the last chosen one nothing follows, the other unfinished ones are not counted.
+    const worked = [apfel, bami, done('r-chili', 'Chili'), dal];
+    expect(nextUnfinished(worked, chosen, 'r-apfel', { onlyOrder: true })).toEqual({
+      next: undefined,
+      remaining: 0,
+    });
+    // A chosen one finished meanwhile drops out; one outside the choice never comes.
+    const later = [done('r-apfel', 'Apfelstrudel'), bami, chili, dal];
+    expect(nextUnfinished(later, chosen, 'r-chili', { onlyOrder: true })).toEqual({
+      next: undefined,
+      remaining: 0,
     });
   });
 

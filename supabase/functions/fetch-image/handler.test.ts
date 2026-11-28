@@ -147,6 +147,8 @@ describe('fetch-image (spec 0039, REQ-003)', () => {
         gte: () => query,
         lte: () => query,
         limit: () => query,
+        order: () => query,
+        range: () => query,
         then: (onFulfilled, onRejected) => failed.then(onFulfilled, onRejected),
       };
       return query;

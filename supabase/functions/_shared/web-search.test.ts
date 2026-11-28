@@ -174,6 +174,38 @@ describe('Serper', () => {
   });
 });
 
+describe('Serper images (spec 0067, REQ-011)', () => {
+  it('Google images from /images: https image and page only, with the page as the source', async () => {
+    const deps = fakeDeps({
+      env: KEYS,
+      fetch: async () =>
+        json({
+          images: [
+            {
+              title: 'Linsen-Dal <b>Rezept</b>',
+              imageUrl: 'https://img.koch.de/dal.jpg',
+              thumbnailUrl: 'https://encrypted-tbn0.gstatic.com/images?q=1',
+              link: 'https://koch.de/dal',
+            },
+            { title: 'unsicher', imageUrl: 'http://x.de/a.jpg', link: 'https://x.de' },
+            { title: 'ohne Seite', imageUrl: 'https://x.de/b.jpg' },
+          ],
+        }),
+    });
+    const [serper] = configuredProviders(deps);
+    expect(await serper?.images?.('Linsen Dal')).toEqual([
+      {
+        imageUrl: 'https://img.koch.de/dal.jpg',
+        thumbnailUrl: 'https://encrypted-tbn0.gstatic.com/images?q=1',
+        pageUrl: 'https://koch.de/dal',
+        title: 'Linsen-Dal Rezept',
+      },
+    ]);
+    const [url] = deps.fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toBe('https://google.serper.dev/images');
+  });
+});
+
 describe('fallback (REQ-006)', () => {
   it('AC-022: Serper out of credits → Brave, with its key in X-Subscription-Token', async () => {
     const deps = fakeDeps({

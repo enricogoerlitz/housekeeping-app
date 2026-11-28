@@ -44,6 +44,9 @@ export async function startSpeech(handlers: SpeechHandlers): Promise<SpeechSessi
   const config = sdk.SpeechConfig.fromAuthorizationToken(token.token, token.region);
   config.speechRecognitionLanguage = token.language;
   if (token.model) config.setModel(token.model);
+  // The SDK would run its timers in a worker from a data: URL, which the CSP forbids
+  // (`worker-src 'self'`, spec 0003, AC-028, 27.11.); "off" keeps them on the page.
+  config.setProperty(sdk.PropertyId.WebWorkerLoadType, 'off');
   const audio = sdk.AudioConfig.fromDefaultMicrophoneInput();
   // The SDK would load its audio worklet from a blob: URL, which the CSP forbids; the export
   // ships the same file next to the app (scripts/finish-web-export.mjs).
@@ -87,6 +90,7 @@ export async function startSpeech(handlers: SpeechHandlers): Promise<SpeechSessi
   );
 
   let closed = false;
+  let stopping = false;
   const close = () => {
     if (closed) return;
     closed = true;
@@ -94,7 +98,8 @@ export async function startSpeech(handlers: SpeechHandlers): Promise<SpeechSessi
   };
   return {
     stop: () =>
-      new Promise<string>((resolve) =>
+      new Promise<string>((resolve) => {
+        stopping = true;
         recognizer.stopContinuousRecognitionAsync(
           () => {
             close();
@@ -104,10 +109,15 @@ export async function startSpeech(handlers: SpeechHandlers): Promise<SpeechSessi
             close();
             resolve(transcript());
           },
-        ),
-      ),
+        );
+      }),
     cancel: () => {
       if (closed) return;
+      // A stop that waited too long (spec 0068, decision 2) is not asked to stop twice.
+      if (stopping) {
+        close();
+        return;
+      }
       recognizer.stopContinuousRecognitionAsync(close, close);
     },
   };

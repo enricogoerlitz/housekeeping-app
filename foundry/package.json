@@ -1,0 +1,24 @@
+{
+  "name": "@housekeeping/foundry",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "lint": "eslint . --max-warnings=0",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "agents": "tsx src/cli.ts",
+    "build": "tsx src/cli.ts --write dist/agents.json && esbuild src/ci.ts --bundle --platform=node --format=cjs --target=node24 --outfile=dist/foundry-agents.cjs --log-level=warning"
+  },
+  "dependencies": {
+    "yaml": "2.9.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@housekeeping/core": "workspace:*",
+    "@types/node": "26.6.6",
+    "esbuild": "0.28.2",
+    "tsx": "4.23.15",
+    "vitest": "^5.1.1"
+  }
+}

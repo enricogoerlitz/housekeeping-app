@@ -525,6 +525,96 @@ gh run watch "$id" --exit-status
 Konten anmelden, Daten, Fotos und ein Rezeptvideo ansehen, „Probe senden“. Dann `rm -rf tmp/restore`. Das alte
 Projekt erst löschen, wenn alles stimmt.
 
+## KI-Agent: Foundry-Agenten je Umgebung
+
+Der KI-Agent (Spec 0066, ADR-0018, ADR-0019) spricht Prompt-Agents in Foundry an. Jeder Agent ist eine
+Datei `foundry/agents/<name>.yaml` (Instruktion als `<name>.md` daneben) und wird je Umgebung mit
+Suffix angelegt: `household-agent-local`, `household-agent-preview`, `household-agent-prod` (seit Spec 0067 der eine Agent des Haushalts, ADR-0020; vorher `places-agent-…`), alle im Projekt
+`n8n` der Ressource `msf-n8n-ai` (Abo `sub-enrico-goerlitz`, Tenant „PCG Labs“). Ein Upsert legt
+eine neue Version nur bei geänderter Definition an und nennt nur Name und Version.
+
+| Umgebung   | Wer legt an                                              | Version in der Function                            |
+| ---------- | -------------------------------------------------------- | -------------------------------------------------- |
+| lokal      | `pnpm foundry:agents:local` (dein `az login`)            | leer = neueste, oder die genannte Nummer in `.env` |
+| Vorschau   | `preview.yml`, Schritt „Foundry-Agenten“ vor „Functions“ | gepinnt: die Nummer dieses Laufs (Secret)          |
+| Produktion | `release.yml`, Schritt „Foundry-Agenten“ vor „Functions“ | gepinnt: die Nummer dieses Laufs (Secret)          |
+
+**Lokal** (gibt nichts Geheimes aus):
+
+```sh
+az login                                        # einmal; das Konto mit Zugriff auf sub-enrico-goerlitz
+export FOUNDRY_PROJECT_ENDPOINT=https://msf-n8n-ai.services.ai.azure.com/api/projects/n8n
+export FOUNDRY_SUBSCRIPTION=sub-enrico-goerlitz # nur nötig, wenn az mehrere Konten hält
+pnpm foundry:agents:local                       # → „household-agent-local Version 1 (unverändert)“
+```
+
+In der `.env`: `FOUNDRY_PROJECT_ENDPOINT` wie oben, `FOUNDRY_HOUSEHOLD_AGENT=household-agent-local`,
+`FOUNDRY_HOUSEHOLD_AGENT_VERSION` leer (neueste) oder die genannte Nummer. Danach den lokalen Stack aus
+einer Shell mit geladener `.env` neu starten (`supabase/functions/README.md`).
+
+**Einrichtung für die Pipeline (einmal; Stand 28.11.2026).** App `enrico-n8n-testing` im Tenant
+„PCG Labs“ (`d941a86d-6c69-4fa3-8181-3c23e0cba0fc`), appId `1c054502-acf1-4df4-b308-6bda44643088`,
+Rolle „Foundry User“ auf dem Projekt `n8n`, Variablen in `preview` und `production` gesetzt. Namen
+außerhalb des Abos folgen dem Muster „enrico n8n testing“ (Enrico). Die Foundry-Ressource liegt in
+einem anderen Tenant als die Static Web Apps; die vorhandene Pipeline-Identität (`AZURE_CLIENT_ID`)
+reicht nicht hinüber. Deshalb eine eigene App-Registrierung im Foundry-Tenant, ohne Client-Secret
+(OIDC). **Achtung:** `az ad …` arbeitet immer im Tenant des Standardkontos von `az` – so landete die
+erste App (27.11.) im falschen Tenant. App und Föderation deshalb über Microsoft Graph mit einem Token
+anlegen, das zum Abo der Foundry-Ressource gehört:
+
+1. Token für Graph aus dem Abo der Ressource (das Standardkonto ist privat):
+   `token=$(az account get-access-token --subscription 82126bbb-75fc-4908-889e-7569202a21b8 --resource-type ms-graph --query accessToken -o tsv)` –
+   nie ausgeben.
+2. App anlegen: `curl -s -X POST https://graph.microsoft.com/v1.0/applications -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d '{"displayName":"enrico-n8n-testing","signInAudience":"AzureADMyOrg"}'`
+   → `appId` und `id` (Objekt-ID) merken; Service-Principal:
+   `curl -s -X POST https://graph.microsoft.com/v1.0/servicePrincipals -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d '{"appId":"<appId>"}'`.
+3. Föderierte Anmeldedaten je GitHub-Umgebung (Issuer `https://token.actions.githubusercontent.com`,
+   Audience `api://AzureADTokenExchange`). GitHub stellt OIDC-Tokens mit **unveränderlichen IDs** aus;
+   der Subject muss genau so lauten:
+   `repo:enricogoerlitz@81803968/housekeeping-app@1465163335:environment:preview` (ebenso
+   `…:environment:production`):
+   `curl -s -X POST https://graph.microsoft.com/v1.0/applications/<id>/federatedIdentityCredentials -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d '{"name":"github-housekeeping-preview","issuer":"https://token.actions.githubusercontent.com","subject":"repo:enricogoerlitz@81803968/housekeeping-app@1465163335:environment:preview","audiences":["api://AzureADTokenExchange"]}'`
+   und dasselbe mit `github-housekeeping-production` / `environment:production`.
+4. Rolle **„Foundry User“** (kleinste Rolle mit Datenaktionen eines Projekts; „Foundry Agent
+   Consumer“ darf nur ausführen, nicht anlegen) auf dem **Projekt**, nicht auf der Ressource:
+   `az role assignment create --subscription 82126bbb-75fc-4908-889e-7569202a21b8 --assignee-object-id <spObjectId> --assignee-principal-type ServicePrincipal --role "Foundry User" --scope /subscriptions/82126bbb-75fc-4908-889e-7569202a21b8/resourceGroups/rg-n8n-ai/providers/Microsoft.CognitiveServices/accounts/msf-n8n-ai/projects/n8n`
+5. GitHub-Variablen (keine Secrets) **je Umgebung** `preview` und `production`:
+   `gh variable set FOUNDRY_AZURE_CLIENT_ID --env preview --body 1c054502-acf1-4df4-b308-6bda44643088` (ebenso `production`),
+   `gh variable set FOUNDRY_AZURE_TENANT_ID --env preview --body d941a86d-6c69-4fa3-8181-3c23e0cba0fc`
+   (ebenso `production`),
+   `gh variable set FOUNDRY_PROJECT_ENDPOINT --env preview --body https://msf-n8n-ai.services.ai.azure.com/api/projects/n8n`
+   (ebenso `production`).
+6. Function-Secrets je Supabase-Projekt, die die Pipeline **nicht** setzt (Schlüssel, Enrico):
+   `FOUNDRY_API_KEY` und `SERPER_API_KEY` (Supabase → Edge Functions → Secrets). Name, Version und
+   Endpoint des Agents setzt die Pipeline selbst.
+
+Fehlt eine Variable, bricht der Lauf im Schritt „Foundry-Konfiguration vorhanden“ ab; fehlt die
+Rolle, in der Vorschau schon im Schritt „Foundry-Chats der Vorschau leeren“ (HTTP 401/403), sonst im Schritt „Foundry-Agenten“ mit „HTTP 401/403 … Rolle „Foundry User“ … prüfen“. Ein
+übersprungener Agent wäre schlimmer: Die Function liefe dann mit einer alten Version.
+
+**Eine Änderung ausrollen:** YAML oder Instruktion ändern, per PR nach `develop`; die nächste
+Vorschau legt `household-agent-preview` in neuer Version an und pinnt sie, die nächste Veröffentlichung
+`household-agent-prod`. Zurück geht es mit einem Revert oder, schnell, mit der alten Nummer in
+`FOUNDRY_HOUSEHOLD_AGENT_VERSION` des Supabase-Projekts (bis zum nächsten Lauf).
+
+**Aufräumen:** Löschen eines Chats oder Haushalts in der App löscht Conversation und Antworten in
+Foundry. Jede Conversation trägt die Metadaten `household_id`, `app: housekeeping` und seit Spec 0067
+`env` (`local`, `preview`, `prod`, aus dem Namen des Agents); eine Conversation einer anderen Umgebung
+weist die Function ab. Jede gelöschte Zeile von `ai_chats` landet per Trigger im privaten
+Löschprotokoll `private.ai_chat_deletions` (Conversation- und Antwort-IDs, ohne Grants); `ai-agent`
+löscht beim nächsten Löschen oder `purge` des Haushalts, was dort noch steht (nur Antworten dieser
+Conversation, die Conversation nur, wenn sie diesen Haushalt nennt), und streicht die Einträge.
+`delete_household` wartet, bis das Protokoll des Haushalts leer ist. Wird ein Haushalt außerhalb der
+App gelöscht, bleiben seine Einträge im Protokoll (ohne Fremdschlüssel) und seine Conversations
+lassen sich über die Metadaten finden.
+
+**Vorschau leeren:** `preview.yml` löscht vor „Datenbank neu aufsetzen“ alle Conversations mit
+`app: housekeeping` und `env: preview` samt ihren Antworten (Schritt „Foundry-Chats der Vorschau
+leeren“, `foundry-agents.cjs --purge-conversations preview`, gibt nur Zahlen aus). Die Produktion
+leert nie. Lokal: `pnpm --filter @housekeeping/foundry agents --purge-conversations local` (mit
+`FOUNDRY_PROJECT_ENDPOINT` und `FOUNDRY_SUBSCRIPTION` wie oben). Conversations von vor Spec 0067
+tragen kein `env` und bleiben; sie lassen sich über `household_id` zuordnen.
+
 ## Schlüsselwechsel
 
 Bei Verdacht auf Abfluss sofort, sonst zum Ablaufdatum. Immer: neuen Wert setzen, einen Lauf

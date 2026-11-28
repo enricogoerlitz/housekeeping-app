@@ -9,8 +9,16 @@
  * `aiRecipes` (spec 0040, Entscheidung 1): only "Mit KI ausfüllen", the tab "KI" of the photo
  * window and the microphone in their fields. Independent of `ai`: the assistant and the AI search
  * stay off.
+ *
+ * `aiAgent` (spec 0066): the research chat for restaurants and activities, independent of `ai`.
  */
-export const features: { readonly ai: boolean; readonly aiRecipes: boolean } = {
+export const features: {
+  readonly ai: boolean;
+  readonly aiRecipes: boolean;
+  readonly aiAgent: boolean;
+} = {
   ai: false,
   aiRecipes: true,
+  // Spec 0066: the ✨ "KI-Agent" in the heads of "Restaurants" and "Aktivitäten".
+  aiAgent: true,
 };

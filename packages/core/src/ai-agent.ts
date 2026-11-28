@@ -1,0 +1,1334 @@
+import { z } from 'zod';
+
+import {
+  AGENT_IMAGE_SUBJECTS,
+  AGENT_PROPOSAL_LIMITS,
+  AgentEntityRefSchema,
+  AgentProposalSchema,
+  deleteWished,
+  isProposalTool,
+  parseChangeArgs,
+  parseDraftArgs,
+  parseFillWeekArgs,
+  parseImageArgs,
+  parsePhotoArgs,
+  parseProposalArgs,
+} from './agent-proposals';
+import { RecipeDraftReplySchema } from './ai-contract';
+
+// Spec 0066 "KI-Agent" (step 1): the contract between the app and the edge function `ai-agent`,
+// and the pure logic both sides share — the context block of a message, the stream filter for
+// citation tokens, the SSE framing, the cards of `show_suggestions` with their enrichment from
+// Google (Serper), and the messages of a Foundry conversation. Copied into the edge functions by
+// `pnpm gen:edge`, so it imports nothing but zod and two other copies (agent-proposals.ts,
+// ai-contract.ts). Spec 0067 (one household agent): badges and the household's day in the context
+// block, photos and PDF files as attachments; step B: proposals, recipe drafts and images as
+// "extras" of an answer.
+
+export const AGENT_LIMITS = {
+  /** Characters of one message (AC-006). */
+  message: 2000,
+  /** Characters of a chat title (AC-024). */
+  title: 60,
+  /** Characters of a place label. */
+  placeLabel: 120,
+  /**
+   * Model runs per chat (its response ids; the row keeps at most 100, one answer takes up to 5);
+   * afterwards a new chat. Spec 0067, step C: before, 20 runs ended a chat after a few answers
+   * with tools; a long chat now gets the hint from about 30 messages (`longChat`).
+   */
+  turns: 95,
+  /** Cards of one answer, each enriched with one Serper request. */
+  cards: 8,
+  /** Follow-up chips of one answer. */
+  followUps: 3,
+  /** Step rows of one answer: the web search and every tool call (spec 0067, REQ-008). */
+  steps: 20,
+  /** Badges of one message (spec 0067, REQ-004). */
+  badges: 5,
+  /** Photos and files of one message (spec 0067, REQ-005). */
+  attachments: 4,
+  /** Base64 characters of one photo: a JPEG of preparePhoto (1280 px) is far below. */
+  imageChars: 2_000_000,
+  /** Base64 characters of one PDF (about 4 MB). */
+  pdfChars: 5_600_000,
+  /** All attachments of one message together; the function takes a body of this much. */
+  attachmentChars: 8_000_000,
+} as const;
+
+// ---------- Badges (spec 0067, REQ-004) ----------
+
+/** The badges of the agent: hints of the person, never a lock (decision 2). */
+export const AGENT_BADGE_SLUGS = [
+  'rezepte',
+  'ausgehen',
+  'planen',
+  'einkaufen',
+  'haushalt',
+] as const;
+export type AgentBadgeSlug = (typeof AGENT_BADGE_SLUGS)[number];
+
+export const AGENT_BADGE_LABELS: Record<AgentBadgeSlug, string> = {
+  rezepte: 'Rezepte',
+  ausgehen: 'Ausgehen',
+  planen: 'Planen',
+  einkaufen: 'Einkaufen',
+  haushalt: 'Haushalt',
+};
+
+/** Units of the AI quota one answer costs (decision 13). */
+export const AGENT_QUOTA_PER_TURN = 5;
+/**
+ * Spec 0067, REQ-015: and each tool run on top — every further model run after tools, every
+ * recipe draft, Google image row and photo the agent looks at.
+ */
+export const AGENT_QUOTA_PER_TOOL_RUN = 1;
+
+/** REQ-015: from about this many messages the page suggests a new chat (cheaper, faster). */
+export const AGENT_LONG_CHAT_MESSAGES = 30;
+
+export const longChat = (messages: number): boolean => messages >= AGENT_LONG_CHAT_MESSAGES;
+
+/**
+ * Decision 13: the environment a conversation belongs to, from the agent's name
+ * (`household-agent-preview`): it goes into the conversation's metadata, so the preview can purge
+ * its own before its reset and no environment answers in another's chat.
+ */
+export function agentEnvironment(agent: string): 'local' | 'preview' | 'prod' | undefined {
+  const suffix = /-(local|preview|prod)$/.exec(agent)?.[1];
+  return suffix === 'local' || suffix === 'preview' || suffix === 'prod' ? suffix : undefined;
+}
+
+const Uuid = z.uuid();
+const HttpsUrl = z.url({ protocol: /^https$/ }).max(2048);
+
+// ---------- Place ----------
+
+export const AGENT_RADII = ['walk', 'transit', 'car', 'city'] as const;
+export type AgentRadius = (typeof AGENT_RADII)[number];
+
+export const RADIUS_LABEL: Record<AgentRadius, string> = {
+  walk: 'Zu Fuß',
+  transit: 'Öffis',
+  car: 'Auto',
+  city: 'Ganze Stadt',
+};
+
+const RADIUS_TEXT: Record<AgentRadius, string> = {
+  walk: '1,5 km',
+  transit: '5 km',
+  car: '15 km',
+  city: 'ganze Stadt',
+};
+
+const GeoSchema = z.strictObject({
+  lat: z.number().min(-90).max(90),
+  lng: z.number().min(-180).max(180),
+});
+
+/** About 100 m: what leaves the device of a location (spec REQ-003). */
+export function roundCoordinate(value: number): number {
+  return Math.round(value * 1000) / 1000;
+}
+
+/** C0, DEL and C1 controls: the rows refuse them (`[[:cntrl:]]`), so text loses them first. */
+const CONTROLS = /[\u0000-\u001f\u007f-\u009f]+/g;
+
+/** One line without control characters or repeated whitespace. */
+function oneLine(value: string): string {
+  return value.replace(CONTROLS, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Where the agent looks: the device (AC-007), a chosen place (AC-009/010) or a trip (AC-011). The
+ * coordinates are rounded on parse, so the function never holds more than ≈ 100 m — not for the
+ * context block and not for the Serper enrichment.
+ */
+export const AgentPlaceSchema = z.strictObject({
+  source: z.enum(['device', 'pinned', 'trip']),
+  label: z.string().transform(oneLine).pipe(z.string().min(1).max(AGENT_LIMITS.placeLabel)),
+  address: z.string().trim().max(300).optional(),
+  location: z
+    .strictObject({
+      lat: z.number().min(-90).max(90).transform(roundCoordinate),
+      lng: z.number().min(-180).max(180).transform(roundCoordinate),
+    })
+    .optional(),
+  radius: z.enum(AGENT_RADII),
+});
+export type AgentPlace = z.infer<typeof AgentPlaceSchema>;
+
+/** "Hier · Zu Fuß" for the device, otherwise "<Ort> · <Umkreis>". */
+export function placeChipLabel(place: AgentPlace | undefined): string {
+  const radius = RADIUS_LABEL[place?.radius ?? 'walk'];
+  if (!place || place.source === 'device') return `Hier · ${radius}`;
+  return `${place.label} · ${radius}`;
+}
+
+/** Text the person typed goes into one line; brackets cannot open or close a block. */
+function contextText(value: string): string {
+  return oneLine(value.replace(/[[\]]/g, ''));
+}
+
+const REFERENCE: Record<AgentPlace['source'], string> = {
+  device: 'Aktueller Standort',
+  pinned: 'Gewählter Ort',
+  trip: 'Reise',
+};
+
+/** "Freitag, 2026-11-27" in the zone, Europe/Berlin when the zone is unknown (AC-025). */
+function zonedDay(now: Date, timeZone: string | undefined): { text: string; zone: string } {
+  const format = (zone: string) => {
+    const parts = new Intl.DateTimeFormat('de-DE', {
+      weekday: 'long',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      timeZone: zone,
+    }).formatToParts(now);
+    const part = (type: string) => parts.find((entry) => entry.type === type)?.value ?? '';
+    return `${part('weekday')}, ${part('year')}-${part('month')}-${part('day')}`;
+  };
+  try {
+    return { text: format(timeZone ?? 'Europe/Berlin'), zone: timeZone ?? 'Europe/Berlin' };
+  } catch {
+    return { text: format('Europe/Berlin'), zone: 'Europe/Berlin' };
+  }
+}
+
+function localTime(now: Date, timeZone: string): { text: string; zone: string } {
+  const format = (zone: string) =>
+    new Intl.DateTimeFormat('de-DE', {
+      weekday: 'long',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: zone,
+    }).format(now);
+  try {
+    return { text: format(timeZone), zone: timeZone };
+  } catch {
+    return { text: format('Europe/Berlin'), zone: 'Europe/Berlin' };
+  }
+}
+
+/**
+ * The first text part of every message (decision 5): the agent's place and time. Per-request
+ * instructions are refused by Foundry while an agent is named, so this is the only channel.
+ */
+export function contextBlock(input: {
+  place: AgentPlace;
+  now: Date;
+  timeZone: string;
+  /** Spec 0067, AC-008: the badges of the message, as hints. */
+  badges?: readonly AgentBadgeSlug[];
+  /** Spec 0067, AC-025: the household's zone (`households.timezone`) for "heute", "morgen". */
+  householdTimeZone?: string;
+}): string {
+  const { place } = input;
+  const time = localTime(input.now, input.timeZone);
+  const label =
+    place.source === 'device'
+      ? place.location
+        ? 'Aktueller Standort (Ortsname unbekannt)'
+        : 'unbekannt (kein Standort mitgeschickt)'
+      : [place.label, place.address]
+          .map((part) => contextText(part ?? ''))
+          .filter(Boolean)
+          .join(', ');
+  return [
+    '[KONTEXT]',
+    `Bezugspunkt: ${REFERENCE[place.source]}`,
+    `Ort: ${label}`,
+    ...(place.location
+      ? [
+          `Koordinaten: ${roundCoordinate(place.location.lat)}, ${roundCoordinate(place.location.lng)}`,
+        ]
+      : []),
+    `Umkreis: ${RADIUS_TEXT[place.radius]}`,
+    `Lokale Zeit: ${time.text} (${time.zone})`,
+    ...(input.householdTimeZone !== undefined
+      ? [householdDayLine(input.now, input.householdTimeZone)]
+      : []),
+    ...(input.badges && input.badges.length > 0
+      ? [
+          `Hinweise der Person: ${input.badges.map((badge) => AGENT_BADGE_LABELS[badge]).join(', ')} (nur Hinweise – passt die Frage nicht dazu, folge der Frage)`,
+        ]
+      : []),
+    '[/KONTEXT]',
+  ].join('\n');
+}
+
+function householdDayLine(now: Date, timeZone: string): string {
+  const day = zonedDay(now, timeZone);
+  return `Heute im Haushalt: ${day.text} (${day.zone})\n${weeksLine(day.text)}`;
+}
+
+/**
+ * Review D (test catalogue C3, N1): "diese/nächste Woche" as dates, Monday to Sunday, so the model
+ * does not guess the week on a Saturday ("Samstag, 2026-11-28" → 23.–29.11. and 30.11.–6.12.).
+ */
+function weeksLine(dayText: string): string {
+  const iso = dayText.slice(-10);
+  const at = new Date(`${iso}T12:00:00Z`);
+  const sinceMonday = (at.getUTCDay() + 6) % 7;
+  const plus = (days: number) =>
+    new Date(at.getTime() + (days - sinceMonday) * 86_400_000).toISOString().slice(0, 10);
+  return `Diese Woche: ${plus(0)} bis ${plus(6)} · Nächste Woche: ${plus(7)} bis ${plus(13)}`;
+}
+
+// ---------- Requests ----------
+
+// ---------- Attachments (spec 0067, REQ-005, decision 9) ----------
+
+/** AC-010: what the app says to any file that is neither a photo nor a PDF. */
+export const AGENT_ATTACHMENT_REJECTED = 'Dieses Format geht nicht – Fotos und PDF schon';
+
+/**
+ * What a picked file becomes (AC-010): a photo (turned into a JPEG by the app, HEIC from the
+ * iPhone too) or a PDF; anything else is refused before it is sent.
+ */
+export function attachmentKind(file: { type: string; name: string }): 'image' | 'pdf' | undefined {
+  const type = file.type.toLowerCase();
+  const name = file.name.toLowerCase();
+  if (type.startsWith('image/') || /\.(jpe?g|png|heic|heif|webp|gif)$/.test(name)) return 'image';
+  if (type === 'application/pdf' || name.endsWith('.pdf')) return 'pdf';
+  return undefined;
+}
+
+const base64Of = (prefix: string, max: number) =>
+  z
+    .string()
+    .max(prefix.length + max)
+    .refine(
+      (value) =>
+        value.startsWith(prefix) && /^[A-Za-z0-9+/]+={0,2}$/.test(value.slice(prefix.length)),
+    );
+
+export const AgentAttachmentSchema = z.discriminatedUnion('kind', [
+  z.strictObject({
+    kind: z.literal('image'),
+    dataUrl: base64Of('data:image/jpeg;base64,', AGENT_LIMITS.imageChars),
+  }),
+  z.strictObject({
+    kind: z.literal('pdf'),
+    name: z.string().transform(oneLine).pipe(z.string().min(1).max(120)),
+    dataUrl: base64Of('data:application/pdf;base64,', AGENT_LIMITS.pdfChars),
+  }),
+]);
+export type AgentAttachment = z.infer<typeof AgentAttachmentSchema>;
+
+export const AgentSendRequestSchema = z
+  .strictObject({
+    action: z.literal('send'),
+    householdId: Uuid,
+    /** Missing: a new chat. */
+    chatId: Uuid.optional(),
+    /** Empty only with an attachment (a photo alone is a question too). */
+    message: z.string().trim().max(AGENT_LIMITS.message),
+    place: AgentPlaceSchema,
+    /** The device's IANA zone, for the local time in the context. */
+    timeZone: z.string().trim().min(1).max(64),
+    /** Spec 0067, REQ-004: hints, each once. */
+    badges: z
+      .array(z.enum(AGENT_BADGE_SLUGS))
+      .max(AGENT_LIMITS.badges)
+      .refine((badges) => new Set(badges).size === badges.length)
+      .default([]),
+    attachments: z.array(AgentAttachmentSchema).max(AGENT_LIMITS.attachments).default([]),
+    /**
+     * Preview feedback 28.11. (like ChatGPT): the person edited her n-th message of this chat
+     * (0 = the first); it and everything after it go before this one is sent.
+     */
+    editFrom: z.int().min(0).max(200).optional(),
+  })
+  .refine((request) => request.message !== '' || request.attachments.length > 0)
+  .refine((request) => request.editFrom === undefined || request.chatId !== undefined)
+  .refine(
+    (request) =>
+      request.attachments.reduce((sum, attachment) => sum + attachment.dataUrl.length, 0) <=
+      AGENT_LIMITS.attachmentChars,
+  );
+
+export const AgentRequestSchema = z.discriminatedUnion('action', [
+  AgentSendRequestSchema,
+  z.strictObject({ action: z.literal('load'), householdId: Uuid, chatId: Uuid }),
+  z.strictObject({ action: z.literal('delete'), householdId: Uuid, chatId: Uuid }),
+  /** "Haushalt endgültig löschen" (REQ-010): every chat of the household. */
+  z.strictObject({ action: z.literal('purge'), householdId: Uuid }),
+  /** Spec 0067, AC-024: whether an answer runs in the chat (another person's send waits). */
+  z.strictObject({ action: z.literal('status'), householdId: Uuid, chatId: Uuid }),
+]);
+
+export const AgentStatusReplySchema = z.strictObject({ answering: z.boolean() });
+export type AgentStatusReply = z.infer<typeof AgentStatusReplySchema>;
+export type AgentRequest = z.infer<typeof AgentRequestSchema>;
+export type AgentSendRequest = z.infer<typeof AgentSendRequestSchema>;
+
+// ---------- Cards ----------
+
+const shortText = (max: number) =>
+  z
+    .string()
+    .transform((value) => value.replace(/\s+/g, ' ').trim().slice(0, max))
+    .optional()
+    .catch(undefined);
+
+export const AgentCardSchema = z.strictObject({
+  /** Position in the agent's call; the enrichment refers to it. */
+  index: z.number().int().min(0).max(50),
+  kind: z.enum(['restaurant', 'activity']),
+  /** "erst", "dann" of a combined plan. */
+  step: z.string().max(40).optional(),
+  name: z.string().min(1).max(200),
+  category: z.string().max(120).optional(),
+  address: z.string().max(300).optional(),
+  district: z.string().max(120).optional(),
+  priceLevel: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]).optional(),
+  priceRange: z.string().max(80).optional(),
+  openStatus: z.string().max(120).optional(),
+  why: z.string().max(400),
+  websiteUrl: HttpsUrl.optional(),
+  tags: z.array(z.string().max(40)).max(10),
+  // From the enrichment only (decision 6), never from the agent.
+  mapsUrl: HttpsUrl.optional(),
+  rating: z.number().min(0).max(5).optional(),
+  ratingCount: z.number().int().min(0).optional(),
+  imageUrl: HttpsUrl.optional(),
+  location: GeoSchema.optional(),
+});
+export type AgentCard = z.infer<typeof AgentCardSchema>;
+
+/** What the agent sends per card; lenient, every field checked on its own. */
+const SuggestionItemSchema = z.object({
+  kind: z.enum(['restaurant', 'activity']).catch('restaurant'),
+  step: shortText(40).nullable().catch(null),
+  name: z.string().transform((value) => value.replace(/\s+/g, ' ').trim().slice(0, 200)),
+  category: shortText(120).nullable().catch(null),
+  address: shortText(300).nullable().catch(null),
+  district: shortText(120).nullable().catch(null),
+  price_level: z.number().int().min(1).max(4).nullable().optional().catch(null),
+  price_range: shortText(80).nullable().catch(null),
+  open_status: shortText(120).nullable().catch(null),
+  why: shortText(400).nullable().catch(null),
+  website: z.string().nullable().optional().catch(null),
+  tags: z.array(z.string()).optional().catch([]),
+});
+
+const SuggestionsArgsSchema = z.object({
+  title: z.string().nullable().optional().catch(null),
+  items: z.array(z.unknown()),
+  follow_ups: z.array(z.unknown()).optional().catch([]),
+});
+
+const clip = (value: string, max: number) => value.replace(/\s+/g, ' ').trim().slice(0, max);
+const optional = (value: string | null | undefined) => (value ? value : undefined);
+
+/**
+ * The arguments of `show_suggestions` (strict on Foundry's side, still model output): cards
+ * without a name drop out, links must be https, at most 8 cards and 3 follow-ups (AC-019). The
+ * agent's own rating and maps link are ignored (decision 6).
+ */
+export function parseSuggestionsArgs(
+  text: string,
+): { title?: string; cards: AgentCard[]; followUps: string[] } | undefined {
+  let json: unknown;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+  const args = SuggestionsArgsSchema.safeParse(json);
+  if (!args.success) return undefined;
+  const cards: AgentCard[] = [];
+  for (const raw of args.data.items) {
+    if (cards.length >= AGENT_LIMITS.cards) break;
+    const parsed = SuggestionItemSchema.safeParse(raw);
+    if (!parsed.success || parsed.data.name === '') continue;
+    const value = parsed.data;
+    const card = AgentCardSchema.safeParse({
+      index: cards.length,
+      kind: value.kind,
+      step: optional(value.step),
+      name: value.name,
+      category: optional(value.category),
+      address: optional(value.address),
+      district: optional(value.district),
+      priceLevel: value.price_level ?? undefined,
+      priceRange: optional(value.price_range),
+      openStatus: optional(value.open_status),
+      why: value.why ?? '',
+      // Never the model's website: a link it writes could carry the household's data out
+      // (security check 28.11.). A card's website comes only from the Google enrichment.
+      tags: (value.tags ?? [])
+        .filter((tag): tag is string => typeof tag === 'string')
+        .map((tag) => clip(tag, 40))
+        .filter(Boolean)
+        .slice(0, 10),
+    });
+    if (card.success) cards.push(card.data);
+  }
+  const title = args.data.title ? clip(args.data.title, AGENT_LIMITS.title) : '';
+  const followUps = (args.data.follow_ups ?? [])
+    .filter((entry): entry is string => typeof entry === 'string')
+    .map((entry) => clip(entry, 120))
+    .filter(Boolean)
+    .slice(0, AGENT_LIMITS.followUps);
+  return { ...(title ? { title } : {}), cards, followUps };
+}
+
+// ---------- Enrichment (Serper maps) ----------
+
+/** The part of a Serper place hit the enrichment reads (supabase/functions/_shared/web-search.ts). */
+export interface PlaceHitLike {
+  title: string;
+  location?: { lat: number; lng: number };
+  rating?: number;
+  ratingCount?: number;
+  mapsUrl?: string;
+  imageUrl?: string;
+  /** Spec 0067: the place's own website from Google, the only one a card keeps after tools ran. */
+  websiteUrl?: string;
+}
+
+export const PlaceEnrichmentSchema = z.object({
+  index: z.number().int().min(0).max(50),
+  mapsUrl: HttpsUrl.optional().catch(undefined),
+  websiteUrl: HttpsUrl.optional().catch(undefined),
+  rating: z.number().min(0).max(5).optional().catch(undefined),
+  ratingCount: z.number().int().min(0).optional().catch(undefined),
+  imageUrl: HttpsUrl.optional().catch(undefined),
+  location: GeoSchema.optional().catch(undefined),
+});
+export type PlaceEnrichment = z.infer<typeof PlaceEnrichmentSchema>;
+
+function nameKey(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/ä/g, 'ae')
+    .replace(/ö/g, 'oe')
+    .replace(/ü/g, 'ue')
+    .replace(/ß/g, 'ss')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+/** Same name, or one contains the other as whole words ("Plates" in "Plates Restaurant …"). */
+function sameName(a: string, b: string): boolean {
+  const x = nameKey(a);
+  const y = nameKey(b);
+  if (!x || !y) return false;
+  if (x === y) return true;
+  const [short, long] = x.length <= y.length ? [x, y] : [y, x];
+  return short.length >= 4 && ` ${long} `.includes(` ${short} `);
+}
+
+/**
+ * The Google data of a card (AC-017): the first hit with the same name, exact names first. No
+ * fitting hit is no enrichment (AC-018), never the nearest other place.
+ */
+export function enrichmentFromHits(
+  card: Pick<AgentCard, 'index' | 'name'>,
+  hits: readonly PlaceHitLike[],
+): PlaceEnrichment | undefined {
+  const exact = hits.find((hit) => nameKey(hit.title) === nameKey(card.name));
+  const hit = exact ?? hits.find((candidate) => sameName(candidate.title, card.name));
+  if (!hit) return undefined;
+  const enrichment = PlaceEnrichmentSchema.parse({
+    index: card.index,
+    mapsUrl: hit.mapsUrl,
+    websiteUrl: hit.websiteUrl,
+    rating: hit.rating,
+    ratingCount: hit.ratingCount,
+    imageUrl: hit.imageUrl,
+    location: hit.location,
+  });
+  return Object.fromEntries(
+    Object.entries(enrichment).filter(([, value]) => value !== undefined),
+  ) as PlaceEnrichment;
+}
+
+export function mergeCards(
+  cards: readonly AgentCard[],
+  enrichments: readonly PlaceEnrichment[],
+): AgentCard[] {
+  return cards.map((card) => {
+    const extra = enrichments.find((entry) => entry.index === card.index);
+    if (!extra) return card;
+    const { index: _index, ...fields } = extra;
+    return { ...card, ...fields };
+  });
+}
+
+/**
+ * The `function_call_output` of `show_suggestions` (decision 11): "shown" plus the enrichment, so
+ * a chat opened later shows the same stars and links and the agent knows them.
+ */
+export function functionOutput(enrichments: readonly PlaceEnrichment[]): string {
+  return JSON.stringify({ shown: true, places: enrichments });
+}
+
+export function parseFunctionOutput(text: string): PlaceEnrichment[] {
+  let json: unknown;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    return [];
+  }
+  const places =
+    typeof json === 'object' && json !== null && 'places' in json && Array.isArray(json.places)
+      ? json.places
+      : [];
+  return places.flatMap((entry: unknown) => {
+    const parsed = PlaceEnrichmentSchema.safeParse(entry);
+    if (!parsed.success) return [];
+    return [
+      Object.fromEntries(
+        Object.entries(parsed.data).filter(([, value]) => value !== undefined),
+      ) as PlaceEnrichment,
+    ];
+  });
+}
+
+// ---------- Text, citations, sources ----------
+
+// Foundry writes citations as private-use tokens: U+E200 "cite" U+E202 "turn0search0" … U+E201.
+const CITATION = /\s*[^]*/g;
+const STRAY = /[-]/g;
+
+/** The answer text without raw citation tokens (AC-016). */
+export function stripCitations(text: string): string {
+  return text
+    .replace(CITATION, '')
+    .replace(STRAY, '')
+    .replace(/[ \t]+\n/g, '\n')
+    .trimEnd();
+}
+
+/**
+ * For streamed deltas: text before a citation goes out at once, a token is held until it is
+ * complete and then dropped (AC-016).
+ */
+export function createCitationFilter(): { push(delta: string): string; flush(): string } {
+  let held = '';
+  // After a dropped token the space that preceded it is already out: the next one is not doubled.
+  let afterToken = false;
+  let last = '';
+  const out = (text: string) => {
+    let clean = text.replace(STRAY, '');
+    if (afterToken && clean !== '') {
+      if (/[ \t]$/.test(last)) clean = clean.replace(/^[ \t]+/, '');
+      if (clean !== '') afterToken = false;
+    }
+    if (clean !== '') last = clean.slice(-1);
+    return clean;
+  };
+  return {
+    push(delta) {
+      held += delta;
+      let shown = '';
+      for (;;) {
+        const start = held.indexOf('\ue200');
+        if (start < 0) {
+          shown += out(held);
+          held = '';
+          return shown;
+        }
+        shown += out(held.slice(0, start));
+        const end = held.indexOf('\ue201', start);
+        if (end < 0) {
+          held = held.slice(start);
+          // A broken token never holds more than a sentence back.
+          if (held.length > 400) held = '';
+          return shown;
+        }
+        held = held.slice(end + 1);
+        afterToken = true;
+      }
+    },
+    flush() {
+      const rest = held.startsWith('\ue200') ? '' : held;
+      held = '';
+      return out(rest);
+    },
+  };
+}
+
+export const AgentSourceSchema = z.strictObject({
+  url: HttpsUrl,
+  host: z.string().max(200),
+  title: z.string().max(200).optional(),
+});
+export type AgentSource = z.infer<typeof AgentSourceSchema>;
+
+/** The cited pages of an answer, once per host, https only (AC-016). */
+export function sourcesOf(annotations: readonly unknown[]): AgentSource[] {
+  const seen = new Set<string>();
+  const sources: AgentSource[] = [];
+  for (const annotation of annotations) {
+    if (typeof annotation !== 'object' || annotation === null) continue;
+    const { type, url, title } = annotation as { type?: unknown; url?: unknown; title?: unknown };
+    if (type !== 'url_citation' || typeof url !== 'string' || !HttpsUrl.safeParse(url).success)
+      continue;
+    const host = (/^https:\/\/(?:[^/?#@]*@)?([^/?#:]+)/i.exec(url)?.[1] ?? '')
+      .toLowerCase()
+      .replace(/^www\./, '');
+    // A cited page decides its host name: one over the schema's limit would break the answer.
+    if (!host || host.length > 200 || seen.has(host)) continue;
+    seen.add(host);
+    sources.push({
+      url,
+      host,
+      ...(typeof title === 'string' && title.trim() ? { title: clip(title, 200) } : {}),
+    });
+    if (sources.length >= 12) break;
+  }
+  return sources;
+}
+
+/** "Brunch mit Kinderwagen": the first message in one line, at most 60 characters (AC-024). */
+export function chatTitle(message: string): string {
+  const line = oneLine(message);
+  if (line.length <= AGENT_LIMITS.title) return line;
+  const cut = line.slice(0, AGENT_LIMITS.title - 1);
+  // The cut ends a word when the next character is a space; otherwise back to the last space.
+  const space = line[cut.length] === ' ' ? cut.length : cut.lastIndexOf(' ');
+  return `${(space > 20 ? cut.slice(0, space) : cut).trimEnd()}…`;
+}
+
+// ---------- Progress steps ----------
+
+/**
+ * One step of the agent shown above its answer (AC-014): the web search in step 1, a household
+ * tool in step 2 ("Liest eure Rezepte · Suche „Curry“ · 20 von 143", decision 14).
+ */
+export const AgentStepSchema = z.strictObject({
+  id: z.string().min(1).max(40),
+  kind: z.enum(['web_search', 'tool']),
+  label: z.string().min(1).max(80),
+  detail: z.string().max(200).optional(),
+  /** Shown when the step is opened, e.g. the search terms. */
+  details: z.array(z.string().max(200)).max(20),
+  count: z.number().int().min(0).optional(),
+  /** "Quellen", "von 143". */
+  countLabel: z.string().max(40).optional(),
+  status: z.enum(['running', 'done']),
+});
+export type AgentStep = z.infer<typeof AgentStepSchema>;
+
+export function stepLine(step: AgentStep): string {
+  // A tool that found nothing says so ("0 von 143"); a search without sources says nothing.
+  const shown = step.count !== undefined && (step.count > 0 || step.kind === 'tool');
+  const count = shown ? `${step.count} ${step.countLabel ?? ''}`.trim() : undefined;
+  const parts = [step.label, step.detail, count].filter(Boolean);
+  if (parts.length === 1 && step.status === 'running') return `${step.label} …`;
+  return parts.join(' · ');
+}
+
+// ---------- Extras: proposals, recipe drafts, images (spec 0067, step B) ----------
+
+export const AgentImageHitSchema = z.strictObject({
+  /** The Google image itself; shown through fetch-image, never stored as it is (REQ-011). */
+  imageUrl: HttpsUrl,
+  thumbnailUrl: HttpsUrl.optional(),
+  /** The page it is on: the source that stays with the photo. */
+  pageUrl: HttpsUrl,
+  host: z.string().max(200),
+  title: z.string().max(200).optional(),
+});
+export type AgentImageHit = z.infer<typeof AgentImageHitSchema>;
+
+const ImageForSchema = {
+  for: z.enum(AGENT_IMAGE_SUBJECTS),
+  name: z.string().max(200).optional(),
+};
+
+const IsoDateSchema = z.iso.date();
+
+/** REQ-014: the checked wishes of "Füll die Woche" (agent-proposals.ts parseFillWeekArgs). */
+export const WeekFillWishesSchema = z.strictObject({
+  from: IsoDateSchema,
+  to: IsoDateSchema,
+  slot: z.string().max(60).optional(),
+  vegetarian: z.int().min(0).max(AGENT_PROPOSAL_LIMITS.weekDays).optional(),
+  quick: z.array(IsoDateSchema).max(AGENT_PROPOSAL_LIMITS.weekDays),
+  guests: z
+    .array(z.strictObject({ date: IsoDateSchema, count: z.int().min(1).max(30) }))
+    .max(AGENT_PROPOSAL_LIMITS.weekDays),
+  skip: z.array(IsoDateSchema).max(AGENT_PROPOSAL_LIMITS.weekDays),
+});
+
+/** What an answer shows besides its text and place cards. */
+export const AgentExtraSchema = z.discriminatedUnion('kind', [
+  /** REQ-009: a collect card; nothing changes before the person applies it. */
+  z.strictObject({ kind: z.literal('proposal'), proposal: AgentProposalSchema }),
+  /** REQ-010: a draft of the draft pipeline, opened in the recipe editor on "Prüfen und anlegen". */
+  z.strictObject({
+    kind: z.literal('recipe_draft'),
+    id: z.string().min(1).max(200),
+    reply: RecipeDraftReplySchema,
+  }),
+  /** REQ-011: exactly one AI photo, made by the app through ai-image (FLUX). */
+  z.strictObject({
+    kind: z.literal('image'),
+    id: z.string().min(1).max(200),
+    prompt: z.string().min(1).max(AGENT_PROPOSAL_LIMITS.prompt),
+    ...ImageForSchema,
+  }),
+  /** Preview 28.11.: the household's own entries as cards (checked by the function, shown from the cache). */
+  z.strictObject({
+    kind: z.literal('entities'),
+    id: z.string().min(1).max(200),
+    title: z.string().max(60).optional(),
+    items: z.array(AgentEntityRefSchema).min(1).max(AGENT_PROPOSAL_LIMITS.entities),
+  }),
+  /**
+   * Spec 0067, step C: a change of an existing recipe ("vegetarische Variante zur Lasagne"); the
+   * app opens its page with "Mit KI ändern" and this wish (Änderungsansicht, Rückgängig).
+   */
+  z.strictObject({
+    kind: z.literal('recipe_change'),
+    id: z.string().min(1).max(200),
+    recipeId: Uuid,
+    title: z.string().min(1).max(200),
+    wish: z.string().min(1).max(AGENT_PROPOSAL_LIMITS.wish),
+  }),
+  /** REQ-014: "Füll die Woche" — the app picks the dishes with the logic of spec 0063. */
+  z.strictObject({
+    kind: z.literal('week_fill'),
+    id: z.string().min(1).max(200),
+    wishes: WeekFillWishesSchema,
+  }),
+  /** REQ-011: Google images to pick one from. */
+  z.strictObject({
+    kind: z.literal('images'),
+    id: z.string().min(1).max(200),
+    query: z.string().min(1).max(AGENT_PROPOSAL_LIMITS.query),
+    images: z.array(AgentImageHitSchema).max(AGENT_PROPOSAL_LIMITS.images),
+    ...ImageForSchema,
+  }),
+]);
+export type AgentExtra = z.infer<typeof AgentExtraSchema>;
+
+/** Extras of one answer. */
+const MAX_EXTRAS = 10;
+
+/**
+ * The output of `draft_recipe` in the conversation: the draft, for a chat opened later too, and
+ * the household's recipes of that title or source (decision 25: change one or create anyway).
+ */
+export function draftOutput(
+  reply: z.infer<typeof RecipeDraftReplySchema>,
+  existing: readonly { id: string; title: string }[] = [],
+): string {
+  return JSON.stringify({
+    shown: true,
+    ...reply,
+    ...(existing.length > 0
+      ? {
+          existing,
+          hint: 'Ein ähnliches Rezept gibt es schon: sag das und frag, ob es geändert oder trotzdem neu angelegt werden soll.',
+        }
+      : {}),
+  });
+}
+
+/** The output of `show_entities`: the entries the household has, for a chat opened later. */
+export function entitiesOutput(
+  title: string | undefined,
+  items: readonly z.infer<typeof AgentEntityRefSchema>[],
+  dropped: number,
+): string {
+  return JSON.stringify({
+    shown: items.length > 0,
+    ...(title ? { title } : {}),
+    items,
+    ...(dropped > 0 ? { not_found: dropped } : {}),
+  });
+}
+
+/** The output of `change_recipe`: the household's recipe it found, for a chat opened later. */
+export function changeOutput(recipe: { id: string; title: string }, wish: string): string {
+  return JSON.stringify({
+    shown: true,
+    recipe,
+    wish,
+    note: 'Nichts ist geändert: die Karte öffnet das Rezept mit „Mit KI ändern“, dort prüft die Person die Änderung und übernimmt sie (mit Rückgängig).',
+  });
+}
+
+/** The output of `fill_week`: the dishes are the app's (spec 0063), never the model's. */
+export function weekFillOutput(): string {
+  return JSON.stringify({
+    shown: true,
+    note: 'Die App wählt die Gerichte mit eurer Vorschlagslogik, prüft Reisen und belegte Abende und zeigt sie als Karte zum Übernehmen. Nenne keine Gerichte, die du nicht aus einem Werkzeug kennst.',
+  });
+}
+
+/** The output of `show_images`: the images, so a chat opened later shows the same row. */
+export function imagesOutput(images: readonly AgentImageHit[]): string {
+  return JSON.stringify({ shown: true, count: images.length, images });
+}
+
+function jsonOf(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The extra of a proposal tool's call from its arguments and output, as a chat opened later
+ * shows it; `message` is the person's message of that turn (a delete needs her wish, AC-020).
+ */
+export function extraOfCall(
+  name: string,
+  callId: string,
+  args: string,
+  output: string,
+  message: string,
+): AgentExtra | undefined {
+  if (name === 'propose_actions') {
+    const { proposal } = parseProposalArgs(args, {
+      id: callId,
+      deletesAllowed: deleteWished(message),
+    });
+    return proposal.actions.length > 0 ? { kind: 'proposal', proposal } : undefined;
+  }
+  if (name === 'make_image') {
+    const image = parseImageArgs(args, AGENT_PROPOSAL_LIMITS.prompt);
+    return image
+      ? {
+          kind: 'image',
+          id: callId,
+          prompt: image.text,
+          for: image.for,
+          ...(image.name ? { name: image.name } : {}),
+        }
+      : undefined;
+  }
+  const result = record(jsonOf(output)) ?? {};
+  if (name === 'change_recipe') {
+    const recipe = record(result.recipe);
+    const wish = parseChangeArgs(args)?.wish;
+    const id = recipe ? str(recipe.id) : undefined;
+    const title = recipe ? str(recipe.title) : undefined;
+    return id && Uuid.safeParse(id).success && title && wish
+      ? { kind: 'recipe_change', id: callId, recipeId: id, title: clip(title, 200), wish }
+      : undefined;
+  }
+  if (name === 'fill_week') {
+    const wishes = parseFillWeekArgs(args);
+    return wishes && result.shown === true ? { kind: 'week_fill', id: callId, wishes } : undefined;
+  }
+  if (name === 'show_entities') {
+    const items = z
+      .array(AgentEntityRefSchema)
+      .min(1)
+      .max(AGENT_PROPOSAL_LIMITS.entities)
+      .safeParse(result.items);
+    const title = typeof result.title === 'string' ? result.title.slice(0, 60) : '';
+    return items.success
+      ? { kind: 'entities', id: callId, ...(title ? { title } : {}), items: items.data }
+      : undefined;
+  }
+  if (name === 'draft_recipe') {
+    const reply = RecipeDraftReplySchema.safeParse({
+      draft: result.draft,
+      sources: result.sources,
+      ...(result.webPhotoUrl ? { webPhotoUrl: result.webPhotoUrl } : {}),
+    });
+    return reply.success ? { kind: 'recipe_draft', id: callId, reply: reply.data } : undefined;
+  }
+  if (name === 'show_images') {
+    const query = parseImageArgs(args, AGENT_PROPOSAL_LIMITS.query);
+    const images = z
+      .array(AgentImageHitSchema)
+      .max(AGENT_PROPOSAL_LIMITS.images)
+      .safeParse(result.images);
+    return query && images.success && images.data.length > 0
+      ? {
+          kind: 'images',
+          id: callId,
+          query: query.text,
+          images: images.data,
+          for: query.for,
+          ...(query.name ? { name: query.name } : {}),
+        }
+      : undefined;
+  }
+  return undefined;
+}
+
+const PHOTO_KIND_LABEL = {
+  recipe: 'Rezepte',
+  restaurant: 'Restaurants',
+  activity: 'Aktivitäten',
+} as const;
+
+/** The output of `look_at_photos` for the conversation: what was seen, never the images. */
+export function photosOutput(
+  seen: readonly { id: string; title: string }[],
+  missing: number,
+): string {
+  return JSON.stringify({
+    shown: seen.length > 0,
+    count: seen.length,
+    photos: seen,
+    ...(missing > 0 ? { without_photo: missing } : {}),
+    note: 'Die Fotos folgen in dieser Reihenfolge als Bilder; bewerte nur, was du siehst.',
+  });
+}
+
+/** The step row of `draft_recipe` and `show_images` (REQ-008); the others show as their card. */
+export function proposalStep(
+  name: string,
+  args: string,
+  output: string,
+  id: string,
+): AgentStep | undefined {
+  const result = record(jsonOf(output)) ?? {};
+  if (name === 'draft_recipe') {
+    const draft = parseDraftArgs(args);
+    const hosts = (draft?.links ?? []).map(
+      (link) => /^https:\/\/(?:www\.)?([^/?#:]+)/i.exec(link)?.[1] ?? '',
+    );
+    const from = draft?.refine
+      ? 'ändert den Entwurf'
+      : hosts.length > 0
+        ? hosts.join(', ')
+        : draft?.usePhotos
+          ? 'aus den Fotos'
+          : draft?.page
+            ? 'aus der Websuche'
+            : 'aus deinem Wunsch';
+    const unread = result.error === 'link_unreadable' ? 'Link nicht lesbar' : undefined;
+    return {
+      id,
+      kind: 'tool',
+      label: 'Schreibt einen Rezeptentwurf',
+      detail: unread ?? from,
+      details: [],
+      status: 'done',
+    };
+  }
+  if (name === 'look_at_photos') {
+    const photos = parsePhotoArgs(args);
+    const count = typeof result.count === 'number' ? result.count : 0;
+    return {
+      id,
+      kind: 'tool',
+      label: 'Sieht sich Fotos an',
+      ...(photos ? { detail: PHOTO_KIND_LABEL[photos.kind] } : {}),
+      details: [],
+      count,
+      countLabel: 'Fotos',
+      status: 'done',
+    };
+  }
+  if (name === 'show_images') {
+    const query = parseImageArgs(args, AGENT_PROPOSAL_LIMITS.query);
+    const count = typeof result.count === 'number' ? result.count : 0;
+    return {
+      id,
+      kind: 'tool',
+      label: 'Sucht Bilder',
+      ...(query ? { detail: `„${query.text}“` } : {}),
+      details: [],
+      count,
+      countLabel: 'Bilder',
+      status: 'done',
+    };
+  }
+  return undefined;
+}
+
+// ---------- Stream ----------
+
+export const AGENT_STREAM_ERRORS = [
+  'ai_unavailable',
+  'quota_exceeded',
+  'chat_too_long',
+  'internal',
+  /** Review D: Azure's content filter (prompt shield) refused the message. */
+  'blocked',
+] as const;
+
+/**
+ * Review D (test catalogue J1/J2): what the person reads when Azure's content filter blocks a
+ * message, usually pasted text with instructions to the AI ("Ignoriere alle Regeln …").
+ */
+export const AGENT_BLOCKED_TEXT =
+  'Das kann ich so nicht bearbeiten: Der Schutzfilter hält Anweisungen an die KI im eingefügten Text oder in der Datei zurück. Lass sie weg oder frag ohne sie noch einmal.';
+
+/** The canned refusal Azure streams for a blocked prompt (an incomplete answer). */
+const BLOCKED_REFUSAL = /^I['’]m sorry, but I cannot assist with that request\.?$/;
+
+export const AgentStreamEventSchema = z.discriminatedUnion('type', [
+  /** First event of a new chat: its id and title. */
+  z.strictObject({
+    type: z.literal('chat'),
+    chatId: Uuid,
+    title: z.string().max(AGENT_LIMITS.title),
+  }),
+  z.strictObject({ type: z.literal('step'), step: AgentStepSchema }),
+  z.strictObject({ type: z.literal('text'), delta: z.string().max(20_000) }),
+  /** The agent started building cards: placeholders until they come. */
+  z.strictObject({ type: z.literal('cards_pending') }),
+  z.strictObject({
+    type: z.literal('cards'),
+    title: z.string().max(AGENT_LIMITS.title).optional(),
+    cards: z.array(AgentCardSchema).max(AGENT_LIMITS.cards),
+    followUps: z.array(z.string().max(120)).max(AGENT_LIMITS.followUps),
+  }),
+  z.strictObject({ type: z.literal('sources'), sources: z.array(AgentSourceSchema).max(12) }),
+  /** Spec 0067, step B: a proposal, a recipe draft or images. */
+  z.strictObject({ type: z.literal('extra'), extra: AgentExtraSchema }),
+  z.strictObject({ type: z.literal('done') }),
+  z.strictObject({ type: z.literal('error'), error: z.enum(AGENT_STREAM_ERRORS) }),
+]);
+export type AgentStreamEvent = z.infer<typeof AgentStreamEventSchema>;
+
+export function sseData(event: AgentStreamEvent): string {
+  return `data: ${JSON.stringify(event)}\n\n`;
+}
+
+/**
+ * Server-sent events, as Foundry sends them and as `ai-agent` sends them on: the JSON of every
+ * `data:` field once its event is complete; comments, `[DONE]` and broken JSON are skipped.
+ */
+export function createSseParser(): { push(chunk: string): unknown[] } {
+  let buffer = '';
+  return {
+    push(chunk) {
+      buffer += chunk.replace(/\r\n/g, '\n');
+      const out: unknown[] = [];
+      let end = buffer.indexOf('\n\n');
+      while (end >= 0) {
+        const block = buffer.slice(0, end);
+        buffer = buffer.slice(end + 2);
+        const data = block
+          .split('\n')
+          .filter((line) => line.startsWith('data:'))
+          .map((line) => line.slice(5).replace(/^ /, ''))
+          .join('\n');
+        if (data && data !== '[DONE]') {
+          try {
+            out.push(JSON.parse(data));
+          } catch {
+            // Not JSON: nothing for us.
+          }
+        }
+        end = buffer.indexOf('\n\n');
+      }
+      return out;
+    },
+  };
+}
+
+// ---------- A stored conversation ----------
+
+export const AgentMessageSchema = z.strictObject({
+  role: z.enum(['user', 'assistant']),
+  text: z.string().max(40_000),
+  /** Spec 0067: photos and files of a user message, counted; their data never comes back. */
+  attachments: z.number().int().min(0).max(AGENT_LIMITS.attachments).optional(),
+  cards: z.array(AgentCardSchema).max(AGENT_LIMITS.cards),
+  cardsTitle: z.string().max(AGENT_LIMITS.title).optional(),
+  followUps: z.array(z.string().max(120)).max(AGENT_LIMITS.followUps),
+  sources: z.array(AgentSourceSchema).max(12),
+  steps: z.array(AgentStepSchema).max(AGENT_LIMITS.steps),
+  /** Spec 0067, step B. */
+  extras: z.array(AgentExtraSchema).max(MAX_EXTRAS),
+});
+export type AgentMessage = z.infer<typeof AgentMessageSchema>;
+
+export const AgentLoadReplySchema = z.strictObject({
+  messages: z.array(AgentMessageSchema).max(200),
+});
+export type AgentLoadReply = z.infer<typeof AgentLoadReplySchema>;
+
+export const AgentDeleteReplySchema = z.strictObject({ deleted: z.number().int().min(0) });
+
+const record = (value: unknown): Record<string, unknown> | undefined =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+const list = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
+const str = (value: unknown): string | undefined => (typeof value === 'string' ? value : undefined);
+
+function emptyAnswer(): AgentMessage {
+  return {
+    role: 'assistant',
+    text: '',
+    cards: [],
+    followUps: [],
+    sources: [],
+    steps: [],
+    extras: [],
+  };
+}
+
+/**
+ * The messages of a conversation from Foundry's items (decision 10, AC-025): the user's text
+ * without the context block, the answer's text without citation tokens, its cards with the
+ * enrichment of the matching `function_call_output`, its web searches as one step.
+ */
+export function messagesFromItems(
+  items: readonly unknown[],
+  options: {
+    /** Spec 0067: the step of a household tool call from its arguments and its output. */
+    toolStep?: (name: string, args: string, output: string, id: string) => AgentStep;
+  } = {},
+): AgentMessage[] {
+  const messages: AgentMessage[] = [];
+  let answer: AgentMessage | undefined;
+  const callOf = new Map<string, AgentMessage>();
+  const toolCalls = new Map<string, { message: AgentMessage; name: string; args: string }>();
+  // Spec 0067, step B: calls of the proposal tools, with the person's message of their turn.
+  const proposalCalls = new Map<
+    string,
+    { message: AgentMessage; name: string; args: string; asked: string }
+  >();
+  let asked = '';
+  const answerNow = () => {
+    if (!answer) {
+      answer = emptyAnswer();
+      messages.push(answer);
+    }
+    return answer;
+  };
+  for (const raw of items) {
+    const item = record(raw);
+    if (!item) continue;
+    const type = str(item.type);
+    if (type === 'message' && item.role === 'user') {
+      const parts = list(item.content).map(record);
+      const text = parts
+        .map((part) => (part?.type === 'input_text' ? str(part.text) : undefined) ?? '')
+        .filter((part) => part !== '' && !part.startsWith('[KONTEXT]'))
+        .join('\n')
+        .trim();
+      const attachments = Math.min(
+        AGENT_LIMITS.attachments,
+        parts.filter((part) => part?.type === 'input_image' || part?.type === 'input_file').length,
+      );
+      if (!text && attachments === 0) continue;
+      asked = text;
+      messages.push({
+        ...emptyAnswer(),
+        role: 'user',
+        text: text.slice(0, AGENT_LIMITS.message),
+        ...(attachments > 0 ? { attachments } : {}),
+      });
+      answer = undefined;
+    } else if (type === 'message' && item.role === 'assistant') {
+      const parts = list(item.content)
+        .map(record)
+        .filter((part) => part?.type === 'output_text');
+      const written = stripCitations(parts.map((part) => str(part?.text) ?? '').join(''));
+      const text =
+        item.status === 'incomplete' && BLOCKED_REFUSAL.test(written.trim())
+          ? AGENT_BLOCKED_TEXT
+          : written;
+      const current = answerNow();
+      current.text = [current.text, text].filter(Boolean).join('\n\n').slice(0, 40_000);
+      const sources = sourcesOf(parts.flatMap((part) => list(part?.annotations)));
+      const hosts = new Set(current.sources.map((source) => source.host));
+      current.sources = [
+        ...current.sources,
+        ...sources.filter((source) => !hosts.has(source.host)),
+      ].slice(0, 12);
+    } else if (type === 'web_search_call') {
+      const action = record(item.action);
+      const current = answerNow();
+      let step = current.steps.find((candidate) => candidate.id === 'web');
+      if (!step) {
+        step = {
+          id: 'web',
+          kind: 'web_search',
+          label: 'Im Web gesucht',
+          details: [],
+          countLabel: 'Quellen',
+          status: 'done',
+        };
+        current.steps.push(step);
+      }
+      const query = str(action?.query);
+      if (query && step.details.length < 20) step.details.push(clip(query, 200));
+      const sources = list(action?.sources).length;
+      if (sources > 0) step.count = (step.count ?? 0) + sources;
+    } else if (type === 'function_call' && item.name === 'show_suggestions') {
+      const parsed = parseSuggestionsArgs(str(item.arguments) ?? '');
+      if (!parsed) continue;
+      const current = answerNow();
+      current.cards = parsed.cards;
+      current.followUps = parsed.followUps;
+      if (parsed.title) current.cardsTitle = parsed.title;
+      const callId = str(item.call_id);
+      if (callId) callOf.set(callId, current);
+    } else if (type === 'function_call' && isProposalTool(str(item.name) ?? '')) {
+      const callId = str(item.call_id);
+      if (callId)
+        proposalCalls.set(callId, {
+          message: answerNow(),
+          name: str(item.name) ?? '',
+          args: str(item.arguments) ?? '',
+          asked,
+        });
+    } else if (type === 'function_call' && options.toolStep) {
+      const callId = str(item.call_id);
+      if (callId)
+        toolCalls.set(callId, {
+          message: answerNow(),
+          name: str(item.name) ?? '',
+          args: str(item.arguments) ?? '',
+        });
+    } else if (type === 'function_call_output') {
+      const callId = str(item.call_id) ?? '';
+      const target = callOf.get(callId);
+      if (target)
+        target.cards = mergeCards(target.cards, parseFunctionOutput(str(item.output) ?? ''));
+      const proposal = proposalCalls.get(callId);
+      if (proposal) {
+        const output = str(item.output) ?? '';
+        const step = proposalStep(
+          proposal.name,
+          proposal.args,
+          output,
+          `t${proposal.message.steps.length + 1}`,
+        );
+        if (step && proposal.message.steps.length < AGENT_LIMITS.steps) {
+          const web = proposal.message.steps.findIndex((entry) => entry.id === 'web');
+          if (web < 0) proposal.message.steps.push(step);
+          else proposal.message.steps.splice(web, 0, step);
+        }
+        const extra = extraOfCall(proposal.name, callId, proposal.args, output, proposal.asked);
+        if (extra && proposal.message.extras.length < MAX_EXTRAS)
+          proposal.message.extras.push(extra);
+      }
+      const call = toolCalls.get(callId);
+      if (call && options.toolStep && call.message.steps.length < AGENT_LIMITS.steps) {
+        const step = options.toolStep(
+          call.name,
+          call.args,
+          str(item.output) ?? '',
+          `t${call.message.steps.length + 1}`,
+        );
+        // The web search stays the last row, as it was while the answer streamed.
+        const web = call.message.steps.findIndex((entry) => entry.id === 'web');
+        if (web < 0) call.message.steps.push(step);
+        else call.message.steps.splice(web, 0, step);
+      }
+    }
+  }
+  return messages.filter(
+    (message) =>
+      message.role === 'user' || message.text || message.cards.length || message.extras.length,
+  );
+}

@@ -1277,6 +1277,79 @@ gespeichert, bevor die Person „Speichern“ tippt.
 - **Nicht verwenden:** Google-Suche, Internetsuche, KI-Suche (das ist die Suche in den eigenen
   Rezepten, Spec 0003)
 
+### KI-Agent
+
+Die eigene Seite „Agent“ (Spec 0066; seit Spec 0067 der Housekeeping-Agent): Nachricht, Badges,
+Anhänge, Ort, Antwort mit Schrittzeilen, Text und Vorschlagskarten. Geöffnet in „Normal“ über
+⊞ Verwalten → „Agent“ oder ✨ im Kopf von „Restaurants“ und „Aktivitäten“ (mit dem Badge
+„Ausgehen“), in „KI zuerst“ als Tab in der Mitte. Dahinter steht ein Foundry-Agent mit Websuche und
+den Lese-Werkzeugen der Haushaltsdaten (`household-agent` in `foundry/agents/`, je Umgebung
+`household-agent-local`, `-preview`, `-prod`; ADR-0019, ADR-0020).
+
+- **Im Code:** `AgentScreen`, `ai-agent` (Edge Function), `household-agent` (Foundry),
+  `agent-tools.ts` (Werkzeuge), `features.aiAgent`
+- **Nicht verwenden:** KI-Chat (Name des PoC), Assistent (das ist Spec 0003), Chatbot
+
+### Badge (Agent)
+
+Ein Hinweis an den Agenten in der Eingabe: „Rezepte“, „Ausgehen“, „Planen“, „Einkaufen“,
+„Haushalt“. Gesetzt über die Startseite „Ich kann“ oder das Slash-Menü („/re“), als Chip mit ✕ im
+Feld, kein Freitext; die Rücktaste direkt dahinter löscht ihn ganz. Mehrere je Nachricht. Keine
+Sperre: Passt die Frage nicht dazu, folgt der Agent der Frage (Spec 0067).
+
+- **Im Code:** `AgentBadgeSlug`, `AGENT_BADGES`, `badges` im Sendeauftrag
+- **Nicht verwenden:** Agent (für den Badge), Modus, Tag, Schlagwort
+
+### Sammelkarte (Agent)
+
+Die Karte eines Vorschlags des Agenten (Spec 0067, REQ-009): je Eintrag eine Zeile aus den Daten des
+Haushalts mit Häkchen, darunter „n übernehmen“ und danach „Rückgängig“. Jeder Eintrag läuft über
+einen Befehl der App; Löschen hat einen eigenen Knopf mit Rückfrage. Der Agent selbst schreibt nie.
+
+- **Im Code:** `propose_actions`, `AgentProposal`, `AgentAction`, `resolveAction`,
+  `runAgentCommand`, `AgentProposalCard`
+- **Nicht verwenden:** Auftrag, Befehl (für den Vorschlag), Batch
+
+### Ansicht (Normal / KI zuerst)
+
+Die Wahl je Person unter Einstellungen → Darstellung (Spec 0067): „Normal“ mit „Haushalt“ in der
+Tab-Leiste, „KI zuerst“ mit dem Agent in der Mitte (nur Icon) und „Haushalt“ oben im ⊞-Menü.
+
+- **Im Code:** `AppView` (`'normal' | 'ai_first'`), `notification_settings.app_view`,
+  `set_app_view`, `useAppView`
+- **Nicht verwenden:** Modus, Layout, Theme (das ist das Erscheinungsbild)
+
+### Recherche-Chat
+
+Ein Gespräch mit dem KI-Agent: Titel (Titel der ersten Karten oder Anfang der ersten Nachricht),
+Ort, wer ihn gestartet hat. Gehört dem Haushalt, alle Mitglieder sehen und setzen ihn fort. Der
+Inhalt liegt nur in Foundry; bei uns steht nur der Verweis. Im „Verlauf“ der Seite.
+
+- **Im Code:** `AiChat`, `ai_chats`, `useAiChats`, `sendAgentMessage`, `loadAgentChat`,
+  `deleteAgentChat`
+- **Nicht verwenden:** Konversation (außer für die Foundry-Conversation), Recherche (allein), Thread
+
+### Vorschlagskarte
+
+Ein Ort, den der KI-Agent vorschlägt, als Karte im Karussell unter der Antwort: Foto, Name, Sterne,
+Preis, Art, Öffnungsstatus, warum er passt, „Google Maps“ und „Speichern“. Sterne, Foto und
+Maps-Link kommen aus der Google-Suche (Serper), nie vom Agent. „Speichern“ legt ein Restaurant oder
+eine Aktivität an.
+
+- **Im Code:** `AgentCard`, `PlaceCard`, `show_suggestions` (Funktion des Agents),
+  `enrichmentFromHits`
+- **Nicht verwenden:** Treffer (das ist die Websuche), Ergebniskarte
+
+### Bezugspunkt (KI-Agent)
+
+Wo der KI-Agent sucht: der aktuelle Standort des Geräts (Standard), ein gewählter Ort (Adresse oder
+Google-Maps-Link), eine Reise (ihre Notiz) oder ein Ort von „Zuletzt“, mit dem Umkreis „Zu Fuß“,
+„Öffis“, „Auto“ oder „Ganze Stadt“. Geht nur mit der Nachricht an den Agent; gespeichert wird nur
+die Bezeichnung am Chat.
+
+- **Im Code:** `AgentPlace`, `AGENT_RADII`, `contextBlock` (`[KONTEXT]`-Block), `placeChipLabel`
+- **Nicht verwenden:** Pin, Standort (allein, für einen gewählten Ort)
+
 ### Prompt (Reiter)
 
 Der Reiter von „Mit KI ausfüllen“ neben „Websuche“ (früher „Eigene Angaben“, Spec 0055): ein Wunsch

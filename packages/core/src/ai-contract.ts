@@ -368,6 +368,8 @@ export const AiImageRequestSchema = z.strictObject({
   extra: z.string().trim().min(1).max(IMAGE_EXTRA_MAX).optional(),
   /** Spec 0052, REQ-003: what the picture is for. */
   context: AiImageContextSchema.optional(),
+  /** Spec 0067, REQ-011: how many variants; the agent's "Mach ein Foto dazu" asks for one. */
+  count: z.int().min(1).max(IMAGE_VARIANTS).optional(),
 });
 export type AiImageRequest = z.infer<typeof AiImageRequestSchema>;
 
@@ -504,6 +506,10 @@ export const ErrorCodeSchema = z.enum([
   'video_exists',
   /** web-search (spec 0049, AC-023): neither Serper nor Brave answered usably. */
   'search_unavailable',
+  /** ai-agent (spec 0066, AC-035): the chat has its 20 answers; a new chat goes on. */
+  'chat_too_long',
+  /** Spec 0067, AC-024: another answer runs in this chat; the send waits. */
+  'chat_busy',
 ]);
 export type ErrorCode = z.infer<typeof ErrorCodeSchema>;
 

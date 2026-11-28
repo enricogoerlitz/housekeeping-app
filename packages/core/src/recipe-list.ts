@@ -525,15 +525,22 @@ export function recipeShowLabel(recipes: readonly Pick<Recipe, 'kind'>[]): strin
 
 /**
  * The empty list: "Keine Rezepte für „xyzzy““ for a search (AC-004), else "Keine Rezepte für diese
- * Filter" (AC-008), or with "Unfertig" on and none left "Alle Rezepte sind ausgearbeitet" (spec
- * 0061, AC-009).
+ * Filter" (AC-008), also with "Unfertig" on and none left (spec 0061, AC-009, changed 27.11.: no
+ * "all done" state).
  */
-export function recipeEmptyLabel(query: string, options: { allWorkedOut?: boolean } = {}): string {
+export function recipeEmptyLabel(query: string): string {
   const shown = query.trim();
   if (shown !== '') return `Keine Rezepte für „${shown}“`;
-  return options.allWorkedOut
-    ? 'Alle Rezepte sind ausgearbeitet'
-    : 'Keine Rezepte für diese Filter';
+  return 'Keine Rezepte für diese Filter';
+}
+
+/**
+ * The course on a recipe tile ("Hauptgericht", "Dessert", …; spec 0038, AC-007, AC-008): only in
+ * the tile view, never for a collection, nothing without a course.
+ */
+export function tileCourseLabel(recipe: Pick<Recipe, 'kind' | 'course'>): string | undefined {
+  if (recipe.kind === 'collection' || recipe.course === undefined) return undefined;
+  return courseLabel(recipe.course);
 }
 
 /** The average on a tile: one decimal with a comma, rounded half up; "4,8" for 4.75 (AC-040). */

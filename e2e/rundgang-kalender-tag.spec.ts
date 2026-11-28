@@ -282,6 +282,9 @@ test.describe('desktop', () => {
   }) => {
     expect(isPhone(page)).toBe(false);
     await openMonthDay(page, TODAY);
+    // Today's entries of the seed: three on a weekday, four on a Saturday.
+    await expect(tid(page, 'day-panel').locator(PLAN_ENTRY).first()).toBeVisible();
+    const base = await tid(page, 'day-panel').locator(PLAN_ENTRY).count();
     // A day shows as many lines as fit (0021 REQ-001): add entries until it shows "+n weitere".
     const extra = [
       ['Salat', 'rec-gemischter-salat', 'Gemischter Salat'],
@@ -298,9 +301,9 @@ test.describe('desktop', () => {
       await tid(page, 'add-entry-save').click();
       await expect(tid(page, 'add-entry-sheet')).toBeHidden();
       added.push(name);
-      await expect(tid(page, 'day-panel').locator(PLAN_ENTRY)).toHaveCount(3 + added.length);
+      await expect(tid(page, 'day-panel').locator(PLAN_ENTRY)).toHaveCount(base + added.length);
     }
-    const total = 3 + added.length;
+    const total = base + added.length;
     const shown = await tid(page, `month-cell-${TODAY}`).locator(PLAN_ENTRY).count();
 
     await page.keyboard.press('Escape');
@@ -334,6 +337,6 @@ test.describe('desktop', () => {
       await tid(page, 'entry-remove').click();
       await tid(page, 'confirm-remove-entry-confirm').click();
     }
-    await expect(tid(page, 'day-panel').locator(PLAN_ENTRY)).toHaveCount(3);
+    await expect(tid(page, 'day-panel').locator(PLAN_ENTRY)).toHaveCount(base);
   });
 });

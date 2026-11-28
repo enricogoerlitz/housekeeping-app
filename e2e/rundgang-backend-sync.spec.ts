@@ -92,6 +92,24 @@ async function showInCart(page: Page): Promise<void> {
   await expect(rows.first()).toBeVisible();
 }
 
+/** The entries of the store queue the app has written to IndexedDB on this device. */
+function storedQueueLength(page: Page): Promise<number> {
+  return page.evaluate(
+    () =>
+      new Promise<number>((resolve) => {
+        const request = indexedDB.open('housekeeping');
+        request.onsuccess = () => {
+          const db = request.result;
+          const queue = db.transaction('cache').objectStore('cache').get('queue');
+          queue.onsuccess = () => {
+            db.close();
+            resolve(Array.isArray(queue.result) ? queue.result.length : 0);
+          };
+        };
+      }),
+  );
+}
+
 /** Items of an article in a household, read through the API as Enrico. */
 async function serverItems(
   householdId: string,
@@ -533,6 +551,9 @@ test.describe('with the service worker', () => {
     for (const name of names) {
       await expect(smCheck(page, name)).toHaveAttribute('aria-checked', 'true');
     }
+    // The checks are on the device once the queue is written (IndexedDB is asynchronous; a reload
+    // right after the last tap would test the browser, not the app).
+    await expect.poll(() => storedQueueLength(page)).toBe(3);
     await page.reload();
     await expect(tid(page, 'shopping-progress')).toBeVisible({ timeout: 20_000 });
     await showInCart(page);

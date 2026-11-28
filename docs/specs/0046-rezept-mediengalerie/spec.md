@@ -74,6 +74,13 @@ Gerät.
 - AC-012: Angenommen beim Speichern hatte TikTok ein Titelbild · Dann ist es das Vorschaubild des
   Videos; ohne Titelbild (auch beim Video aus Spec 0043) zeigt der Rahmen das Foto des Rezepts oder
   eine ruhige Fläche mit Film-Symbol
+- AC-020 (neu 27.11., Befund aus Produktion): Angenommen „Pasta Sorrentina“ mit eigenem Foto und
+  noch ohne Video · Wenn ich „Video speichern“ bestätige und das Video ankommt · Dann zeigt die
+  Galerie sofort das Foto und zwei Punkte, und das Video steht daneben — ohne Neuladen und ohne die
+  Seite neu zu öffnen
+- AC-021 (neu 27.11., Befund aus Produktion): Angenommen „Pasta Sorrentina“ mit eigenem Foto und
+  zwei Videos, zuletzt beim zweiten Video angesehen · Wenn ich das Rezept öffne (auch nach
+  Neuladen) · Dann beginnt die Galerie beim Foto, der erste Punkt ist aktiv
 
 **REQ-004 — Abspielen nur im Vollbild.** Der Wiedergabe-Knopf öffnet das Video im Vollbild, lädt es
 und spielt es mit Ton; auf dem iPhone im Vollbild-Player des Geräts. Schließen führt zurück zur
@@ -142,6 +149,20 @@ Ablauf von „Rückgängig“); was liegen bleibt, nimmt der nächtliche Aufräu
 8. Ersetzt Spec 0043: REQ-001 „Video speichern“ als Text-Knopf und „höchstens ein Video je Rezept“
    (jetzt ein Video je Link, `video_exists` je Link), REQ-002 der Rahmen unter dem Foto mit
    Wiedergabe in der Seite (AC-007) und REQ-003 „Video entfernen“ als Text unter dem Rahmen.
+9. Befunde aus Produktion (v2026.11.3, 27.11.2026), AC-020 und AC-021: (a) Nach „Video
+   speichern“ blieb der Rahmen weiß mit zwei Punkten, bis die Seite neu geladen bzw. neu geöffnet
+   wurde. Ursache: Die Galerie misst ihre Breite mit `onLayout`; react-native-web beobachtet die
+   Größe einer Ansicht aber nur, wenn `onLayout` schon beim ersten Anzeigen gesetzt ist. Mit nur
+   einem Foto hatte der Rahmen keins, kam das Video dazu, blieb die Breite 0 und die Seiten leer.
+   Jetzt misst der Rahmen von Anfang an, auch mit einer Seite. (b) Zwei Wege führten beim Öffnen
+   zu einem Video: Das eigene Foto lädt erst nach den Videos vom Gerät, bis dahin begann die
+   Galerie mit dem ersten Video, und das davor gesetzte Foto schob es nicht weg (der Browser hält
+   beim Scroll-Snap die gezeigte Seite). Und Safari stellt beim Neuladen die Scroll-Stelle des
+   Rahmens wieder her — das war der „gemerkte“ Stand (im iPhone-Simulator nachgestellt: neu geladen
+   beim zweiten Video). Jetzt hält die Galerie den Platz des Fotos frei, solange es lädt, und sie
+   blättert nur, wenn die Person sie berührt, klickt, mit dem Mausrad schiebt oder eine Pfeiltaste
+   drückt; jedes andere Scrollen wird zurückgesetzt. Tests: `media-gallery.test.tsx` (rot → grün),
+   e2e `rundgang-mediengalerie-0046.spec.ts` (rot → grün), iPhone-Simulator.
 
 ## Daten
 

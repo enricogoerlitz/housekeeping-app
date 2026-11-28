@@ -17,6 +17,9 @@ export interface Query extends PromiseLike<DbResult> {
   gte(column: string, value: string): Query;
   lte(column: string, value: string): Query;
   limit(count: number): Query;
+  /** Spec 0067: stable pages of the agent's reads. */
+  order(column: string): Query;
+  range(from: number, to: number): Query;
 }
 
 export interface ClaimsResult {
@@ -39,6 +42,11 @@ export interface UserStorage {
     contentType: string,
   ): Promise<StorageResult>;
   remove(bucket: string, paths: string[]): Promise<StorageResult>;
+  /** Spec 0067, REQ-013: a photo the agent looks at; the bucket's policies decide. */
+  download(
+    bucket: string,
+    path: string,
+  ): Promise<{ data: Uint8Array | null; error: { message: string } | null }>;
 }
 
 /** A Supabase client acting as the caller: every read and RPC runs under their RLS. */

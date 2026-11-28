@@ -327,7 +327,16 @@ export async function back(page: Page): Promise<void> {
 
 /** A page under "Verwalten" (spec 0005, REQ-010): `manage-entry-<key>` / `nav-manage-<key>`. */
 export type ManagedPage =
-  'activities' | 'packing-bags' | 'trips' | 'articles' | 'stores' | 'members' | 'feedback';
+  | 'activities'
+  | 'packing-bags'
+  | 'trips'
+  | 'articles'
+  | 'stores'
+  | 'members'
+  | 'feedback'
+  // Spec 0067: "Agent" in "Normal", "Haushalt" first in "KI zuerst".
+  | 'agent'
+  | 'household';
 
 /** The first pages of the tabs, the only ones with ⊞ in the header on phones (spec 0005, AC-054). */
 const TAB_START_PAGES = new Set(['/', '/rezepte', '/kalender', '/liste', '/haushalt']);
@@ -507,6 +516,8 @@ export async function fulfilError(route: Route, code: ErrorCode): Promise<void> 
     quota_exceeded: 429,
     ai_unavailable: 503,
     search_unavailable: 503,
+    chat_too_long: 409,
+    chat_busy: 409,
     internal: 500,
   };
   await fulfilFunction(route, status[code], ErrorReplySchema.parse({ error: code }));
@@ -589,6 +600,14 @@ async function stubEdgeFunctions(context: BrowserContext): Promise<void> {
   await context.route('**/functions/v1/resolve-maps-link', (route) =>
     fulfilFunction(route, 200, aiFixtures.resolveMapsLink()),
   );
+  // An image or video from an address would come from the internet (fetch-image, fetch-video): a
+  // test that needs one answers it with its own `page.route`.
+  await context.route('**/functions/v1/fetch-image*', (route) =>
+    fulfilError(route, 'not_an_image'),
+  );
+  await context.route('**/functions/v1/fetch-video*', (route) =>
+    fulfilError(route, 'video_unavailable'),
+  );
   // The paid services (images, drafts, web search) never run from a walk-through: a test that
   // needs one answers it with its own `page.route`, which goes first. Anything else gets "KI nicht
   // erreichbar" (and its console error fails the test unless the test expects it).
@@ -598,6 +617,14 @@ async function stubEdgeFunctions(context: BrowserContext): Promise<void> {
       fulfilError(route, 'ai_unavailable'),
     );
   }
+  // Deleting a household first purges its KI-Agent chats (spec 0066, REQ-010): without seeded
+  // chats there is nothing in Foundry, so the purge answers "0 deleted". Every other action of
+  // the agent costs money and is answered by the test that needs it.
+  await context.route('**/functions/v1/ai-agent*', (route) =>
+    requestBody(route).action === 'purge'
+      ? fulfilFunction(route, 200, { deleted: 0 })
+      : fulfilError(route, 'ai_unavailable'),
+  );
 }
 
 // ---------- Map apps (never really opened) ----------
@@ -635,16 +662,33 @@ export async function routeUrl(page: Page, button: string): Promise<string> {
  * microphone (Chromium flags in playwright.config.ts) over the WebSocket, and this answers with
  * one recognised phrase in the service's text protocol (headers, blank line, JSON body; the
  * X-RequestId must echo the SDK's). Nothing reaches Azure.
+ *
+ * Spec 0068: with `finalOnStop` the words of `transcript` stay interim while listening, and the
+ * final phrase `finalOnStop` comes only after the stop — the last words still on their way;
+ * `null` never sends it (the 1.5 s wait runs out). An empty `transcript` hears nothing.
  */
-export async function fakeSpeech(page: Page, transcript: string): Promise<void> {
+export async function fakeSpeech(
+  page: Page,
+  transcript: string,
+  options: { finalOnStop?: string | null } = {},
+): Promise<void> {
   await page.context().grantPermissions(['microphone']);
   await page.routeWebSocket(/\.stt\.speech\.microsoft\.com\//, (ws) => {
     let requestId = '';
-    let answered = false;
+    let listening = false;
+    let ended = false;
+    const duration = 20_000_000;
     const send = (pathName: string, body: object) =>
       ws.send(
         `X-RequestId:${requestId}\r\nContent-Type:application/json; charset=utf-8\r\nPath:${pathName}\r\n\r\n${JSON.stringify(body)}`,
       );
+    const phrase = (text: string) =>
+      send('speech.phrase', {
+        RecognitionStatus: 'Success',
+        DisplayText: text,
+        Offset: 0,
+        Duration: duration,
+      });
     const idOf = (headers: string) => /X-RequestId:\s*([0-9a-f]+)/i.exec(headers)?.[1];
     ws.onMessage((message) => {
       if (typeof message === 'string') {
@@ -654,21 +698,19 @@ export async function fakeSpeech(page: Page, transcript: string): Promise<void> 
       const headerLength = message.readUInt16BE(0);
       requestId = idOf(message.subarray(2, 2 + headerLength).toString('utf8')) ?? requestId;
       const audio = message.length - 2 - headerLength > 0;
-      if (audio && !answered) {
-        answered = true;
-        const duration = 20_000_000;
+      if (audio && !listening) {
+        listening = true;
         send('turn.start', { context: { serviceTag: 'e2e' } });
+        if (transcript === '') return;
         send('speech.startDetected', { Offset: 0 });
         send('speech.hypothesis', { Text: transcript, Offset: 0, Duration: duration });
-        send('speech.phrase', {
-          RecognitionStatus: 'Success',
-          DisplayText: transcript,
-          Offset: 0,
-          Duration: duration,
-        });
-      } else if (!audio && answered) {
-        // End of the audio stream (the person pressed "Fertig"): close the turn.
-        send('speech.endDetected', { Offset: 20_000_000 });
+        if (options.finalOnStop === undefined) phrase(transcript);
+      } else if (!audio && listening && !ended) {
+        // End of the audio stream (the person pressed "Fertig" or send): close the turn.
+        ended = true;
+        if (options.finalOnStop === null) return;
+        if (options.finalOnStop !== undefined) phrase(options.finalOnStop);
+        send('speech.endDetected', { Offset: duration });
         send('turn.end', {});
       }
     });
@@ -843,6 +885,31 @@ values (${literal(id)}, ${literal(id)}, ${literal(id)}, 'email', ${literal(ident
   return id;
 }
 
+/**
+ * A KI-Agent chat reference of a household as ai-agent would write it (spec 0066); the content
+ * lives in Foundry, which a test answers with `page.route`. Returns the chat id.
+ */
+export function insertAiChat(input: {
+  householdId: string;
+  title: string;
+  placeLabel?: string;
+  createdBy?: string;
+}): string {
+  const id = randomUUID();
+  sql(`
+insert into public.ai_chats (id, household_id, conversation_id, title, place_label, created_by, response_ids)
+values (${literal(id)}, ${literal(input.householdId)}, ${literal(`conv_e2e${id.replaceAll('-', '')}`)},
+        ${literal(input.title)}, ${input.placeLabel ? literal(input.placeLabel) : 'null'},
+        ${input.createdBy ? literal(input.createdBy) : 'null'}, '{resp_e2e}');
+`);
+  return id;
+}
+
+/** Deletes a chat reference as postgres, as ai-agent's delete would (with its tombstone). */
+export function deleteAiChatRow(id: string): void {
+  sql(`delete from public.ai_chats where id = ${literal(id)};`);
+}
+
 /** Deletes an account as postgres (profile and memberships go with it). */
 export function deleteAccount(id: string): void {
   sql(`delete from auth.users where id = ${literal(id)};`);
@@ -869,9 +936,12 @@ export async function signInAs(page: Page, email: string): Promise<void> {
 /**
  * Resets the local database to the seed (`pnpm db:reset`) before the tests of this file, for
  * walk-throughs that change the demo data and assert on its pristine state. About 12 s.
+ * E2E_SKIP_RESET=1 skips it like the global setup does: an agent's worktree must never reset the
+ * shared local stack (27.11.2026, it dropped the owner's local invitation).
  */
 export function freshSeed(): void {
   test.beforeAll(async () => {
+    if (process.env.E2E_SKIP_RESET) return;
     test.setTimeout(120_000);
     const result = spawnSync('pnpm', ['db:reset'], { cwd: repo, stdio: 'ignore' });
     if (result.status !== 0) throw new Error('pnpm db:reset failed');
@@ -932,7 +1002,7 @@ export async function appBackground(page: Page): Promise<string> {
  */
 const ALWAYS_ALLOWED_CONSOLE: RegExp[] = [
   /^Failed to load resource: net::ERR_INTERNET_DISCONNECTED$/,
-  /^WebSocket connection to 'ws:\/\/127\.0\.0\.1:54321\/realtime\/v1\/websocket\?.*' failed/,
+  /^WebSocket connection to 'ws:\/\/127\.0\.0\.1:\d+\/realtime\/v1\/websocket\?.*' failed/,
 ];
 
 interface ConsoleWatch {

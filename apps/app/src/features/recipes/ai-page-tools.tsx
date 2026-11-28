@@ -35,8 +35,8 @@ import {
   useBreakpoint,
   useTheme,
 } from '@housekeeping/ui';
-import { useEffect, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { useEffect, useEffectEvent, useState } from 'react';
+import { ActivityIndicator, Pressable, View } from 'react-native';
 
 import { DictationField } from '@/features/shell/dictation-field';
 import { errorMessage } from '@/features/shell/error-message';
@@ -44,6 +44,7 @@ import { OFFLINE_EDIT_HINT, useOnlineOnly } from '@/features/shell/offline';
 import { revokeLater } from '@/features/shell/revoke-later';
 import { ProposalSheet, type ProposalRefine } from '@/features/web-search/proposal-sheet';
 import { features } from '@/lib/features';
+import { usePromptDictation } from '@/lib/use-prompt-dictation';
 
 import {
   dismissPhotoSuggestions,
@@ -51,6 +52,7 @@ import {
   startPhotoSuggestions,
   usePhotoSuggestions,
 } from './ai-draft';
+import { markAiChangeApplied, peekAiChange, takeAiChange } from './ai-change-request';
 import { AiFillSheet, toastUnreadLinks, useDraftInput, type AiFillResult } from './ai-fill';
 import type { PageEditor } from './sections/use-page-editor';
 
@@ -135,6 +137,8 @@ export function AiPageTools(props: {
   const [refineError, setRefineError] = useState<string>();
   const draftInput = useDraftInput();
   const articlesById = useArticlesById();
+  // The wish of the agent's chat, read while the page opens (taken by the effect below).
+  const [asked, setAsked] = useState(() => peekAiChange(recipe.id));
   // Spec 0061, REQ-004: "Ausarbeiten" opens the edit mode with the window searching the title;
   // the intent stays until the window closes.
   const workOut = editor.intent?.kind === 'ai';
@@ -142,7 +146,6 @@ export function AiPageTools(props: {
     setFilling(false);
     if (workOut) editor.clearIntent();
   };
-  if (!offersAi(recipe)) return null;
   const editing = editor.draft !== undefined;
   const page = editor.page();
   const hasIngredients = page.ingredients.rows.length > 0;
@@ -174,7 +177,7 @@ export function AiPageTools(props: {
     return { proposal, pagePhoto };
   };
   // Spec 0049, REQ-005: a draft for a recipe that has content opens the Änderungsansicht first.
-  const propose = (result: AiFillResult, direct: boolean) => {
+  const propose = (result: AiFillResult, direct: boolean, asked?: string) => {
     const { reply, replace, change = false, generatePhoto, photo, makePhoto, imageWish } = result;
     const { proposal, pagePhoto } = compare(reply, replace, change, photo);
     toastUnreadLinks(reply.sources);
@@ -204,6 +207,7 @@ export function AiPageTools(props: {
       change,
       direct,
       fromWeb: result.fromWeb === true,
+      ...(asked ? { asked } : {}),
       ...(photo ? { sourcePhoto: photo } : {}),
       ...(pagePhoto ? { photo: pagePhoto } : {}),
     });
@@ -271,8 +275,44 @@ export function AiPageTools(props: {
   // The panel and the windows show nothing in place on the reading page, so no empty slot takes
   // the page's gap above the photo (Nachklick 27.11.: 24 pt gap under the head).
   const panel = <PhotoSuggestionsPanel recipe={recipe} editor={editor} />;
+  // Spec 0067, step C: a change asked for in the agent's chat ("vegetarische Variante") runs
+  // "Mit KI ändern" with that wish as the page opens; its Änderungsansicht shows the result.
+  const runs = offersAi(recipe) && !editing && hasContent && !online.disabled;
+  const runAsked = useEffectEvent(() => {
+    const asked = takeAiChange(recipe.id);
+    if (!asked || !runs) return;
+    draftRecipeAsync({
+      text: asked.wish,
+      links: [],
+      photos: [],
+      imagePrompt: false,
+      current: recipeDraftOf(editor.page(), articleName),
+    })
+      .then((reply) =>
+        propose({ reply, replace: true, change: true, generatePhoto: false }, true, asked.token),
+      )
+      .catch((cause: unknown) =>
+        toast.show({
+          message: cause instanceof OfflineError ? OFFLINE_EDIT_HINT : AI_DRAFT_UNREACHABLE_MESSAGE,
+        }),
+      )
+      .finally(() => setAsked(undefined));
+  });
+  useEffect(() => runAsked(), []);
+  if (!offersAi(recipe)) return null;
   return (
     <>
+      {asked && runs ? (
+        <View
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}
+          testID="recipe-ai-change-asked"
+        >
+          <ActivityIndicator size="small" />
+          <Text variant="small" color="muted" style={{ flex: 1 }}>
+            {`Die KI ändert das Rezept: „${asked}“ …`}
+          </Text>
+        </View>
+      ) : null}
       {editing ? (
         <Stack gap={12}>
           <View style={{ alignItems: 'flex-start' }}>
@@ -310,6 +350,8 @@ export function AiPageTools(props: {
             // Spec 0062, REQ-008: from the reading page "Übernehmen" saves at once.
             if (review.direct && !editor.draft) {
               editor.apply(next, photo);
+              // Spec 0067: the chat's change card shows the changed recipe as its result.
+              if (review.asked) markAiChangeApplied(review.asked);
               return;
             }
             editor.adopt(next);
@@ -337,6 +379,8 @@ interface Review {
   direct: boolean;
   /** From the web search for a recipe with ingredients: "Ergänzen · Ersetzen" (REQ-011). */
   fromWeb: boolean;
+  /** Spec 0067: the change card of the agent's chat that asked for this change. */
+  asked?: string;
 }
 
 const PHOTO_FIELD = 'photo';
@@ -392,6 +436,50 @@ const GENERATING_LABEL = 'Foto wird erzeugt';
 /** Three tiles stay thumbnails on a wide screen; the large photo stands below. */
 const TILE_MAX = 200;
 
+/** "Was soll anders sein?" and "Neu generieren" under the photo suggestions (spec 0068: sent with the last dictated words). */
+function RegenerateLine(props: {
+  loading: boolean;
+  /** Kept by the panel, so the wish stays through the loading state. */
+  extra: string;
+  setExtra: (extra: string) => void;
+  onRegenerate: (extra: string) => void;
+  testID: string;
+}) {
+  const { loading, extra, setExtra, testID: id } = props;
+  const online = useOnlineOnly();
+  const dictation = usePromptDictation({
+    value: extra,
+    onChangeText: setExtra,
+    onSend: () => props.onRegenerate(extra),
+  });
+  return (
+    <Stack gap={8}>
+      <DictationField
+        label="Was soll anders sein?"
+        placeholder="optional, z. B. heller, von oben"
+        value={extra}
+        onChangeText={setExtra}
+        dictation={dictation}
+        maxLength={IMAGE_EXTRA_MAX}
+        editable={!loading && !online.disabled}
+        testID={`${id}-extra`}
+      />
+      <View style={{ alignItems: 'flex-start' }}>
+        <Button
+          label={loading ? 'Wird erzeugt …' : 'Neu generieren'}
+          icon="refresh-cw"
+          variant="secondary"
+          size="sm"
+          disabled={loading || online.disabled}
+          hint={online.hint}
+          onPress={dictation.send}
+          testID={`${id}-regenerate`}
+        />
+      </View>
+    </Stack>
+  );
+}
+
 /**
  * AC-010: three suggestions; "Übernehmen" makes one the draft's photo (saved with "Speichern").
  * Spec 0045: the tiles pulse while the photos are made (REQ-005); "Neu generieren" with an
@@ -437,34 +525,17 @@ function PhotoSuggestionsPanel(props: { recipe: Recipe; editor: PageEditor }) {
   ) : null;
   const id = 'recipe-photo-suggestions';
   const loading = suggestions.status === 'loading';
-  const regenerate = () => {
-    setSelected(0);
-    regeneratePhotoSuggestions(recipe.id, extra);
-  };
   const again = (
-    <Stack gap={8}>
-      <DictationField
-        label="Was soll anders sein?"
-        placeholder="optional, z. B. heller, von oben"
-        value={extra}
-        onChangeText={setExtra}
-        maxLength={IMAGE_EXTRA_MAX}
-        editable={!loading && !online.disabled}
-        testID={`${id}-extra`}
-      />
-      <View style={{ alignItems: 'flex-start' }}>
-        <Button
-          label={loading ? 'Wird erzeugt …' : 'Neu generieren'}
-          icon="refresh-cw"
-          variant="secondary"
-          size="sm"
-          disabled={loading || online.disabled}
-          hint={online.hint}
-          onPress={regenerate}
-          testID={`${id}-regenerate`}
-        />
-      </View>
-    </Stack>
+    <RegenerateLine
+      loading={loading}
+      extra={extra}
+      setExtra={setExtra}
+      onRegenerate={(wish) => {
+        setSelected(0);
+        regeneratePhotoSuggestions(recipe.id, wish);
+      }}
+      testID={id}
+    />
   );
   if (loading) {
     return (

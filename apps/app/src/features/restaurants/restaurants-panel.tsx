@@ -1,4 +1,11 @@
-import { useCurrentMember, usePlanEntries, useRestaurants, useToday } from '@housekeeping/api';
+import { AgentEntryButton } from '@/features/ai-agent/agent-entry';
+import {
+  toggleRestaurantFavorite,
+  useCurrentMember,
+  usePlanEntries,
+  useRestaurants,
+  useToday,
+} from '@housekeeping/api';
 import {
   applyRestaurantListFilter,
   cuisineFacets,
@@ -51,6 +58,7 @@ import { Pressable, View, type TextInput } from 'react-native';
 import { rememberBrowseOrder } from '@/lib/browse-order';
 import { afterWindowClosed, useOriginBack, usePageParams } from '@/lib/url-state';
 import { StartPageActions } from '@/features/shell/profile-button';
+import { CornerToggle } from '@/features/shell/corner-toggle';
 import { useOnlineOnly } from '@/features/shell/offline';
 import { OwnPhoto } from '@/features/shell/own-photo';
 import { ListViewSwitch, PlaceTile, TILE_MIN_WIDTH, useListView } from '@/features/shell/list-view';
@@ -174,6 +182,7 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
       onBack={fromOther ? origin.back : undefined}
       right={
         <>
+          <AgentEntryButton from="restaurants" />
           <CreateButton
             label="Restaurant anlegen"
             disabled={online.disabled}
@@ -459,21 +468,29 @@ type RestaurantEntryProps = {
   onPress: () => void;
 };
 
-/** Favourite, own rating and last visit, below the name of a card or a tile. */
+/** The heart at the top right of a card or tile: tap toggles without opening (spec 0041, AC-017). */
+function RestaurantHeart(props: { restaurantId: Id; isFavorite: boolean; overlay?: boolean }) {
+  const online = useOnlineOnly();
+  return (
+    <CornerToggle
+      icon="heart"
+      label={props.isFavorite ? 'Favorit' : 'Als Favorit markieren'}
+      active={props.isFavorite}
+      disabled={online.disabled}
+      hint={online.hint}
+      overlay={props.overlay}
+      onPress={() => toggleRestaurantFavorite(props.restaurantId)}
+      testID={`restaurant-${props.restaurantId}-favorite`}
+    />
+  );
+}
+
+/** Own rating and last visit, below the name of a card or a tile. */
 function RestaurantSignals(props: RestaurantEntryProps) {
   const id = props.restaurant.id;
-  if (!props.isFavorite && !props.myRating && !props.lastVisit) return null;
+  if (!props.myRating && !props.lastVisit) return null;
   return (
     <Row gap={8} wrap>
-      {props.isFavorite ? (
-        <View
-          testID={`restaurant-${id}-favorite`}
-          accessibilityLabel="Favorit"
-          accessibilityRole="image"
-        >
-          <Icon name="heart" size={15} color="accent" filled />
-        </View>
-      ) : null}
       {props.myRating ? (
         <Stars value={props.myRating} size={13} testID={`restaurant-${id}-stars`} />
       ) : null}
@@ -506,6 +523,9 @@ function RestaurantTile(props: RestaurantEntryProps) {
           <RestaurantSignals {...props} />
         </View>
       }
+      corner={
+        <RestaurantHeart restaurantId={restaurant.id} isFavorite={props.isFavorite} overlay />
+      }
       onPress={props.onPress}
     />
   );
@@ -524,68 +544,64 @@ function RestaurantCard(props: {
   const meta = restaurantMeta(restaurant);
   const id = restaurant.id;
   return (
-    <Pressable
-      testID={`restaurant-${id}`}
-      accessibilityRole="button"
-      accessibilityLabel={restaurant.name}
-      aria-selected={props.selected}
-      onPress={props.onPress}
-      style={(state) => ({
-        opacity: state.pressed ? 0.75 : 1,
-        borderRadius: theme.shape.radius.card,
-        // Cards of one grid row share its height.
-        flexGrow: 1,
-      })}
-    >
-      <Surface
-        padding={12}
-        style={[
-          { flexGrow: 1, flexDirection: 'row', alignItems: 'center', gap: 12 },
-          props.selected ? { borderWidth: 1.5, borderColor: theme.colors.accent } : null,
-        ]}
+    <View style={{ flexGrow: 1 }}>
+      <Pressable
+        testID={`restaurant-${id}`}
+        accessibilityRole="button"
+        accessibilityLabel={restaurant.name}
+        aria-selected={props.selected}
+        onPress={props.onPress}
+        style={(state) => ({
+          opacity: state.pressed ? 0.75 : 1,
+          borderRadius: theme.shape.radius.card,
+          // Cards of one grid row share its height.
+          flexGrow: 1,
+        })}
       >
-        {/* The own photo, else the cutlery (spec 0024, REQ-004). */}
-        <OwnPhoto
-          photoPath={restaurant.photoPath}
-          name={restaurant.name}
-          placeholderIcon={RESTAURANT_ICON}
-          width={48}
-          height={48}
-          testID={`restaurant-${id}`}
-        />
-        <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-          <Row gap={6}>
-            <Text variant="rowTitle" numberOfLines={1} style={{ flexShrink: 1 }}>
-              {restaurant.name}
-            </Text>
-            {props.isFavorite ? (
-              <View
-                testID={`restaurant-${id}-favorite`}
-                accessibilityLabel="Favorit"
-                accessibilityRole="image"
-              >
-                <Icon name="heart" size={15} color="accent" filled />
-              </View>
-            ) : null}
-          </Row>
-          {meta ? (
-            <Text variant="small" color="muted" numberOfLines={1}>
-              {meta}
-            </Text>
-          ) : null}
-          <Row gap={8} wrap>
-            {/* The own rating in half stars (spec 0008, REQ-011, AC-041). */}
-            {props.myRating ? (
-              <Stars value={props.myRating} size={13} testID={`restaurant-${id}-stars`} />
-            ) : null}
-            {props.lastVisit ? (
-              <Text variant="caption" color="muted" testID={`restaurant-${id}-last`}>
-                {props.lastVisit}
+        <Surface
+          padding={12}
+          style={[
+            { flexGrow: 1, flexDirection: 'row', alignItems: 'center', gap: 12 },
+            props.selected ? { borderWidth: 1.5, borderColor: theme.colors.accent } : null,
+          ]}
+        >
+          {/* The own photo, else the cutlery (spec 0024, REQ-004). */}
+          <OwnPhoto
+            photoPath={restaurant.photoPath}
+            name={restaurant.name}
+            placeholderIcon={RESTAURANT_ICON}
+            width={48}
+            height={48}
+            testID={`restaurant-${id}`}
+          />
+          <View style={{ flex: 1, minWidth: 0, gap: 2, paddingRight: 40 }}>
+            <Row gap={6}>
+              <Text variant="rowTitle" numberOfLines={1} style={{ flexShrink: 1 }}>
+                {restaurant.name}
+              </Text>
+            </Row>
+            {meta ? (
+              <Text variant="small" color="muted" numberOfLines={1}>
+                {meta}
               </Text>
             ) : null}
-          </Row>
-        </View>
-      </Surface>
-    </Pressable>
+            <Row gap={8} wrap>
+              {/* The own rating in half stars (spec 0008, REQ-011, AC-041). */}
+              {props.myRating ? (
+                <Stars value={props.myRating} size={13} testID={`restaurant-${id}-stars`} />
+              ) : null}
+              {props.lastVisit ? (
+                <Text variant="caption" color="muted" testID={`restaurant-${id}-last`}>
+                  {props.lastVisit}
+                </Text>
+              ) : null}
+            </Row>
+          </View>
+        </Surface>
+      </Pressable>
+      <View style={{ position: 'absolute', top: 4, right: 4 }}>
+        <RestaurantHeart restaurantId={id} isFavorite={props.isFavorite} />
+      </View>
+    </View>
   );
 }

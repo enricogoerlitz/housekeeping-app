@@ -57,8 +57,10 @@ export {
   type SheetActions,
 } from './overlay';
 export { pickImageFile } from './pick-image';
+export { COMPOSER } from './field-grow';
 export { useImageDropAndPaste } from './image-drop';
 export { useKeyboard } from './keyboard';
+export { useDragDismissKeyboard } from './use-drag-dismiss';
 export { focusAfterChange, openKeyboardNow } from './keyboard-proxy';
 export { TabSwipeContent } from './tab-swipe-area';
 export { useRevealOnShow } from './reveal-on-show';
@@ -101,6 +103,8 @@ export {
 } from './shell';
 export { columnsFor } from './grid-columns';
 export { Disclosure } from './disclosure';
+export { ProgressSteps } from './progress-steps';
+export { ScrollRow } from './scroll-row';
 export { expandableA11y } from './expandable';
 export { PhotoCollage } from './display';
 export { SelectRow } from './lists';

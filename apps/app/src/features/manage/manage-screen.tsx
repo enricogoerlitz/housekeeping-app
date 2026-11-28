@@ -1,4 +1,4 @@
-import { setOffline, useOffline } from '@housekeeping/api';
+import { setOffline, useAppView, useOffline } from '@housekeeping/api';
 import {
   Icon,
   List,
@@ -14,7 +14,9 @@ import { View } from 'react-native';
 
 import { authConfig } from '@/lib/auth-config';
 
-import { MANAGE_GROUPS, SHOWROOM_ENTRY, type ManageEntry } from './manage-entries';
+import { features } from '@/lib/features';
+
+import { manageGroups, SHOWROOM_ENTRY, type ManageEntry } from './manage-entries';
 import { useOpenManageEntry } from './navigation';
 
 /**
@@ -25,6 +27,7 @@ export function ManageScreen() {
   const router = useRouter();
   const { isWide } = useBreakpoint();
   const back = () => (router.canGoBack() ? router.back() : router.replace('/'));
+  const groups = manageGroups(useAppView(), features.aiAgent);
   return (
     <Screen
       testID="manage-screen"
@@ -32,7 +35,7 @@ export function ManageScreen() {
       header={<ScreenHeader title="Verwalten" onBack={back} />}
     >
       <View style={isWide ? { flexDirection: 'row', gap: 32, flexWrap: 'wrap' } : undefined}>
-        {MANAGE_GROUPS.map((group) => (
+        {groups.map((group) => (
           <View key={group.key} style={isWide ? { flexBasis: 300, flexGrow: 1 } : undefined}>
             <Section title={group.title} testID={`manage-group-${group.key}`}>
               <List>

@@ -371,6 +371,7 @@ export const notificationDefaults: NotificationSettings = {
   id: 'ns-enrico',
   memberId: enrico.id,
   acknowledgedNotices: [],
+  appView: 'normal',
 };
 
 /** A trip of these people; the rows of trip_members get ids "<trip>:<member>". */

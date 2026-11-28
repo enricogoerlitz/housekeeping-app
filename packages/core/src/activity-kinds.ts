@@ -132,3 +132,58 @@ export function filterRemembered<T extends Pick<Activity, 'remembered'>>(
   const wanted = filter === 'remembered';
   return activities.filter((activity) => activity.remembered === wanted);
 }
+
+/** AC-016: how many activities each filter would show, for the counts in its menu. */
+export function countRememberFilters(
+  activities: readonly Pick<Activity, 'remembered'>[],
+): Record<RememberFilter, number> {
+  const remembered = activities.filter((activity) => activity.remembered).length;
+  return {
+    remembered,
+    all: activities.length,
+    forgotten: activities.length - remembered,
+  };
+}
+
+/**
+ * AC-013: whether the address leaves the list, so it opens with "Gemerkt" again. An activity
+ * opened from it (its own page on phones and from the tiles) does not: back on the list the
+ * chosen filter stays, and an activity that is not remembered is still there.
+ */
+export function leavesActivityList(pathname: string): boolean {
+  return pathname !== '/aktivitaeten' && !pathname.startsWith('/aktivitaet/');
+}
+
+export interface ActivityEmptyState {
+  title: string;
+  /** Only for a search: no other word helps an empty filter. */
+  text?: string;
+  /** "Alle zeigen" (all activities, without "Favoriten") while a filter narrows the list. */
+  showAll: boolean;
+}
+
+/**
+ * The empty list of "Aktivitäten" with activities in the household, worded like recipes and
+ * articles: "Keine Aktivitäten für „xyzzy““ for a search, else the filter that hides them —
+ * "Keine Aktivitäten unter „Gemerkt““, or "… für diese Filter" with "Favoriten".
+ */
+export function activityEmptyState(
+  query: string,
+  remember: RememberFilter,
+  favoritesOnly: boolean,
+): ActivityEmptyState {
+  const showAll = favoritesOnly || remember !== 'all';
+  const shown = query.trim();
+  if (shown !== '') {
+    return {
+      title: `Keine Aktivitäten für „${shown}“`,
+      text: 'Probiere ein anderes Wort.',
+      showAll,
+    };
+  }
+  if (favoritesOnly || remember === 'all') {
+    return { title: 'Keine Aktivitäten für diese Filter', showAll };
+  }
+  const label = REMEMBER_FILTERS.find((entry) => entry.value === remember)?.label ?? '';
+  return { title: `Keine Aktivitäten unter „${label}“`, showAll };
+}

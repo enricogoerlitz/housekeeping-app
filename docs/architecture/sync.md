@@ -547,6 +547,12 @@ Der Versand aufs Gerät (ADR-0014) ist mit Spec 0051 entfallen. Mitteilungen ers
   Zeilen „HH:MM:SS“ wie Postgres sie liefert, damit Diff und Server dasselbe vergleichen.
   `CACHE_VERSION` 8 (neue Tabelle und Spalten); Warteschlange und Haushaltswahl überleben das.
 
+**Nachtrag Spec 0067 — Ansicht je Person:** Die eigene Zeile trägt seit Spec 0067 auch
+`app_view` („normal“ oder „ai_first“ = „KI zuerst“). Geschrieben wird sie nur über
+`set_app_view(view)` (security definer, nur `auth.uid()`, alle eigenen Zeilen auf einmal: die Ansicht
+gehört der Person, nicht dem Haushalt); ein neuer Haushalt übernimmt sie beim Eintritt. Lesen wie
+die Zeile: nur die Person selbst, offline aus dem Cache. `CACHE_VERSION` 27.
+
 ## Nachtrag Spec 0025 — Laden-Aktionen auf der Liste, ein Posten je Artikel
 
 - „Abhaken“, „Posten hinzufügen“ und „Bereich zuordnen“ gehen auch auf „Liste“ und in „Posten
@@ -573,3 +579,17 @@ Der Versand aufs Gerät (ADR-0014) ist mit Spec 0051 entfallen. Mitteilungen ers
   „Das Rezept wurde zwischendurch geändert“. Das eigene letzte Speichern zählt nicht, auch bevor
   der Pull es bringt. „Rückgängig“ gibt es für das Speichern der Seite nicht.
 - Cache-Form unverändert (die Zeilen trugen `updated_at` schon), daher kein neuer `CACHE_VERSION`.
+
+## Nachtrag Spec 0066 — KI-Agent online (ADR-0018)
+
+- **Zweite Online-Lesung:** Die Nachrichten eines Recherche-Chats lädt die Seite „KI-Agent“ online
+  über die Edge Function `ai-agent` aus der Foundry-Conversation. Im Cache liegt nur `ai_chats`
+  (Titel, Ort, wer, Antwort-IDs), synchronisiert wie jede Haushaltstabelle, mit Löschspur.
+- **Schreiben:** `ai_chats` schreibt nur `ai-agent`, als die Person, über `create_ai_chat`,
+  `record_ai_chat_turn` und `delete_ai_chat`; `apply_changes` kennt die Tabelle nicht, der Client
+  ändert sie nie direkt (`RPC_ONLY` in `packages/api/src/changes.ts`). Nach einer Antwort oder einem
+  Löschen folgt der normale Abgleich.
+- **Offline:** Die Seite zeigt den Verlauf aus dem Cache; Eingabe, „Speichern“ und Öffnen eines Chats
+  sind deaktiviert. Es gibt keine Warteschlange für Nachrichten.
+- **Haushalt löschen:** Die App löscht zuerst alle Chats über `ai-agent` (`purge`);
+  `delete_household` lehnt mit `ai_chats_remaining` ab, solange einer übrig ist.

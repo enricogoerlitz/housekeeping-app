@@ -2,7 +2,7 @@
 // the active household; replies are validated against the core contract in the transport.
 // Nothing here changes data: a proposal is applied only when the person accepts it
 // (`applyProposal`).
-import type { SpeechTokenReply } from '@housekeeping/core';
+import { AGENT_BLOCKED_TEXT, type SpeechTokenReply } from '@housekeeping/core';
 
 import type { AssistantContext, AiSearchResult, AssistantReply } from './assistant';
 import { onlineCall } from './backend';
@@ -13,11 +13,24 @@ export const AI_QUOTA_MESSAGE = 'Für heute ist das KI-Kontingent aufgebraucht';
 export const AI_UNAVAILABLE_MESSAGE = 'Der Assistent ist gerade nicht erreichbar';
 export const AI_SIGN_IN_MESSAGE = 'Bitte melde dich neu an';
 export const AI_FAILED_MESSAGE = 'Das hat gerade nicht geklappt – bitte noch einmal versuchen';
+/** Spec 0066, AC-035: the chat is at its end (spec 0067: 95 model runs). */
+export const AI_CHAT_TOO_LONG_MESSAGE = 'Dieser Chat ist lang geworden – starte einen neuen.';
+/** Spec 0067, AC-024: another person's answer runs in this chat. */
+export const AI_CHAT_BUSY_MESSAGE = 'Agent antwortet gerade …';
 /** Spec 0049, AC-023: neither Serper nor Brave answered. */
 const WEB_SEARCH_UNAVAILABLE_MESSAGE =
   'Die Websuche ist gerade nicht erreichbar. Versuch es gleich noch einmal.';
 
-export type AiErrorReason = 'quota' | 'unavailable' | 'unauthorized' | 'failed' | 'search';
+export type AiErrorReason =
+  | 'quota'
+  | 'unavailable'
+  | 'unauthorized'
+  | 'failed'
+  | 'search'
+  | 'chatTooLong'
+  | 'busy'
+  /** Review D: the content filter refused the agent's message. */
+  | 'blocked';
 
 const MESSAGES: Record<AiErrorReason, string> = {
   quota: AI_QUOTA_MESSAGE,
@@ -25,6 +38,9 @@ const MESSAGES: Record<AiErrorReason, string> = {
   unauthorized: AI_SIGN_IN_MESSAGE,
   failed: AI_FAILED_MESSAGE,
   search: WEB_SEARCH_UNAVAILABLE_MESSAGE,
+  chatTooLong: AI_CHAT_TOO_LONG_MESSAGE,
+  busy: AI_CHAT_BUSY_MESSAGE,
+  blocked: AGENT_BLOCKED_TEXT,
 };
 
 /** A failed AI call; `message` is the German text for the person. */
@@ -43,6 +59,10 @@ function reasonOf(error: TransportError): AiErrorReason {
       return 'unauthorized';
     case 'search_unavailable':
       return 'search';
+    case 'chat_too_long':
+      return 'chatTooLong';
+    case 'chat_busy':
+      return 'busy';
     case 'ai_unavailable':
     case 'network':
     case 'timeout':

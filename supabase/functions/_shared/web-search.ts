@@ -34,6 +34,15 @@ export interface PlaceHit {
   snippet?: string;
 }
 
+/** A Google image (spec 0067, REQ-011): shown to pick from, never stored as it is. */
+export interface ImageHit {
+  imageUrl: string;
+  thumbnailUrl?: string;
+  /** The page it is on: its source. */
+  pageUrl: string;
+  title?: string;
+}
+
 /** The centre of a place search and the map zoom around it. */
 export interface Around {
   lat: number;
@@ -45,6 +54,8 @@ export interface SearchProvider {
   name: 'serper' | 'brave';
   web(query: string): Promise<WebHit[]>;
   places(query: string, around?: Around): Promise<PlaceHit[]>;
+  /** Spec 0067: Google images; Serper only. */
+  images?(query: string): Promise<ImageHit[]>;
 }
 
 /** One provider gave no usable answer; the next one is asked. */
@@ -165,6 +176,12 @@ const SerperMaps = z.object({
     .default([]),
 });
 
+const SerperImages = z.object({
+  images: z
+    .array(z.object({ title: text, imageUrl: text, thumbnailUrl: text, link: text }).catch({}))
+    .default([]),
+});
+
 function openingDays(hours: { [day: string]: string } | undefined): OpeningDay[] | undefined {
   if (!hours) return undefined;
   const days = Object.entries(hours).flatMap(([day, value]): OpeningDay[] => {
@@ -259,6 +276,26 @@ function serperProvider(deps: Pick<Deps, 'fetch'>, key: string): SearchProvider 
         maps(`@${around.lat},${around.lng},${around.zoom}z`),
       ]);
       return pickPlaceHits(free, near, around, query);
+    },
+    async images(query) {
+      const body = shape(
+        'serper',
+        SerperImages,
+        await post('images', { q: query, gl: 'de', hl: 'de' }),
+      );
+      return body.images.flatMap((hit): ImageHit[] => {
+        const imageUrl = httpsUrl(hit.imageUrl);
+        const pageUrl = httpsUrl(hit.link);
+        if (!imageUrl || !pageUrl) return [];
+        return [
+          compact({
+            imageUrl,
+            thumbnailUrl: httpsUrl(hit.thumbnailUrl),
+            pageUrl,
+            title: cleanText(hit.title, 200),
+          }),
+        ];
+      });
     },
   };
 }

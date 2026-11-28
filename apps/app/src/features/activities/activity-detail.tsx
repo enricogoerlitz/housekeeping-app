@@ -19,7 +19,17 @@ import {
   type Activity,
   type Id,
 } from '@housekeeping/core';
-import { Button, EmptyState, Icon, IconButton, Menu, Row, Stack, Text } from '@housekeeping/ui';
+import {
+  Button,
+  EmptyState,
+  Icon,
+  IconButton,
+  Menu,
+  Row,
+  Stack,
+  Text,
+  useLargeTitle,
+} from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
 import { View } from 'react-native';
@@ -27,6 +37,7 @@ import { View } from 'react-native';
 import { PlanPlaceSheet } from '@/features/meal-plan/plan-place-sheet';
 import { RouteSheet } from '@/features/restaurants/route-sheet';
 import { DetailPage } from '@/features/shell/detail-page';
+import { RememberButton } from '@/features/shell/corner-toggle';
 import { FavoriteButton } from '@/features/shell/favorite-button';
 import { MemberRatings } from '@/features/shell/member-ratings';
 import { useOnlineOnly } from '@/features/shell/offline';
@@ -39,6 +50,7 @@ import { shareTarget } from '@/lib/share';
 import { ActivityFormSheet } from './activity-form';
 import { useActivityIcon } from './activity-photo';
 import { activityVisitsLabel } from './labels';
+import { toggleRemembered } from './remember';
 
 /** The windows of an activity's detail; they stand in the address (spec 0019, REQ-013). */
 export type ActivityWindow = 'bearbeiten' | 'einplanen';
@@ -100,6 +112,7 @@ export function ActivityDetail(props: ActivityDetailProps) {
 function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity }) {
   const { activity } = props;
   const online = useOnlineOnly();
+  const largeTitle = useLargeTitle();
   const kindsById = useActivityKindsById();
   const icon = useActivityIcon(activity);
   const kind = activity.kindId === undefined ? undefined : kindsById[activity.kindId];
@@ -128,6 +141,16 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
       disabled={online.disabled}
       hint={online.hint}
       onPress={() => toggleActivityFavorite(activity.id)}
+    />
+  );
+  // Heart = my favourite, bookmark = remembered by the household (spec 0041, AC-015).
+  const remember = (
+    <RememberButton
+      testID="activity-remember-toggle"
+      active={activity.remembered}
+      disabled={online.disabled}
+      hint={online.hint}
+      onPress={() => toggleRemembered(activity)}
     />
   );
   // "Teilen" (spec 0047, REQ-001): only the link to the page; works offline.
@@ -169,6 +192,7 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
       right={
         <Row gap={4}>
           {favorite}
+          {remember}
           {editButton}
           {more}
         </Row>
@@ -191,6 +215,7 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
             )}
             <Row gap={4}>
               {favorite}
+              {remember}
               {editButton}
               {more}
             </Row>
@@ -209,11 +234,9 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
         />
 
         <Stack gap={10} style={{ marginTop: 16, marginBottom: 24 }}>
-          {props.onBack ? null : (
-            <Text variant="title" heading testID="activity-title">
-              {activity.name}
-            </Text>
-          )}
+          <Text ref={largeTitle} variant="title" heading wholeWords testID="activity-title">
+            {activity.name}
+          </Text>
           {kind ? (
             <Row gap={6}>
               <Icon name={icon} size={16} color="muted" />

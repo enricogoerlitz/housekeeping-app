@@ -1,6 +1,9 @@
 // Transport over supabase-js: one RPC per call, answers validated with Zod, errors classified.
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
+  AgentDeleteReplySchema,
+  AgentLoadReplySchema,
+  AgentStatusReplySchema,
   AiImageReplySchema,
   PlacePreviewReplySchema,
   WebSearchReplySchema,
@@ -110,7 +113,7 @@ export interface SupabaseLike {
   functions: {
     invoke(
       name: string,
-      options: { body: unknown },
+      options: { body: unknown; signal?: AbortSignal },
     ): Promise<{ data: unknown; error: FunctionError | null }>;
   };
   storage: { from(bucket: string): StorageBucketLike };
@@ -155,6 +158,14 @@ const PLACE_PREVIEW_TIMEOUT_MS = 45_000;
  * app waits up to 90 s. A video of up to 50 MB downloads within 2 minutes.
  */
 const FETCH_VIDEO_TIMEOUT_MS = 90_000;
+/**
+ * Spec 0066: until the stream starts the server checks the chat, the quota and may create a
+ * conversation (a few Foundry calls); the answer itself streams for up to 120 s. Deleting walks
+ * every answer of a chat.
+ */
+const AGENT_START_TIMEOUT_MS = 30_000;
+const AGENT_LOAD_TIMEOUT_MS = 30_000;
+const AGENT_DELETE_TIMEOUT_MS = 90_000;
 const VIDEO_DOWNLOAD_TIMEOUT_MS = 120_000;
 
 export function createSupabaseTransport(
@@ -205,13 +216,22 @@ export function createSupabaseTransport(
   }
 
   /** An edge function: errors are `{ error: code }` with an HTTP status (core ErrorReply). */
-  async function invoke(name: string, body: unknown, waitMs = timeoutMs): Promise<unknown> {
+  async function invoke(
+    name: string,
+    body: unknown,
+    waitMs = timeoutMs,
+    signal?: AbortSignal,
+  ): Promise<unknown> {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<never>((_, reject) => {
       timer = setTimeout(() => reject(new TransportError('transient', 'timeout', 0)), waitMs);
     });
     try {
-      const reply = await Promise.race([client.functions.invoke(name, { body }), timeout]);
+      const reply = await Promise.race([
+        client.functions.invoke(name, signal ? { body, signal } : { body }),
+        timeout,
+      ]);
+      if (signal?.aborted) throw new TransportError('transient', 'aborted', 0);
       if (!reply.error) return reply.data;
       const status = reply.error.context?.status;
       if (status === undefined) throw new TransportError('transient', 'network', 0);
@@ -449,6 +469,7 @@ export function createSupabaseTransport(
     deleteHousehold: (householdId) => nothing('delete_household', { household_id: householdId }),
     acknowledgeNotices: (householdId, keys) =>
       nothing('acknowledge_notices', { household_id: householdId, keys: [...keys] }),
+    setAppView: (view) => nothing('set_app_view', { view }),
     resolveMapsLink: (url) =>
       invokeParsed(ResolveMapsLinkReplySchema, 'resolve-maps-link', { url }),
     fetchImage: async (request) => {
@@ -468,6 +489,37 @@ export function createSupabaseTransport(
       invokeParsed(WebSearchReplySchema, 'web-search', request, WEB_SEARCH_TIMEOUT_MS),
     placePreview: (request) =>
       invokeParsed(PlacePreviewReplySchema, 'web-search', request, PLACE_PREVIEW_TIMEOUT_MS),
+    // Spec 0066 (decision 12): supabase-js hands a text/event-stream answer over as the Response.
+    agentSend: async (request, signal) => {
+      const data = await invoke('ai-agent', request, AGENT_START_TIMEOUT_MS, signal);
+      if (data instanceof Response && data.body) return data.body;
+      throw new TransportError('permanent', 'invalid_response');
+    },
+    agentLoad: (householdId, chatId) =>
+      invokeParsed(
+        AgentLoadReplySchema,
+        'ai-agent',
+        { action: 'load', householdId, chatId },
+        AGENT_LOAD_TIMEOUT_MS,
+      ),
+    agentDelete: async (householdId, chatId) =>
+      (
+        await invokeParsed(
+          AgentDeleteReplySchema,
+          'ai-agent',
+          chatId ? { action: 'delete', householdId, chatId } : { action: 'purge', householdId },
+          AGENT_DELETE_TIMEOUT_MS,
+        )
+      ).deleted,
+    agentStatus: async (householdId, chatId) =>
+      (
+        await invokeParsed(
+          AgentStatusReplySchema,
+          'ai-agent',
+          { action: 'status', householdId, chatId },
+          AGENT_LOAD_TIMEOUT_MS,
+        )
+      ).answering,
     fetchVideo: (request) =>
       invokeParsed(FetchVideoReplySchema, 'fetch-video', request, FETCH_VIDEO_TIMEOUT_MS),
     uploadMedia: async (path, photo) => {

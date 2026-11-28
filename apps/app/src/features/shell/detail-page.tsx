@@ -35,7 +35,10 @@ export function DetailPage(props: DetailPageProps) {
           onBack={props.onBack}
           backLabel={props.backLabel}
           right={props.right}
-          testID={props.titleTestID}
+          // The big title stands in the content, in the full width; the bar shows it small once
+          // it has scrolled away (as on a recipe).
+          titleOnScroll
+          testID={props.titleTestID ? `${props.titleTestID}-bar` : undefined}
         />
       }
     >

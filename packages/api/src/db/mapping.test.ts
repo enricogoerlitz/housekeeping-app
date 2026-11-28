@@ -867,6 +867,7 @@ describe('spec 0013: notification settings, times and reservation in the rows', 
       id: 'ns-enrico',
       memberId: ENRICO,
       acknowledgedNotices: ['chore:c-muell:2026-11-20'],
+      appView: 'normal',
     });
     const old = withSettings([settingsRow({ id: 'ns-enrico', acknowledged_notices: undefined })]);
     expect(
@@ -880,6 +881,18 @@ describe('spec 0013: notification settings, times and reservation in the rows', 
       rowsToHousehold(broken.tables, broken.small, DEMO_HOUSEHOLD_ID, { memberId: ENRICO })
         .notificationSettings?.acknowledgedNotices,
     ).toEqual(['a:b:2026-11-20']);
+  });
+
+  it('spec 0067, AC-001/002: the own row carries the view; unknown or missing is "Normal"', () => {
+    const view = (app_view: unknown) => {
+      const { tables, small } = withSettings([settingsRow({ id: 'ns-enrico', app_view })]);
+      return rowsToHousehold(tables, small, DEMO_HOUSEHOLD_ID, { memberId: ENRICO })
+        .notificationSettings?.appView;
+    };
+    expect(view('ai_first')).toBe('ai_first');
+    expect(view('normal')).toBe('normal');
+    expect(view(undefined)).toBe('normal');
+    expect(view('chaos')).toBe('normal');
   });
 
   it('AC-013: only the signed-in member’s row is her settings; without one there are none', () => {

@@ -2,6 +2,9 @@
 // (docs/architecture/sync.md). JSON keys are the database's snake_case. Two implementations:
 // SupabaseTransport (transport-supabase.ts) and an in-memory server for tests (transport-fake.ts).
 import {
+  type AgentLoadReply,
+  type AppView,
+  type AgentSendRequest,
   type AiImageReply,
   type AiImageRequest,
   type AiSearchRequest,
@@ -563,6 +566,11 @@ export interface Transport {
    * notification_settings); `invalid_notice`, `not_found`.
    */
   acknowledgeNotices(householdId: string, keys: readonly string[]): Promise<void>;
+  /**
+   * Spec 0067, REQ-001: the caller's view in all her households (her own rows of
+   * notification_settings); `invalid_view`.
+   */
+  setAppView(view: AppView): Promise<void>;
   // Edge functions
   /** Follows a short map link on the server (`resolve-maps-link`); `not_a_maps_link` when none. */
   resolveMapsLink(url: string): Promise<ResolveMapsLinkReply>;
@@ -591,6 +599,21 @@ export interface Transport {
   webSearch(request: Extract<WebSearchRequest, { mode: 'search' }>): Promise<WebSearchReply>;
   /** The preview of a place card (`web-search`, spec 0049): cuisine or kind, description. */
   placePreview(request: Extract<WebSearchRequest, { mode: 'place' }>): Promise<PlacePreviewReply>;
+  /**
+   * KI-Agent (`ai-agent`, spec 0066): one answer as server-sent events of core
+   * `AgentStreamEvent`; `forbidden`, `chat_too_long` (409), `quota_exceeded` before it starts.
+   * `signal` stops it ("Recherche anhalten").
+   */
+  agentSend(request: AgentSendRequest, signal: AbortSignal): Promise<ReadableStream<Uint8Array>>;
+  /** The messages of a chat from its Foundry conversation (online only, ADR-0018). */
+  agentLoad(householdId: string, chatId: string): Promise<AgentLoadReply>;
+  /**
+   * Deletes a chat in Foundry (conversation and answers) and its row; without `chatId` every
+   * chat of the household (before "Haushalt endgültig löschen"). The number deleted.
+   */
+  agentDelete(householdId: string, chatId?: string): Promise<number>;
+  /** Spec 0067, AC-024: whether an answer runs in the chat (another person's send waits). */
+  agentStatus(householdId: string, chatId: string): Promise<boolean>;
   // Photo storage: the private bucket household-media, path <household>/<activities|recipes>/<id>/<file>
   /** Stores a JPEG under a new name (never overwrites). */
   uploadMedia(path: string, photo: Blob): Promise<void>;
@@ -671,6 +694,7 @@ export function switchable(inner: Transport): SwitchableTransport {
     beginHouseholdDeletion: guard(inner.beginHouseholdDeletion.bind(inner)),
     deleteHousehold: guard(inner.deleteHousehold.bind(inner)),
     acknowledgeNotices: guard(inner.acknowledgeNotices.bind(inner)),
+    setAppView: guard(inner.setAppView.bind(inner)),
     resolveMapsLink: guard(inner.resolveMapsLink.bind(inner)),
     fetchImage: guard(inner.fetchImage.bind(inner)),
     fetchVideo: guard(inner.fetchVideo.bind(inner)),
@@ -681,6 +705,10 @@ export function switchable(inner: Transport): SwitchableTransport {
     aiImage: guard(inner.aiImage.bind(inner)),
     webSearch: guard(inner.webSearch.bind(inner)),
     placePreview: guard(inner.placePreview.bind(inner)),
+    agentSend: guard(inner.agentSend.bind(inner)),
+    agentLoad: guard(inner.agentLoad.bind(inner)),
+    agentDelete: guard(inner.agentDelete.bind(inner)),
+    agentStatus: guard(inner.agentStatus.bind(inner)),
     uploadMedia: guard(inner.uploadMedia.bind(inner)),
     downloadMedia: guard(inner.downloadMedia.bind(inner)),
     removeMedia: guard(inner.removeMedia.bind(inner)),

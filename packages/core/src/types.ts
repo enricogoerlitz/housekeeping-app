@@ -504,6 +504,25 @@ export interface Trip {
   draft?: boolean;
 }
 
+// ---------- KI-Agent (spec 0066) ----------
+
+/**
+ * A research chat of the household ("Recherche-Chat"): only the reference. The messages live in
+ * the Foundry conversation and are loaded online (ADR-0018).
+ */
+export interface AiChat {
+  id: Id;
+  title: string;
+  /** "Mitte", "Aktueller Standort": the place of the first message. */
+  placeLabel?: string;
+  createdBy?: Id;
+  createdAt: string;
+  updatedAt: string;
+  conversationId: string;
+  /** Its answers in Foundry (at most 20 before a new chat, spec 0066 decision 13). */
+  responseIds: string[];
+}
+
 // ---------- Feedback ----------
 
 export interface FeedbackEntry {
@@ -585,13 +604,18 @@ export interface PackingItem {
 export const TimeOfDaySchema = z.string().regex(/^([01]\d|2[0-3]):[0-5][05]$/);
 export type TimeOfDay = z.infer<typeof TimeOfDaySchema>;
 
+/** Spec 0067, REQ-001: "Normal" or "KI zuerst" (the agent in the middle of the tab bar). */
+export type AppView = 'normal' | 'ai_first';
+
 /**
  * The own row of `notification_settings` in one household (one per member, created by the
- * server; spec 0051): the acknowledged in-app notices, written only through acknowledge_notices.
+ * server; spec 0051): the acknowledged in-app notices, written only through acknowledge_notices,
+ * and since spec 0067 the person's view, written only through set_app_view.
  */
 export interface NotificationSettings {
   id: Id;
   memberId: Id;
   /** Keys of acknowledged notices (`<kind>:<id>[:<more>]:<day>`, notices.ts). */
   acknowledgedNotices: string[];
+  appView: AppView;
 }

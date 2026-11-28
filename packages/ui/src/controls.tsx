@@ -1,4 +1,5 @@
 import {
+  createContext,
   useContext,
   useEffect,
   useLayoutEffect,
@@ -21,6 +22,14 @@ import {
   type ViewProps,
   type ViewStyle,
 } from 'react-native';
+import Animated, {
+  cancelAnimation,
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from 'react-native-reanimated';
 
 import { disguiseContactWords, fieldAutofill, isAppleTouchBrowser } from './field-autofill';
 import { mergeRefs, useHint } from './hint';
@@ -38,7 +47,7 @@ import {
   type StarPointerEvent,
   type StarStep,
 } from './star-value';
-import { growHeight, GROW_PADDING } from './field-grow';
+import { COMPOSER, composerLayout, growHeight, GROW_PADDING } from './field-grow';
 import { revealsError } from './reveal-error';
 import { ScrollRowRevealContext } from './scroll-fade';
 import { SheetFocusContext, SheetSubmitContext } from './sheet-focus';
@@ -46,6 +55,7 @@ import { switchRowParts } from './time-field-state';
 import { ToneContext, bubbleCorners, useAreaColors, useTheme } from './theme-context';
 import type { Theme, Tone } from './themes';
 import { fillChipStyle } from './chip-layout';
+import { withAlpha } from './hatch';
 
 /** On the web a click also focuses a focusable view; only keyboard focus gets the ring. */
 export function keyboardFocus(event: unknown): boolean {
@@ -174,8 +184,11 @@ export interface IconButtonProps {
   /** Required: the accessible name of the button. */
   label: string;
   onPress?: () => void;
-  /** plain = icon only; soft = quiet round background; filled = accent background. */
-  variant?: 'plain' | 'soft' | 'filled';
+  /**
+   * plain = icon only; soft = quiet round background; filled = accent background; live = an
+   * accent ring that breathes, for something running (dictation), never mistaken for "Senden".
+   */
+  variant?: 'plain' | 'soft' | 'filled' | 'live';
   size?: number;
   disabled?: boolean;
   color?: ColorToken;
@@ -195,19 +208,59 @@ export interface IconButtonProps {
 /** The minimum touch target (DESIGN.md, 40-ui.md). */
 const TOUCH_TARGET = 44;
 
+/**
+ * The size of the icon buttons inside a field: the composer's are 34 pt circles with a 44 pt tap
+ * area (spec 0067, composer polish), so its "+", microphone and "Senden" match without each owner
+ * knowing the measure. They also leave the cursor in the field (`keepFieldFocus`).
+ */
+const IconButtonSizeContext = createContext<number | undefined>(undefined);
+
+const preventFocusMove = (event: Event) => event.preventDefault();
+
+/**
+ * A tap on a button inside a field must not take the cursor out of it: on the iPhone that would
+ * close the keyboard and move the whole page twice (composer polish 28.11., like the chat apps
+ * whose keyboard stays after "Senden"). A prevented pointer- or mousedown keeps the focus where it
+ * is; the click still comes. Keyboard use is untouched.
+ */
+function useKeepFieldFocus(active: boolean) {
+  const node = useRef<HostInstance | null>(null);
+  useEffect(() => {
+    const element = node.current as unknown;
+    if (!active || Platform.OS !== 'web' || !(element instanceof HTMLElement)) return;
+    element.addEventListener('pointerdown', preventFocusMove);
+    element.addEventListener('mousedown', preventFocusMove);
+    return () => {
+      element.removeEventListener('pointerdown', preventFocusMove);
+      element.removeEventListener('mousedown', preventFocusMove);
+    };
+  }, [active]);
+  return node;
+}
+
 export function IconButton({ ref, ...props }: IconButtonProps) {
   const theme = useTheme();
   const hover = useHover();
   const area = useAreaColors();
+  const fieldSize = useContext(IconButtonSizeContext);
   const variant = props.variant ?? 'plain';
-  const size = props.size ?? 40;
+  const size = props.size ?? fieldSize ?? 40;
   const inArea = variant === 'filled' && area !== undefined;
   const iconColor: ColorToken =
     props.color ??
-    (inArea ? 'text' : variant === 'filled' ? 'onAccent' : variant === 'soft' ? 'text' : 'muted');
+    (inArea
+      ? 'text'
+      : variant === 'filled'
+        ? 'onAccent'
+        : variant === 'live'
+          ? 'accent'
+          : variant === 'soft'
+            ? 'text'
+            : 'muted');
   const hintRef = useHint(props.hint);
+  const keepRef = useKeepFieldFocus(fieldSize !== undefined);
   const slop = size < TOUCH_TARGET ? (TOUCH_TARGET - size) / 2 : 0;
-  const framed = props.touchFrame === true && slop > 0;
+  const framed = (props.touchFrame ?? fieldSize !== undefined) && slop > 0;
   // "Wolke" (spec 0058, REQ-004): every icon button sits on a soft bubble, even a plain one.
   const bubble = bubbleCorners(theme);
   const hovering = (hovered: boolean | undefined) => hover(hovered) && !props.disabled;
@@ -221,6 +274,13 @@ export function IconButton({ ref, ...props }: IconButtonProps) {
     },
     bubble ?? {},
     variant === 'filled' ? { backgroundColor: area?.fill ?? theme.colors.accent } : {},
+    variant === 'live'
+      ? {
+          borderWidth: 2,
+          borderColor: theme.colors.accent,
+          backgroundColor: withAlpha(theme.colors.accent, '1F'),
+        }
+      : {},
     variant === 'soft' || (variant === 'plain' && (bubble !== undefined || hovering(hovered)))
       ? { backgroundColor: theme.colors.surfaceSunken }
       : {},
@@ -229,15 +289,17 @@ export function IconButton({ ref, ...props }: IconButtonProps) {
       ? { backgroundColor: theme.colors.border }
       : {},
   ];
+  const glyph = <Icon name={props.icon} size={Math.round(size * 0.52)} color={iconColor} />;
   const icon = (
     <ToneContext.Provider value={inArea ? { fg: area.onFill } : undefined}>
-      <Icon name={props.icon} size={Math.round(size * 0.52)} color={iconColor} />
+      {variant === 'live' ? <Breathing>{glyph}</Breathing> : glyph}
     </ToneContext.Provider>
   );
   return (
     <Pressable
-      ref={mergeRefs(ref, hintRef)}
+      ref={mergeRefs(ref, hintRef, keepRef)}
       testID={props.testID}
+      aria-pressed={variant === 'live' ? true : undefined}
       accessibilityRole="button"
       accessibilityLabel={props.label}
       accessibilityHint={props.hint}
@@ -272,6 +334,19 @@ export function IconButton({ ref, ...props }: IconButtonProps) {
   );
 }
 
+/** The icon of a "live" button breathes (spec 0067); still when the system reduces motion. */
+function Breathing(props: { children: ReactNode }) {
+  const reduced = useReducedMotion();
+  const opacity = useSharedValue(1);
+  useEffect(() => {
+    if (reduced) return;
+    opacity.set(withRepeat(withTiming(0.4, { duration: 700 }), -1, true));
+    return () => cancelAnimation(opacity);
+  }, [reduced, opacity]);
+  const style = useAnimatedStyle(() => ({ opacity: opacity.get() }));
+  return <Animated.View style={style}>{props.children}</Animated.View>;
+}
+
 export interface ChipProps {
   label: string;
   /** A second line under the label, e.g. the date under the weekday ("Mi" over "25.11."). */
@@ -290,6 +365,15 @@ export interface ChipProps {
   accessibilityLabel?: string;
   /** Takes an equal share of a filled ChoiceChips row (spec 0030, REQ-005). */
   fill?: boolean;
+  /** Spec 0067: "sm" inside a slim composer field (the agent's badges and place). */
+  size?: 'sm';
+  /**
+   * Spec 0067: a ✕ of its own that removes the chip, while a tap on the chip does `onPress`
+   * (an attachment: tap = preview, ✕ = remove).
+   */
+  onRemove?: () => void;
+  /** Accessible name of that ✕; default "<label> entfernen". */
+  removeLabel?: string;
   testID?: string;
 }
 
@@ -342,9 +426,9 @@ export function ChipView(props: ChipProps & { role: 'button' | 'radio' }) {
   const base: ViewStyle = {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    minHeight: 36,
-    paddingHorizontal: 13,
+    gap: props.size === 'sm' ? 4 : 6,
+    minHeight: props.size === 'sm' ? 30 : 36,
+    paddingHorizontal: props.size === 'sm' ? 10 : 13,
     borderRadius: theme.shape.radius.chip,
     backgroundColor: background,
     borderWidth: props.selected || tone ? 0 : 1,
@@ -359,6 +443,63 @@ export function ChipView(props: ChipProps & { role: 'button' | 'radio' }) {
         {content}
       </View>
     );
+  if (props.onRemove) {
+    const sidePadding = base.paddingHorizontal as number;
+    const onRemove = props.onRemove;
+    return (
+      <View
+        testID={props.testID}
+        style={{ ...base, gap: 0, paddingHorizontal: 0, opacity: props.disabled ? 0.45 : 1 }}
+      >
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={props.accessibilityLabel ?? props.label}
+          accessibilityState={{ disabled: !!props.disabled }}
+          disabled={props.disabled}
+          onPress={props.onPress}
+          testID={props.testID ? `${props.testID}-open` : undefined}
+          style={(state) => ({
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: base.gap,
+            alignSelf: 'stretch',
+            paddingLeft: sidePadding,
+            paddingRight: 4,
+            opacity: (state as PressState).pressed ? 0.7 : 1,
+          })}
+        >
+          {props.icon ? (
+            <ChipIcon name={props.icon} selected={!!props.selected} toneFg={tone?.fg} />
+          ) : null}
+          <Text
+            variant="smallStrong"
+            color="text"
+            numberOfLines={1}
+            style={tone ? { color: tone.fg } : undefined}
+          >
+            {props.label}
+          </Text>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={props.removeLabel ?? `${props.label} entfernen`}
+          disabled={props.disabled}
+          onPress={onRemove}
+          hitSlop={8}
+          testID={props.testID ? `${props.testID}-remove` : undefined}
+          style={(state) => ({
+            alignSelf: 'stretch',
+            justifyContent: 'center',
+            paddingLeft: 4,
+            paddingRight: sidePadding - 2,
+            opacity: (state as PressState).pressed ? 0.6 : 1,
+          })}
+        >
+          <ChipIcon name="x" selected={false} toneFg={tone?.fg} />
+        </Pressable>
+      </View>
+    );
+  }
   return (
     <Pressable
       ref={mergeRefs(hintRef, own)}
@@ -766,6 +907,7 @@ export interface TextFieldProps extends Pick<
   | 'accessibilityValue'
   | 'autoComplete'
   | 'onSelectionChange'
+  | 'onKeyPress'
 > {
   /** Visible label above the field; also the accessible name. */
   label?: string;
@@ -785,16 +927,43 @@ export interface TextFieldProps extends Pick<
   /** Pill-shaped field for search and composer bars. */
   round?: boolean;
   /**
+   * With `grow`: the chat composer of the agent (spec 0067; Enrico 28.11., like the Gemini and
+   * ChatGPT apps). One field 46 pt high at one line with 34 pt buttons, the same inset on every
+   * side, 8 pt between controls and text, the text one step larger (17 pt). No AutoFill of any
+   * kind — no `name`, autocomplete off, hints for password managers — but autocorrect and spell
+   * checking stay, as in a chat app.
+   */
+  composer?: boolean;
+  /**
    * With `multiline`: a composer field that starts one line high and grows with its text up to
    * four lines (spec 0062, decision 14); its buttons on the right stay at the bottom.
    */
   grow?: boolean;
+  /** With `grow`: the most lines before it scrolls (default 4; the agent 4.5, spec 0067). */
+  growLines?: number;
+  /**
+   * With `grow`: text set from outside (a running dictation) grows the field like typing and
+   * keeps its end in view (spec 0067, preview feedback 28.11.). The browser measures a field only
+   * on its own input, so this measures after every change of the value.
+   */
+  followEnd?: boolean;
+  /**
+   * Inside the field above the text, e.g. the badges of the agent's input (spec 0067, REQ-004):
+   * part of the field, not free text. Pass `null` while there is none, never leave it out: the
+   * field keeps one layout, so the input keeps its focus when the first one comes.
+   */
+  top?: ReactNode;
   /** false: Enter in this field never saves the window it is in (a search field). */
   submitsWindow?: boolean;
   /** The input itself, e.g. to move the focus into it after a choice. */
   inputRef?: Ref<ComponentRef<typeof TextInput>>;
   style?: StyleProp<ViewStyle>;
   testID?: string;
+}
+
+/** The row of a field's input and buttons; inside a frame of its own when content stands above. */
+function FieldRow(props: { framed: boolean; style: ViewStyle; children: ReactNode }) {
+  return props.framed ? <View style={props.style}>{props.children}</View> : <>{props.children}</>;
 }
 
 let fieldSerial = 0;
@@ -806,6 +975,48 @@ function onAppleTouch(): boolean {
   return (
     Platform.OS === 'web' && typeof navigator !== 'undefined' && isAppleTouchBrowser(navigator)
   );
+}
+
+/** A finger that moved this far is scrolling, not tapping. */
+const TAP_SLOP = 10;
+
+/**
+ * The composer at the bottom of the screen (composer polish 28.11.): a tap into it on iPhone made
+ * Safari scroll the whole page down to the field and slide it back over 0.2 s, although the app
+ * had already put the field above the coming keyboard. The tap now gives the field the cursor
+ * itself with `preventScroll` (inside the tap, so the keyboard opens): the page stays where it is
+ * and only the keyboard moves. The cursor goes to the end of the text, as a chat app does; once
+ * the field has it, taps place it natively.
+ */
+function useTapFocusInPlace(field: { current: unknown }, active: boolean) {
+  useEffect(() => {
+    const node = field.current;
+    if (!active || !onAppleTouch() || !(node instanceof HTMLTextAreaElement)) return;
+    let start: { x: number; y: number } | undefined;
+    const onStart = (event: TouchEvent) => {
+      const touch = event.touches[0];
+      start =
+        touch && event.touches.length === 1 ? { x: touch.clientX, y: touch.clientY } : undefined;
+    };
+    const onEnd = (event: TouchEvent) => {
+      const touch = event.changedTouches[0];
+      const from = start;
+      start = undefined;
+      if (!from || !touch || document.activeElement === node || node.disabled || node.readOnly)
+        return;
+      if (Math.hypot(touch.clientX - from.x, touch.clientY - from.y) > TAP_SLOP) return;
+      event.preventDefault();
+      node.focus({ preventScroll: true });
+      const end = node.value.length;
+      node.setSelectionRange(end, end);
+    };
+    node.addEventListener('touchstart', onStart, { passive: true });
+    node.addEventListener('touchend', onEnd, { passive: false });
+    return () => {
+      node.removeEventListener('touchstart', onStart);
+      node.removeEventListener('touchend', onEnd);
+    };
+  }, [field, active]);
 }
 
 export function TextField(props: TextFieldProps) {
@@ -834,7 +1045,11 @@ export function TextField(props: TextFieldProps) {
     right,
     left,
     round,
+    composer,
     grow: growProp,
+    growLines,
+    followEnd,
+    top,
     style,
     testID,
     accessibilityLabel,
@@ -871,31 +1086,90 @@ export function TextField(props: TextFieldProps) {
     autoComplete: props.autoComplete,
   });
   const words = autofill.disguise && onAppleTouch() ? disguiseContactWords : unchanged;
+  useTapFocusInPlace(own, composer === true);
   useLayoutEffect(() => {
     const node = own.current as unknown;
-    if (Platform.OS === 'web' && node instanceof HTMLElement) {
+    if (Platform.OS !== 'web' || !(node instanceof HTMLElement)) return;
+    if (!composer) {
       node.setAttribute('name', autofill.name);
+      return;
     }
-  }, [autofill.name]);
+    // A chat field is no form field: nothing for Safari's, Chrome's or a password manager's
+    // AutoFill to offer (composer polish 28.11.).
+    node.removeAttribute('name');
+    node.setAttribute('data-form-type', 'other');
+    node.setAttribute('data-1p-ignore', 'true');
+    node.setAttribute('data-lpignore', 'true');
+  }, [autofill.name, composer]);
+  // The composer (composer polish 28.11.): Enter sends and the cursor stays, as in the chat apps;
+  // Shift+Enter and a word being composed (iOS marked text) stay a new line or the word.
+  const composerKeyPress: TextInputProps['onKeyPress'] = (event) => {
+    input.onKeyPress?.(event);
+    const key = event.nativeEvent as unknown as {
+      key?: string;
+      shiftKey?: boolean;
+      isComposing?: boolean;
+      keyCode?: number;
+    };
+    if (key.key !== 'Enter' || key.shiftKey || key.isComposing || key.keyCode === 229) return;
+    if (!input.onSubmitEditing || event.isDefaultPrevented()) return;
+    event.preventDefault();
+    input.onSubmitEditing(event as unknown as Parameters<typeof input.onSubmitEditing>[0]);
+  };
   const accessibleName = accessibilityLabel ?? label ?? props.placeholder;
   const grow = growProp === true && props.multiline === true;
   const [contentHeight, setContentHeight] = useState(0);
-  const lineHeight = theme.type.body.lineHeight ?? 22;
-  const grownHeight = growHeight({ contentHeight, lineHeight, empty: !props.value });
+  const BORDER = 1.5;
+  const textStyle = composer
+    ? {
+        ...theme.type.body,
+        fontSize: theme.type.body.fontSize + COMPOSER.fontStep,
+        lineHeight: theme.type.body.lineHeight + COMPOSER.lineStep,
+      }
+    : theme.type.body;
+  const lineHeight = textStyle.lineHeight ?? 22;
+  const layout = composer ? composerLayout({ border: BORDER, lineHeight }) : undefined;
+  const grownHeight = growHeight({
+    contentHeight,
+    lineHeight,
+    empty: !props.value,
+    maxLines: growLines,
+    ...(layout ? { padding: layout.textPadding } : {}),
+  });
+  // With content above the text the border goes around both; the row keeps its own layout.
+  // A field that can hold content above its text keeps one layout whether it shows any or not:
+  // switching would mount the input anew and take its focus (the first badge of the agent).
+  const framed = top !== undefined;
+  const hasTop = top !== null && top !== false && top !== undefined;
+  useLayoutEffect(() => {
+    if (!grow || !followEnd || Platform.OS !== 'web') return;
+    const node = own.current as unknown;
+    if (!(node instanceof HTMLElement)) return;
+    setContentHeight(node.scrollHeight);
+    node.scrollTop = node.scrollHeight;
+  }, [grow, followEnd, props.value]);
   return (
     <View style={[{ gap: 6 }, style]}>
       {label ? <Text variant="smallStrong">{words(label)}</Text> : null}
       <View
         style={{
-          flexDirection: 'row',
-          alignItems: grow ? 'flex-end' : props.multiline ? 'flex-start' : 'center',
-          gap: 6,
-          minHeight: 50,
-          paddingLeft: left ? 12 : 14,
-          paddingRight: right ? 5 : 14,
+          flexDirection: framed ? 'column' : 'row',
+          alignItems: framed
+            ? 'stretch'
+            : grow
+              ? 'flex-end'
+              : props.multiline
+                ? 'flex-start'
+                : 'center',
+          gap: framed ? 0 : layout ? COMPOSER.gap : 6,
+          minHeight: layout ? COMPOSER.height : 50,
+          paddingLeft: framed ? 0 : layout ? layout.inset : left ? 12 : 14,
+          paddingRight: framed ? 0 : layout ? layout.inset : right ? 5 : 14,
+          paddingTop: hasTop ? 8 : !framed && layout ? layout.inset : 0,
+          paddingBottom: !framed && layout ? layout.inset : 0,
           borderRadius: round ? theme.shape.radius.input : theme.shape.radius.control,
           backgroundColor: theme.shape.cardBorder || focused ? c.surface : c.surfaceSunken,
-          borderWidth: 1.5,
+          borderWidth: BORDER,
           borderColor:
             error || invalid
               ? c.warnText
@@ -906,56 +1180,102 @@ export function TextField(props: TextFieldProps) {
                   : 'transparent',
         }}
       >
-        {left}
-        <TextInput
-          autoCapitalize={autofill.autoCapitalize}
-          autoCorrect={autofill.autoCorrect}
-          inputMode={autofill.inputMode}
-          {...input}
-          // No autofill from contacts on titles, amounts and notes (spec 0032, AC-010; 0033).
-          autoComplete={autofill.autoComplete as TextInputProps['autoComplete']}
-          autoFocus={autoFocus === true && !claimFocus}
-          onSubmitEditing={enterSaves ? () => submitWindow() : input.onSubmitEditing}
-          // A window that stays open (a field is missing) keeps the cursor in the field.
-          blurOnSubmit={enterSaves ? false : input.blurOnSubmit}
-          {...(grow
-            ? {
-                numberOfLines: 1,
-                onContentSizeChange: (event: {
-                  nativeEvent: { contentSize: { height: number } };
-                }) => setContentHeight(event.nativeEvent.contentSize.height),
-              }
-            : {})}
-          ref={mergeRefs(own, inputRef)}
-          nativeID={autofill.id}
-          aria-invalid={error || invalid ? true : undefined}
-          testID={testID}
-          placeholder={props.placeholder === undefined ? undefined : words(props.placeholder)}
-          accessibilityLabel={accessibleName === undefined ? undefined : words(accessibleName)}
-          placeholderTextColor={placeholderColor}
-          onFocus={(event) => {
-            setFocused(true);
-            onFocus?.(event);
-          }}
-          onBlur={(event) => {
-            setFocused(false);
-            onBlur?.(event);
-          }}
-          style={[
-            theme.type.body,
-            {
-              flex: 1,
-              color: c.text,
-              paddingVertical: props.multiline ? GROW_PADDING : 0,
-              minHeight: grow ? undefined : props.multiline ? 96 : 46,
-              height: grow ? grownHeight : undefined,
-              // The browser's own focus outline would double the border.
-              outlineStyle: 'none',
-            } as object,
-          ]}
-        />
-        {/* A growing field keeps its buttons centred on the last line. */}
-        {grow && right ? <View style={{ paddingBottom: 3 }}>{right}</View> : right}
+        {hasTop ? <View style={{ paddingHorizontal: 10, paddingBottom: 2 }}>{top}</View> : null}
+        <FieldRow
+          framed={framed}
+          style={
+            layout
+              ? {
+                  flexDirection: 'row',
+                  alignItems: 'flex-end',
+                  gap: COMPOSER.gap,
+                  paddingLeft: layout.inset,
+                  paddingRight: layout.inset,
+                  paddingTop: hasTop ? 0 : layout.inset,
+                  paddingBottom: layout.inset,
+                }
+              : {
+                  flexDirection: 'row',
+                  alignItems: grow ? 'flex-end' : props.multiline ? 'flex-start' : 'center',
+                  gap: 6,
+                  paddingLeft: left ? 12 : 14,
+                  paddingRight: right ? 5 : 14,
+                }
+          }
+        >
+          {layout ? (
+            <IconButtonSizeContext.Provider value={COMPOSER.button}>
+              {left}
+            </IconButtonSizeContext.Provider>
+          ) : (
+            left
+          )}
+          <TextInput
+            autoCapitalize={autofill.autoCapitalize}
+            autoCorrect={composer ? true : autofill.autoCorrect}
+            inputMode={autofill.inputMode}
+            {...(composer
+              ? {
+                  spellCheck: true,
+                  textContentType: 'none' as const,
+                  importantForAutofill: 'no' as const,
+                }
+              : {})}
+            {...input}
+            // No autofill from contacts on titles, amounts and notes (spec 0032, AC-010; 0033).
+            autoComplete={autofill.autoComplete as TextInputProps['autoComplete']}
+            autoFocus={autoFocus === true && !claimFocus}
+            onSubmitEditing={enterSaves ? () => submitWindow() : input.onSubmitEditing}
+            // A window that stays open (a field is missing) keeps the cursor in the field.
+            blurOnSubmit={enterSaves || composer ? false : input.blurOnSubmit}
+            {...(composer ? { onKeyPress: composerKeyPress } : {})}
+            {...(grow
+              ? {
+                  numberOfLines: 1,
+                  onContentSizeChange: (event: {
+                    nativeEvent: { contentSize: { height: number } };
+                  }) => setContentHeight(event.nativeEvent.contentSize.height),
+                }
+              : {})}
+            ref={mergeRefs(own, inputRef)}
+            nativeID={autofill.id}
+            aria-invalid={error || invalid ? true : undefined}
+            testID={testID}
+            placeholder={props.placeholder === undefined ? undefined : words(props.placeholder)}
+            accessibilityLabel={accessibleName === undefined ? undefined : words(accessibleName)}
+            placeholderTextColor={placeholderColor}
+            onFocus={(event) => {
+              setFocused(true);
+              onFocus?.(event);
+            }}
+            onBlur={(event) => {
+              setFocused(false);
+              onBlur?.(event);
+            }}
+            style={[
+              textStyle,
+              {
+                flex: 1,
+                color: c.text,
+                paddingVertical: layout ? layout.textPadding : props.multiline ? GROW_PADDING : 0,
+                minHeight: grow ? undefined : props.multiline ? 96 : 46,
+                height: grow ? grownHeight : undefined,
+                // The browser's own focus outline would double the border.
+                outlineStyle: 'none',
+              } as object,
+            ]}
+          />
+          {/* A growing field keeps its buttons centred on the last line. */}
+          {layout ? (
+            <IconButtonSizeContext.Provider value={COMPOSER.button}>
+              {right}
+            </IconButtonSizeContext.Provider>
+          ) : grow && right ? (
+            <View style={{ paddingBottom: 3 }}>{right}</View>
+          ) : (
+            right
+          )}
+        </FieldRow>
       </View>
       {error ? (
         <View ref={errorRef}>
