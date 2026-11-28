@@ -46,6 +46,8 @@ Tippen; am Handy bleiben die Chips.
 
 - AC-004: Angenommen Desktop · Wenn Enrico „küche:deu“ tippt · Dann schlägt die Suche „Küche: Deutsch“ vor und setzt
   den Filter als Chip
+- AC-006: Angenommen Desktop, Rezepte, Filterbereich ausgeklappt und höher als das Fenster · Wenn Enrico scrollt · Dann
+  lässt sich der ganze Filterbereich scrollen, bis „Schlagworte“, „Zeit“ und „Bewertung“ erreichbar sind (heute nicht scrollbar)
 
 **REQ-005 — Wischen zwischen Rezepten mit Vorschau.** Auf einer Rezeptseite am Handy zeigt das Wischen nach links/
 rechts das nächste Rezept schon während der Bewegung (wie die Tabs von „Erleben“).
@@ -83,7 +85,7 @@ updated_at) mit RLS, Grants, pgTAP-Isolation, Delete-Trigger und Sync-Registrier
 - [ ] 1. Tab „Erleben“ mit vier Reitern, Aktivitäten umziehen (AC-001)
 - [ ] 2. Tabelle `selection_items`, Symbol „Auswahl“, Reiter Auswahl, leeren + Rückgängig (AC-002, AC-003)
 - [ ] 3. Zufall für Restaurants und Aktivitäten
-- [ ] 4. Filter „In Auswahl“, Art bei Aktivitäten, Gmail-Filter am Desktop (AC-004)
+- [ ] 4. Filter „In Auswahl“, Art bei Aktivitäten, Gmail-Filter am Desktop, ausgeklappte Filter scrollbar (AC-004, AC-006)
 - [ ] 5. Wischen zwischen Rezepten mit Vorschau
 - [ ] 6. Beschreibung auf Kacheln, Titel kopierbar
 - [ ] 7. Links öffnen die installierte App unter Android (AC-005)
