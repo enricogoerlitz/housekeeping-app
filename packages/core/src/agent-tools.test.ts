@@ -4,6 +4,7 @@ import { seriesOccurrences } from './activity-series';
 import {
   AGENT_TOOL_NAMES,
   AGENT_TOOL_LIMITS,
+  agentCallKey,
   agentToolParameters,
   parseToolCall,
   runTool,
@@ -138,6 +139,35 @@ describe('tool definitions', () => {
       expect(read.columns).not.toContain('email');
       expect(read.columns).toMatch(/^[a-z_]+(,[a-z_]+)*$/);
     }
+  });
+});
+
+describe('list_recipes: recipes and collections (preview 28.11., "26 von 24")', () => {
+  const withCollections = () => {
+    const data = recipeHousehold();
+    data.rows.recipes = [
+      ...(data.rows.recipes ?? []),
+      { id: id('c', 1), kind: 'collection', title: 'Grillabend', ingredients: [], steps: [] },
+      { id: id('c', 2), kind: 'collection', title: 'Sommerfest', ingredients: [], steps: [] },
+    ];
+    return data;
+  };
+  it('kind "collection" lists only collections, the count over the same set', () => {
+    const result = run(
+      'list_recipes',
+      { kind: 'collection', fields: ['title'] },
+      withCollections(),
+    );
+    expect(result.json.total).toBe(2);
+    expect(stepLine(result.step)).toBe('Liest eure Rezepte · Sammlungen · 2 von 2');
+  });
+  it('kind "all": items and total over recipes and collections; never more shown than there are', () => {
+    const result = run('list_recipes', { kind: 'all', limit: 300 }, withCollections());
+    expect(result.json.total).toBe(145);
+    expect(stepLine(result.step)).toBe('Liest eure Rezepte · Rezepte und Sammlungen · 145 von 145');
+  });
+  it('without kind only recipes, as before', () => {
+    expect(run('list_recipes', {}, withCollections()).json.total).toBe(143);
   });
 });
 
@@ -775,5 +805,19 @@ describe('steps of a stored chat', () => {
     expect(stepLine(broken)).toBe('Liest eure Rezepte · Anfrage ungültig');
     expect(toolLabel('calendar')).toBe('Schaut in den Kalender');
     expect(toolLabel('rm_rf')).toBe('Unbekanntes Werkzeug');
+  });
+});
+
+describe('the same call twice in one answer (preview 28.11.)', () => {
+  it('equal tool and arguments give the same key, whatever the order or the nulls', () => {
+    expect(agentCallKey('list_recipes', '{"kind":"collection","query":null,"limit":10}')).toBe(
+      agentCallKey('list_recipes', '{"limit":10,"kind":"collection"}'),
+    );
+  });
+  it('another tool, other arguments or broken JSON give another key or none', () => {
+    const key = agentCallKey('list_recipes', '{"kind":"collection"}');
+    expect(agentCallKey('list_recipes', '{"kind":"recipe"}')).not.toBe(key);
+    expect(agentCallKey('list_activities', '{"kind":"collection"}')).not.toBe(key);
+    expect(agentCallKey('list_recipes', '{nope')).toBeUndefined();
   });
 });

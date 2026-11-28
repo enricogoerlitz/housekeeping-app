@@ -69,6 +69,8 @@ export async function generateImagesAsync(input: {
   image?: Blob;
   extra?: string;
   context?: AiImageContext;
+  /** Spec 0067: the agent's "Mach ein Foto dazu" asks for exactly one. */
+  count?: number;
 }): Promise<{ images: Blob[]; failed: number }> {
   const householdId = getState().activeHouseholdId;
   const extra = input.extra?.trim();
@@ -80,6 +82,7 @@ export async function generateImagesAsync(input: {
       ...(input.image ? { image: await jpegDataUrl(input.image) } : {}),
       ...(extra ? { extra } : {}),
       ...(input.context ? { context: input.context } : {}),
+      ...(input.count ? { count: input.count } : {}),
     }),
   );
   return {

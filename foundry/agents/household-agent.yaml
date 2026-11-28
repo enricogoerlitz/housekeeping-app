@@ -128,7 +128,7 @@ definition:
           - cooked_before
           - favorite
           - unfinished
-          - include_collections
+          - kind
         properties:
           query:
             type:
@@ -252,11 +252,16 @@ definition:
               - boolean
               - 'null'
             description: 'unfertig: ohne Zutaten und ohne Schritte'
-          include_collections:
+          kind:
             type:
-              - boolean
+              - string
               - 'null'
-            description: auch Sammlungen
+            enum:
+              - recipe
+              - collection
+              - all
+              - null
+            description: recipe (Standard), collection = Sammlungen, all = beides
     - type: function
       name: list_restaurants
       description:
@@ -481,8 +486,8 @@ definition:
       name: calendar
       description:
         'Liest den Kalender eines Zeitraums (höchstens 62 Tage): Einträge je Tag und Tageszeit
-        (Rezepte, Restaurants, Aktivitäten auch aus Serien, Freitext, Reste), dazu fällige Aufgaben und
-        Reisen.'
+        (Rezepte, Restaurants, Aktivitäten auch aus Serien, Freitext, Reste), dazu fällige Aufgaben
+        und Reisen.'
       strict: true
       parameters:
         type: object
@@ -1001,3 +1006,274 @@ definition:
               - members
               - null
             description: welche Spalte, vollständig ohne Seiten
+    - type: function
+      name: propose_actions
+      description: 'Schlägt Änderungen vor (Liste, Aufgaben, Kalender, Restaurants, Aktivitäten,
+        Portionen, Dauerposten, Löschen). Ändert nichts: die App zeigt eine Karte, die Person
+        übernimmt. Als letzter Schritt nach deinem Text.'
+      strict: true
+      parameters:
+        type: object
+        additionalProperties: false
+        required:
+          - title
+          - actions
+        properties:
+          title:
+            type:
+              - string
+              - 'null'
+            description: kurzer Titel der Karte, z. B. „Für heute“
+          actions:
+            type: array
+            description: höchstens 20 Einträge
+            items:
+              type: object
+              additionalProperties: false
+              required:
+                - kind
+                - target
+                - id
+                - name
+                - date
+                - slot
+                - time
+                - address
+                - note
+                - servings
+                - favorite
+                - weekday
+                - every_weeks
+              properties:
+                kind:
+                  type: string
+                  enum:
+                    - add_to_list
+                    - chore_done
+                    - plan
+                    - create_restaurant
+                    - create_activity
+                    - set_favorite
+                    - set_servings
+                    - add_recurring
+                    - remove_from_list
+                    - remove_plan_entry
+                    - delete_recurring
+                  description:
+                    'add_to_list: auf die Einkaufsliste · chore_done: Aufgabe erledigt · plan:
+                    Kalender-Eintrag · create_restaurant / create_activity: neu merken ·
+                    set_favorite: Favorit/gemerkt · set_servings: Portionen eines Rezepts ·
+                    add_recurring: Dauerposten · remove_from_list / remove_plan_entry /
+                    delete_recurring: löschen, nur auf ausdrücklichen Wunsch'
+                target:
+                  type:
+                    - string
+                    - 'null'
+                  enum:
+                    - recipe
+                    - restaurant
+                    - activity
+                    - text
+                    - null
+                  description: 'bei plan und set_favorite: worum es geht'
+                id:
+                  type:
+                    - string
+                    - 'null'
+                  description: die id aus einem Werkzeug-Ergebnis, sonst null
+                name:
+                  type: string
+                  description:
+                    'Liste: Menge und Artikel wie getippt („2 Milch“, „500 g Möhren“); sonst Titel oder
+                    Name genau wie in den Daten; bei plan mit target text der Text'
+                date:
+                  type:
+                    - string
+                    - 'null'
+                  description: Tag JJJJ-MM-TT (plan, remove_plan_entry); null = vorgemerkt
+                slot:
+                  type:
+                    - string
+                    - 'null'
+                  description: Tageszeit des Haushalts, z. B. Abendessen
+                time:
+                  type:
+                    - string
+                    - 'null'
+                  description: Uhrzeit HH:MM, nur bei Restaurant und Aktivität
+                address:
+                  type:
+                    - string
+                    - 'null'
+                  description: Adresse eines neuen Orts, nur aus einer Quelle
+                note:
+                  type:
+                    - string
+                    - 'null'
+                  description: Zusatz, kurz
+                servings:
+                  type:
+                    - integer
+                    - 'null'
+                  description: Portionen (set_servings)
+                  minimum: 1
+                  maximum: 100
+                favorite:
+                  type:
+                    - boolean
+                    - 'null'
+                  description: 'set_favorite: true merken, false nicht mehr'
+                weekday:
+                  type:
+                    - integer
+                    - 'null'
+                  description: 'add_recurring: Wochentag 1 = Montag … 7 = Sonntag'
+                  minimum: 1
+                  maximum: 7
+                every_weeks:
+                  type:
+                    - integer
+                    - 'null'
+                  description: 'add_recurring: alle wie viele Wochen'
+                  minimum: 1
+                  maximum: 52
+    - type: function
+      name: draft_recipe
+      description: 'Schreibt einen Rezeptentwurf (Text, Links, TikTok, YouTube, Fotos) mit dem
+        Artikel-Katalog des Haushalts. Legt nichts an: die App zeigt eine Karte „Prüfen und
+        anlegen“.'
+      strict: true
+      parameters:
+        type: object
+        additionalProperties: false
+        required:
+          - wish
+          - links
+          - page_text
+          - page_url
+          - refine
+          - use_photos
+        properties:
+          wish:
+            type: string
+            description: was die Person will, in ihren Worten mit allen Angaben (Portionen, vegetarisch …)
+          links:
+            type: array
+            items:
+              type: string
+            description: bis zu 3 Links der Person (TikTok, YouTube, Rezeptseiten)
+          page_text:
+            type:
+              - string
+              - 'null'
+            description:
+              'nur wenn ein Link nicht lesbar war: der Rezepttext, den du per Websuche von genau
+              dieser Seite gelesen hast'
+          page_url:
+            type:
+              - string
+              - 'null'
+            description: die Seite zu page_text
+          refine:
+            type: boolean
+            description: 'true: den letzten Entwurf dieses Chats nach dem Wunsch ändern'
+          use_photos:
+            type: boolean
+            description: 'true: die Fotos dieser Nachricht sind die Quelle'
+    - type: function
+      name: make_image
+      description:
+        Lässt die App genau ein KI-Foto erzeugen (zum Ansehen, „Als Foto nehmen“ übernimmt es).
+        Als letzter Schritt.
+      strict: true
+      parameters:
+        type: object
+        additionalProperties: false
+        required:
+          - prompt
+          - for
+          - name
+        properties:
+          prompt:
+            type: string
+            description: englische Beschreibung des Fotos (ohne Text, ohne Personen)
+          for:
+            type: string
+            enum:
+              - recipe
+              - restaurant
+              - activity
+              - draft
+            description: wofür das Foto ist
+          name:
+            type:
+              - string
+              - 'null'
+            description: Titel oder Name des Eintrags; bei draft null
+    - type: function
+      name: show_images
+      description: Zeigt eine Reihe echter Google-Bilder zum Antippen (Quelle bleibt erhalten). Als
+        letzter Schritt.
+      strict: true
+      parameters:
+        type: object
+        additionalProperties: false
+        required:
+          - query
+          - for
+          - name
+        properties:
+          query:
+            type: string
+            description: Google-Bildersuche, kurz, ohne Haushaltsdaten
+          for:
+            type: string
+            enum:
+              - recipe
+              - restaurant
+              - activity
+              - draft
+            description: wofür das Foto ist
+          name:
+            type:
+              - string
+              - 'null'
+            description: Titel oder Name des Eintrags; bei draft null
+    - type: function
+      name: show_entities
+      description:
+        Zeigt eigene Einträge des Haushalts (Rezepte, Sammlungen, Restaurants, Aktivitäten) als
+        antippbare Karten. Statt Namen aufzuzählen immer diese Karten. Als letzter Schritt.
+      strict: true
+      parameters:
+        type: object
+        additionalProperties: false
+        required:
+          - title
+          - items
+        properties:
+          title:
+            type:
+              - string
+              - 'null'
+            description: kurzer Titel, z. B. „Eure Sammlungen“
+          items:
+            type: array
+            description: höchstens 12 eigene Einträge mit ihrer id aus einem Werkzeug-Ergebnis
+            items:
+              type: object
+              additionalProperties: false
+              required:
+                - kind
+                - id
+              properties:
+                kind:
+                  type: string
+                  enum:
+                    - recipe
+                    - collection
+                    - restaurant
+                    - activity
+                id:
+                  type: string
+                  description: die id aus dem Werkzeug-Ergebnis

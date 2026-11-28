@@ -1,6 +1,8 @@
-import { answerBlocks, badgeLabel, stepLine } from '@housekeeping/core';
+import { useAgentProposalData } from '@housekeeping/api';
+import { answerBlocks, badgeLabel, namedEntity, stepLine } from '@housekeeping/core';
 import {
   Chip,
+  IconButton,
   ProgressSteps,
   ScrollRow,
   Text,
@@ -8,8 +10,16 @@ import {
   useTheme,
   openExternalLink,
 } from '@housekeeping/ui';
-import { View } from 'react-native';
+import { Text as NativeText, Pressable, View } from 'react-native';
 
+import { AgentEntities } from './agent-entities';
+import { useAgentOpen } from './agent-open';
+import { AgentImageCard, AgentImagesRow } from './agent-image-cards';
+import { AgentProposalCard } from './agent-proposal-card';
+import { AgentRecipeDraftCard } from './agent-recipe-draft-card';
+
+import type { AttachmentPreview } from './agent-attachments';
+import { SentAttachments } from './attachment-preview';
 import type { ChatTurn } from './use-agent-chat';
 import { PlaceCard, PlaceCardSkeleton } from './place-card';
 
@@ -27,19 +37,40 @@ function sentWith(turn: ChatTurn): string | undefined {
   return parts.length > 0 ? parts.join(' · ') : undefined;
 }
 
-function UserBubble(props: { turn: ChatTurn; testID: string }) {
+function UserBubble(props: {
+  turn: ChatTurn;
+  onOpenAttachment: (preview: AttachmentPreview) => void;
+  onEdit?: () => void;
+  /** ✎ under the newest message of the person (Gemini's way); every one edits on a long press. */
+  showEdit: boolean;
+  testID: string;
+}) {
   const theme = useTheme();
-  const meta = sentWith(props.turn);
+  // With local copies the files show themselves; only a loaded chat says "1 Anhang".
+  const meta = sentWith(
+    props.turn.previews?.length ? { ...props.turn, attachments: 0 } : props.turn,
+  );
   return (
     <View style={{ alignSelf: 'flex-end', maxWidth: '85%', alignItems: 'flex-end', gap: 4 }}>
+      {props.turn.previews?.length ? (
+        <SentAttachments
+          previews={props.turn.previews}
+          onOpen={props.onOpenAttachment}
+          testID={`${props.testID}-files`}
+        />
+      ) : null}
       {meta ? (
         <Text variant="caption" color="muted" testID={`${props.testID}-meta`}>
           {meta}
         </Text>
       ) : null}
       {props.turn.text ? (
-        <View
+        <Pressable
           testID={props.testID}
+          onLongPress={props.onEdit}
+          delayLongPress={450}
+          accessibilityRole={props.onEdit ? 'button' : undefined}
+          accessibilityHint={props.onEdit ? 'Lange drücken zum Bearbeiten' : undefined}
           style={{
             paddingVertical: 10,
             paddingHorizontal: 14,
@@ -49,16 +80,36 @@ function UserBubble(props: { turn: ChatTurn; testID: string }) {
           }}
         >
           <Text color="onAccent">{props.turn.text}</Text>
-        </View>
+        </Pressable>
       ) : (
         <View testID={props.testID} />
       )}
+      {props.showEdit && props.onEdit && props.turn.text ? (
+        <IconButton
+          icon="pencil"
+          label="Nachricht bearbeiten"
+          variant="plain"
+          onPress={props.onEdit}
+          testID={`${props.testID}-edit`}
+        />
+      ) : null}
     </View>
   );
 }
 
+/**
+ * Spec 0067 (preview feedback 28.11.): a bold name that is one of the household's recipes,
+ * restaurants or activities opens it in the app; an https link opens the app's way — on the
+ * iPhone's installed app iOS shows it in its in-app browser over the app.
+ */
 function AnswerText(props: { text: string; streaming: boolean; testID: string }) {
   const blocks = answerBlocks(props.text);
+  const theme = useTheme();
+  const data = useAgentProposalData();
+  const openEntry = useAgentOpen();
+  const open = (target: NonNullable<ReturnType<typeof namedEntity>>) => {
+    openEntry({ kind: target.kind, id: target.id });
+  };
   return (
     <View testID={props.testID} style={{ gap: 8 }}>
       {blocks.map((block, index) => (
@@ -68,11 +119,40 @@ function AnswerText(props: { text: string; streaming: boolean; testID: string })
         >
           {block.kind === 'bullet' ? <Text>•</Text> : null}
           <Text style={{ flexShrink: 1 }}>
-            {block.spans.map((span, at) => (
-              <Text key={at} variant={span.bold ? 'bodyStrong' : 'body'}>
-                {span.text}
-              </Text>
-            ))}
+            {block.spans.map((span, at) => {
+              const url = span.url;
+              if (url)
+                return (
+                  <NativeText
+                    key={at}
+                    accessibilityRole="link"
+                    onPress={() => openExternalLink(url)}
+                    style={{ color: theme.colors.accent, textDecorationLine: 'underline' }}
+                  >
+                    {span.text}
+                  </NativeText>
+                );
+              const target =
+                span.bold && data && !props.streaming ? namedEntity(span.text, data) : undefined;
+              if (target)
+                return (
+                  <NativeText
+                    key={at}
+                    accessibilityRole="link"
+                    accessibilityHint={`Öffnet ${target.title}`}
+                    onPress={() => open(target)}
+                    testID={`${props.testID}-entity-${at}`}
+                    style={[theme.type.bodyStrong, { color: theme.colors.accent }]}
+                  >
+                    {span.text}
+                  </NativeText>
+                );
+              return (
+                <Text key={at} variant={span.bold ? 'bodyStrong' : 'body'}>
+                  {span.text}
+                </Text>
+              );
+            })}
           </Text>
         </View>
       ))}
@@ -113,6 +193,35 @@ function Answer(props: {
           testID={`${testID}-text`}
         />
       ) : null}
+      {turn.extras.map((extra, index) => {
+        const id = `${testID}-extra-${index}`;
+        switch (extra.kind) {
+          case 'proposal':
+            return (
+              <AgentProposalCard
+                key={extra.proposal.id}
+                proposal={extra.proposal}
+                loaded={turn.loaded === true}
+                testID={id}
+              />
+            );
+          case 'recipe_draft':
+            return <AgentRecipeDraftCard key={extra.id} reply={extra.reply} testID={id} />;
+          case 'image':
+            return (
+              <AgentImageCard
+                key={extra.id}
+                extra={extra}
+                loaded={turn.loaded === true}
+                testID={id}
+              />
+            );
+          case 'images':
+            return <AgentImagesRow key={extra.id} extra={extra} testID={id} />;
+          case 'entities':
+            return <AgentEntities key={extra.id} extra={extra} testID={id} />;
+        }
+      })}
       {turn.cards.length > 0 || turn.cardsPending ? (
         // The carousel runs to the screen edge on phones; the first card stays in line with the text.
         <View style={isPhone ? { marginRight: -theme.shape.gutter } : null}>
@@ -181,17 +290,34 @@ function Answer(props: {
   );
 }
 
+function lastUserIndex(turns: readonly ChatTurn[]): number {
+  for (let index = turns.length - 1; index >= 0; index -= 1)
+    if (turns[index]?.role === 'user') return index;
+  return -1;
+}
+
 export function AgentMessages(props: {
   turns: readonly ChatTurn[];
   onFollowUp: (text: string) => void;
   followUpsEnabled: boolean;
+  onOpenAttachment: (preview: AttachmentPreview) => void;
+  /** Preview feedback 28.11.: "Bearbeiten" of a message of the person, when it may be edited. */
+  onEdit?: (index: number) => void;
 }) {
   const last = props.turns.length - 1;
+  const lastUser = lastUserIndex(props.turns);
   return (
     <View style={{ gap: 20 }} testID="agent-messages">
       {props.turns.map((turn, index) =>
         turn.role === 'user' ? (
-          <UserBubble key={turn.key} turn={turn} testID={`agent-turn-${index}`} />
+          <UserBubble
+            key={turn.key}
+            turn={turn}
+            onOpenAttachment={props.onOpenAttachment}
+            onEdit={props.onEdit ? () => props.onEdit?.(index) : undefined}
+            showEdit={index === lastUser}
+            testID={`agent-turn-${index}`}
+          />
         ) : (
           <Answer
             key={turn.key}

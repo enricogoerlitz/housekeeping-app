@@ -97,3 +97,5 @@ export * from './place-proposal';
 export * from './web-preview';
 export * from './agent-badges';
 export * from './agent-tools';
+export * from './agent-proposals';
+export * from './agent-apply';

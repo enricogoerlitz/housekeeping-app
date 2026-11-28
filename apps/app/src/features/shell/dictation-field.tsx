@@ -41,7 +41,9 @@ export function DictationField(
       <IconButton
         icon="mic"
         label={listening ? 'Diktat beenden' : 'Diktieren'}
-        variant={listening ? 'filled' : 'plain'}
+        // Preview feedback 28.11.: a running dictation is a breathing ring, never the filled
+        // "Senden" next to it (Wolke drew both the same).
+        variant={listening ? 'live' : 'plain'}
         disabled={busy || field.editable === false}
         onPress={dictation.toggle}
         testID={testID ? `${testID}-mic` : undefined}
@@ -54,6 +56,7 @@ export function DictationField(
         {...field}
         value={hearing ? dictation.shown : value}
         editable={hearing ? false : field.editable}
+        followEnd={hearing}
         placeholder={hearing && !value ? 'Ich höre zu …' : field.placeholder}
         onChangeText={(text) => {
           onChangeText(text);

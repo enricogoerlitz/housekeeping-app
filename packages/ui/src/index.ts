@@ -59,6 +59,7 @@ export {
 export { pickImageFile } from './pick-image';
 export { useImageDropAndPaste } from './image-drop';
 export { useKeyboard } from './keyboard';
+export { useDragDismissKeyboard } from './use-drag-dismiss';
 export { focusAfterChange, openKeyboardNow } from './keyboard-proxy';
 export { TabSwipeContent } from './tab-swipe-area';
 export { useRevealOnShow } from './reveal-on-show';

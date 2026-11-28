@@ -2,6 +2,7 @@ import {
   createActivity,
   createRestaurant,
   loadPhotoFromAddress,
+  savePhotoFromAddress,
   useActivities,
   useActivityKinds,
   useRestaurants,
@@ -26,10 +27,10 @@ import {
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 
-import { useOpenActivity } from '@/features/activities/navigation';
-import { useOpenRestaurant } from '@/features/restaurants/navigation';
 import { errorMessage } from '@/features/shell/error-message';
 import { useOnlineOnly } from '@/features/shell/offline';
+
+import { useAgentOpen } from './agent-open';
 
 // Spec 0066, REQ-006/REQ-007: one suggestion as a card of the carousel (Antwort A): the Google
 // photo through fetch-image (never stored), name, stars · price · kind, the open status, why it
@@ -84,27 +85,40 @@ export function PlaceCard(props: { card: AgentCard; testID: string }) {
   const restaurants = useRestaurants();
   const activities = useActivities();
   const kinds = useActivityKinds();
-  const openRestaurant = useOpenRestaurant();
-  const openActivity = useOpenActivity();
+  const openEntry = useAgentOpen();
   const photo = useCardPhoto(card.imageUrl);
   const saved = savedPlaceOf(card, restaurants, activities);
 
+  // Preview 28.11.: the card's Google photo comes along through the usual photo path; when it
+  // cannot be loaded the entry is saved without one and the notice says so calmly.
   const save = () => {
+    let id: string;
     try {
-      if (card.kind === 'restaurant') createRestaurant(restaurantDraftOfCard(card));
-      else createActivity(activityDraftOfCard(card, kinds));
-      toast.show({
-        message: `${card.name} ist gespeichert`,
-        duration: 2500,
-      });
+      id =
+        card.kind === 'restaurant'
+          ? createRestaurant(restaurantDraftOfCard(card))
+          : createActivity(activityDraftOfCard(card, kinds));
     } catch (error) {
       toast.show({ message: errorMessage(error) });
+      return;
     }
+    const imageUrl = card.imageUrl;
+    if (!imageUrl) {
+      toast.show({ message: `${card.name} ist gespeichert`, duration: 2500 });
+      return;
+    }
+    void savePhotoFromAddress({ kind: card.kind, id }, imageUrl).then((withPhoto) =>
+      toast.show({
+        message: withPhoto
+          ? `${card.name} ist gespeichert, mit Foto`
+          : `${card.name} ist gespeichert – das Foto ließ sich nicht übernehmen`,
+        duration: 3000,
+      }),
+    );
   };
   const openSaved = () => {
     if (!saved) return;
-    if (saved.kind === 'restaurant') openRestaurant(saved.id);
-    else openActivity(saved.id);
+    openEntry(saved);
   };
   const meta = metaLine(card);
 
@@ -168,8 +182,8 @@ export function PlaceCard(props: { card: AgentCard; testID: string }) {
           <View style={{ flex: 1 }}>
             {saved ? (
               <Button
-                label="Gespeichert"
-                icon="check"
+                label="Öffnen"
+                icon="arrow-right"
                 variant="secondary"
                 size="sm"
                 full

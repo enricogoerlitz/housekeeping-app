@@ -21,6 +21,14 @@ import {
   type ViewProps,
   type ViewStyle,
 } from 'react-native';
+import Animated, {
+  cancelAnimation,
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from 'react-native-reanimated';
 
 import { disguiseContactWords, fieldAutofill, isAppleTouchBrowser } from './field-autofill';
 import { mergeRefs, useHint } from './hint';
@@ -46,6 +54,7 @@ import { switchRowParts } from './time-field-state';
 import { ToneContext, bubbleCorners, useAreaColors, useTheme } from './theme-context';
 import type { Theme, Tone } from './themes';
 import { fillChipStyle } from './chip-layout';
+import { withAlpha } from './hatch';
 
 /** On the web a click also focuses a focusable view; only keyboard focus gets the ring. */
 export function keyboardFocus(event: unknown): boolean {
@@ -174,8 +183,11 @@ export interface IconButtonProps {
   /** Required: the accessible name of the button. */
   label: string;
   onPress?: () => void;
-  /** plain = icon only; soft = quiet round background; filled = accent background. */
-  variant?: 'plain' | 'soft' | 'filled';
+  /**
+   * plain = icon only; soft = quiet round background; filled = accent background; live = an
+   * accent ring that breathes, for something running (dictation), never mistaken for "Senden".
+   */
+  variant?: 'plain' | 'soft' | 'filled' | 'live';
   size?: number;
   disabled?: boolean;
   color?: ColorToken;
@@ -204,7 +216,15 @@ export function IconButton({ ref, ...props }: IconButtonProps) {
   const inArea = variant === 'filled' && area !== undefined;
   const iconColor: ColorToken =
     props.color ??
-    (inArea ? 'text' : variant === 'filled' ? 'onAccent' : variant === 'soft' ? 'text' : 'muted');
+    (inArea
+      ? 'text'
+      : variant === 'filled'
+        ? 'onAccent'
+        : variant === 'live'
+          ? 'accent'
+          : variant === 'soft'
+            ? 'text'
+            : 'muted');
   const hintRef = useHint(props.hint);
   const slop = size < TOUCH_TARGET ? (TOUCH_TARGET - size) / 2 : 0;
   const framed = props.touchFrame === true && slop > 0;
@@ -221,6 +241,13 @@ export function IconButton({ ref, ...props }: IconButtonProps) {
     },
     bubble ?? {},
     variant === 'filled' ? { backgroundColor: area?.fill ?? theme.colors.accent } : {},
+    variant === 'live'
+      ? {
+          borderWidth: 2,
+          borderColor: theme.colors.accent,
+          backgroundColor: withAlpha(theme.colors.accent, '1F'),
+        }
+      : {},
     variant === 'soft' || (variant === 'plain' && (bubble !== undefined || hovering(hovered)))
       ? { backgroundColor: theme.colors.surfaceSunken }
       : {},
@@ -229,15 +256,17 @@ export function IconButton({ ref, ...props }: IconButtonProps) {
       ? { backgroundColor: theme.colors.border }
       : {},
   ];
+  const glyph = <Icon name={props.icon} size={Math.round(size * 0.52)} color={iconColor} />;
   const icon = (
     <ToneContext.Provider value={inArea ? { fg: area.onFill } : undefined}>
-      <Icon name={props.icon} size={Math.round(size * 0.52)} color={iconColor} />
+      {variant === 'live' ? <Breathing>{glyph}</Breathing> : glyph}
     </ToneContext.Provider>
   );
   return (
     <Pressable
       ref={mergeRefs(ref, hintRef)}
       testID={props.testID}
+      aria-pressed={variant === 'live' ? true : undefined}
       accessibilityRole="button"
       accessibilityLabel={props.label}
       accessibilityHint={props.hint}
@@ -272,6 +301,19 @@ export function IconButton({ ref, ...props }: IconButtonProps) {
   );
 }
 
+/** The icon of a "live" button breathes (spec 0067); still when the system reduces motion. */
+function Breathing(props: { children: ReactNode }) {
+  const reduced = useReducedMotion();
+  const opacity = useSharedValue(1);
+  useEffect(() => {
+    if (reduced) return;
+    opacity.set(withRepeat(withTiming(0.4, { duration: 700 }), -1, true));
+    return () => cancelAnimation(opacity);
+  }, [reduced, opacity]);
+  const style = useAnimatedStyle(() => ({ opacity: opacity.get() }));
+  return <Animated.View style={style}>{props.children}</Animated.View>;
+}
+
 export interface ChipProps {
   label: string;
   /** A second line under the label, e.g. the date under the weekday ("Mi" over "25.11."). */
@@ -290,6 +332,15 @@ export interface ChipProps {
   accessibilityLabel?: string;
   /** Takes an equal share of a filled ChoiceChips row (spec 0030, REQ-005). */
   fill?: boolean;
+  /** Spec 0067: "sm" inside a slim composer field (the agent's badges and place). */
+  size?: 'sm';
+  /**
+   * Spec 0067: a ✕ of its own that removes the chip, while a tap on the chip does `onPress`
+   * (an attachment: tap = preview, ✕ = remove).
+   */
+  onRemove?: () => void;
+  /** Accessible name of that ✕; default "<label> entfernen". */
+  removeLabel?: string;
   testID?: string;
 }
 
@@ -342,9 +393,9 @@ export function ChipView(props: ChipProps & { role: 'button' | 'radio' }) {
   const base: ViewStyle = {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    minHeight: 36,
-    paddingHorizontal: 13,
+    gap: props.size === 'sm' ? 4 : 6,
+    minHeight: props.size === 'sm' ? 30 : 36,
+    paddingHorizontal: props.size === 'sm' ? 10 : 13,
     borderRadius: theme.shape.radius.chip,
     backgroundColor: background,
     borderWidth: props.selected || tone ? 0 : 1,
@@ -359,6 +410,63 @@ export function ChipView(props: ChipProps & { role: 'button' | 'radio' }) {
         {content}
       </View>
     );
+  if (props.onRemove) {
+    const sidePadding = base.paddingHorizontal as number;
+    const onRemove = props.onRemove;
+    return (
+      <View
+        testID={props.testID}
+        style={{ ...base, gap: 0, paddingHorizontal: 0, opacity: props.disabled ? 0.45 : 1 }}
+      >
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={props.accessibilityLabel ?? props.label}
+          accessibilityState={{ disabled: !!props.disabled }}
+          disabled={props.disabled}
+          onPress={props.onPress}
+          testID={props.testID ? `${props.testID}-open` : undefined}
+          style={(state) => ({
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: base.gap,
+            alignSelf: 'stretch',
+            paddingLeft: sidePadding,
+            paddingRight: 4,
+            opacity: (state as PressState).pressed ? 0.7 : 1,
+          })}
+        >
+          {props.icon ? (
+            <ChipIcon name={props.icon} selected={!!props.selected} toneFg={tone?.fg} />
+          ) : null}
+          <Text
+            variant="smallStrong"
+            color="text"
+            numberOfLines={1}
+            style={tone ? { color: tone.fg } : undefined}
+          >
+            {props.label}
+          </Text>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={props.removeLabel ?? `${props.label} entfernen`}
+          disabled={props.disabled}
+          onPress={onRemove}
+          hitSlop={8}
+          testID={props.testID ? `${props.testID}-remove` : undefined}
+          style={(state) => ({
+            alignSelf: 'stretch',
+            justifyContent: 'center',
+            paddingLeft: 4,
+            paddingRight: sidePadding - 2,
+            opacity: (state as PressState).pressed ? 0.6 : 1,
+          })}
+        >
+          <ChipIcon name="x" selected={false} toneFg={tone?.fg} />
+        </Pressable>
+      </View>
+    );
+  }
   return (
     <Pressable
       ref={mergeRefs(hintRef, own)}
@@ -793,6 +901,12 @@ export interface TextFieldProps extends Pick<
   /** With `grow`: the most lines before it scrolls (default 4; the agent 4.5, spec 0067). */
   growLines?: number;
   /**
+   * With `grow`: text set from outside (a running dictation) grows the field like typing and
+   * keeps its end in view (spec 0067, preview feedback 28.11.). The browser measures a field only
+   * on its own input, so this measures after every change of the value.
+   */
+  followEnd?: boolean;
+  /**
    * Inside the field above the text, e.g. the badges of the agent's input (spec 0067, REQ-004):
    * part of the field, not free text. Pass `null` while there is none, never leave it out: the
    * field keeps one layout, so the input keeps its focus when the first one comes.
@@ -850,6 +964,7 @@ export function TextField(props: TextFieldProps) {
     round,
     grow: growProp,
     growLines,
+    followEnd,
     top,
     style,
     testID,
@@ -908,6 +1023,13 @@ export function TextField(props: TextFieldProps) {
   // switching would mount the input anew and take its focus (the first badge of the agent).
   const framed = top !== undefined;
   const hasTop = top !== null && top !== false && top !== undefined;
+  useLayoutEffect(() => {
+    if (!grow || !followEnd || Platform.OS !== 'web') return;
+    const node = own.current as unknown;
+    if (!(node instanceof HTMLElement)) return;
+    setContentHeight(node.scrollHeight);
+    node.scrollTop = node.scrollHeight;
+  }, [grow, followEnd, props.value]);
   return (
     <View style={[{ gap: 6 }, style]}>
       {label ? <Text variant="smallStrong">{words(label)}</Text> : null}

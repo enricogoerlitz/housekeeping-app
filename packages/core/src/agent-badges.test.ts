@@ -8,6 +8,7 @@ import {
   matchBadges,
   slashQuery,
   takeSlash,
+  withoutSlash,
 } from './agent-badges';
 
 describe('the badges of the start page (REQ-003)', () => {
@@ -75,5 +76,11 @@ describe('badges in the input (REQ-004)', () => {
     expect(backspaceRemovesBadge(['rezepte'], { start: 3, end: 3 })).toBeUndefined();
     expect(backspaceRemovesBadge(['rezepte'], { start: 0, end: 4 })).toBeUndefined();
     expect(backspaceRemovesBadge([], { start: 0, end: 0 })).toBeUndefined();
+  });
+
+  it('AC-006 (click-through A): a badge picked elsewhere while "/re" is typed takes the "/re" too', () => {
+    expect(withoutSlash('/re', 3)).toEqual({ text: '', cursor: 0 });
+    expect(withoutSlash('Was kochen /re', 14)).toEqual({ text: 'Was kochen ', cursor: 11 });
+    expect(withoutSlash('ohne Slash', 10)).toEqual({ text: 'ohne Slash', cursor: 10 });
   });
 });

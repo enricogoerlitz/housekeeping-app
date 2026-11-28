@@ -22,9 +22,19 @@ const copies = [
     allowedImports: [],
   },
   {
+    source: 'packages/core/src/agent-proposals.ts',
+    target: 'supabase/functions/_shared/agent-proposals.gen.ts',
+    allowedImports: ['zod'],
+  },
+  {
     source: 'packages/core/src/ai-agent.ts',
     target: 'supabase/functions/_shared/ai-agent.gen.ts',
     allowedImports: ['zod'],
+    // Spec 0067: the agent's contract uses two other copies; Deno imports them by their file.
+    siblings: {
+      './agent-proposals': './agent-proposals.gen.ts',
+      './ai-contract': './contract.gen.ts',
+    },
   },
   {
     source: 'packages/core/src/agent-tools.ts',
@@ -40,17 +50,20 @@ const copies = [
 const check = process.argv.includes('--check');
 let failed = false;
 
-for (const { source, target, allowedImports } of copies) {
-  const content = await readFile(resolve(root, source), 'utf8');
+for (const { source, target, allowedImports, siblings = {} } of copies) {
+  let content = await readFile(resolve(root, source), 'utf8');
   const imports = [...content.matchAll(/^\s*import[^;]*?from\s+['"]([^'"]+)['"]/gm)].map(
     (m) => m[1],
   );
-  const foreign = imports.filter((name) => !allowedImports.includes(name));
+  const foreign = imports.filter((name) => !allowedImports.includes(name) && !(name in siblings));
   if (foreign.length > 0) {
     const allowed = allowedImports.length > 0 ? `only ${allowedImports.join(', ')}` : 'nothing';
     console.error(`${source} may import ${allowed}, found: ${foreign.join(', ')}`);
     failed = true;
     continue;
+  }
+  for (const [from, to] of Object.entries(siblings)) {
+    content = content.replaceAll(`from '${from}';`, `from '${to}';`);
   }
   const expected = `// Generated from ${source} by \`pnpm gen:edge\` — do not edit.\n${content}`;
   const targetPath = resolve(root, target);

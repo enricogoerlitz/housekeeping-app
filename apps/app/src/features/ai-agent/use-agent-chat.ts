@@ -3,6 +3,7 @@ import type {
   AgentAttachment,
   AgentBadgeSlug,
   AgentCard,
+  AgentExtra,
   AgentPlace,
   AgentSource,
   AgentStep,
@@ -10,6 +11,8 @@ import type {
   Id,
 } from '@housekeeping/core';
 import { useCallback, useEffect, useRef, useState } from 'react';
+
+import type { AttachmentPreview } from './agent-attachments';
 
 // Spec 0066, REQ-005/REQ-008: the messages of one chat while the page is open. They come from the
 // stream or, for a chat of "Verlauf", online from Foundry; they are never stored on the device.
@@ -24,17 +27,29 @@ export interface ChatTurn {
   followUps: string[];
   sources: AgentSource[];
   steps: AgentStep[];
+  /** Spec 0067, step B: proposals, recipe drafts and images of an answer. */
+  extras: AgentExtra[];
+  /** Loaded from "Verlauf": its proposals are shown, not applied again. */
+  loaded?: boolean;
   status: 'streaming' | 'done' | 'stopped' | 'error';
   error?: string;
   /** Spec 0067: the badges and the number of photos and files of a message of the person. */
   badges?: AgentBadgeSlug[];
   attachments?: number;
+  /** Preview feedback 28.11.: the local copies of this message's files, while the page is open. */
+  previews?: AttachmentPreview[];
 }
 
 /** Spec 0067: the hints and files of one message. */
 export interface SendExtras {
   badges?: readonly AgentBadgeSlug[];
   attachments?: readonly AgentAttachment[];
+  previews?: readonly AttachmentPreview[];
+  /**
+   * Preview feedback 28.11. (like ChatGPT): the turn of the person's message she edited; it and
+   * everything after it are replaced by this message.
+   */
+  editTurn?: number;
 }
 
 export type ChatLoad =
@@ -53,6 +68,7 @@ function turn(role: ChatTurn['role'], text: string, status: ChatTurn['status']):
     followUps: [],
     sources: [],
     steps: [],
+    extras: [],
     status,
   };
 }
@@ -80,6 +96,8 @@ function applyEvent(current: ChatTurn, event: AgentStreamEvent): ChatTurn {
       };
     case 'sources':
       return { ...current, sources: event.sources };
+    case 'extra':
+      return { ...current, extras: [...current.extras, event.extra] };
     case 'done':
       return {
         ...current,
@@ -153,6 +171,8 @@ export function useAgentChat(chatId: Id | undefined, onCreated: (id: Id) => void
             followUps: message.followUps,
             sources: message.sources,
             steps: message.steps,
+            extras: message.extras,
+            loaded: true,
             ...(message.attachments ? { attachments: message.attachments } : {}),
           })),
         });
@@ -179,9 +199,22 @@ export function useAgentChat(chatId: Id | undefined, onCreated: (id: Id) => void
         ...turn('user', message.trim(), 'done'),
         ...(extras.badges?.length ? { badges: [...extras.badges] } : {}),
         ...(extras.attachments?.length ? { attachments: extras.attachments.length } : {}),
+        ...(extras.previews?.length ? { previews: [...extras.previews] } : {}),
       };
       setBusy(true);
-      setState((current) => ({ ...current, turns: [...current.turns, question, answer] }));
+      const edit = extras.editTurn;
+      const editFrom =
+        edit === undefined
+          ? undefined
+          : state.turns.slice(0, edit).filter((entry) => entry.role === 'user').length;
+      setState((current) => ({
+        ...current,
+        turns: [
+          ...(edit === undefined ? current.turns : current.turns.slice(0, edit)),
+          question,
+          answer,
+        ],
+      }));
       const update = (change: (current: ChatTurn) => ChatTurn) =>
         setState((current) => ({
           ...current,
@@ -190,6 +223,7 @@ export function useAgentChat(chatId: Id | undefined, onCreated: (id: Id) => void
       sendAgentMessage(
         {
           chatId: state.chatId,
+          ...(editFrom !== undefined ? { editFrom } : {}),
           message,
           place,
           badges: extras.badges,
@@ -227,7 +261,7 @@ export function useAgentChat(chatId: Id | undefined, onCreated: (id: Id) => void
           setBusy(false);
         });
     },
-    [state.chatId],
+    [state.chatId, state.turns],
   );
 
   const stop = useCallback(() => running.current?.abort(), []);

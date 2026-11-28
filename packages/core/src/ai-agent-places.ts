@@ -116,6 +116,22 @@ export interface CardActivityDraft {
 const defined = <T extends object>(value: T): T =>
   Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined)) as T;
 
+/**
+ * Spec 0067 (preview 28.11.): the place a message goes with. The device's location never blocks
+ * sending: without one (denied, timed out, a desktop without GPS) the message goes without
+ * coordinates ("Ort unbekannt" in the context) and, for "Ausgehen", the chip says so calmly; the
+ * agent asks for a place only when the question needs one. A chosen place is sent as it is.
+ */
+export function placeToSend(
+  place: AgentPlace,
+  location: GeoPoint | undefined,
+  outing: boolean,
+): { place: AgentPlace; hint?: true } {
+  if (place.source !== 'device') return { place };
+  if (location) return { place: { ...place, location } };
+  return outing ? { place, hint: true } : { place };
+}
+
 /** AC-021: the card as a restaurant; its kind ("Deutsch") is the cuisine. */
 export function restaurantDraftOfCard(card: AgentCard): CardRestaurantDraft {
   return defined({
@@ -194,6 +210,8 @@ export function chatMetaLine(
 export interface AnswerSpan {
   text: string;
   bold: boolean;
+  /** Spec 0067: an https link of the answer; opened in the app's way (in-app view on iPhone). */
+  url?: string;
 }
 
 export interface AnswerBlock {
@@ -201,7 +219,7 @@ export interface AnswerBlock {
   spans: AnswerSpan[];
 }
 
-function spansOf(line: string): AnswerSpan[] {
+function boldSpans(line: string): AnswerSpan[] {
   const spans: AnswerSpan[] = [];
   const pattern = /\*\*(.+?)\*\*/g;
   let last = 0;
@@ -211,6 +229,26 @@ function spansOf(line: string): AnswerSpan[] {
     last = match.index + match[0].length;
   }
   if (last < line.length) spans.push({ text: line.slice(last), bold: false });
+  return spans;
+}
+
+/** "[label](https://…)" or a bare https address (without a closing dot or bracket). */
+const LINK =
+  /\[([^\]]{1,200})\]\((https:\/\/[^\s)]{1,2000})\)|https:\/\/[^\s<>()]{0,2000}[^\s<>().,;:!?"“”]/g;
+
+/** Spec 0067: links are spans of their own; only https, never another scheme. */
+function spansOf(line: string): AnswerSpan[] {
+  const spans: AnswerSpan[] = [];
+  let last = 0;
+  LINK.lastIndex = 0;
+  for (let match = LINK.exec(line); match; match = LINK.exec(line)) {
+    if (match.index > last) spans.push(...boldSpans(line.slice(last, match.index)));
+    const url = match[2] ?? match[0];
+    const label = match[1] ?? url.replace(/^https:\/\/(www\.)?/, '');
+    spans.push({ text: label, bold: false, url });
+    last = match.index + match[0].length;
+  }
+  if (last < line.length) spans.push(...boldSpans(line.slice(last)));
   return spans;
 }
 

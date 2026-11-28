@@ -1300,6 +1300,16 @@ Sperre: Passt die Frage nicht dazu, folgt der Agent der Frage (Spec 0067).
 - **Im Code:** `AgentBadgeSlug`, `AGENT_BADGES`, `badges` im Sendeauftrag
 - **Nicht verwenden:** Agent (für den Badge), Modus, Tag, Schlagwort
 
+### Sammelkarte (Agent)
+
+Die Karte eines Vorschlags des Agenten (Spec 0067, REQ-009): je Eintrag eine Zeile aus den Daten des
+Haushalts mit Häkchen, darunter „n übernehmen“ und danach „Rückgängig“. Jeder Eintrag läuft über
+einen Befehl der App; Löschen hat einen eigenen Knopf mit Rückfrage. Der Agent selbst schreibt nie.
+
+- **Im Code:** `propose_actions`, `AgentProposal`, `AgentAction`, `resolveAction`,
+  `runAgentCommand`, `AgentProposalCard`
+- **Nicht verwenden:** Auftrag, Befehl (für den Vorschlag), Batch
+
 ### Ansicht (Normal / KI zuerst)
 
 Die Wahl je Person unter Einstellungen → Darstellung (Spec 0067): „Normal“ mit „Haushalt“ in der

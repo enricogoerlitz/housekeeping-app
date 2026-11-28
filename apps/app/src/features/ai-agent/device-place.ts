@@ -10,13 +10,14 @@ import { Platform } from 'react-native';
 // browser only when a message is sent (the browser asks once); "Zuletzt" lives on this device in
 // localStorage and is cleared at sign-out. Nothing here is ever sent but with a message.
 
-export const NO_LOCATION_HINT = 'Standort nicht verfügbar – wähle einen Ort.';
+export const NO_LOCATION_HINT = 'Standort nicht verfügbar';
 
-const LOCATION_MS = 10_000;
+/** Preview 28.11.: a message never waits longer for the location (a fix of 5 min counts). */
+const LOCATION_MS = 3_000;
 
 /**
  * The device location rounded to ≈ 100 m (REQ-003: nothing more leaves the device), or undefined
- * without permission, without a fix or within 10 s.
+ * without permission, without a fix or within 3 s.
  */
 export function deviceLocation(): Promise<{ lat: number; lng: number } | undefined> {
   const geo = typeof navigator === 'undefined' ? undefined : navigator.geolocation;

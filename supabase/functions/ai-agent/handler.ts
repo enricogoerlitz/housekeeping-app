@@ -3,8 +3,9 @@
 // messages, `delete` and `purge` remove conversations, answers and our reference rows. The chat
 // belongs to a household: our row (RLS) and the conversation's metadata must both say so, because
 // the Foundry key can read every conversation of the project. The household tools (tools.ts) read
-// as the caller, for the chat's household only.
-import { storedToolStep, toolLabel } from '../_shared/agent-tools.gen.ts';
+// as the caller, for the chat's household only. Step B: the agent proposes (proposals.ts) and
+// never writes; a card's website is Google's once household tools ran (no model-made links).
+import { agentCallKey, storedToolStep, toolLabel } from '../_shared/agent-tools.gen.ts';
 import {
   AGENT_LIMITS,
   AGENT_QUOTA_PER_TURN,
@@ -28,6 +29,7 @@ import {
   type AgentStreamEvent,
   type PlaceEnrichment,
 } from '../_shared/ai-agent.gen.ts';
+import type { RecipeDraftReply } from '../_shared/contract.gen.ts';
 import type { Deps, UserClient } from '../_shared/deps.ts';
 import { HttpError } from '../_shared/errors.ts';
 import { handleRequest } from '../_shared/http.ts';
@@ -35,6 +37,15 @@ import { requireMember } from '../_shared/membership.ts';
 import { consumeQuota } from '../_shared/quota.ts';
 import { configuredProviders } from '../_shared/web-search.ts';
 import { agentConfig, foundryClient, type Foundry } from './foundry-agent.ts';
+import {
+  CARD_TOOLS,
+  lastDraft,
+  runCardTool,
+  runDraftTool,
+  runEntitiesTool,
+  runImagesTool,
+  type CardContext,
+} from './proposals.ts';
 import { loadToolBase, runHouseholdTool, type ToolBase } from './tools.ts';
 
 /** The whole answer, all rounds included (decision 13). */
@@ -47,6 +58,11 @@ const MAX_CALLS_PER_ANSWER = 20;
 /** The body of a send with its photos and files (spec 0067, REQ-005). */
 const MAX_SEND_BODY_BYTES = AGENT_LIMITS.attachmentChars + 256 * 1024;
 const SERPER_ZOOM = 14;
+/** The step row of a proposal tool while it runs (REQ-008). */
+const STARTED_LABEL: Record<string, string> = {
+  draft_recipe: 'Schreibt einen Rezeptentwurf',
+  show_images: 'Sucht Bilder',
+};
 
 interface ChatRow {
   id: string;
@@ -153,6 +169,26 @@ async function closeOpenCalls(foundry: Foundry, conversation: string): Promise<v
   );
 }
 
+/**
+ * Preview feedback 28.11. (like ChatGPT): the person's `editFrom`-th message and everything after
+ * it leave the conversation, newest first, before the edited one is sent. A message that is not
+ * there is a bad request: nothing is deleted.
+ */
+async function truncateFrom(foundry: Foundry, conversation: string, editFrom: number) {
+  const items = (await foundry.items(conversation, 'asc', 5)) as {
+    id?: unknown;
+    type?: unknown;
+    role?: unknown;
+  }[];
+  const asked = items.flatMap((item, index) =>
+    item.type === 'message' && item.role === 'user' ? [index] : [],
+  );
+  const from = asked[editFrom];
+  if (from === undefined) throw new HttpError('invalid_request');
+  for (const item of items.slice(from).reverse())
+    if (typeof item.id === 'string') await foundry.deleteItem(conversation, item.id);
+}
+
 async function enrich(
   deps: Deps,
   cards: readonly AgentCard[],
@@ -203,8 +239,11 @@ async function streamRound(input: {
   web: AgentStep;
   sources: Map<string, ReturnType<typeof sourcesOf>[number]>;
   onResponse: (id: string) => Promise<void>;
-  /** The step row of a household tool call as soon as the model starts it (REQ-008). */
-  onToolStarted: (callId: string, name: string) => void;
+  /**
+   * The step row of a tool call once its arguments are there (REQ-008): a call the answer already
+   * made gets no row of its own (preview 28.11.).
+   */
+  onToolStarted: (callId: string, name: string, args: string) => void;
 }): Promise<Round> {
   const round: Round = { calls: [], failed: false };
   const response = await input.foundry.respond(input.conversation, input.items, input.signal);
@@ -233,8 +272,6 @@ async function streamRound(input: {
           input.emit({ type: 'step', step: { ...input.web } });
         } else if (item.type === 'function_call' && item.name === 'show_suggestions') {
           input.emit({ type: 'cards_pending' });
-        } else if (item.type === 'function_call' && typeof item.call_id === 'string') {
-          input.onToolStarted(item.call_id, typeof item.name === 'string' ? item.name : '');
         }
         break;
       case 'response.output_item.done':
@@ -250,12 +287,17 @@ async function streamRound(input: {
         } else if (item.type === 'message') {
           text(filter.flush());
         } else if (item.type === 'function_call') {
-          if (typeof item.call_id === 'string' && typeof item.name === 'string')
-            round.calls.push({
-              name: item.name,
-              callId: item.call_id,
-              args: typeof item.arguments === 'string' ? item.arguments : '',
-            });
+          if (typeof item.call_id === 'string' && typeof item.name === 'string') {
+            const args = typeof item.arguments === 'string' ? item.arguments : '';
+            round.calls.push({ name: item.name, callId: item.call_id, args });
+            // propose_actions and make_image show as their card, not as a step row.
+            if (
+              !['show_suggestions', 'propose_actions', 'make_image', 'show_entities'].includes(
+                item.name,
+              )
+            )
+              input.onToolStarted(item.call_id, item.name, args);
+          }
         }
         break;
       case 'response.output_text.delta':
@@ -302,6 +344,8 @@ async function prepareTurn(
     const chat = await loadChat(client, input.householdId, input.chatId);
     if (chat.response_ids.length >= AGENT_LIMITS.turns) throw new HttpError('chat_too_long');
     if ((await verifyConversation(foundry, chat)) === 'gone') throw new HttpError('forbidden');
+    if (input.editFrom !== undefined)
+      await truncateFrom(foundry, chat.conversation_id, input.editFrom);
     await consumeQuota(client, 'request', AGENT_QUOTA_PER_TURN);
     await closeOpenCalls(foundry, chat.conversation_id);
     return { chat };
@@ -392,6 +436,21 @@ async function streamTurn(
     return id;
   };
   let callsRun = 0;
+  // Preview 28.11.: a household read of this answer, by tool and arguments, is made once.
+  const reads = new Map<string, { stepId: string; output: Promise<string> }>();
+  const readKey = (name: string, args: string) =>
+    name === 'draft_recipe' || name === 'show_images' ? undefined : agentCallKey(name, args);
+  // Any household tool in this answer: from then on a card's website is Google's only (a model
+  // link could carry the household's data out, security check 27.11.).
+  let toolsRan = false;
+  const cardContext: CardContext = {
+    message: input.message,
+    emit: (extra) => emit({ type: 'extra', extra }),
+    made: { image: false, images: false },
+  };
+  let draftOfAnswer: RecipeDraftReply | undefined;
+  const previousDraft = async () =>
+    draftOfAnswer ?? lastDraft(await foundry.items(chat.conversation_id, 'desc', 1));
   for (let roundNo = 0; roundNo < MAX_TOOL_ROUNDS; roundNo += 1) {
     const round = await streamRound({
       foundry,
@@ -401,17 +460,24 @@ async function streamTurn(
       emit,
       web,
       sources,
-      onToolStarted: (callId, name) =>
+      onToolStarted: (callId, name, args) => {
+        const key = readKey(name, args);
+        const earlier = key === undefined ? undefined : reads.get(key);
+        if (earlier) {
+          stepOf.set(callId, earlier.stepId);
+          return;
+        }
         emit({
           type: 'step',
           step: {
             id: stepFor(callId),
             kind: 'tool',
-            label: toolLabel(name),
+            label: STARTED_LABEL[name] ?? toolLabel(name),
             details: [],
             status: 'running',
           },
-        }),
+        });
+      },
       onResponse: async (id) => {
         lastResponse = id;
         // An answer the row does not name could never be deleted (chat deleted meanwhile).
@@ -436,10 +502,13 @@ async function streamTurn(
         const enrichments = parsed ? await enrich(deps, parsed.cards, input.place.location) : [];
         if (parsed && parsed.cards.length > 0) {
           cardsTitle ??= parsed.title;
+          const cards = toolsRan
+            ? parsed.cards.map(({ websiteUrl: _model, ...card }) => card)
+            : parsed.cards;
           emit({
             type: 'cards',
             ...(parsed.title ? { title: parsed.title } : {}),
-            cards: mergeCards(parsed.cards, enrichments),
+            cards: mergeCards(cards, enrichments),
             followUps: parsed.followUps,
           });
         }
@@ -448,15 +517,52 @@ async function streamTurn(
           call_id: call.callId,
           output: functionOutput(enrichments),
         });
+      } else if (call.name === 'show_images') {
+        const result = await runImagesTool(deps, call, cardContext, stepFor(call.callId));
+        emit({ type: 'step', step: result.step });
+        outputs.push({ type: 'function_call_output', call_id: call.callId, output: result.output });
+      } else if (call.name === 'show_entities') {
+        outputs.push({
+          type: 'function_call_output',
+          call_id: call.callId,
+          output: await runEntitiesTool(client, chat.household_id, call, cardContext.emit),
+        });
+      } else if (CARD_TOOLS.has(call.name)) {
+        outputs.push({
+          type: 'function_call_output',
+          call_id: call.callId,
+          output: runCardTool(call, cardContext),
+        });
       } else {
         dataCalls.push(call);
       }
     }
+    if (dataCalls.some((call) => call.name !== 'draft_recipe')) toolsRan = true;
     // The household id is the chat's, checked by requireMember; never an argument (AC-014).
     const allowed = Math.max(0, Math.min(MAX_CALLS_PER_ROUND, MAX_CALLS_PER_ANSWER - callsRun));
-    callsRun += Math.min(allowed, dataCalls.length);
+    // A call the answer made before (this round or an earlier one) is answered from it.
+    const seen = new Set(reads.keys());
+    let fresh = 0;
+    const plan = dataCalls.map((call) => {
+      const key = readKey(call.name, call.args);
+      if (key !== undefined && seen.has(key)) return { key, repeat: true, index: -1 };
+      if (key !== undefined) seen.add(key);
+      fresh += 1;
+      return { key, repeat: false, index: fresh - 1 };
+    });
+    callsRun += Math.min(allowed, fresh);
     const dataOutputs = await Promise.all(
-      dataCalls.map(async (call, index) => {
+      dataCalls.map(async (call, at) => {
+        const { key, repeat, index } = plan[at]!;
+        if (repeat && key !== undefined) {
+          const earlier = reads.get(key);
+          if (earlier)
+            return {
+              type: 'function_call_output',
+              call_id: call.callId,
+              output: await earlier.output,
+            };
+        }
         if (index >= allowed) {
           emit({
             type: 'step',
@@ -475,12 +581,35 @@ async function streamTurn(
             output: '{"error":"too_many_calls"}',
           };
         }
-        const result = await runHouseholdTool(call, {
+        if (call.name === 'draft_recipe') {
+          const drafted = await runDraftTool(
+            deps,
+            client,
+            input,
+            call,
+            { emit: cardContext.emit, previous: previousDraft },
+            stepFor(call.callId),
+          );
+          if (drafted.reply) draftOfAnswer = drafted.reply;
+          emit({ type: 'step', step: drafted.step });
+          return {
+            type: 'function_call_output',
+            call_id: call.callId,
+            output: drafted.output,
+          };
+        }
+        const running = runHouseholdTool(call, {
           client,
           householdId: chat.household_id,
           base,
           stepId: stepFor(call.callId),
         });
+        if (key !== undefined)
+          reads.set(key, {
+            stepId: stepFor(call.callId),
+            output: running.then((result) => result.output),
+          });
+        const result = await running;
         emit({ type: 'step', step: result.step });
         return { type: 'function_call_output', call_id: call.callId, output: result.output };
       }),

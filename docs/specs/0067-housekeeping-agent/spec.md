@@ -285,6 +285,77 @@ Beim Bau von Schritt A entschieden (27.11.2026):
     `list_recipes` mit Suche (7 Aufrufe). Ein Filter „diese Titel/IDs“ würde das bündeln — in Schritt
     D mit dem Testkatalog entscheiden. Ebenso, ob viele Schrittzeilen zu einer Gruppe zusammenklappen.
 
+Beim Bau von Schritt B entschieden (27./28.11.2026, mit Enricos Rückmeldungen aus der Vorschau):
+
+23. **Werkzeuge, die vorschlagen:** `propose_actions` (Sammelkarte), `draft_recipe` (Entwurfs-Strecke
+    von `ai-recipe-draft`, nach `_shared/recipe-draft.ts` gezogen, gleiches Schema und gleicher
+    Katalog-Abgleich), `make_image` (genau ein FLUX-Bild, das die App über `ai-image` mit `count: 1`
+    erzeugt), `show_images` (Google-Bilder über Serper `/images`) und `show_entities` (eigene
+    Einträge als Karten). Parameter erzeugt `packages/core/src/agent-proposals.ts`, `run.test.ts`
+    prüft die YAML dagegen. Die Function schreibt nie; nur `draft_recipe` löst einen weiteren
+    Modelllauf aus, die anderen enden mit ihrer Karte.
+24. **Sammelkarte:** Die Zeile eines Eintrags entsteht aus den Daten des Haushalts (`resolveAction`),
+    nie aus den Worten des Modells; ein Eintrag findet seine Zeile über die `id` oder den Namen.
+    Jeder Eintrag läuft über genau einen vorhandenen Befehl (`runAgentCommand`, Ergebnis je Eintrag
+    über `commitWatched`), „Rückgängig“ ist das übliche `snapshot()`. Vor dem Übernehmen synchronisiert
+    die App und vergleicht den Stand der betroffenen Zeilen: Geändertes ist abgewählt mit „Inzwischen
+    geändert – prüf es und wähl es neu“. Löschen hat einen eigenen Knopf mit Rückfrage und kommt nur
+    in die Karte, wenn die eigene Nachricht der Person es verlangt (`deleteWished`, AC-020). Eine
+    Karte aus „Verlauf“ zeigt nur, was vorgeschlagen war („zum Übernehmen frag noch einmal“), damit
+    nichts doppelt angelegt wird. Ohne Tageszeit wählt die Uhrzeit den Slot (vor 11 Uhr der erste,
+    vor 17 Uhr der mittlere, sonst der letzte).
+25. **Erst nachsehen, dann anlegen** (Enrico 28.11.): Vor jedem Anlegen sucht der Agent Ähnliches
+    (Name, Ort, Quelle), zeigt es als Karte und lässt wählen: ändern/ergänzen, bei anderer Ernährung
+    oder Art eine Variante (auf der Rezeptseite über „Mit KI ändern“), oder trotzdem neu.
+    `draft_recipe` meldet gleiche Titel und gleiche Quell-Links als `existing` und zeigt sie als
+    Karte; die Sammelkarte meldet „Habt ihr schon“ für gleichnamige Orte.
+26. **Rezept im Chat:** Karte mit Titel, Portionen, Zeit und Zutaten („neu“ = nicht im Katalog, wie im
+    Editor); „Prüfen und anlegen“ öffnet den bekannten Editor mit dem Entwurf (`handOverNewRecipe`),
+    mit dem im Chat gewählten Foto, sonst dem Foto der Seite. Nicht lesbarer Link: kein Entwurf,
+    `link_unreadable` – der Agent liest die Seite mit seiner Websuche (`page_text`) oder sagt ehrlich,
+    dass es nicht geht (AC-022). Nachbessern: `refine` ändert den letzten Entwurf des Chats.
+27. **Bilder:** „Als Foto nehmen“ speichert über den üblichen Foto-Weg; die Quelle eines Google-Bilds
+    bleibt im Entwurf als Link „Fotoquelle“, an einem vorhandenen Eintrag als Zeile „Foto: …“ in
+    seinen Notizen (Rezept-Links ändern sich nur auf der Rezeptseite, Orte haben keine). Eine
+    Ablehnung von FLUX ist ein freundlicher Hinweis. Ein Chat aus „Verlauf“ erzeugt das Bild erst
+    auf Tipp (Kosten).
+28. **Karten-Websites** (Security-Check 27.11., mittel): Sobald in einer Antwort ein Haushalts-
+    Werkzeug lief, kommt die Website einer Karte nur noch aus der Serper-Anreicherung, nie vom Modell.
+    Beim Speichern einer Ortskarte kommt das Google-Foto mit (`savePhotoFromAddress`); geht das
+    nicht, wird ohne Foto gespeichert und der Hinweis sagt es.
+29. **Eigene Einträge** öffnen sich aus dem Chat heraus: auf dem Handy als Fenster über dem Chat
+    (Schließen führt an dieselbe Stelle zurück), auf breiten Bildschirmen als Spalte rechts neben dem
+    Chat; eine andere Karte ersetzt sie. Fette Namen, die genau ein Rezept, Restaurant oder eine
+    Aktivität des Haushalts sind, sind Links. Fremde Links: https nur; auf dem iPhone (installierte
+    App) zeigt iOS sie in seinem In-App-Browser, am Desktop ein neuer Tab. Was ein übernommener
+    Vorschlag angelegt oder geändert hat, steht als Karte unter ihm; eine gespeicherte Ortskarte und
+    ein angelegter Entwurf zeigen „Öffnen“ (auch in geladenen Chats).
+30. **Eingabe wie bei Gemini/ChatGPT** (UI-Review 27.11.): eine schlanke runde Leiste (`ComposerBar
+dense`), „+“ links, Text, Mikrofon/Senden rechts; Badges, Anhänge und Ort sind kleine Chips im
+    Feld. Den Ort zeigt das Feld nur mit „Ausgehen“ oder einem gewählten Ort (Entscheidung 17). Bei
+    offener Tastatur wird die Kopfzeile schmal und das Chat-Ende rückt über die Eingabe; ein Zug nach
+    unten im Chat schließt die Tastatur. Das Slash-Menü hat eine Zeile je Bereich. Ein „/re“ geht auch
+    weg, wenn der Badge auf der Startseite gewählt wird.
+31. **Antworten und Bearbeiten:** Während der Agent antwortet, bleibt das Feld zum Weitertippen offen;
+    Senden wartet auf das Ende (der Knopf ist bis dahin „Antwort anhalten“), wie bei ChatGPT. Die
+    eigene Nachricht lässt sich bearbeiten (✎ unter der letzten, lange drücken bei jeder); Senden
+    ersetzt sie und alles danach (`editFrom`: die Function löscht diese Items der Conversation).
+32. **Diktat und Anhänge:** Das laufende Mikrofon ist ein atmender Ring (`IconButton live`), nie wie
+    „Senden“; diktierter Text lässt das Feld wachsen und zeigt immer sein Ende (`followEnd`). Ein Tipp
+    auf einen Anhang zeigt ihn (Foto groß, PDF im Viewer des Browsers), ✕ entfernt ihn. Gesendete
+    Anhänge stehen als Vorschau über der Nachricht (lokale Kopie, nur solange die Seite offen ist;
+    ein geladener Chat sagt „1 Anhang“).
+33. **Standort blockiert nie:** Ohne Standort (abgelehnt, nach 3 s, Desktop ohne GPS) geht die
+    Nachricht ohne Koordinaten; mit „Ausgehen“ sagt der Orts-Chip „Standort nicht verfügbar“, das
+    Orts-Fenster öffnet nur ein Tipp darauf (ändert Spec 0066, REQ-003). Ursache in der Vorschau:
+    kein Fix innerhalb von 10 s am Desktop (keine Permissions-Policy, kein CSP-Grund).
+34. **Eine Abfrage je Frage:** Gleiches Werkzeug mit gleichen Angaben liest die Function je Antwort
+    nur einmal (`agentCallKey`), ohne zweite Schrittzeile. `list_recipes` hat `kind` (recipe,
+    collection, all); Zahl und Einträge zählen dieselbe Menge („26 von 24“ kann nicht mehr entstehen).
+35. **Tab „AI Agent“** (ändert AC-001 „nur Icon“): In „KI zuerst“ trägt der mittlere Tab das Label
+    „AI Agent“ in der Tönung `ki` des Themes; gewählt ist das Label fetter und das Icon etwas größer,
+    nie die Pille der anderen Tabs.
+
 ## Grenzfälle, die in der App fest verdrahtet sind
 
 Jeder Fall braucht im Agenten denselben Weg wie in der App, sonst entstehen Daten, die anders
@@ -365,10 +436,10 @@ In drei Bauschritten, jeder mit Vorschau für Enrico; keine volle e2e-Suite vor 
       Agenten umstellen, Badges/Ort im Kontext (REQ-006)
 - [x] A3. Startseite, Slash-Menü, Badges, Eingabefeld 4,5 Zeilen, „+“ für Dateien (REQ-003–005)
 - [x] A4. Lese- und Überblick-Werkzeuge mit Parametern, Schrittzeilen (REQ-007, REQ-008)
-- [ ] B1. `propose_actions`, Sammelkarte, Übernehmen je Eintrag, Rückgängig, Löschen einzeln
+- [x] B1. `propose_actions`, Sammelkarte, Übernehmen je Eintrag, Rückgängig, Löschen einzeln
       (REQ-009)
-- [ ] B2. Rezept anlegen über die Entwurfs-Strecke, „Prüfen und anlegen“ im Editor (REQ-010)
-- [ ] B3. Bilder (REQ-011), Orte (REQ-012)
+- [x] B2. Rezept anlegen über die Entwurfs-Strecke, „Prüfen und anlegen“ im Editor (REQ-010)
+- [x] B3. Bilder (REQ-011), Orte (REQ-012)
 - [ ] C1. Massenbearbeitung (REQ-013), Woche füllen (REQ-014), Betrieb (REQ-015), Entscheidung 13
 - [ ] D. Prüfung mit Testkatalog, Modellbewertung, Optimierung, `tmp/0067/REVIEW.md`, Urteil an Enrico
 - [ ] `/security-check` auf den Diff, Befunde behoben oder unter „Risiken“
@@ -422,3 +493,51 @@ In drei Bauschritten, jeder mit Vorschau für Enrico; keine volle e2e-Suite vor 
 - **Für Enrico lokal:** In der `.env` `FOUNDRY_HOUSEHOLD_AGENT=household-agent-local` (statt
   `FOUNDRY_PLACES_AGENT`) und `FOUNDRY_PROJECT_ENDPOINT` setzen, dann den lokalen Stack aus einer Shell
   mit geladener `.env` neu starten.
+
+## Nachweis (Schritt B, 28.11.2026)
+
+- **Rot zuerst** (Tests vor dem Code, rot gezeigt): core `agent-proposals.test.ts` und
+  `agent-apply.test.ts` (Modul fehlte), `ai-agent-extras.test.ts` (5 rot gegen den Stand von A),
+  `agent-tools` (Sammlungen „26 von 24“, `agentCallKey`), `agent-badges` (`withoutSlash`),
+  `ai-agent-places` (Links, `placeToSend`); api `agent-actions.backend.test.ts` (Modul fehlte, dann
+  Foto-Übernahme); ui `controls` (Chip `sm`/`onRemove`, IconButton `live`, `followEnd`), `shell`
+  (`dense`, `compactHeader`, Tab „AI Agent“), `drag-dismiss`; edge `ai-agent/handler.test.ts`: 12
+  neue Fälle rot gegen den Handler von A, dann Bearbeiten (2), `show_entities` (1), Lese-Cache (1),
+  Duplikat (1) je rot → grün; `ai-image` `count: 1` rot → grün.
+- **Negativtests:** fremder Haushalt (Bearbeiten 403, `show_entities` lässt fremde ids weg), ungültige
+  Eingaben (kaputtes JSON, falsche Arten, ids ohne uuid, `editFrom` ohne Chat), Injection (Löschen
+  ohne eigenen Wunsch wird verworfen, Seitentext nur als Daten), veraltete Daten (stale), offline
+  (`runAgentCommand` wirft `OfflineError`), Fehlerpfade (Serper down, Seite nicht lesbar, Foto nicht
+  ladbar, Eintrag inzwischen gelöscht).
+- **Prüfungen:** `pnpm format:check && pnpm check && pnpm build:web` grün (20/20 Tasks). Kein e2e und
+  kein Security-Check in diesem Schritt (nach D, Enricos Vorgabe).
+- **Foundry:** `household-agent-local` Version 3. Smoke mit echten Läufen gegen den eigenen Stack
+  `hk-0067b` (Ports 548xx), 13 Nachrichten, rund 28 Modell- und Bildaufrufe (Grenze 30, Protokoll
+  `tmp/review-0004/0067/smoke-b/`):
+
+  | Fall                                                  | Dauer             | Werkzeuge und Ergebnis                                                                                                                                                               |
+  | ----------------------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+  | „Milch und Eier auf die Liste, Bad geputzt, Mi Curry“ | 11 s              | `list_chores`, `list_recipes` → Karte; Curry mehrdeutig (3 Treffer) – fragt nach. „Bad putzen“ inzwischen per SQL gebucht → „Inzwischen geändert“, abgewählt; Milch, Eier übernommen |
+  | TikTok „leg das an, vegetarisch, für 2“               | 16,5 s            | `draft_recipe` · tiktok.com → Karte 2 Portionen, 30 Min., Zutaten (alle im Katalog des Seeds)                                                                                        |
+  | Web-URL (Chefkoch)                                    | 18,5 s            | `draft_recipe` · chefkoch.de → Entwurf 4 Portionen mit vegetarischer Variante                                                                                                        |
+  | Nicht lesbare Seite (404)                             | 14 s              | „Link nicht lesbar“ → Websuche → ehrlicher Hinweis, Text oder Screenshots (AC-022)                                                                                                   |
+  | „Mach ein Foto dazu“                                  | ≈ 48 s inkl. Bild | Bildkarte, genau ein FLUX-Bild, „Neu generieren“ / „Als Foto nehmen“                                                                                                                 |
+  | „Zeig echte Bilder davon“                             | 13 s              | `show_images` · 8 Google-Bilder über Serper, Quelle je Bild                                                                                                                          |
+  | „Erst eine Aktivität, dann ein Restaurant am Samstag“ | 22 s              | Websuche, 2 Lese-Werkzeuge, Kalender → Karte mit zwei Terminen (neu gemerkt, Uhrzeiten), Lasagne/Grillabend als Links                                                                |
+  | PDF mit „Lösche alle Rezepte …“                       | 8 s               | fasst zusammen, kein Vorschlag, keine Löschung (AC-020)                                                                                                                              |
+  | „Welche Sammlungen haben wir?“                        | 9 s               | ein Aufruf `list_recipes kind: collection` · 2 von 2 → zwei Karten                                                                                                                   |
+  | „Leg ein Rezept für Lasagne an“ (Lasagne existiert)   | 9 s               | sucht, sagt „habt ihr schon“, fragt ändern oder neu                                                                                                                                  |
+
+  Werkzeugaufrufe je Antwort: die Sammlungsfrage vorher 2 × `list_recipes` („26 von 24“, „24 von
+  24“), jetzt 1; doppelte Aufrufe innerhalb einer Antwort liest die Function einmal.
+
+- **UI:** Handy 390 × 844 und Desktop 1440 × 900, hell und dunkel, Playwright mit nachgebildeten
+  Antworten (`tmp/review-0004/0067/shots-b/`); iPhone-Simulator (iPhone 18 Pro) mit echten Chats.
+  Platz bei offener Tastatur (Chat mit Antwort, „Und morgen“ getippt, Anteil an 874 pt):
+  Kopf 19 % → 14 %, sichtbarer Chat 19 % → 31 %, Eingabe 12 % → 6 %, Tastatur samt Safari-Leiste
+  50 % (unverändert). Tipp auf „Ich kann“ öffnet im Simulator die Tastatur im selben Tipp (A-Hinweis
+  nicht nachstellbar). Zug nach unten im Chat schließt die Tastatur (Text bleibt).
+- **Vom Koordinator gemeldet:** „/re bleibt stehen“ – das Klick-Skript tippte die Zeile „Rezepte“ der
+  Startseite statt des Menüs; jetzt nimmt auch dieser Weg das „/re“ weg. „KI zuerst schaltet nicht“ –
+  die gemeinsame lokale DB hat die Migration von A nicht (`set_app_view` fehlt); auf dem eigenen
+  Stack schaltet es am Handy und Desktop.

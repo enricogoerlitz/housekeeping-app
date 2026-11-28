@@ -1,7 +1,12 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { AGENT_TOOL_NAMES, agentToolParameters } from '@housekeeping/core';
+import {
+  AGENT_PROPOSAL_TOOLS,
+  AGENT_TOOL_NAMES,
+  agentProposalParameters,
+  agentToolParameters,
+} from '@housekeeping/core';
 import { describe, expect, it } from 'vitest';
 
 import { loadAgents, parseAgentFile } from './definitions';
@@ -168,6 +173,7 @@ describe('agent files', () => {
       'web_search',
       'show_suggestions',
       ...AGENT_TOOL_NAMES,
+      ...AGENT_PROPOSAL_TOOLS,
     ]);
     expect(tools.every((tool) => tool.type === 'web_search' || tool.strict === true)).toBe(true);
   });
@@ -178,6 +184,16 @@ describe('agent files', () => {
     for (const name of AGENT_TOOL_NAMES) {
       expect(tools.find((tool) => tool.name === name)?.parameters, name).toEqual(
         agentToolParameters(name),
+      );
+    }
+  });
+
+  it('spec 0067, step B: the YAML carries exactly the proposal tools of core (agent-proposals.ts)', () => {
+    const dir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../agents');
+    const tools = loadAgents(dir)[0]?.definition.tools as { name?: string; parameters?: unknown }[];
+    for (const name of AGENT_PROPOSAL_TOOLS) {
+      expect(tools.find((tool) => tool.name === name)?.parameters, name).toEqual(
+        agentProposalParameters(name),
       );
     }
   });

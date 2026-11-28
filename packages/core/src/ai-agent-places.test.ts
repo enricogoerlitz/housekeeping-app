@@ -7,6 +7,7 @@ import {
   chatMetaLine,
   decodeRecentPlaces,
   encodeRecentPlaces,
+  placeToSend,
   rememberPlace,
   restaurantDraftOfCard,
   savedPlaceOf,
@@ -20,6 +21,23 @@ const trip = (over: Partial<Trip>): Trip => ({
   to: '2026-12-07',
   members: [],
   ...over,
+});
+
+describe('the place of a message (spec 0067, preview 28.11.: the location never blocks)', () => {
+  const here = { source: 'device', label: 'Aktueller Standort', radius: 'walk' } as const;
+  it('a location found goes with the message', () => {
+    expect(placeToSend(here, { lat: 52.51, lng: 13.45 }, true)).toEqual({
+      place: { ...here, location: { lat: 52.51, lng: 13.45 } },
+    });
+  });
+  it('denied or timed out: the message goes without it; "Ausgehen" shows a calm hint', () => {
+    expect(placeToSend(here, undefined, true)).toEqual({ place: here, hint: true });
+    expect(placeToSend(here, undefined, false)).toEqual({ place: here });
+  });
+  it('a chosen place is sent as it is, a location never replaces it', () => {
+    const pinned = { source: 'pinned', label: 'Kreuzberg', radius: 'city' } as const;
+    expect(placeToSend(pinned, { lat: 1, lng: 2 }, true)).toEqual({ place: pinned });
+  });
 });
 
 describe('places from trips', () => {
@@ -155,6 +173,25 @@ describe('answer text', () => {
       { kind: 'paragraph', spans: [plain('Eher klassisch?')] },
     ]);
   });
+  it('spec 0067: a Markdown link and a bare https address are links; other schemes stay text', () => {
+    expect(
+      answerBlocks(
+        'Rezept bei [Chefkoch](https://www.chefkoch.de/r/1) und https://koch.de/dal. [x](javascript:alert(1))',
+      ),
+    ).toEqual([
+      {
+        kind: 'paragraph',
+        spans: [
+          plain('Rezept bei '),
+          { text: 'Chefkoch', bold: false, url: 'https://www.chefkoch.de/r/1' },
+          plain(' und '),
+          { text: 'koch.de/dal', bold: false, url: 'https://koch.de/dal' },
+          plain('. [x](javascript:alert(1))'),
+        ],
+      },
+    ]);
+  });
+
   it('an unclosed ** while streaming stays text', () => {
     expect(answerBlocks('Das **Crack')).toEqual([
       { kind: 'paragraph', spans: [plain('Das **Crack')] },

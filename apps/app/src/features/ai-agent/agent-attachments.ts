@@ -15,7 +15,25 @@ export interface PickedAttachment {
   attachment: AgentAttachment;
   /** "Foto" or the file's name, for the chip. */
   label: string;
+  /**
+   * Preview feedback 28.11.: the local copy (an object URL) for the preview in the composer and
+   * with the sent message; never uploaded anywhere but in the message itself.
+   */
+  previewUri: string;
 }
+
+/** What the person's message shows of its files (local copies, gone with the page). */
+export interface AttachmentPreview {
+  kind: 'image' | 'pdf';
+  uri: string;
+  name: string;
+}
+
+export const previewOf = (picked: PickedAttachment): AttachmentPreview => ({
+  kind: picked.attachment.kind,
+  uri: picked.previewUri,
+  name: picked.label,
+});
 
 const PHOTO_SIDE = 1280;
 export const ATTACHMENT_TOO_LARGE = 'Die Datei ist zu groß – höchstens 4 MB';
@@ -49,10 +67,20 @@ export async function prepareAttachment(file: File): Promise<PickedAttachment> {
     const jpeg = await preparePhoto(file, PHOTO_SIDE);
     const dataUrl = `data:image/jpeg;base64,${await base64Of(jpeg)}`;
     if (dataUrl.length > AGENT_LIMITS.imageChars) throw new Error(ATTACHMENT_TOO_LARGE);
-    return { key: `a${serial}`, label: 'Foto', attachment: { kind: 'image', dataUrl } };
+    return {
+      key: `a${serial}`,
+      label: 'Foto',
+      attachment: { kind: 'image', dataUrl },
+      previewUri: URL.createObjectURL(jpeg),
+    };
   }
   const dataUrl = `data:application/pdf;base64,${await base64Of(file)}`;
   if (dataUrl.length > AGENT_LIMITS.pdfChars) throw new Error(ATTACHMENT_TOO_LARGE);
   const name = file.name.trim().slice(0, 120) || 'Datei.pdf';
-  return { key: `a${serial}`, label: name, attachment: { kind: 'pdf', name, dataUrl } };
+  return {
+    key: `a${serial}`,
+    label: name,
+    attachment: { kind: 'pdf', name, dataUrl },
+    previewUri: URL.createObjectURL(file),
+  };
 }

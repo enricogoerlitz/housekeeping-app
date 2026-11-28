@@ -369,6 +369,8 @@ export const AiImageRequestSchema = z.strictObject({
   extra: z.string().trim().min(1).max(IMAGE_EXTRA_MAX).optional(),
   /** Spec 0052, REQ-003: what the picture is for. */
   context: AiImageContextSchema.optional(),
+  /** Spec 0067, REQ-011: how many variants; the agent's "Mach ein Foto dazu" asks for one. */
+  count: z.int().min(1).max(IMAGE_VARIANTS).optional(),
 });
 export type AiImageRequest = z.infer<typeof AiImageRequestSchema>;
 
