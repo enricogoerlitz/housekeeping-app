@@ -9,6 +9,8 @@ import { toastUnreadLinks, useDraftInput } from '@/features/recipes/ai-fill';
 import { useOpenRecipe } from '@/features/recipes/navigation';
 
 import { useDraftPhoto } from './agent-draft-photo';
+import { AgentEntities } from './agent-entities';
+import { useAgentOpen } from './agent-open';
 
 // Spec 0067, REQ-010: a recipe draft of the agent in the chat — title, portions, time and the
 // ingredients, each marked "neu" when the household's catalogue does not have it (the same
@@ -27,6 +29,7 @@ export function AgentRecipeDraftCard(props: { reply: RecipeDraftReply; testID: s
   const theme = useTheme();
   const toInput = useDraftInput();
   const openRecipe = useOpenRecipe();
+  const openEntry = useAgentOpen();
   const chatPhoto = useDraftPhoto();
   const [opening, setOpening] = useState(false);
   const data = useAgentProposalData();
@@ -141,7 +144,7 @@ export function AgentRecipeDraftCard(props: { reply: RecipeDraftReply; testID: s
             icon="arrow-right"
             variant="secondary"
             size="sm"
-            onPress={() => openRecipe(saved.id)}
+            onPress={() => openEntry({ kind: 'recipe', id: saved.id })}
             accessibilityLabel={`${saved.title} öffnen`}
             testID={`${testID}-open`}
           />
@@ -156,6 +159,16 @@ export function AgentRecipeDraftCard(props: { reply: RecipeDraftReply; testID: s
           />
         )}
       </View>
+      {saved ? (
+        <AgentEntities
+          extra={{
+            kind: 'entities',
+            id: `${testID}-saved`,
+            items: [{ kind: 'recipe', id: saved.id }],
+          }}
+          testID={`${testID}-saved`}
+        />
+      ) : null}
     </Surface>
   );
 }

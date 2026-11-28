@@ -728,7 +728,7 @@ export interface NavItem {
   icon: IconName;
   tone?: Tone;
   /**
-   * Spec 0067, decision 23: the agent's tab in "KI zuerst" — icon and label in its own tone
+   * Spec 0067, decision 35: the agent's tab in "KI zuerst" — icon and label in its own tone
    * (`tone`), chosen a bolder label and a slightly bigger icon, never the pill of the others.
    */
   featured?: boolean;

@@ -209,6 +209,50 @@ export function lastDraft(items: readonly unknown[]): RecipeDraftReply | undefin
   return undefined;
 }
 
+const fold = (value: string) =>
+  value
+    .toLowerCase()
+    .replace(/ä/g, 'ae')
+    .replace(/ö/g, 'oe')
+    .replace(/ü/g, 'ue')
+    .replace(/ß/g, 'ss')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+
+/**
+ * Preview 28.11. (decision 25): recipes of the household with the draft's title or one of its
+ * source links — read as the person, the chat's household only. The agent says so and offers to
+ * change the existing one or to create a new one anyway.
+ */
+async function existingRecipes(
+  client: UserClient,
+  householdId: string,
+  reply: RecipeDraftReply,
+): Promise<{ id: string; title: string }[]> {
+  const { data, error } = await client
+    .from('recipes')
+    .select('id,title,links')
+    .eq('household_id', householdId)
+    .limit(1000);
+  if (error || !Array.isArray(data)) return [];
+  const title = fold(reply.draft.title);
+  const urls = new Set(reply.sources.flatMap((source) => [source.url, source.resolvedUrl ?? '']));
+  return data
+    .flatMap((raw) => {
+      const row = raw as { id?: unknown; title?: unknown; links?: unknown };
+      if (typeof row.id !== 'string' || typeof row.title !== 'string') return [];
+      const links = Array.isArray(row.links) ? row.links : [];
+      const sameLink = links.some(
+        (link) =>
+          typeof link === 'object' &&
+          link !== null &&
+          urls.has(String((link as { url?: unknown }).url)),
+      );
+      return sameLink || fold(row.title) === title ? [{ id: row.id, title: row.title }] : [];
+    })
+    .slice(0, 3);
+}
+
 const UNREADABLE_HINT =
   'Lies die Seite mit deiner Websuche und ruf draft_recipe noch einmal mit dem Rezepttext als page_text und page_url auf. Geht das auch nicht, sag es ehrlich und bitte um den Text oder Screenshots – erfinde keine Mengen.';
 
@@ -274,7 +318,15 @@ export async function runDraftTool(
       ...(made.webPhotoUrl ? { webPhotoUrl: made.webPhotoUrl } : {}),
     });
     context.emit({ kind: 'recipe_draft', id: call.callId, reply });
-    return done(draftOutput(reply), reply);
+    const existing = await existingRecipes(client, input.householdId, reply);
+    if (existing.length > 0)
+      context.emit({
+        kind: 'entities',
+        id: `${call.callId}-existing`,
+        title: 'Habt ihr schon',
+        items: existing.map((recipe) => ({ kind: 'recipe' as const, id: recipe.id })),
+      });
+    return done(draftOutput(reply, existing), reply);
   } catch (error) {
     if (!(error instanceof HttpError)) console.error('ai_agent_draft_failed');
     return done(json({ error: 'draft_failed' }));

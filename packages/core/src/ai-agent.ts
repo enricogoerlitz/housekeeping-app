@@ -744,9 +744,24 @@ export type AgentExtra = z.infer<typeof AgentExtraSchema>;
 /** Extras of one answer. */
 const MAX_EXTRAS = 10;
 
-/** The output of `draft_recipe` in the conversation: the draft, for a chat opened later too. */
-export function draftOutput(reply: z.infer<typeof RecipeDraftReplySchema>): string {
-  return JSON.stringify({ shown: true, ...reply });
+/**
+ * The output of `draft_recipe` in the conversation: the draft, for a chat opened later too, and
+ * the household's recipes of that title or source (decision 25: change one or create anyway).
+ */
+export function draftOutput(
+  reply: z.infer<typeof RecipeDraftReplySchema>,
+  existing: readonly { id: string; title: string }[] = [],
+): string {
+  return JSON.stringify({
+    shown: true,
+    ...reply,
+    ...(existing.length > 0
+      ? {
+          existing,
+          hint: 'Ein ähnliches Rezept gibt es schon: sag das und frag, ob es geändert oder trotzdem neu angelegt werden soll.',
+        }
+      : {}),
+  });
 }
 
 /** The output of `show_entities`: the entries the household has, for a chat opened later. */

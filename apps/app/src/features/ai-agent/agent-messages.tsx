@@ -13,12 +13,10 @@ import {
 import { Text as NativeText, Pressable, View } from 'react-native';
 
 import { AgentEntities } from './agent-entities';
+import { useAgentOpen } from './agent-open';
 import { AgentImageCard, AgentImagesRow } from './agent-image-cards';
 import { AgentProposalCard } from './agent-proposal-card';
 import { AgentRecipeDraftCard } from './agent-recipe-draft-card';
-import { useOpenActivity } from '@/features/activities/navigation';
-import { useOpenRecipe } from '@/features/recipes/navigation';
-import { useOpenRestaurant } from '@/features/restaurants/navigation';
 
 import type { AttachmentPreview } from './agent-attachments';
 import { SentAttachments } from './attachment-preview';
@@ -108,13 +106,9 @@ function AnswerText(props: { text: string; streaming: boolean; testID: string })
   const blocks = answerBlocks(props.text);
   const theme = useTheme();
   const data = useAgentProposalData();
-  const openRecipe = useOpenRecipe();
-  const openRestaurant = useOpenRestaurant();
-  const openActivity = useOpenActivity();
+  const openEntry = useAgentOpen();
   const open = (target: NonNullable<ReturnType<typeof namedEntity>>) => {
-    if (target.kind === 'recipe') openRecipe(target.id);
-    else if (target.kind === 'restaurant') openRestaurant(target.id);
-    else openActivity(target.id);
+    openEntry({ kind: target.kind, id: target.id });
   };
   return (
     <View testID={props.testID} style={{ gap: 8 }}>

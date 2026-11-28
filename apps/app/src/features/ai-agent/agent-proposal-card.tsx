@@ -8,9 +8,11 @@ import {
 import {
   applyLabel,
   isDeleteKind,
+  namedEntity,
   recheckAction,
   resolveAction,
   STALE_HINT,
+  type AgentEntityRef,
   type AgentProposal,
   type ResolvedEntry,
 } from '@housekeeping/core';
@@ -21,6 +23,8 @@ import { View } from 'react-native';
 import { confirmFirst } from '@/features/shell/confirm-dialog';
 import { errorMessage } from '@/features/shell/error-message';
 import { useOnlineOnly } from '@/features/shell/offline';
+
+import { AgentEntities } from './agent-entities';
 
 // Spec 0067, REQ-009: the collect card of a proposal. Every entry is a row with its line from the
 // household's data and a check mark; "n übernehmen" runs the ticked ones one by one through the
@@ -61,6 +65,8 @@ export function AgentProposalCard(props: {
     proposal.actions.map((action) => ({ phase: 'open', selected: !isDeleteKind(action.kind) })),
   );
   const [restore, setRestore] = useState<(() => void) | undefined>();
+  // Preview 28.11.: what applying made or changed shows as its card under the proposal.
+  const [made, setMade] = useState<AgentEntityRef[]>([]);
   const [busy, setBusy] = useState(false);
 
   const entries: ResolvedEntry[] = proposal.actions.map((action) =>
@@ -86,7 +92,11 @@ export function AgentProposalCard(props: {
       }
       setState(index, { phase: 'running' });
       try {
-        await runAgentCommand(entry.command);
+        const touched = await runAgentCommand(entry.command);
+        if (touched)
+          setMade((current) =>
+            current.some((ref) => ref.id === touched.id) ? current : [...current, touched],
+          );
         setState(index, { phase: 'done' });
         applied += 1;
       } catch (error) {
@@ -129,6 +139,7 @@ export function AgentProposalCard(props: {
         current.map((state) => (state.phase === 'done' ? { phase: 'undone' } : state)),
       );
       setRestore(undefined);
+      setMade([]);
     } catch (error) {
       toast.show({ message: errorMessage(error) });
     }
@@ -151,6 +162,17 @@ export function AgentProposalCard(props: {
   };
 
   const anyDone = states.some((state) => state.phase === 'done');
+  // A chat from "Verlauf": the entries of the proposal the household has now.
+  const shown: AgentEntityRef[] = props.loaded
+    ? proposal.actions.flatMap((action) => {
+        if (!data || isDeleteKind(action.kind) || action.kind === 'add_to_list') return [];
+        const target = namedEntity(action.name, data);
+        return target ? [{ kind: target.kind, id: target.id }] : [];
+      })
+    : made;
+  const cards = shown.filter(
+    (ref, index) => shown.findIndex((other) => other.id === ref.id) === index,
+  );
   const openRows = states.some((state) => state.phase === 'open');
 
   return (
@@ -300,6 +322,12 @@ export function AgentProposalCard(props: {
             />
           ) : null}
         </View>
+      ) : null}
+      {cards.length > 0 ? (
+        <AgentEntities
+          extra={{ kind: 'entities', id: `${proposal.id}-made`, items: cards }}
+          testID={`${testID}-made`}
+        />
       ) : null}
     </Surface>
   );

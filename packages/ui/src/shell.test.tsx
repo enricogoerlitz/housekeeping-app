@@ -735,7 +735,7 @@ describe('TabBar', () => {
     expect(active.style.backgroundColor).toBe('rgba(0, 0, 0, 0)');
   });
 
-  it('spec 0067 (decision 23): the agent tab has its label in its own tone; chosen it is bolder, never a pill', () => {
+  it('spec 0067 (decision 35): the agent tab has its label in its own tone; chosen it is bolder, never a pill', () => {
     const agent = {
       key: 'agent',
       label: 'AI Agent',

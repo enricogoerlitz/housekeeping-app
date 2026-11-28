@@ -3,7 +3,13 @@
 // commands (session, RLS, the commands' checks), one by one with its own result — no transaction
 // pretended across them. "Rückgängig" is the app's usual `snapshot()`; deletes come here only one
 // at a time, after their own confirmation in the card.
-import { parseSmartInput, type AgentCommand, type Id, type ProposalData } from '@housekeeping/core';
+import {
+  parseSmartInput,
+  type AgentCommand,
+  type AgentEntityRef,
+  type Id,
+  type ProposalData,
+} from '@housekeeping/core';
 import { useMemo } from 'react';
 
 import { loadPhotoFromAddress } from './photo-sources';
@@ -65,7 +71,10 @@ const GONE = {
   chore: 'Die Aufgabe gibt es nicht mehr',
 } as const;
 
-function runCommand(command: AgentCommand): void {
+/** The entry an applied command made or changed, shown as its card in the chat (preview 28.11.). */
+type Touched = AgentEntityRef | undefined;
+
+function runCommand(command: AgentCommand): Touched {
   switch (command.type) {
     case 'addToList':
       if (!addShoppingItemFromText(command.text)) throw new Error('Nichts zum Hinzufügen');
@@ -88,54 +97,60 @@ function runCommand(command: AgentCommand): void {
       switch (target.kind) {
         case 'recipe':
           addPlanEntry({ ...slot, kind: 'recipe', recipeId: target.recipeId });
-          return;
+          return { kind: 'recipe', id: target.recipeId };
         case 'restaurant':
           addPlanEntry({ ...slot, kind: 'restaurant', restaurantId: target.restaurantId });
-          return;
+          return { kind: 'restaurant', id: target.restaurantId };
         case 'activity':
           addPlanEntry({ ...slot, kind: 'activity', activityId: target.activityId });
-          return;
+          return { kind: 'activity', id: target.activityId };
         case 'text': {
           const { startsAt: _time, ...plain } = slot;
           addPlanEntry({ ...plain, kind: 'text', text: target.text });
           return;
         }
-        case 'newRestaurant':
-          createAndPlanRestaurant(
+        case 'newRestaurant': {
+          const made = createAndPlanRestaurant(
             { name: target.name, ...(target.address ? { address: target.address } : {}) },
             slot,
           );
-          return;
-        case 'newActivity':
-          createAndPlanActivity(
+          return { kind: 'restaurant', id: made.restaurantId };
+        }
+        case 'newActivity': {
+          const made = createAndPlanActivity(
             { name: target.name, ...(target.address ? { address: target.address } : {}) },
             slot,
           );
-          return;
+          return { kind: 'activity', id: made.activityId };
+        }
       }
       return;
     }
     case 'createRestaurant':
-      createRestaurant({
-        name: command.name,
-        ...(command.address ? { address: command.address } : {}),
-      });
-      return;
+      return {
+        kind: 'restaurant',
+        id: createRestaurant({
+          name: command.name,
+          ...(command.address ? { address: command.address } : {}),
+        }),
+      };
     case 'createActivity':
-      createActivity({
-        name: command.name,
-        ...(command.address ? { address: command.address } : {}),
-      });
-      return;
+      return {
+        kind: 'activity',
+        id: createActivity({
+          name: command.name,
+          ...(command.address ? { address: command.address } : {}),
+        }),
+      };
     case 'favoriteRestaurant':
       toggleRestaurantFavorite(command.restaurantId);
-      return;
+      return { kind: 'restaurant', id: command.restaurantId };
     case 'rememberActivity':
       updateActivity(command.activityId, { remembered: command.remembered });
-      return;
+      return { kind: 'activity', id: command.activityId };
     case 'setServings':
       updateRecipe(command.recipeId, { servings: command.servings });
-      return;
+      return { kind: 'recipe', id: command.recipeId };
     case 'addRecurring': {
       const typed = parseSmartInput(command.text);
       if (!typed) throw new Error('Nichts zum Hinzufügen');
@@ -198,6 +213,6 @@ export async function savePhotoFromAddress(
  * One entry of a proposal through its command; resolves once the server took it, rejects with
  * the command's hint (AC-019). Online only (OfflineError from the command).
  */
-export function runAgentCommand(command: AgentCommand): Promise<void> {
+export function runAgentCommand(command: AgentCommand): Promise<AgentEntityRef | undefined> {
   return commitWatched(() => runCommand(command));
 }

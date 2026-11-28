@@ -40,6 +40,7 @@ import {
 } from './agent-attachments';
 import { clearDraftPhoto } from './agent-draft-photo';
 import { AgentInput } from './agent-input';
+import { AgentOpenHost } from './agent-open';
 import { AgentMessages } from './agent-messages';
 import { AgentStart } from './agent-start';
 import { useAttachmentPreview } from './attachment-preview';
@@ -399,63 +400,65 @@ export function AgentScreen() {
   );
 
   return (
-    <Screen
-      testID="agent-screen"
-      tone="essen"
-      header={header}
-      footer={composer}
-      clearFab={false}
-      compactHeader={keyboard.open}
-      maxWidth={CHAT_WIDTH}
-    >
-      {/* Preview feedback 28.11.: dragging the chat down to read sends the keyboard away. */}
-      <View {...dragDismiss}>
-        {!inChat && chat.load.status === 'idle' ? (
-          <AgentStart onPick={pickBadge} disabled={!editable} />
+    <AgentOpenHost>
+      <Screen
+        testID="agent-screen"
+        tone="essen"
+        header={header}
+        footer={composer}
+        clearFab={false}
+        compactHeader={keyboard.open}
+        maxWidth={CHAT_WIDTH}
+      >
+        {/* Preview feedback 28.11.: dragging the chat down to read sends the keyboard away. */}
+        <View {...dragDismiss}>
+          {!inChat && chat.load.status === 'idle' ? (
+            <AgentStart onPick={pickBadge} disabled={!editable} />
+          ) : null}
+          {chat.load.status === 'loading' ? (
+            <LoadingLines label="Der Chat wird geladen …" testID="agent-loading" />
+          ) : null}
+          {chat.load.status === 'error' ? (
+            <Text color="warn" testID="agent-load-error">
+              {online.disabled ? 'Offline – den Chat lädst du mit Netz.' : chat.load.message}
+            </Text>
+          ) : null}
+          <AgentMessages
+            turns={turns}
+            onFollowUp={send}
+            followUpsEnabled={!disabled && !chat.busy && !atLimit}
+            onOpenAttachment={attachmentPreview.open}
+            onEdit={!disabled && !chat.busy && !atLimit ? startEdit : undefined}
+          />
+          {attachmentPreview.viewer}
+          <View ref={end} style={{ height: 1 }} />
+        </View>
+        {params.fenster === 'ort' ? (
+          <PlaceSheet
+            place={place}
+            recent={recent}
+            hint={placeHint}
+            onChoose={choosePlace}
+            onClose={() => {
+              setPlaceHint(undefined);
+              address.close({ fenster: undefined });
+            }}
+          />
         ) : null}
-        {chat.load.status === 'loading' ? (
-          <LoadingLines label="Der Chat wird geladen …" testID="agent-loading" />
+        {params.fenster === 'verlauf' ? (
+          <HistorySheet
+            activeChatId={chat.chatId}
+            onOpen={(chatId) => {
+              address.close({ fenster: undefined });
+              address.replace({ chat: chatId });
+            }}
+            onDeleted={(chatId) => {
+              if (chatId === chat.chatId) newChat();
+            }}
+            onClose={() => address.close({ fenster: undefined })}
+          />
         ) : null}
-        {chat.load.status === 'error' ? (
-          <Text color="warn" testID="agent-load-error">
-            {online.disabled ? 'Offline – den Chat lädst du mit Netz.' : chat.load.message}
-          </Text>
-        ) : null}
-        <AgentMessages
-          turns={turns}
-          onFollowUp={send}
-          followUpsEnabled={!disabled && !chat.busy && !atLimit}
-          onOpenAttachment={attachmentPreview.open}
-          onEdit={!disabled && !chat.busy && !atLimit ? startEdit : undefined}
-        />
-        {attachmentPreview.viewer}
-        <View ref={end} style={{ height: 1 }} />
-      </View>
-      {params.fenster === 'ort' ? (
-        <PlaceSheet
-          place={place}
-          recent={recent}
-          hint={placeHint}
-          onChoose={choosePlace}
-          onClose={() => {
-            setPlaceHint(undefined);
-            address.close({ fenster: undefined });
-          }}
-        />
-      ) : null}
-      {params.fenster === 'verlauf' ? (
-        <HistorySheet
-          activeChatId={chat.chatId}
-          onOpen={(chatId) => {
-            address.close({ fenster: undefined });
-            address.replace({ chat: chatId });
-          }}
-          onDeleted={(chatId) => {
-            if (chatId === chat.chatId) newChat();
-          }}
-          onClose={() => address.close({ fenster: undefined })}
-        />
-      ) : null}
-    </Screen>
+      </Screen>
+    </AgentOpenHost>
   );
 }

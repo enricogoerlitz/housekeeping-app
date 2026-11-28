@@ -78,7 +78,7 @@ describe('applying agent proposals (spec 0067, REQ-009)', () => {
   it('a calendar entry and a new restaurant planned with it are one change of the plan command', async () => {
     await fx.startEnrico();
     const entries = getData().planEntries.length;
-    await runAgentCommand(
+    const touched = await runAgentCommand(
       command({
         kind: 'plan',
         target: 'restaurant',
@@ -93,6 +93,8 @@ describe('applying agent proposals (spec 0067, REQ-009)', () => {
     expect(getData().planEntries).toHaveLength(entries + 1);
     const restaurant = getData().restaurants.find((row) => row.name === 'Lokal am Kanal');
     expect(restaurant?.address).toBe('Paul-Lincke-Ufer 1, Berlin');
+    // Preview 28.11.: the chat shows what was made as its card.
+    expect(touched).toEqual({ kind: 'restaurant', id: restaurant?.id });
     expect(
       fx.server.rows(H, 'meal_plan_entries').some((row) => row.restaurant_id === restaurant?.id),
     ).toBe(true);

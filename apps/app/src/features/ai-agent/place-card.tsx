@@ -27,10 +27,10 @@ import {
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 
-import { useOpenActivity } from '@/features/activities/navigation';
-import { useOpenRestaurant } from '@/features/restaurants/navigation';
 import { errorMessage } from '@/features/shell/error-message';
 import { useOnlineOnly } from '@/features/shell/offline';
+
+import { useAgentOpen } from './agent-open';
 
 // Spec 0066, REQ-006/REQ-007: one suggestion as a card of the carousel (Antwort A): the Google
 // photo through fetch-image (never stored), name, stars · price · kind, the open status, why it
@@ -85,8 +85,7 @@ export function PlaceCard(props: { card: AgentCard; testID: string }) {
   const restaurants = useRestaurants();
   const activities = useActivities();
   const kinds = useActivityKinds();
-  const openRestaurant = useOpenRestaurant();
-  const openActivity = useOpenActivity();
+  const openEntry = useAgentOpen();
   const photo = useCardPhoto(card.imageUrl);
   const saved = savedPlaceOf(card, restaurants, activities);
 
@@ -119,8 +118,7 @@ export function PlaceCard(props: { card: AgentCard; testID: string }) {
   };
   const openSaved = () => {
     if (!saved) return;
-    if (saved.kind === 'restaurant') openRestaurant(saved.id);
-    else openActivity(saved.id);
+    openEntry(saved);
   };
   const meta = metaLine(card);
 

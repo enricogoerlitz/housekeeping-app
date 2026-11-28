@@ -3,9 +3,7 @@ import type { Activity, AgentExtra, Recipe, Restaurant } from '@housekeeping/cor
 import { MediaCard, ScrollRow, Text, useBreakpoint, useTheme } from '@housekeeping/ui';
 import { View } from 'react-native';
 
-import { useOpenActivity } from '@/features/activities/navigation';
-import { useOpenRecipe } from '@/features/recipes/navigation';
-import { useOpenRestaurant } from '@/features/restaurants/navigation';
+import { useAgentOpen } from './agent-open';
 
 // Preview feedback 28.11.: the household's own entries the agent shows (show_entities) — cards
 // from the app's own data (photo, title, a line of what matters), one card alone, several as a
@@ -24,7 +22,7 @@ const COURSE: Record<string, string> = {
 function RecipeCard(props: { recipe: Recipe; testID: string }) {
   const { recipe } = props;
   const image = useRecipeImage(recipe);
-  const open = useOpenRecipe();
+  const open = useAgentOpen();
   const collection = recipe.kind === 'collection';
   // A collection says so in its badge; its line stays empty.
   const meta = collection
@@ -47,7 +45,9 @@ function RecipeCard(props: { recipe: Recipe; testID: string }) {
         label: collection ? 'Sammlung' : 'Rezept',
         icon: collection ? 'folder-open' : 'chef-hat',
       }}
-      onPress={() => open(recipe.id)}
+      onPress={() =>
+        open({ kind: recipe.kind === 'collection' ? 'collection' : 'recipe', id: recipe.id })
+      }
       testID={props.testID}
     />
   );
@@ -67,8 +67,7 @@ function PlaceEntityCard(props: {
 }) {
   const { place, kind } = props;
   const photo = usePhoto(place.photoPath);
-  const openRestaurant = useOpenRestaurant();
-  const openActivity = useOpenActivity();
+  const open = useAgentOpen();
   const meta = [
     stars(place.ratings),
     kind === 'restaurant' ? ((place as Restaurant).cuisine ?? '') : '',
@@ -85,7 +84,7 @@ function PlaceEntityCard(props: {
       layout="photoTop"
       photoAspectRatio={4 / 3}
       badge={{ label: kind === 'restaurant' ? 'Restaurant' : 'Aktivität' }}
-      onPress={() => (kind === 'restaurant' ? openRestaurant(place.id) : openActivity(place.id))}
+      onPress={() => open({ kind, id: place.id })}
       testID={props.testID}
     />
   );

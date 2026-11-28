@@ -1592,3 +1592,40 @@ describe('ai-agent: own entries as cards (preview 28.11., show_entities)', () =>
     expect(extrasOf(all)).toEqual([]);
   });
 });
+
+describe('ai-agent: a draft of something the household has (preview 28.11., duplicates)', () => {
+  const LASAGNE = '6f1c0f5e-0000-4000-8000-0000000000d1';
+  it('same title or same source link: the draft says so and the existing recipe shows as a card', async () => {
+    const { deps, state } = setup({
+      tables: {
+        recipes: [
+          {
+            household_id: HOUSEHOLD_ID,
+            id: LASAGNE,
+            kind: 'recipe',
+            title: 'Linsen Dal',
+            links: [{ url: RECIPE_PAGE }],
+          },
+          {
+            household_id: FOREIGN_HOUSEHOLD,
+            id: '6f1c0f5e-0000-4000-8000-0000000000d2',
+            kind: 'recipe',
+            title: 'Linsen-Dal',
+            links: [],
+          },
+        ],
+      },
+      state: {
+        stream: toolTurn([{ name: 'draft_recipe', callId: 'call_d', args: draftArgs() }]),
+        routes: {
+          [RECIPE_PAGE]: page('<html><body><p>200 g rote Linsen</p></body></html>'),
+          [DRAFT_MODEL]: () => foundryReply(dalDraft),
+        },
+      },
+    });
+    const all = await events(await handler(send({ chatId: CHAT_ID }), deps));
+    const output = JSON.parse(outputsOf(state, 1)[0]!.output!);
+    expect(output.existing).toEqual([{ id: LASAGNE, title: 'Linsen Dal' }]);
+    expect(extrasOf(all).map((extra) => extra.kind)).toEqual(['recipe_draft', 'entities']);
+  });
+});

@@ -37,7 +37,7 @@ const NAV: NavItem[] = [
 ];
 
 /**
- * Spec 0067, REQ-001 (decision 23): "KI zuerst" puts the agent in the middle, "AI Agent" in its own tone
+ * Spec 0067, REQ-001 (decision 35): "KI zuerst" puts the agent in the middle, "AI Agent" in its own tone
  * (AC-001); "Haushalt" moves to the top of ⊞ (manageGroups).
  */
 const NAV_AI_FIRST: NavItem[] = [
