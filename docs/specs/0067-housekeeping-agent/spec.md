@@ -356,6 +356,65 @@ dense`), „+“ links, Text, Mikrofon/Senden rechts; Badges, Anhänge und Ort s
     „AI Agent“ in der Tönung `ki` des Themes; gewählt ist das Label fetter und das Icon etwas größer,
     nie die Pille der anderen Tabs.
 
+Beim Bau von Schritt C entschieden (28.11.2026):
+
+36. **Massenbearbeitung (REQ-013):** `propose_actions` kennt `set_remembered` („Merken“/„Nicht mehr
+    merken“ über denselben Befehl wie der Ein-Tipp-Weg von #150) und `work_out`; `set_favorite` ist bei
+    Aktivitäten jetzt das Herz (ändert Schritt B, dort hieß es „Merken“; seit #150 sind Herz und
+    Merken getrennt). `more` zeigt „Weitere prüfen“, das „Weitere prüfen“ in denselben Chat sendet;
+    eine volle Karte (über 20 Einträge) bietet es immer. Gewählte `work_out`-Einträge haben einen
+    eigenen Knopf „n ausarbeiten“: das erste öffnet im Bearbeitungsmodus mit „Mit KI ausfüllen“
+    (Spec 0061), „Weiter zum nächsten“ folgt den gewählten, danach wie in Spec 0061 (A–Z).
+37. **Fotos nur auf Wunsch:** `look_at_photos` (höchstens 6 je Aufruf) gibt die eigenen Fotos
+    (`household-media`, als die Person gelesen) als Bilder in den nächsten Modelllauf, je Foto eine
+    Einheit Kontingent; ohne ausdrücklichen Wunsch gilt nur `has_photo`.
+38. **Variante aus dem Chat:** `change_recipe` (Rezept des Haushalts, gefunden über id oder Titel in
+    der Function) wird eine Karte; „Änderung ansehen“ öffnet das Rezept neben dem Chat und startet „Mit
+    KI ändern“ mit dem Wunsch (`ai-recipe-draft` mit `current`, erst auf Tipp, also Kosten nur auf
+    Wunsch) → Änderungsansicht, „Übernehmen“ speichert mit „Rückgängig“ (Spec 0062, REQ-008). Ein
+    unfertiges Rezept geht an `work_out`, eine Sammlung gar nicht.
+39. **Woche füllen (REQ-014):** Das Modell gibt nur die Wünsche (`fill_week`: Zeitraum höchstens 7
+    Tage, `vegetarian`, `quick_days` = höchstens 30 Min., `guest_days`, `skip_days`). Die App rechnet
+    mit `weekMenu`/`distributeWeek` aus Spec 0063 (`fillWeek` in core): belegte Abende, „alle
+    verreist“ (ein Teil weg: nur ein Hinweis, Spec 0063, Entscheidung 1), Wiederholungen, Vorlauf.
+    Gäste nur an neuen Einträgen, Vorgemerktes nie auf dem Gästeabend. Übernehmen über
+    `planSuggested` (ein Änderungssatz, „Rückgängig“), vorher neu lesen: ein inzwischen belegter Abend
+    ist abgewählt („Inzwischen belegt“); danach „Auf die Liste“ öffnet das bekannte Fenster für diese
+    Tage. Eine Woche je Aufruf: Bei 14 Tagen probiert `distributeWeek` zu viele Zuordnungen (über 20 s).
+40. **Eine Antwort je Chat (AC-024):** Lease je Chat in `private.ai_chat_answers` (150 s, mit Token),
+    genommen vor allem anderen (sonst schlösse `closeOpenCalls` die Aufrufe der laufenden Antwort),
+    zurückgegeben am Ende. Eine zweite Sendung bekommt 409 `chat_busy`; die App zeigt „Agent antwortet
+    gerade … deine Nachricht geht danach.“, fragt alle 3 s `status`, lädt dann den Chat neu (die Frage
+    der anderen Person und ihre Antwort erscheinen) und sendet (bis zu 3 Versuche; „Antwort anhalten“
+    bricht ab). Kein Status-Feld in `ai_chats`, damit der Sync nicht je Antwort zweimal läuft.
+41. **Kontingent (REQ-015):** Antwort 5, jeder weitere Modelllauf 1, `draft_recipe` 1, `show_images`
+    1, je Foto 1. Ist es mitten in der Antwort aufgebraucht, bleiben die Werkzeug-Ergebnisse in der
+    Conversation und die Antwort endet mit dem Kontingent-Hinweis.
+42. **Lange Chats:** Das harte Ende zählt Modellläufe (95; vorher 20, damit war ein Chat mit Werkzeugen
+    nach wenigen Antworten zu Ende – ändert Spec 0066, AC-035). Ab 30 Nachrichten zeigt die Seite über
+    der Eingabe „Langer Chat – ein neuer antwortet schneller und günstiger.“ mit „Neuer Chat“: fest,
+    ohne Kosten, statt eines Satzes des Modells.
+43. **Mindestversion:** Senden und alle Befehle der Karten lehnen ab wie andere Schreibwege, die Knöpfe
+    sind über `useOnlineOnly` ausgegraut. Ausnahme wie bisher „Auf die Liste“ (Einkaufsmodus-Schreibweg
+    mit Warteschlange).
+44. **Entscheidung 13 umgesetzt:** `env` (`local`, `preview`, `prod`) aus dem Namen des Agents in den
+    Metadaten jeder neuen Conversation; eine Conversation anderer Umgebung weist die Function ab (403).
+    Löschprotokoll per Trigger auf `ai_chats` (`private.ai_chat_deletions`), abgearbeitet bei
+    `delete`/`purge` (nur Antworten dieser Conversation, die Conversation nur, wenn sie den Haushalt
+    nennt); `delete_household` wartet auf ein leeres Protokoll. Die Vorschau löscht vor dem Reset ihre
+    Conversations (`env: preview`) samt Antworten; die Antwort-IDs stehen an den Items als
+    `created_by.response_id`.
+45. **AC-025 geprüft:** Kontextblock, Werkzeuge (`loadToolBase`, Tests für 23:30 und 00:30 Berlin),
+    Kontingent (Berliner Tag) und „Woche füllen“ (`today` des Haushalts) rechnen in Europe/Berlin.
+46. **Sammlungen** in den Karten zeigen die Collage ihrer Rezepte (`useCoverSources`, wie überall).
+47. **Eingabe wie Gemini/ChatGPT** (Enrico 28.11., Vorschau): kein AutoFill (kein `name`,
+    `autocomplete=off`, Hinweise für Passwort-Manager), Autokorrektur bleibt; Feld 46 pt bei einer
+    Zeile, „+“, Mikrofon und Senden als 34-pt-Kreise mit 44 pt Tippfläche, 8 pt Abstände, Text 17 pt;
+    Senden lässt die Tastatur offen; Tastatur in einem Zug. Der Chip „localhost“ über der Tastatur ist
+    Safaris Adressleiste und fehlt in der installierten App.
+48. OFFEN für D: Der Agent hat jetzt 18 Werkzeuge (ADR-0019, Option F: ab etwa 15–20 Routing
+    prüfen); beim Rezept-Aufräumen nutzte er `unfinished: true` nicht und sah nur die ersten 20.
+
 ## Grenzfälle, die in der App fest verdrahtet sind
 
 Jeder Fall braucht im Agenten denselben Weg wie in der App, sonst entstehen Daten, die anders
@@ -425,6 +484,12 @@ Nach dem Bau prüft der Bauende gründlich und schreibt eine Review mit klarem U
 | Injection trägt Haushaltsdaten über Websuche oder Links hinaus (Security-Check 27.11., mittel; **offen**) | Instruktion: keine Haushaltsdaten in Suchen; Links nur https, Öffnen nur auf Tipp. Für B/D: klären, ob die Foundry-Websuche Seiten aufruft; Websites der Karten nach Werkzeugrunden nur aus der Anreicherung | Testkatalog D                                  |
 | Viele Werkzeugaufrufe treiben Kosten und Last (Security-Check, niedrig; behoben)                          | 10 Aufrufe je Lauf, 20 je Antwort, 5 Läufe, Seiten ≤ 300, Ausgabe ≤ 60 000 Zeichen                                                                                                                           | edge „cost: at most 10 …“                      |
 | Anhang mit falschem Inhalt (Security-Check, Hinweis; akzeptiert)                                          | Präfix, Base64, Länge geprüft; Unlesbares lehnt Foundry ab (`ai_unavailable`)                                                                                                                                | core                                           |
+| Zwei Antworten im selben Chat verschränken sich (Schritt C)                                               | Lease je Chat vor jedem Zugriff, Token, 150 s; zweite Sendung 409 `chat_busy`, App wartet                                                                                                                    | pgTAP `ai_chat_answers`, edge AC-024, Smoke    |
+| Ein Mitglied hält einen Chat dauerhaft fest (Schritt C)                                                   | Lease läuft nach 150 s ab; nur der eigene Haushalt; Ende nur mit dem eigenen Token                                                                                                                           | pgTAP                                          |
+| Chats direkt gelöscht, Daten bleiben bei Foundry (aus Spec 0066, war akzeptiert)                          | Löschprotokoll per Trigger, abgearbeitet bei `delete`/`purge`, `delete_household` wartet; Fremdes im Protokoll wird nicht gelöscht                                                                           | pgTAP, edge, Smoke                             |
+| Vorschau-Reset lässt Conversations liegen (aus Spec 0066, offen)                                          | `env` in den Metadaten, Purge vor dem Reset, Produktion nie                                                                                                                                                  | foundry `purge.test.ts`, Workflow-Test         |
+| Eigene Fotos landen bei Foundry (`look_at_photos`, Schritt C)                                             | nur auf ausdrücklichen Wunsch, höchstens 6, nur Fotos des Chat-Haushalts (RLS, Pfadprüfung); liegen in der Conversation und gehen mit dem Chat                                                               | edge                                           |
+| Modell plant „Woche füllen“ in belegte Abende oder Reisen (Schritt C)                                     | das Modell gibt nur Wünsche; Abende, Reisen und Gerichte rechnet die App; vor dem Übernehmen neu gelesen                                                                                                     | core `week-fill`, Smoke                        |
 | Werkzeugergebnisse und Anhänge liegen bei Foundry (Security-Check, Hinweis)                               | nur angefragte Felder, keine E-Mails, Profile nur `id,name` der Mitglieder; Löschen wie Spec 0066                                                                                                            | edge AC-014                                    |
 
 ## Umsetzung
@@ -440,7 +505,7 @@ In drei Bauschritten, jeder mit Vorschau für Enrico; keine volle e2e-Suite vor 
       (REQ-009)
 - [x] B2. Rezept anlegen über die Entwurfs-Strecke, „Prüfen und anlegen“ im Editor (REQ-010)
 - [x] B3. Bilder (REQ-011), Orte (REQ-012)
-- [ ] C1. Massenbearbeitung (REQ-013), Woche füllen (REQ-014), Betrieb (REQ-015), Entscheidung 13
+- [x] C1. Massenbearbeitung (REQ-013), Woche füllen (REQ-014), Betrieb (REQ-015), Entscheidung 13
 - [ ] D. Prüfung mit Testkatalog, Modellbewertung, Optimierung, `tmp/0067/REVIEW.md`, Urteil an Enrico
 - [ ] `/security-check` auf den Diff, Befunde behoben oder unter „Risiken“
 - [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün,
@@ -541,3 +606,48 @@ In drei Bauschritten, jeder mit Vorschau für Enrico; keine volle e2e-Suite vor 
   Startseite statt des Menüs; jetzt nimmt auch dieser Weg das „/re“ weg. „KI zuerst schaltet nicht“ –
   die gemeinsame lokale DB hat die Migration von A nicht (`set_app_view` fehlt); auf dem eigenen
   Stack schaltet es am Handy und Desktop.
+
+## Nachweis (Schritt C, 28.11.2026)
+
+- **Rot zuerst** (Ausgaben in `tmp/review-0004/0067/smoke-c/red/`): pgTAP `ai_chat_answers.test.sql`
+  (Plan 31, 0 gelaufen ohne Migration); core `week-fill.test.ts` (Modul fehlte),
+  `agent-proposals.test.ts` (9 rot), `agent-apply.test.ts` (4 rot), `ai-agent-c.test.ts` (6 rot);
+  edge `ai-agent/handler.test.ts` (17 rot gegen den Handler von B); api `agent-c.backend.test.ts`
+  (4 rot); foundry `purge.test.ts` (Modul fehlte); `workflows.test.mjs` (Purge vor Reset, rot). Die
+  Tests zu AC-025 (`ai-agent/tools.test.ts`) prüfen Vorhandenes und waren gleich grün. Eingabe: siehe
+  Entscheidung 47 (ui `controls`, `field-grow`, `shell`, `use-drag-dismiss` rot → grün).
+- **Negativtests:** fremder Haushalt (Lease, Status, Löschprotokoll, `change_recipe`, Fotos), abgemeldet
+  (pgTAP anon, Status 401), ungültige Eingaben (`fill_week`, `change_recipe`, `look_at_photos`,
+  Protokoll-Einträge), Nebenläufigkeit (zweite Sendung 409, fremder Token beendet nichts, Lease läuft
+  ab), Fehlerpfade (Foundry beim Aufräumen, Foto nicht ladbar, Kontingent mitten in der Antwort).
+- **Prüfungen:** `pnpm format:check && pnpm check && pnpm build:web` grün; pgTAP auf dem eigenen
+  Wegwerf-Stack `hk-0067c` (Ports 549xx): 60 Dateien, 2824 Tests grün. Kein e2e und kein
+  Security-Check (nach D).
+- **Foundry:** `household-agent-local` Version 5. Smoke gegen `hk-0067c` (zusätzlich 33 gemerkte
+  Aktivitäten, 4 unfertige Rezepte), 21 Modellaufrufe (19 Agent-Läufe, 2 × `ai-recipe-draft`;
+  Grenze 25), Protokoll `tmp/review-0004/0067/smoke-c/`:
+
+  | Fall                                                       | Dauer      | Ergebnis                                                                                                     |
+  | ---------------------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------ |
+  | „Geh die gemerkten Aktivitäten durch …“ (36 gemerkt)       | 12 s       | `list_activities` gemerkt · 36 → Karte 8 × „Nicht mehr merken“, „Weitere prüfen“ → 5 weitere (AC-023)        |
+  | Aktivitäten übernehmen                                     | 8 s        | 4 übernommen über den Merken-Weg, 36 → 32 gemerkt, „Rückgängig“ da                                           |
+  | „Welche Rezepte haben kein gutes Foto oder sind unfertig?“ | 9 s        | Karte „2 ausarbeiten“ → öffnet „Bami Goreng“ im Bearbeitungsmodus mit „Mit KI ausfüllen“                     |
+  | „vegane Variante unserer Lasagne“                          | 6 s + 8 s  | `change_recipe`-Karte → „Änderung ansehen“ → Änderungsansicht → „Übernehmen“: Varianten Original, Vegan      |
+  | „Füll die Woche: 2× vegetarisch, Mi wenig Zeit, Sa Gäste“  | 4 s        | 1 Lauf, `fill_week`; App: 5 Abende (Mo, Mi belegt), Sa 2 Gäste (4 Portionen), eingeplant, „Auf die Liste“    |
+  | Zwei Personen im selben Chat                               | 7 s / 15 s | Nadja sieht „Agent antwortet gerade …“, ihre Nachricht geht nach Enricos Antwort (AC-024); keine Lease übrig |
+  | Löschprotokoll                                             | –          | Chat per SQL gelöscht → Eintrag; Löschen eines anderen Chats in der App räumt beide in Foundry ab (404)      |
+
+  Der lokale Purge (`--purge-conversations local`) löschte 5 Conversations; die Antworten fand er erst
+  nach der Korrektur auf `created_by.response_id` (die 11 übrigen danach gezielt gelöscht).
+
+- **UI:** Handy 390 × 844 und Desktop 1440 × 900, hell und dunkel, mit nachgebildeten Antworten
+  (`smoke-c/ui/`): Sammelkarte mit „2 übernehmen“, „2 ausarbeiten“, „Weitere prüfen“; Varianten-Karte;
+  Wochen-Karte mit Gästen, Vorlauf und „alle verreist“; Sammlungs-Collage; „Agent antwortet gerade …“;
+  Hinweis bei langem Chat. iPhone-Simulator (iPhone 18 Pro, Safari, `smoke-c/sim/`): echte Chats aus
+  „Verlauf“ mit Wochen-, Varianten- und Aufräum-Karte. Hinweis: Aus der Home-Bildschirm-App „hk8150“
+  heraus geöffnet blieb Safari „Offline“ (auch mit dem gemeinsamen Server 8081); nach Neustart von
+  Safari lief es.
+- **Für Enrico lokal:** `household-agent-local` Version 5 kennt `change_recipe`, `fill_week` und
+  `look_at_photos`; der gemeinsame lokale Stack (develop) kennt sie erst nach dem Merge – bis dahin
+  dort `FOUNDRY_HOUSEHOLD_AGENT_VERSION` auf die Version davor (4) setzen. Die Migration `ai_chat_answers_and_deletions` mit
+  `pnpm db:reset` einspielen.
