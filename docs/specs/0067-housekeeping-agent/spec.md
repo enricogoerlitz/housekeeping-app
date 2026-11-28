@@ -479,6 +479,23 @@ Beim Bau von Schritt D entschieden (28.11.2026, Testkatalog und Review `tmp/0067
     - Aktivitäten behalten „Alle“, wenn eine Aktivität geöffnet wird.
     - Ein leerer Filter benennt sich selbst und bietet „Alle zeigen“ (Filterprüfung der App).
 
+Release-Runde (28.11.2026, Security-Check über `v2026.11.3..develop` und volle e2e-Suite):
+
+61. **Links des Modells:** `draft_recipe` liest nur Links, die die Person im Chat selbst geschickt
+    hat, oder die Quellen des Entwurfs, der nachgebessert wird (`personLinks`). Jeden anderen Link
+    lehnt die Function mit `link_not_from_person` ab. Ein Rezept aus der Websuche des Agenten geht
+    als `page_text`. Die Website einer Ortskarte kommt immer aus der Serper-Anreicherung, nie vom
+    Modell. Das ändert Entscheidung 28, die das nur nach Haushalts-Werkzeugen und nur live
+    vorsah.
+62. **Ergebnis-Karte nach jeder Änderung** (offener Punkt aus Review D): Unter der Karte steht
+    jeweils der betroffene Eintrag als Karte:
+    - nach „Woche füllen“ die eingeplanten Gerichte,
+    - nach einer übernommenen Variante das Rezept,
+    - nach „Als Foto nehmen“ der Eintrag mit seinem neuen Foto.
+
+    Die Variante meldet sich über `markAiChangeApplied` mit der ID der Karte zurück. „Rückgängig“
+    der Woche nimmt die Karte wieder weg.
+
 ## Grenzfälle, die in der App fest verdrahtet sind
 
 Jeder Fall braucht im Agenten denselben Weg wie in der App, sonst entstehen Daten, die anders
@@ -579,8 +596,8 @@ In drei Bauschritten, jeder mit Vorschau für Enrico; keine volle e2e-Suite vor 
 - [x] B3. Bilder (REQ-011), Orte (REQ-012)
 - [x] C1. Massenbearbeitung (REQ-013), Woche füllen (REQ-014), Betrieb (REQ-015), Entscheidung 13
 - [x] D. Prüfung mit Testkatalog, Modellbewertung, Optimierung, `tmp/0067/REVIEW.md`, Urteil an Enrico
-- [ ] `/security-check` auf den Diff, Befunde behoben oder unter „Risiken“
-- [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün,
+- [x] `/security-check` auf den Diff, Befunde behoben oder unter „Risiken“
+- [x] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün,
       `pnpm exec supabase test db` grün (eigener Wegwerf-Stack), `pnpm e2e:dev` grün; volle e2e-Suite
       vor dem nächsten Release
 
@@ -774,3 +791,49 @@ In drei Bauschritten, jeder mit Vorschau für Enrico; keine volle e2e-Suite vor 
 - **Für Enrico lokal:** Nach dem Merge `pnpm foundry:agents:local` ausführen: neue Version mit
   luna, `has_photo` und den neuen Regeln. Vorher nicht, denn der Stand von develop kennt
   `has_photo` noch nicht.
+
+## Nachweis (Release-Runde, 28.11.2026)
+
+- **Security-Check** über `git diff v2026.11.3..origin/develop`, also 0066, 0067, 0068 und #145–#153:
+  - Befunde: 0 kritisch, 0 hoch, 2 mittel (behoben, Entscheidung 61), 2 niedrig und 3 Hinweise.
+    Alle stehen unter „Risiken“.
+  - Ohne Befund geprüft:
+    - Werkzeuge mit dem JWT der Person, die Haushalts-ID nur vom Server
+    - Zulassungslisten für Felder, Filter und Sortierungen
+    - der Weg von `propose_actions`: neu lesen vor dem Übernehmen, Löschen nur einzeln
+    - Anhänge: Zahl, Größe, Präfix
+    - `look_at_photos`: Pfad im eigenen Haushalt, höchstens 6
+    - Lease, Löschprotokoll und alle `security definer`-Funktionen
+    - der Vorschau-Purge
+    - die Pipeline: OIDC, gepinnte Actions, keine Ausgabe von Geheimnissen
+    - die CSP, die nur strenger wurde
+    - Links in der App: nur https, keine `javascript:`-Links, Routen nur fest und mit Zod
+    - Standort: gerundet
+- **Rot zuerst:**
+  - core `personLinks` (3 rot) und `show_suggestions` ohne Modell-Website (2 rot)
+  - edge: „a link the person never sent“ und „website never stays“ (je 1 rot)
+  - e2e: die drei Ergebnis-Karten (Woche, Variante, Foto) gegen den Stand ohne sie, 3 rot
+  - Ausgaben in `tmp/release-0067/red/`
+- **e2e:**
+  - Die Desktop-Hälften von 0054 und 0061 liefen nie, weil sie im `testMatch` des Projekts
+    `desktop` fehlten. Jetzt laufen sie.
+  - Neu ist der Rundgang `rundgang-housekeeping-agent-karten-0067.spec.ts`. Alle KI-Antworten
+    sind dort nachgebildet. Er deckt ab:
+    - Sammelkarte mit Ergebnis und „Rückgängig“
+    - „3 Schritte“
+    - Entwurf → Editor → „Öffnen“
+    - eigene Einträge
+    - Woche
+    - Variante
+    - Foto
+    - 409 `chat_busy`
+  - `fetch-image` und `fetch-video` sind standardmäßig nachgebildet.
+  - Angepasst:
+    - 0066: Standort blockiert nicht, `extras` beim Laden
+    - 0067: Anhang-Chip
+    - 0061: Zahl der übrigen unfertigen Rezepte
+    - Kalender-Tests: hingen am Wochentag (Samstag)
+    - Offline-Neuladen: wartet auf die Warteschlange in IndexedDB; war auch auf develop flaky
+  - Lokal liefen die geänderten Dateien auf dem Wegwerf-Stack `hk-rel0067` (Ports 556xx) grün.
+    Die volle Suite lief in GitHub grün und ohne Wiederholung: 6 Shards mit 553 Tests und dazu `dev` mit 7. Lauf: https://github.com/enricogoerlitz/housekeeping-app/actions/runs/46111219997 auf `570e72af`. Der Lauf davor auf `99470342` war ebenfalls grün, ohne Wiederholung: https://github.com/enricogoerlitz/housekeeping-app/actions/runs/46111016388.
+- **Prüfungen:** `pnpm format:check && pnpm check` grün, CI des PR grün.
