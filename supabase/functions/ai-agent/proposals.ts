@@ -14,6 +14,7 @@ import {
   parseImageArgs,
   parsePhotoArgs,
   parseProposalArgs,
+  personLinks,
 } from '../_shared/agent-proposals.gen.ts';
 import {
   changeOutput,
@@ -224,6 +225,23 @@ export function lastDraft(items: readonly unknown[]): RecipeDraftReply | undefin
   return undefined;
 }
 
+/** The texts the person wrote among conversation items, without the app's [KONTEXT] block. */
+export function personMessages(items: readonly unknown[]): string[] {
+  const texts: string[] = [];
+  for (const raw of items) {
+    const item = raw as { type?: unknown; role?: unknown; content?: unknown };
+    if (item.type !== 'message' || item.role !== 'user' || !Array.isArray(item.content)) continue;
+    for (const part of item.content as ({ type?: unknown; text?: unknown } | null)[])
+      if (
+        part?.type === 'input_text' &&
+        typeof part.text === 'string' &&
+        !part.text.startsWith('[KONTEXT]')
+      )
+        texts.push(part.text);
+  }
+  return texts;
+}
+
 const fold = (value: string) =>
   value
     .toLowerCase()
@@ -271,6 +289,9 @@ async function existingRecipes(
 const UNREADABLE_HINT =
   'Lies die Seite mit deiner Websuche und ruf draft_recipe noch einmal mit dem Rezepttext als page_text und page_url auf. Geht das auch nicht, sag es ehrlich und bitte um den Text oder Screenshots – erfinde keine Mengen.';
 
+const FOREIGN_LINK_HINT =
+  'Gelesen werden nur Links, die die Person selbst geschickt hat. Lies die Seite mit deiner Websuche und ruf draft_recipe mit dem Rezepttext als page_text und page_url auf, oder bitte die Person um den Link.';
+
 /**
  * draft_recipe (REQ-010): the draft pipeline of ai-recipe-draft. A link that cannot be read gives
  * no draft but the honest way on (AC-022): the agent reads the page itself or asks for text.
@@ -283,6 +304,8 @@ export async function runDraftTool(
   context: {
     emit: (extra: AgentExtra) => void;
     previous: () => Promise<RecipeDraftReply | undefined>;
+    /** The texts of the person's earlier messages in this chat (read only when needed). */
+    earlierMessages: () => Promise<string[]>;
   },
   stepId: string,
 ): Promise<{ output: string; step: AgentStep; reply?: RecipeDraftReply }> {
@@ -296,13 +319,24 @@ export async function runDraftTool(
   const current = args.refine ? await context.previous() : undefined;
   if (args.refine && !current) return done(json({ error: 'no_draft_to_change' }));
   // A page the agent read itself stands in for the same link (one source, not two).
-  const links = args.links.filter((link) => link !== args.page?.url);
-  const read = await readLinks(links, deps);
+  const asked = args.links.filter((link) => link !== args.page?.url);
+  // Only links the person sent are fetched (security check 28.11.): the server's GET would carry
+  // whatever an injected link holds to its host, without a tap.
+  const sent = [input.message, ...(current?.sources ?? []).map((source) => source.url)];
+  let { allowed: links, dropped } = personLinks(asked, sent);
+  if (dropped.length > 0)
+    ({ allowed: links, dropped } = personLinks(asked, [
+      ...sent,
+      ...(await context.earlierMessages()),
+    ]));
   const photos = args.usePhotos
     ? input.attachments
         .flatMap((attachment) => (attachment.kind === 'image' ? [attachment.dataUrl] : []))
         .slice(0, RECIPE_DRAFT_LIMITS.photos)
     : [];
+  if (dropped.length > 0 && links.length === 0 && !args.page && photos.length === 0)
+    return done(json({ error: 'link_not_from_person', urls: dropped, hint: FOREIGN_LINK_HINT }));
+  const read = await readLinks(links, deps);
   const unread = read.filter((link) => !link.source.read);
   if (unread.length > 0 && unread.length === read.length && !args.page && photos.length === 0)
     return done(

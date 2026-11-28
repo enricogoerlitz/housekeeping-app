@@ -13,6 +13,7 @@ import {
   parseImageArgs,
   parsePhotoArgs,
   parseProposalArgs,
+  personLinks,
 } from './agent-proposals';
 
 const empty = {
@@ -373,5 +374,32 @@ describe('look_at_photos (spec 0067, REQ-013: photos only on request)', () => {
   it('invalid input: an unknown kind or no ids', () => {
     expect(parsePhotoArgs(JSON.stringify({ kind: 'households', ids: [A] }))).toBeUndefined();
     expect(parsePhotoArgs(JSON.stringify({ kind: 'recipe', ids: ['x'] }))).toBeUndefined();
+  });
+});
+
+describe('personLinks (security check 28.11.)', () => {
+  it('keeps only links the person sent, matched without scheme, case of the host or a trailing slash', () => {
+    expect(
+      personLinks(
+        [
+          'https://www.chefkoch.de/r/1/',
+          'https://evil.example/?d=Milch',
+          'https://vm.tiktok.com/ZX',
+        ],
+        ['Leg das an: http://WWW.chefkoch.de/r/1.', 'und https://vm.tiktok.com/ZX!'],
+      ),
+    ).toEqual({
+      allowed: ['https://www.chefkoch.de/r/1/', 'https://vm.tiktok.com/ZX'],
+      dropped: ['https://evil.example/?d=Milch'],
+    });
+  });
+  it('a link only part of a longer one the person sent is not hers', () => {
+    expect(personLinks(['https://a.de/x'], ['https://a.de/x/y'])).toEqual({
+      allowed: [],
+      dropped: ['https://a.de/x'],
+    });
+  });
+  it('without any text of the person every link is dropped', () => {
+    expect(personLinks(['https://a.de'], [])).toEqual({ allowed: [], dropped: ['https://a.de'] });
   });
 });
