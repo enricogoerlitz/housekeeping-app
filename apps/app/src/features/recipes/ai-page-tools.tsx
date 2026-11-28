@@ -52,7 +52,7 @@ import {
   startPhotoSuggestions,
   usePhotoSuggestions,
 } from './ai-draft';
-import { peekAiChange, takeAiChange } from './ai-change-request';
+import { markAiChangeApplied, peekAiChange, takeAiChange } from './ai-change-request';
 import { AiFillSheet, toastUnreadLinks, useDraftInput, type AiFillResult } from './ai-fill';
 import type { PageEditor } from './sections/use-page-editor';
 
@@ -177,7 +177,7 @@ export function AiPageTools(props: {
     return { proposal, pagePhoto };
   };
   // Spec 0049, REQ-005: a draft for a recipe that has content opens the Änderungsansicht first.
-  const propose = (result: AiFillResult, direct: boolean) => {
+  const propose = (result: AiFillResult, direct: boolean, asked?: string) => {
     const { reply, replace, change = false, generatePhoto, photo, makePhoto, imageWish } = result;
     const { proposal, pagePhoto } = compare(reply, replace, change, photo);
     toastUnreadLinks(reply.sources);
@@ -207,6 +207,7 @@ export function AiPageTools(props: {
       change,
       direct,
       fromWeb: result.fromWeb === true,
+      ...(asked ? { asked } : {}),
       ...(photo ? { sourcePhoto: photo } : {}),
       ...(pagePhoto ? { photo: pagePhoto } : {}),
     });
@@ -278,16 +279,18 @@ export function AiPageTools(props: {
   // "Mit KI ändern" with that wish as the page opens; its Änderungsansicht shows the result.
   const runs = offersAi(recipe) && !editing && hasContent && !online.disabled;
   const runAsked = useEffectEvent(() => {
-    const wish = takeAiChange(recipe.id);
-    if (!wish || !runs) return;
+    const asked = takeAiChange(recipe.id);
+    if (!asked || !runs) return;
     draftRecipeAsync({
-      text: wish,
+      text: asked.wish,
       links: [],
       photos: [],
       imagePrompt: false,
       current: recipeDraftOf(editor.page(), articleName),
     })
-      .then((reply) => propose({ reply, replace: true, change: true, generatePhoto: false }, true))
+      .then((reply) =>
+        propose({ reply, replace: true, change: true, generatePhoto: false }, true, asked.token),
+      )
       .catch((cause: unknown) =>
         toast.show({
           message: cause instanceof OfflineError ? OFFLINE_EDIT_HINT : AI_DRAFT_UNREACHABLE_MESSAGE,
@@ -347,6 +350,8 @@ export function AiPageTools(props: {
             // Spec 0062, REQ-008: from the reading page "Übernehmen" saves at once.
             if (review.direct && !editor.draft) {
               editor.apply(next, photo);
+              // Spec 0067: the chat's change card shows the changed recipe as its result.
+              if (review.asked) markAiChangeApplied(review.asked);
               return;
             }
             editor.adopt(next);
@@ -374,6 +379,8 @@ interface Review {
   direct: boolean;
   /** From the web search for a recipe with ingredients: "Ergänzen · Ersetzen" (REQ-011). */
   fromWeb: boolean;
+  /** Spec 0067: the change card of the agent's chat that asked for this change. */
+  asked?: string;
 }
 
 const PHOTO_FIELD = 'photo';

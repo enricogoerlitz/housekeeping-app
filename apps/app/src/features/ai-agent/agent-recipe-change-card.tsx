@@ -3,15 +3,17 @@ import type { AgentExtra } from '@housekeeping/core';
 import { Button, Icon, Surface, Text } from '@housekeeping/ui';
 import { View } from 'react-native';
 
-import { requestAiChange } from '@/features/recipes/ai-change-request';
+import { requestAiChange, useAiChangeApplied } from '@/features/recipes/ai-change-request';
 import { useOnlineOnly } from '@/features/shell/offline';
 
+import { AgentEntities } from './agent-entities';
 import { useAgentOpen } from './agent-open';
 
 // Spec 0067, step C (B's open point): "vegetarische Variante zur bestehenden Lasagne" from the
 // chat. The card names the household's recipe and the wish; "Änderung ansehen" opens the recipe
 // beside the chat with "Mit KI ändern" already asked — the Änderungsansicht of spec 0062 shows
 // what would change, "Übernehmen" saves it with "Rückgängig". Nothing changes before that.
+// Once taken over, the changed recipe stands under the card as its result (preview 28.11.).
 
 export function AgentRecipeChangeCard(props: {
   extra: Extract<AgentExtra, { kind: 'recipe_change' }>;
@@ -22,6 +24,7 @@ export function AgentRecipeChangeCard(props: {
   const online = useOnlineOnly();
   const open = useAgentOpen();
   const recipe = data?.recipes.find((row) => row.id === extra.recipeId);
+  const applied = useAiChangeApplied(extra.id);
   return (
     <Surface testID={testID} style={{ gap: 8 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -46,12 +49,22 @@ export function AgentRecipeChangeCard(props: {
               disabled={online.disabled}
               hint={online.hint}
               onPress={() => {
-                requestAiChange(recipe.id, extra.wish);
+                requestAiChange(recipe.id, extra.wish, extra.id);
                 open({ kind: 'recipe', id: recipe.id, again: Date.now() });
               }}
               testID={`${testID}-open`}
             />
           </View>
+          {applied ? (
+            <AgentEntities
+              extra={{
+                kind: 'entities',
+                id: `${extra.id}-made`,
+                items: [{ kind: 'recipe', id: recipe.id }],
+              }}
+              testID={`${testID}-made`}
+            />
+          ) : null}
         </>
       ) : (
         <Text variant="small" color="warn" testID={`${testID}-gone`}>
