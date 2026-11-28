@@ -213,7 +213,7 @@ test('AC-010, REQ-005: a .docx is refused, a PDF goes with the message', async (
   );
   await expect(page.locator('[data-testid^="agent-attachment-"]')).toHaveCount(0);
   await attach('Rezept.pdf', 'application/pdf');
-  await expect(page.locator('[data-testid^="agent-attachment-"]')).toHaveText('Rezept.pdf');
+  await expect(page.getByRole('button', { name: 'Rezept.pdf ansehen' })).toBeVisible();
   await expect(tid(page, 'agent-attach-error')).toHaveCount(0);
   await tid(page, 'agent-send').click();
   await expect.poll(() => sent.length).toBe(1);

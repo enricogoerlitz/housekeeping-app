@@ -1,4 +1,4 @@
-import type { AgentStreamEvent } from '@housekeeping/core';
+import type { AgentLoadReply, AgentStreamEvent } from '@housekeeping/core';
 import type { Page, Route } from '@playwright/test';
 
 import {
@@ -117,6 +117,7 @@ async function stubAgent(
               followUps: [],
               sources: [],
               steps: [],
+              extras: [],
             },
             {
               role: 'assistant',
@@ -125,9 +126,10 @@ async function stubAgent(
               followUps: [],
               sources: [],
               steps: [],
+              extras: [],
             },
           ],
-        },
+        } satisfies AgentLoadReply,
       });
     } else {
       if (body.chatId) options.onDelete?.(body.chatId);
@@ -233,7 +235,7 @@ test('AC-014, AC-016, AC-017, AC-020, AC-021: an answer with steps, cards, sourc
   await expect(page.getByText('Crackers Mitte E2E').first()).toBeVisible();
 });
 
-test('AC-008, AC-009, AC-012: without location the place window opens; a maps link pins the place', async ({
+test('AC-008, AC-009, AC-012: without location the message goes anyway, the place chip opens the window; a maps link pins the place', async ({
   page,
   context,
 }) => {
@@ -243,20 +245,24 @@ test('AC-008, AC-009, AC-012: without location the place window opens; a maps li
   await openAgentFromRestaurants(page);
   await tid(page, 'agent-input').fill('Pizza');
   await tid(page, 'agent-send').click();
-  await expect(tid(page, 'agent-place-hint')).toHaveText(
-    'Standort nicht verfügbar – wähle einen Ort.',
-  );
-  expect(sent).toEqual([]);
+  // Spec 0067, decision 33 (changes AC-008): no location never blocks. The message goes without
+  // coordinates, the place chip says so and opens the place window only when tapped.
+  await expect.poll(() => sent.length).toBe(1);
+  expect((sent[0] as { place?: { location?: unknown } }).place?.location).toBeUndefined();
+  await expect(tid(page, 'agent-place-chip')).toHaveText('Standort nicht verfügbar');
+  await expect(tid(page, 'agent-place-sheet')).toHaveCount(0);
+  await tid(page, 'agent-place-chip').click();
+  await expect(tid(page, 'agent-place-hint')).toHaveText('Standort nicht verfügbar');
   await tid(page, 'agent-place-radius-transit').click();
   await tid(page, 'agent-place-text').fill(
     'https://www.google.com/maps/place/Katz+Orange/@52.5313,13.3977,17z',
   );
   await tid(page, 'agent-place-take').click();
   await expect(tid(page, 'agent-place-chip')).toHaveText('Katz Orange · Öffis');
-  await expect(tid(page, 'agent-input')).toHaveValue('Pizza');
+  await tid(page, 'agent-input').fill('Pizza');
   await tid(page, 'agent-send').click();
-  await expect.poll(() => sent.length).toBe(1);
-  expect(sent[0]).toMatchObject({
+  await expect.poll(() => sent.length).toBe(2);
+  expect(sent[1]).toMatchObject({
     place: {
       source: 'pinned',
       label: 'Katz Orange',
