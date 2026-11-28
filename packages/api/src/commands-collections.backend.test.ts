@@ -223,7 +223,9 @@ describe('spec 0009: contained recipes (REQ-003, E12)', () => {
     expect(
       fx.server.rows(H, 'collection_recipes').filter((r) => r.collection_id === GRILLABEND),
     ).toHaveLength(50);
-  });
+    // 49 recipes, each one change through the fake backend: over 5 s on a busy CI runner with
+    // coverage (it timed out once on 28.11.), well under a second locally.
+  }, 20_000);
 });
 
 describe('spec 0009: editing "Enthält" (E12, AC-015, AC-016)', () => {

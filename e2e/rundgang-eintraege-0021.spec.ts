@@ -13,6 +13,8 @@ import {
   tid,
   toastMessage,
   chooseTime,
+  day,
+  showPlanWeek,
 } from './helpers';
 import { seedIds } from './seed-ids';
 
@@ -133,6 +135,9 @@ test('AC-035, AC-037: a first time on the restaurant switches "Erinnern" on', as
   await chooseTime(page, 'entry-time', '19:30');
   await expect(tid(page, 'entry-reminder-switch').locator('input')).toBeChecked();
   await tid(page, 'entry-done').click();
+  await expect(tid(page, 'entry-sheet')).toBeHidden();
+  // The day after tomorrow lies in the next week on a Saturday or Sunday.
+  await showPlanWeek(page, day(2));
   await expect(tid(page, `entry-${ENZO}`)).toContainText('Trattoria Da Enzo · 19:30');
 });
 

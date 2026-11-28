@@ -43,6 +43,7 @@ import { agentConfig, foundryClient, type Foundry } from './foundry-agent.ts';
 import {
   CARD_TOOLS,
   lastDraft,
+  personMessages,
   runCardTool,
   runChangeTool,
   runDraftTool,
@@ -80,8 +81,6 @@ const CARD_ONLY = new Set([
 ]);
 /** Reads that are never answered from an earlier call of the answer (they cost or change). */
 const UNCACHED = new Set(['draft_recipe', 'show_images', 'look_at_photos']);
-/** The tools that read the household, besides the list tools. */
-const HOUSEHOLD_CARD_TOOLS = new Set(['change_recipe', 'show_entities']);
 
 interface ChatRow {
   id: string;
@@ -574,9 +573,6 @@ async function streamTurn(
     }
     return run();
   };
-  // Any household tool in this answer: from then on a card's website is Google's only (a model
-  // link could carry the household's data out, security check 27.11.).
-  let toolsRan = false;
   const cardContext: CardContext = {
     message: input.message,
     emit: (extra) => emit({ type: 'extra', extra }),
@@ -651,13 +647,10 @@ async function streamTurn(
         const enrichments = parsed ? await enrich(deps, parsed.cards, input.place.location) : [];
         if (parsed && parsed.cards.length > 0) {
           cardsTitle ??= parsed.title;
-          const cards = toolsRan
-            ? parsed.cards.map(({ websiteUrl: _model, ...card }) => card)
-            : parsed.cards;
           emit({
             type: 'cards',
             ...(parsed.title ? { title: parsed.title } : {}),
-            cards: mergeCards(cards, enrichments),
+            cards: mergeCards(parsed.cards, enrichments),
             followUps: parsed.followUps,
           });
         }
@@ -686,7 +679,6 @@ async function streamTurn(
         });
         outputs.push({ type: 'function_call_output', call_id: call.callId, output });
       } else if (call.name === 'change_recipe') {
-        toolsRan = true;
         outputs.push({
           type: 'function_call_output',
           call_id: call.callId,
@@ -708,11 +700,6 @@ async function streamTurn(
         dataCalls.push(call);
       }
     }
-    if (
-      dataCalls.some((call) => call.name !== 'draft_recipe') ||
-      round.calls.some((call) => HOUSEHOLD_CARD_TOOLS.has(call.name))
-    )
-      toolsRan = true;
     // The household id is the chat's, checked by requireMember; never an argument (AC-014).
     const allowed = Math.max(0, Math.min(MAX_CALLS_PER_ROUND, MAX_CALLS_PER_ANSWER - callsRun));
     // A call the answer made before (this round or an earlier one) is answered from it.
@@ -783,7 +770,12 @@ async function streamTurn(
             client,
             input,
             call,
-            { emit: cardContext.emit, previous: previousDraft },
+            {
+              emit: cardContext.emit,
+              previous: previousDraft,
+              earlierMessages: async () =>
+                personMessages(await foundry.items(chat.conversation_id, 'desc', 1)),
+            },
             stepFor(call.callId),
           );
           if (drafted.reply) draftOfAnswer = drafted.reply;

@@ -595,6 +595,32 @@ export function parseDraftArgs(raw: string): DraftArgs | undefined {
   return { wish, links, ...(page ? { page } : {}), refine, usePhotos };
 }
 
+/** A link's identity for personLinks: no scheme, lower-case host, no trailing slash. */
+const linkKey = (url: string): string => {
+  const bare = url.replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+  const cut = bare.search(/[/?#]/);
+  return cut < 0 ? bare.toLowerCase() : bare.slice(0, cut).toLowerCase() + bare.slice(cut);
+};
+
+/**
+ * Security check 28.11.: draft_recipe fetches only links the person sent herself (her messages in
+ * this chat, the sources of the draft being refined). A link the model got from a web page, a
+ * file or household data could carry the household's data out with the server's GET.
+ */
+export function personLinks(
+  links: readonly string[],
+  personTexts: readonly string[],
+): { allowed: string[]; dropped: string[] } {
+  const known = new Set<string>();
+  for (const text of personTexts)
+    for (const match of text.matchAll(/\bhttps?:\/\/[^\s<>"]+/gi))
+      known.add(linkKey(match[0].replace(/[.,;:!?)\]]+$/, '')));
+  const allowed: string[] = [];
+  const dropped: string[] = [];
+  for (const link of links) (known.has(linkKey(link)) ? allowed : dropped).push(link);
+  return { allowed, dropped };
+}
+
 export interface ImageArgs {
   /** make_image: the English prompt; show_images: the query. */
   text: string;

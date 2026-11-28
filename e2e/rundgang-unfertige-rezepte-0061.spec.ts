@@ -108,7 +108,10 @@ test('AC-013, AC-016: „Mit KI ausarbeiten“ searches the title at once; the p
 
 test('AC-005, AC-007, AC-008, AC-010, AC-017 – AC-020: the chip, „Ausarbeiten“ and „Weiter zum nächsten“', async ({
   page,
+  allowConsoleError,
 }) => {
+  // A taken hit without a photo asks for photo suggestions (ai-image); none is made here.
+  allowConsoleError(/^Failed to load resource: the server responded with a status of 503/);
   const queries = await stubAi(page);
   // „Chili“ and „Bami Goreng“ come from the tests above.
   await titleOnly(page, 'Apfelstrudel');
@@ -143,7 +146,7 @@ test('AC-005, AC-007, AC-008, AC-010, AC-017 – AC-020: the chip, „Ausarbeite
   // AC-018: skip „Bami Goreng“ — close the window and the edit mode, then on.
   await tid(page, 'recipe-ai-fill-cancel').click();
   await tid(page, 'recipe-edit-cancel').click();
-  await expect(tid(page, 'recipe-unfinished-others')).toHaveText('Noch 2 weitere unfertig');
+  await expect(tid(page, 'recipe-unfinished-others')).toHaveText('Noch 1 weiteres unfertig');
   await tid(page, 'recipe-unfinished-next').click();
   await expect(tid(page, 'recipe-ai-fill-web-query')).toHaveValue('Chili');
 

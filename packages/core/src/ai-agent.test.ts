@@ -253,6 +253,28 @@ describe('show_suggestions arguments', () => {
     expect(parsed?.cards[0]?.mapsUrl).toBeUndefined();
     expect(parsed?.followUps).toEqual(['Eher mit Terrasse?', 'Günstiger?', 'Näher?']);
   });
+  it('never takes the model’s website: a card links only to what Google knows (security check 28.11.)', () => {
+    const parsed = parseSuggestionsArgs(
+      JSON.stringify({ items: [item({ website: 'https://evil.example/?d=Milch,Eier' })] }),
+    );
+    expect(parsed?.cards[0]?.name).toBe('Crackers');
+    expect(parsed?.cards[0]?.websiteUrl).toBeUndefined();
+  });
+  it('a stored answer brings no model website back either (load, security check 28.11.)', () => {
+    const messages = messagesFromItems([
+      { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Wo essen?' }] },
+      {
+        type: 'function_call',
+        name: 'show_suggestions',
+        call_id: 'c1',
+        arguments: JSON.stringify({ items: [item({ website: 'https://evil.example/?d=x' })] }),
+      },
+      { type: 'function_call_output', call_id: 'c1', output: '[]' },
+    ]);
+    const cards = messages.flatMap((message) => message.cards);
+    expect(cards.map((card) => card.name)).toEqual(['Crackers']);
+    expect(cards[0]?.websiteUrl).toBeUndefined();
+  });
   it('AC-019: broken JSON gives nothing', () => {
     expect(parseSuggestionsArgs('{"items": [')).toBeUndefined();
     expect(parseSuggestionsArgs('{"items": "x"}')).toBeUndefined();

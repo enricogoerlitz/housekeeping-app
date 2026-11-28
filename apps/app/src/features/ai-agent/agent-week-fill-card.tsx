@@ -6,6 +6,7 @@ import {
   formatShortDate,
   freeEvenings,
   weekdayShort,
+  type AgentEntityRef,
   type AgentExtra,
   type ISODate,
   type WeekFillRow,
@@ -19,13 +20,16 @@ import { errorMessage } from '@/features/shell/error-message';
 import { useOnlineOnly } from '@/features/shell/offline';
 import { PantryCheckSheet } from '@/features/shopping/pantry-check-sheet';
 
+import { AgentEntities } from './agent-entities';
+
 // Spec 0067, REQ-014: "Füll die Woche: 2× vegetarisch, Mittwoch wenig Zeit, Samstag Gäste". The
 // agent only passed the wishes; the dishes come from the suggestion logic of spec 0063 on this
 // device (core fillWeek), trips and occupied evenings are checked by the code. The card is a
 // collect card (REQ-009): each evening with a check mark, "5 Abende einplanen" plans the ticked
 // ones in one change like "Was kochen wir?" (planSuggested), "Rückgängig" takes it back, then
 // "Auf die Liste" opens the usual window. Before planning the plan is read again: an evening
-// taken meanwhile is unticked with a hint.
+// taken meanwhile is unticked with a hint. The planned dishes stand under the card as its result
+// (preview 28.11.: every change through the chat ends with a card of what it touched).
 
 const day = (date: ISODate) => `${weekdayShort(date)} ${formatShortDate(date)}`;
 const TAKEN_HINT = 'Inzwischen belegt';
@@ -118,6 +122,10 @@ export function AgentWeekFillCard(props: {
     }
   };
 
+  const made = result.rows
+    .filter((row) => planned.has(row.date))
+    .map((row): AgentEntityRef => ({ kind: 'recipe', id: row.suggestion.recipe.id }))
+    .filter((ref, index, all) => all.findIndex((other) => other.id === ref.id) === index);
   const title = `Woche ${formatShortDate(extra.wishes.from)}–${formatShortDate(extra.wishes.to)}`;
   return (
     <Surface testID={testID} style={{ gap: 6 }}>
@@ -229,6 +237,12 @@ export function AgentWeekFillCard(props: {
             </>
           ) : null}
         </View>
+      ) : null}
+      {made.length > 0 ? (
+        <AgentEntities
+          extra={{ kind: 'entities', id: `${extra.id}-made`, items: made }}
+          testID={`${testID}-made`}
+        />
       ) : null}
       {toList ? (
         <PantryCheckSheet

@@ -600,6 +600,14 @@ async function stubEdgeFunctions(context: BrowserContext): Promise<void> {
   await context.route('**/functions/v1/resolve-maps-link', (route) =>
     fulfilFunction(route, 200, aiFixtures.resolveMapsLink()),
   );
+  // An image or video from an address would come from the internet (fetch-image, fetch-video): a
+  // test that needs one answers it with its own `page.route`.
+  await context.route('**/functions/v1/fetch-image*', (route) =>
+    fulfilError(route, 'not_an_image'),
+  );
+  await context.route('**/functions/v1/fetch-video*', (route) =>
+    fulfilError(route, 'video_unavailable'),
+  );
   // The paid services (images, drafts, web search) never run from a walk-through: a test that
   // needs one answers it with its own `page.route`, which goes first. Anything else gets "KI nicht
   // erreichbar" (and its console error fails the test unless the test expects it).
@@ -994,7 +1002,7 @@ export async function appBackground(page: Page): Promise<string> {
  */
 const ALWAYS_ALLOWED_CONSOLE: RegExp[] = [
   /^Failed to load resource: net::ERR_INTERNET_DISCONNECTED$/,
-  /^WebSocket connection to 'ws:\/\/127\.0\.0\.1:54321\/realtime\/v1\/websocket\?.*' failed/,
+  /^WebSocket connection to 'ws:\/\/127\.0\.0\.1:\d+\/realtime\/v1\/websocket\?.*' failed/,
 ];
 
 interface ConsoleWatch {

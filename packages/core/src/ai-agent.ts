@@ -423,11 +423,6 @@ const SuggestionsArgsSchema = z.object({
   follow_ups: z.array(z.unknown()).optional().catch([]),
 });
 
-const safeHttps = (value: string | null | undefined): string | undefined => {
-  if (!value) return undefined;
-  return HttpsUrl.safeParse(value.trim()).success ? value.trim() : undefined;
-};
-
 const clip = (value: string, max: number) => value.replace(/\s+/g, ' ').trim().slice(0, max);
 const optional = (value: string | null | undefined) => (value ? value : undefined);
 
@@ -465,7 +460,8 @@ export function parseSuggestionsArgs(
       priceRange: optional(value.price_range),
       openStatus: optional(value.open_status),
       why: value.why ?? '',
-      websiteUrl: safeHttps(value.website),
+      // Never the model's website: a link it writes could carry the household's data out
+      // (security check 28.11.). A card's website comes only from the Google enrichment.
       tags: (value.tags ?? [])
         .filter((tag): tag is string => typeof tag === 'string')
         .map((tag) => clip(tag, 40))

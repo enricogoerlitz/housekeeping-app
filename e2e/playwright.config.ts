@@ -54,10 +54,11 @@ export default defineConfig({
       // restaurants, which run completely at both widths, the version hint (spec 0014) and the
       // list-and-detail pages of the household (spec 0011), the articles (spec 0007), the
       // overview and the calendar at desktop width (specs 0020, 0021) and the day window of the
-      // calendar beside the grid and dragging with the mouse (spec 0016).
+      // calendar beside the grid and dragging with the mouse (spec 0016), the desktop half of the
+      // operating patterns (spec 0054) and the unfinished recipes beside the list (spec 0061).
       name: 'desktop',
       testMatch:
-        /rundgang-(shell|restaurants|version|haushalt|artikel|uebersicht|kalender-0021|kalender-tag|kalender-ziehen)\.spec\.ts$/,
+        /rundgang-(shell|restaurants|version|haushalt|artikel|uebersicht|kalender-0021|kalender-tag|kalender-ziehen|bedienmuster-0054|unfertige-rezepte-0061)\.spec\.ts$/,
       use: { browserName: 'chromium', viewport: { width: 1440, height: 900 } },
     },
   ],

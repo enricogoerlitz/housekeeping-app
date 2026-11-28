@@ -95,6 +95,22 @@ async function scrollToCenter(locator: Locator): Promise<void> {
   await locator.evaluate((element) => element.scrollIntoView({ block: 'center' }));
 }
 
+/**
+ * Both in the middle of the screen: the source centred, then scrolled by half the distance to the
+ * target. A full day (a Saturday of the seed) would otherwise leave the next evening at the bottom
+ * edge, where the drag scrolls the page instead of showing its target.
+ */
+async function scrollPairToCenter(page: Page, source: Locator, target: Locator): Promise<void> {
+  await scrollToCenter(source);
+  const [from, to] = [await centerOf(source), await centerOf(target)];
+  const viewport = page.viewportSize() ?? { width: 390, height: 844 };
+  await page.mouse.move(viewport.width / 2, viewport.height / 2);
+  await page.mouse.wheel(0, (to.y - from.y) / 2);
+  await expect
+    .poll(async () => Math.abs((await centerOf(source)).y - from.y))
+    .toBeGreaterThan(Math.abs(to.y - from.y) / 4);
+}
+
 function entry(page: Page, id: string, within?: Locator): Locator {
   const selector = `[data-testid="entry-${id}"]:visible`;
   return within ? within.locator(selector).first() : page.locator(selector).first();
@@ -230,11 +246,10 @@ test.describe('phone', () => {
   }) => {
     await open(page, '/kalender');
     const lasagne = entry(page, LASAGNE);
-    await scrollToCenter(lasagne);
+    const target = tid(page, `week-slot-${NEIGHBOUR}-${SLOT_DINNER}`);
+    await scrollPairToCenter(page, lasagne, target);
     const touch = await finger(page);
     await touch.hold(await centerOf(lasagne));
-
-    const target = tid(page, `week-slot-${NEIGHBOUR}-${SLOT_DINNER}`);
     await touch.move(await centerOf(target));
     await expect(tid(page, 'drag-label')).toHaveText(moveTargetLabel(NEIGHBOUR, 'Abend'));
     await touch.lift();

@@ -12,6 +12,7 @@ import {
 } from '@housekeeping/api';
 import {
   imageTarget,
+  type AgentEntityRef,
   type AgentExtra,
   type AgentImageHit,
   type ImageTarget,
@@ -24,12 +25,14 @@ import { errorMessage } from '@/features/shell/error-message';
 import { useOnlineOnly } from '@/features/shell/offline';
 
 import { setDraftPhoto } from './agent-draft-photo';
+import { AgentEntities } from './agent-entities';
 
 // Spec 0067, REQ-011: "Mach ein Foto dazu" makes exactly one AI photo (FLUX through ai-image, the
 // app's own path) with "Neu generieren" and "Als Foto nehmen"; "Zeig echte Bilder" shows Google
 // images (Serper) to tap one. Pictures are only shown until "Als Foto nehmen" saves the chosen one
 // through the usual photo path; a Google image keeps its page as the source. A refusal of the
-// image model is a friendly hint, never a silent failure.
+// image model is a friendly hint, never a silent failure. A photo taken for a stored entry shows
+// that entry as a card under it, with its new photo (preview 28.11.: every change ends with it).
 
 /** FLUX refuses some subjects; the function does not say which failure it was (ai_unavailable). */
 const IMAGE_FAILED =
@@ -112,6 +115,8 @@ function TakeButton(props: {
   photo: () => Promise<Blob>;
   sourceUrl?: string;
   disabled: boolean;
+  /** The stored entry that got the photo (not for a draft, which shows it in its own card). */
+  onTaken: (entry: AgentEntityRef) => void;
   testID: string;
 }) {
   const online = useOnlineOnly();
@@ -129,6 +134,8 @@ function TakeButton(props: {
         props.sourceUrl,
       );
       setTaken(true);
+      if (props.target.kind !== 'draft')
+        props.onTaken({ kind: props.target.kind, id: props.target.id });
       toast.show({ message, duration: 2500 });
     } catch (error) {
       toast.show({ message: errorMessage(error) });
@@ -168,6 +175,7 @@ export function AgentImageCard(props: {
   >({ status: props.loaded ? 'idle' : 'loading' });
   const uri = useBlobUri(state.status === 'done' ? state.photo : undefined);
   const round = useRef(0);
+  const [taken, setTaken] = useState<AgentEntityRef>();
 
   // Only the answer sets the state, so a new answer can start it from an effect.
   const request = () => {
@@ -230,10 +238,23 @@ export function AgentImageCard(props: {
             return state.photo;
           }}
           disabled={state.status !== 'done'}
+          onTaken={setTaken}
           testID={`${testID}-take`}
         />
       </View>
+      <TakenEntry entry={taken} testID={`${testID}-made`} />
     </Surface>
+  );
+}
+
+/** The entry a photo was taken for, as its card (spec 0067, REQ-011). */
+function TakenEntry(props: { entry: AgentEntityRef | undefined; testID: string }) {
+  if (!props.entry) return null;
+  return (
+    <AgentEntities
+      extra={{ kind: 'entities', id: props.testID, items: [props.entry] }}
+      testID={props.testID}
+    />
   );
 }
 
@@ -307,6 +328,7 @@ export function AgentImagesRow(props: {
   const { extra, testID } = props;
   const { target, slots } = useTarget(extra);
   const [chosen, setChosen] = useState<number | undefined>();
+  const [taken, setTaken] = useState<AgentEntityRef>();
   const hit = chosen === undefined ? undefined : extra.images[chosen];
   return (
     <Surface testID={testID} style={{ gap: 10 }}>
@@ -341,9 +363,11 @@ export function AgentImagesRow(props: {
           }
           sourceUrl={hit?.pageUrl}
           disabled={!hit}
+          onTaken={setTaken}
           testID={`${testID}-take`}
         />
       </View>
+      <TakenEntry entry={taken} testID={`${testID}-made`} />
     </Surface>
   );
 }
