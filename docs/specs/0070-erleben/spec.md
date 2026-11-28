@@ -71,6 +71,9 @@ Breite, zu langer Text endet mit „…“.
   öffnet am Handy das Rezept in der App, am Desktop in einem neuen Tab
 - AC-008: Angenommen die Beschreibung ist länger als eine Zeile · Wenn der Vorschlag erscheint · Dann steht sie in einer
   Zeile und endet mit „…“
+- AC-009: Angenommen ein Rezept mit Beschreibung · Wenn es irgendwo in einer Auswahl oder Liste erscheint – Suche über
+  „+“ im Kalender, Vorschläge beim Planen, Sammlungen, Rezeptliste (Liste und Kacheln), Agent-Karten · Dann steht unter
+  dem Titel die Beschreibung in einer Zeile mit „…“ (Kacheln: bis zu zwei Zeilen, REQ-006)
 
 ## Entscheidungen
 
