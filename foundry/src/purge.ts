@@ -1,7 +1,8 @@
 // `foundry-agents --purge-conversations preview` (spec 0067, decision 13): before the preview's
 // database reset, its Foundry chats go too — every conversation whose metadata say
 // `app: housekeeping` and `env: preview`, with every answer of it (resp_…, which outlive the
-// conversation; their ids stand on the conversation's items). Production is never purged. Like
+// conversation; their ids stand on the conversation's items, `created_by.response_id`).
+// Production is never purged. Like
 // rest.ts it imports nothing but our own files and prints only counts, a failure only its HTTP
 // status and code — never a token, a header or a body.
 import { FoundryError } from './rest';
@@ -56,7 +57,11 @@ export function restConversationsApi(
     (value ?? {}) as { data?: unknown[]; has_more?: unknown; last_id?: unknown };
   return {
     async list(after) {
-      const query = new URLSearchParams({ limit: '100', order: 'asc', ...(after ? { after } : {}) });
+      const query = new URLSearchParams({
+        limit: '100',
+        order: 'asc',
+        ...(after ? { after } : {}),
+      });
       const listed = page(await call('GET', `/conversations?${query}`));
       return {
         data: (listed.data ?? []).flatMap((raw) => {
@@ -82,9 +87,13 @@ export function restConversationsApi(
       let after: string | undefined;
       for (let at = 0; at < MAX_PAGES; at += 1) {
         const query = new URLSearchParams({ limit: '100', ...(after ? { after } : {}) });
-        const listed = page(await call('GET', `/conversations/${conversation}/items?${query}`, true));
+        const listed = page(
+          await call('GET', `/conversations/${conversation}/items?${query}`, true),
+        );
+        // An item names the answer that wrote it in created_by (seen 28.11.2026).
         for (const raw of listed.data ?? []) {
-          const id = (raw as { response_id?: unknown } | null)?.response_id;
+          const item = (raw ?? {}) as { created_by?: { response_id?: unknown } };
+          const id = item.created_by?.response_id;
           if (typeof id === 'string' && RESPONSE.test(id)) ids.add(id);
         }
         if (listed.has_more !== true || typeof listed.last_id !== 'string') break;

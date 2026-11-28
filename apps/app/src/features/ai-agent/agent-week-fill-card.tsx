@@ -132,13 +132,14 @@ export function AgentWeekFillCard(props: {
           Vorschlag aus diesem Chat – zum Einplanen frag noch einmal.
         </Text>
       ) : null}
-      {result.empty ? (
+      {/* From "Verlauf" the week has moved on: only what it was (the hint above), no new plan. */}
+      {result.empty && !props.loaded ? (
         <Text variant="small" color="muted" testID={`${testID}-empty`}>
           {result.empty}
         </Text>
       ) : null}
       <View>
-        {result.rows.map((row) => {
+        {(props.loaded ? [] : result.rows).map((row) => {
           const rowId = `${testID}-row-${row.date}`;
           const subtitle = [day(row.date), ...row.notes, row.suggestion.facts]
             .filter(Boolean)
@@ -185,7 +186,7 @@ export function AgentWeekFillCard(props: {
           );
         })}
       </View>
-      {result.skipped.length > 0 ? (
+      {result.skipped.length > 0 && !props.loaded ? (
         <Text variant="small" color="muted" testID={`${testID}-skipped`}>
           {result.skipped.map((skip) => `${day(skip.date)}: ${skip.reason}`).join(' · ')}
         </Text>

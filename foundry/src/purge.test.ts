@@ -12,14 +12,16 @@ const TOKEN = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.SECRET-TOKEN.sig';
 interface Conv {
   id: string;
   metadata: Record<string, string>;
-  items: { id: string; type: string; response_id?: string }[];
+  items: { id: string; type: string; created_by?: { response_id: string; agent: unknown } }[];
 }
 
 /** The conversations of a Foundry project over HTTP, every call recorded. */
 function fakeProject(conversations: Conv[], options: { status?: number } = {}) {
   const live = new Map(conversations.map((conv) => [conv.id, conv]));
   const responses = new Set(
-    conversations.flatMap((conv) => conv.items.flatMap((item) => item.response_id ?? [])),
+    conversations.flatMap((conv) =>
+      conv.items.flatMap((item) => item.created_by?.response_id ?? []),
+    ),
   );
   const calls: { method: string; url: string; auth: string | null }[] = [];
   const json = (value: unknown, status = 200) =>
@@ -30,7 +32,11 @@ function fakeProject(conversations: Conv[], options: { status?: number } = {}) {
   const fetchFn = vi.fn<typeof fetch>(async (input, init) => {
     const url = new URL(String(input));
     const method = init?.method ?? 'GET';
-    calls.push({ method, url: url.toString(), auth: new Headers(init?.headers).get('authorization') });
+    calls.push({
+      method,
+      url: url.toString(),
+      auth: new Headers(init?.headers).get('authorization'),
+    });
     if (options.status) return json({ error: { code: 'Denied', message: TOKEN } }, options.status);
     const path = url.pathname.replace('/api/projects/proj/openai/v1', '');
     if (path === '/conversations' && method === 'GET') {
@@ -70,13 +76,17 @@ const conv = (id: string, metadata: Record<string, string>, responses: string[] 
     ...responses.map((response, index) => ({
       id: `fc_${id}_${index}`,
       type: 'function_call',
-      response_id: response,
+      created_by: { response_id: response, agent: { name: 'household-agent-preview' } },
     })),
   ],
 });
 
 const PROJECT = [
-  conv('conv_p1', { app: 'housekeeping', env: 'preview', household_id: 'h1' }, ['resp_1', 'resp_2', 'resp_1']),
+  conv('conv_p1', { app: 'housekeeping', env: 'preview', household_id: 'h1' }, [
+    'resp_1',
+    'resp_2',
+    'resp_1',
+  ]),
   conv('conv_prod', { app: 'housekeeping', env: 'prod', household_id: 'h2' }, ['resp_9']),
   conv('conv_old', { app: 'housekeeping', household_id: 'h3' }, ['resp_8']),
   conv('conv_p2', { app: 'housekeeping', env: 'preview', household_id: 'h4' }),
