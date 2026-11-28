@@ -62,6 +62,16 @@ WhatsApp oder einer geteilten Nachricht) öffnet am Handy die installierte App s
 - AC-005: Angenommen Android mit installierter App · Wenn Nadja einen geteilten Rezept-Link antippt · Dann öffnet die
   App direkt auf dem Rezept
 
+**REQ-008 — „Was kochen wir?“ mit Absprung und Beschreibung.** Im Fenster „Was kochen wir?“ (Spec 0063) hat jeder
+Vorschlag einen Knopf „Rezept öffnen“: am Handy öffnet das Rezept in der App (über dem Fenster, zurück zum
+Fenster), am Desktop in einem neuen Tab. Unter dem Titel steht die Beschreibung in genau einer Zeile mit begrenzter
+Breite, zu langer Text endet mit „…“.
+
+- AC-007: Angenommen „Was kochen wir?“ zeigt „Fagioli all'uccelletto“ · Wenn Enrico auf „Rezept öffnen“ tippt · Dann
+  öffnet am Handy das Rezept in der App, am Desktop in einem neuen Tab
+- AC-008: Angenommen die Beschreibung ist länger als eine Zeile · Wenn der Vorschlag erscheint · Dann steht sie in einer
+  Zeile und endet mit „…“
+
 ## Entscheidungen
 
 1. Name „Erleben“ (Enrico, 28.11.2026).
@@ -89,4 +99,5 @@ updated_at) mit RLS, Grants, pgTAP-Isolation, Delete-Trigger und Sync-Registrier
 - [ ] 5. Wischen zwischen Rezepten mit Vorschau
 - [ ] 6. Beschreibung auf Kacheln, Titel kopierbar
 - [ ] 7. Links öffnen die installierte App unter Android (AC-005)
+- [ ] 8. „Was kochen wir?“: „Rezept öffnen“ und einzeilige Beschreibung (AC-007, AC-008)
 - [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web`, pgTAP grün; e2e und Security-Check vor dem Release
