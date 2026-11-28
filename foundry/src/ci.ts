@@ -5,6 +5,7 @@
 import { appendFileSync, readFileSync } from 'node:fs';
 
 import type { AgentSpec } from './environments';
+import { restConversationsApi, runPurge } from './purge';
 import { restAgentsApi } from './rest';
 import { run } from './run';
 import { azureCliToken } from './token';
@@ -13,17 +14,29 @@ const args = process.argv.slice(2);
 const at = args.indexOf('--agents');
 const file = at >= 0 ? args[at + 1] : undefined;
 
-void run(args, {
-  env: (name) => process.env[name],
-  agents: () => {
-    if (!file) throw new Error('--agents <file> fehlt');
-    return JSON.parse(readFileSync(file, 'utf8')) as AgentSpec[];
-  },
-  api: (endpoint) => restAgentsApi(endpoint, azureCliToken(), fetch),
-  log: (line) => console.log(line),
-  error: (line) => console.error(line),
-  output: (lines) => {
-    const output = process.env.GITHUB_OUTPUT;
-    if (output) appendFileSync(output, `${lines.join('\n')}\n`);
-  },
-}).then((code) => process.exit(code));
+// Spec 0067, decision 13: `--purge-conversations preview` before the preview's reset.
+const purge = args.includes('--purge-conversations');
+
+void (
+  purge
+    ? runPurge(args, {
+        env: (name) => process.env[name],
+        api: (endpoint) => restConversationsApi(endpoint, azureCliToken(), fetch),
+        log: (line) => console.log(line),
+        error: (line) => console.error(line),
+      })
+    : run(args, {
+        env: (name) => process.env[name],
+        agents: () => {
+          if (!file) throw new Error('--agents <file> fehlt');
+          return JSON.parse(readFileSync(file, 'utf8')) as AgentSpec[];
+        },
+        api: (endpoint) => restAgentsApi(endpoint, azureCliToken(), fetch),
+        log: (line) => console.log(line),
+        error: (line) => console.error(line),
+        output: (lines) => {
+          const output = process.env.GITHUB_OUTPUT;
+          if (output) appendFileSync(output, `${lines.join('\n')}\n`);
+        },
+      })
+).then((code) => process.exit(code));

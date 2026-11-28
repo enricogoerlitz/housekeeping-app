@@ -7,16 +7,22 @@
 import {
   AGENT_PROPOSAL_LIMITS,
   deleteWished,
+  parseChangeArgs,
   parseDraftArgs,
   parseEntitiesArgs,
+  parseFillWeekArgs,
   parseImageArgs,
+  parsePhotoArgs,
   parseProposalArgs,
 } from '../_shared/agent-proposals.gen.ts';
 import {
+  changeOutput,
   draftOutput,
   entitiesOutput,
   imagesOutput,
+  photosOutput,
   proposalStep,
+  weekFillOutput,
   type AgentExtra,
   type AgentImageHit,
   type AgentSendRequest,
@@ -40,6 +46,8 @@ export const CARD_TOOLS = new Set([
   'make_image',
   'show_images',
   'show_entities',
+  'change_recipe',
+  'fill_week',
 ]);
 
 const ENTITY_TABLE = {
@@ -118,6 +126,13 @@ export function runCardTool(
         : {}),
       note: 'Nichts ist geändert: die Person übernimmt die Einträge selbst in der Karte.',
     });
+  }
+  if (call.name === 'fill_week') {
+    // REQ-014: the dishes, free evenings and trips are the app's (core week-fill.ts).
+    const wishes = parseFillWeekArgs(call.args);
+    if (!wishes) return json({ error: 'invalid_arguments' });
+    context.emit({ kind: 'week_fill', id: call.callId, wishes });
+    return weekFillOutput();
   }
   // make_image
   const image = parseImageArgs(call.args, AGENT_PROPOSAL_LIMITS.prompt);
@@ -331,4 +346,131 @@ export async function runDraftTool(
     if (!(error instanceof HttpError)) console.error('ai_agent_draft_failed');
     return done(json({ error: 'draft_failed' }));
   }
+}
+
+/**
+ * change_recipe (spec 0067, step C): a change of one of the household's recipes ("vegetarische
+ * Variante zur Lasagne"). The recipe is found here, as the person and in the chat's household
+ * only, by its id or its title; the app opens it with "Mit KI ändern" and the wish, where the
+ * person sees the Änderungsansicht and takes it over with "Rückgängig". Nothing is written here.
+ */
+export async function runChangeTool(
+  client: UserClient,
+  householdId: string,
+  call: { callId: string; args: string },
+  emit: (extra: AgentExtra) => void,
+): Promise<string> {
+  const args = parseChangeArgs(call.args);
+  if (!args) return json({ error: 'invalid_arguments' });
+  const { data, error } = await client
+    .from('recipes')
+    .select('id,kind,title,ingredients,steps')
+    .eq('household_id', householdId)
+    .limit(1000);
+  if (error || !Array.isArray(data)) {
+    console.error('ai_agent_change_failed');
+    return json({ error: 'recipe_not_found' });
+  }
+  const rows = data as {
+    id?: unknown;
+    kind?: unknown;
+    title?: unknown;
+    ingredients?: unknown;
+    steps?: unknown;
+  }[];
+  const recipe =
+    rows.find((row) => args.id !== undefined && row.id === args.id) ??
+    rows.find((row) => typeof row.title === 'string' && fold(row.title) === fold(args.name));
+  if (!recipe || typeof recipe.id !== 'string' || typeof recipe.title !== 'string')
+    return json({ error: 'recipe_not_found' });
+  if (recipe.kind === 'collection')
+    return json({ error: 'collection', hint: 'Eine Sammlung hat keine Varianten.' });
+  const empty = (value: unknown) => !Array.isArray(value) || value.length === 0;
+  if (empty(recipe.ingredients) && empty(recipe.steps))
+    return json({
+      error: 'unfinished',
+      hint: 'Das Rezept ist nur ein Titel: schlag mit propose_actions work_out vor (Mit KI ausarbeiten).',
+    });
+  const title = recipe.title.slice(0, 200);
+  emit({ kind: 'recipe_change', id: call.callId, recipeId: recipe.id, title, wish: args.wish });
+  return changeOutput({ id: recipe.id, title }, args.wish);
+}
+
+const PHOTO_TABLES = {
+  recipe: { table: 'recipes', title: 'title' },
+  restaurant: { table: 'restaurants', title: 'name' },
+  activity: { table: 'activities', title: 'name' },
+} as const;
+/** A stored photo is a JPEG of preparePhoto (1280 px); anything far bigger is not ours. */
+const MAX_PHOTO_BYTES = 3_000_000;
+
+function imageType(bytes: Uint8Array): string | undefined {
+  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg';
+  if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47)
+    return 'image/png';
+  return undefined;
+}
+
+function base64(bytes: Uint8Array): string {
+  let binary = '';
+  for (let at = 0; at < bytes.length; at += 0x8000)
+    binary += String.fromCharCode(...bytes.subarray(at, at + 0x8000));
+  return btoa(binary);
+}
+
+/**
+ * look_at_photos (REQ-013: photos only on request, each one costs): the household's own photos
+ * of up to six entries, read as the person (RLS on the rows and on the bucket), go to the model's
+ * next run as images. Entries of another household, without a photo or whose photo cannot be
+ * loaded are left out and counted. `charge` takes the quota for the photos first.
+ */
+export async function runPhotosTool(
+  client: UserClient,
+  householdId: string,
+  call: { callId: string; args: string },
+  stepId: string,
+  charge: (photos: number) => Promise<void>,
+): Promise<{ output: string | unknown[]; step: AgentStep }> {
+  const args = parsePhotoArgs(call.args);
+  const step = (text: string) => proposalStep('look_at_photos', call.args, text, stepId)!;
+  if (!args) {
+    const output = json({ error: 'invalid_arguments' });
+    return { output, step: step(output) };
+  }
+  const { table, title } = PHOTO_TABLES[args.kind];
+  const { data, error } = await client
+    .from(table)
+    .select(`id,${title},photo_path`)
+    .eq('household_id', householdId)
+    .in('id', args.ids)
+    .limit(AGENT_PROPOSAL_LIMITS.photos);
+  const rows = (error || !Array.isArray(data) ? [] : data) as Record<string, unknown>[];
+  const withPhoto = rows.filter(
+    (row) => typeof row.photo_path === 'string' && row.photo_path.startsWith(`${householdId}/`),
+  );
+  try {
+    if (withPhoto.length > 0) await charge(withPhoto.length);
+  } catch (caught) {
+    if (!(caught instanceof HttpError) || caught.code !== 'quota_exceeded') throw caught;
+    const output = json({ error: 'quota_exceeded' });
+    return { output, step: step(output) };
+  }
+  const seen: { id: string; title: string }[] = [];
+  const images: unknown[] = [];
+  for (const row of withPhoto) {
+    const loaded = await client.storage.download('household-media', String(row.photo_path));
+    const type = loaded.data ? imageType(loaded.data) : undefined;
+    if (!loaded.data || !type || loaded.data.length > MAX_PHOTO_BYTES) {
+      console.error('ai_agent_photo_unreadable');
+      continue;
+    }
+    seen.push({ id: String(row.id), title: String(row[title] ?? '').slice(0, 200) });
+    images.push({
+      type: 'input_image',
+      image_url: `data:${type};base64,${base64(loaded.data)}`,
+      detail: 'low',
+    });
+  }
+  const text = photosOutput(seen, rows.length - withPhoto.length);
+  return { output: [{ type: 'input_text', text }, ...images], step: step(text) };
 }

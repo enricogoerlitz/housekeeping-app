@@ -16,6 +16,9 @@ export const AGENT_PROPOSAL_TOOLS = [
   'make_image',
   'show_images',
   'show_entities',
+  'change_recipe',
+  'fill_week',
+  'look_at_photos',
 ] as const;
 export type AgentProposalTool = (typeof AGENT_PROPOSAL_TOOLS)[number];
 
@@ -28,6 +31,8 @@ export const AGENT_ACTION_KINDS = [
   'set_favorite',
   'set_servings',
   'add_recurring',
+  'set_remembered',
+  'work_out',
   'remove_from_list',
   'remove_plan_entry',
   'delete_recurring',
@@ -61,6 +66,15 @@ export const AGENT_PROPOSAL_LIMITS = {
   query: 200,
   /** Own entries in one row of cards. */
   entities: 12,
+  /** Characters of a change wish ("vegetarische Variante"). */
+  wish: 300,
+  /** Photos the agent may look at in one call (REQ-013: only on request, each costs). */
+  photos: 6,
+  /**
+   * Days of one "Füll die Woche" (REQ-014): one week, like "Was kochen wir?" — the distribution
+   * of spec 0063 tries every assignment and grows too slow beyond that.
+   */
+  weekDays: 7,
 } as const;
 
 export const isDeleteKind = (kind: AgentActionKind): boolean =>
@@ -110,6 +124,8 @@ export const AgentProposalSchema = z.strictObject({
   id: z.string().min(1).max(200),
   title: z.string().max(60).optional(),
   actions: z.array(AgentActionSchema).max(AGENT_PROPOSAL_LIMITS.actions),
+  /** REQ-013, AC-023: more entries are left to check; the card offers "Weitere prüfen". */
+  more: z.literal(true).optional(),
 });
 export type AgentProposal = z.infer<typeof AgentProposalSchema>;
 
@@ -144,12 +160,12 @@ const ACTION_JSON = {
       type: 'string',
       enum: [...AGENT_ACTION_KINDS],
       description:
-        'add_to_list: auf die Einkaufsliste · chore_done: Aufgabe erledigt · plan: Kalender-Eintrag · create_restaurant / create_activity: neu merken · set_favorite: Favorit/gemerkt · set_servings: Portionen eines Rezepts · add_recurring: Dauerposten · remove_from_list / remove_plan_entry / delete_recurring: löschen, nur auf ausdrücklichen Wunsch',
+        'add_to_list: auf die Einkaufsliste · chore_done: Aufgabe erledigt · plan: Kalender-Eintrag · create_restaurant / create_activity: neu merken · set_favorite: Herz (Favorit) eines Restaurants oder einer Aktivität · set_remembered: Aktivität merken (Lesezeichen) oder nicht mehr merken · set_servings: Portionen eines Rezepts · add_recurring: Dauerposten · work_out: unfertiges Rezept mit KI ausarbeiten · remove_from_list / remove_plan_entry / delete_recurring: löschen, nur auf ausdrücklichen Wunsch',
     },
     target: {
       type: ['string', 'null'],
       enum: [...AGENT_ACTION_TARGETS, null],
-      description: 'bei plan und set_favorite: worum es geht',
+      description: 'bei plan, set_favorite, set_remembered und work_out: worum es geht',
     },
     id: nullable('string', 'die id aus einem Werkzeug-Ergebnis, sonst null'),
     name: {
@@ -163,7 +179,10 @@ const ACTION_JSON = {
     address: nullable('string', 'Adresse eines neuen Orts, nur aus einer Quelle'),
     note: nullable('string', 'Zusatz, kurz'),
     servings: nullable('integer', 'Portionen (set_servings)', { minimum: 1, maximum: 100 }),
-    favorite: nullable('boolean', 'set_favorite: true merken, false nicht mehr'),
+    favorite: nullable(
+      'boolean',
+      'set_favorite und set_remembered: true an (Favorit / merken), false aus (nicht mehr)',
+    ),
     weekday: nullable('integer', 'add_recurring: Wochentag 1 = Montag … 7 = Sonntag', {
       minimum: 1,
       maximum: 7,
@@ -179,13 +198,83 @@ const PARAMETERS: Record<AgentProposalTool, Record<string, unknown>> = {
   propose_actions: {
     type: 'object',
     additionalProperties: false,
-    required: ['title', 'actions'],
+    required: ['title', 'actions', 'more'],
     properties: {
       title: nullable('string', 'kurzer Titel der Karte, z. B. „Für heute“'),
       actions: {
         type: 'array',
         description: `höchstens ${AGENT_PROPOSAL_LIMITS.actions} Einträge`,
         items: ACTION_JSON,
+      },
+      more: nullable(
+        'boolean',
+        'Massenbearbeitung: true, wenn noch ungeprüfte Einträge übrig sind (die Karte zeigt „Weitere prüfen“)',
+      ),
+    },
+  },
+  change_recipe: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['id', 'name', 'wish'],
+    properties: {
+      id: nullable('string', 'die id des Rezepts aus einem Werkzeug-Ergebnis'),
+      name: { type: 'string', description: 'Titel des Rezepts genau wie in den Daten' },
+      wish: {
+        type: 'string',
+        description: 'die Änderung in den Worten der Person, z. B. „vegetarische Variante“',
+      },
+    },
+  },
+  fill_week: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['from', 'to', 'slot', 'vegetarian', 'quick_days', 'guest_days', 'skip_days'],
+    properties: {
+      from: { type: 'string', description: 'erster Tag JJJJ-MM-TT' },
+      to: {
+        type: 'string',
+        description: `letzter Tag JJJJ-MM-TT, höchstens ${AGENT_PROPOSAL_LIMITS.weekDays} Tage`,
+      },
+      slot: nullable('string', 'Tageszeit des Haushalts; null = die letzte (Abendessen)'),
+      vegetarian: nullable('integer', 'mindestens so viele vegetarische Gerichte', {
+        minimum: 0,
+        maximum: AGENT_PROPOSAL_LIMITS.weekDays,
+      }),
+      quick_days: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Tage mit wenig Zeit (JJJJ-MM-TT)',
+      },
+      guest_days: {
+        type: 'array',
+        description: 'Tage mit Gästen',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['date', 'count'],
+          properties: {
+            date: { type: 'string', description: 'JJJJ-MM-TT' },
+            count: { type: 'integer', description: 'wie viele Gäste', minimum: 1, maximum: 30 },
+          },
+        },
+      },
+      skip_days: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Tage, die frei bleiben sollen (JJJJ-MM-TT)',
+      },
+    },
+  },
+  look_at_photos: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['kind', 'ids'],
+    properties: {
+      kind: { type: 'string', enum: ['recipe', 'restaurant', 'activity'] },
+      ids: {
+        type: 'array',
+        items: { type: 'string' },
+        description: `höchstens ${AGENT_PROPOSAL_LIMITS.photos} ids aus einem Werkzeug-Ergebnis`,
       },
     },
   },
@@ -305,6 +394,7 @@ export function deleteWished(message: string): boolean {
 const NEEDS: Partial<Record<AgentActionKind, (action: AgentAction) => boolean>> = {
   plan: (action) => action.target !== undefined,
   set_favorite: (action) => action.target === 'restaurant' || action.target === 'activity',
+  set_remembered: (action) => action.favorite !== undefined,
   set_servings: (action) => action.servings !== undefined,
   add_recurring: (action) => action.weekday !== undefined,
   remove_plan_entry: (action) => action.date !== undefined,
@@ -363,11 +453,112 @@ export function parseProposalArgs(
     actions.push(parsed.data);
   }
   const title = typeof args.title === 'string' ? oneLine(args.title).slice(0, 60) : '';
+  // AC-023: a full card always offers the next pass.
+  const more = args.more === true || entries.length > AGENT_PROPOSAL_LIMITS.actions;
   return {
-    proposal: { id: options.id, ...(title ? { title } : {}), actions },
+    proposal: {
+      id: options.id,
+      ...(title ? { title } : {}),
+      actions,
+      ...(more && actions.length > 0 ? { more: true as const } : {}),
+    },
     dropped,
     deletesDropped,
   };
+}
+
+export interface ChangeArgs {
+  /** A hint only: the function finds the recipe by it or by its title, in the chat's household. */
+  id?: string;
+  name: string;
+  wish: string;
+}
+
+/** The arguments of `change_recipe`; undefined without a wish or without a recipe. */
+export function parseChangeArgs(raw: string): ChangeArgs | undefined {
+  const args = record(json(raw));
+  const wish =
+    typeof args.wish === 'string' ? oneLine(args.wish).slice(0, AGENT_PROPOSAL_LIMITS.wish) : '';
+  const name = typeof args.name === 'string' ? oneLine(args.name).slice(0, 200) : '';
+  const id = typeof args.id === 'string' && z.uuid().safeParse(args.id).success ? args.id : '';
+  if (!wish || (!name && !id)) return undefined;
+  return { ...(id ? { id } : {}), name, wish };
+}
+
+const DAY_MS = 86_400_000;
+const dayDiff = (from: string, to: string) =>
+  Math.round((Date.parse(`${to}T12:00:00Z`) - Date.parse(`${from}T12:00:00Z`)) / DAY_MS);
+const plusDays = (from: string, days: number) =>
+  new Date(Date.parse(`${from}T12:00:00Z`) + days * DAY_MS).toISOString().slice(0, 10);
+
+/** The checked wishes of `fill_week` (REQ-014); which evenings are free decides the app. */
+export interface FillWeekArgs {
+  from: string;
+  to: string;
+  slot?: string;
+  vegetarian?: number;
+  quick: string[];
+  guests: { date: string; count: number }[];
+  skip: string[];
+}
+
+/**
+ * The arguments of `fill_week`: a valid range of at most 14 days, days inside it only, counts in
+ * their bounds; undefined without a range.
+ */
+export function parseFillWeekArgs(raw: string): FillWeekArgs | undefined {
+  const args = record(json(raw));
+  const from = typeof args.from === 'string' && isIsoDate(args.from) ? args.from : undefined;
+  const end = typeof args.to === 'string' && isIsoDate(args.to) ? args.to : undefined;
+  if (!from || !end || end < from) return undefined;
+  const to =
+    dayDiff(from, end) >= AGENT_PROPOSAL_LIMITS.weekDays
+      ? plusDays(from, AGENT_PROPOSAL_LIMITS.weekDays - 1)
+      : end;
+  const inRange = (value: unknown): value is string =>
+    typeof value === 'string' && isIsoDate(value) && value >= from && value <= to;
+  const days = (value: unknown) => [
+    ...new Set((Array.isArray(value) ? value : []).filter(inRange)),
+  ];
+  const guests = (Array.isArray(args.guest_days) ? args.guest_days : []).flatMap((entry) => {
+    const guest = record(entry);
+    const count = guest.count;
+    return inRange(guest.date) && Number.isInteger(count) && Number(count) >= 1
+      ? [{ date: guest.date, count: Math.min(30, Number(count)) }]
+      : [];
+  });
+  const slot = typeof args.slot === 'string' ? oneLine(args.slot).slice(0, 60) : '';
+  const vegetarian = Number.isInteger(args.vegetarian)
+    ? Math.max(0, Math.min(AGENT_PROPOSAL_LIMITS.weekDays, Number(args.vegetarian)))
+    : undefined;
+  return {
+    from,
+    to,
+    ...(slot ? { slot } : {}),
+    ...(vegetarian !== undefined ? { vegetarian } : {}),
+    quick: days(args.quick_days),
+    guests: guests.filter(
+      (guest, index) => guests.findIndex((other) => other.date === guest.date) === index,
+    ),
+    skip: days(args.skip_days),
+  };
+}
+
+export const AGENT_PHOTO_KINDS = ['recipe', 'restaurant', 'activity'] as const;
+export type AgentPhotoKind = (typeof AGENT_PHOTO_KINDS)[number];
+
+/** The arguments of `look_at_photos`: one kind, up to 6 uuids; undefined otherwise. */
+export function parsePhotoArgs(raw: string): { kind: AgentPhotoKind; ids: string[] } | undefined {
+  const args = record(json(raw));
+  const kind = AGENT_PHOTO_KINDS.find((candidate) => candidate === args.kind);
+  const ids = [
+    ...new Set(
+      (Array.isArray(args.ids) ? args.ids : []).filter(
+        (id): id is string => typeof id === 'string' && z.uuid().safeParse(id).success,
+      ),
+    ),
+  ].slice(0, AGENT_PROPOSAL_LIMITS.photos);
+  return kind && ids.length > 0 ? { kind, ids } : undefined;
 }
 
 const HTTPS = /^https:\/\/[^\s/?#@]+[^\s]*$/i;

@@ -2117,8 +2117,10 @@ export type Database = {
         Returns: Json;
       };
       adjust_item_count: { Args: { p_delta: number; p_item_id: string }; Returns: Json };
+      ai_chat_answering: { Args: { chat_id: string }; Returns: boolean };
       apply_changes: { Args: { p_household_id: string; p_ops: Json }; Returns: Json };
       assign_article_area: { Args: { p_area_id: string; p_article_id: string }; Returns: Json };
+      begin_ai_chat_answer: { Args: { chat_id: string; token: string }; Returns: boolean };
       begin_household_deletion: { Args: { household_id: string }; Returns: string[] };
       clear_checked_items: { Args: { p_household_id: string }; Returns: Json };
       clear_shopping_list: { Args: { p_household_id: string }; Returns: Json };
@@ -2143,10 +2145,20 @@ export type Database = {
         Returns: Json;
       };
       delete_restaurant: { Args: { restaurant_id: string; today: string }; Returns: Json };
+      end_ai_chat_answer: { Args: { chat_id: string; token: string }; Returns: undefined };
+      forget_ai_chat_deletions: { Args: { household_id: string; ids: string[] }; Returns: number };
       invite_member: { Args: { email: string; household_id: string }; Returns: string };
       merge_areas: { Args: { p_source_id: string; p_target_id: string }; Returns: number };
       merge_articles: { Args: { p_source_id: string; p_target_id: string }; Returns: Json };
       min_app_version: { Args: Record<PropertyKey, never>; Returns: string };
+      pending_ai_chat_deletions: {
+        Args: { household_id: string };
+        Returns: {
+          conversation_id: string;
+          id: string;
+          response_ids: string[];
+        }[];
+      };
       record_ai_chat_turn: {
         Args: { chat_id: string; response_id: string; title: string };
         Returns: undefined;

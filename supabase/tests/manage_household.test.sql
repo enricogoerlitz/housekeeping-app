@@ -4,7 +4,7 @@
 -- Negative paths throughout: a foreign household, signed out, invalid input, the failure path.
 begin;
 \ir _helpers.psql
-select plan(94);
+select plan(95);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 grant select on fx to anon, authenticated;
@@ -325,6 +325,7 @@ values (tests.fx('packing_item'), tests.fx('wg'), tests.fx('list_bag'), 'Zahnbü
 insert into public.household_invitations (household_id, email, invited_by) values (tests.fx('wg'), 'tom@example.com', tests.fx('enrico'));
 insert into private.deletions (household_id, kind, target_id, deleted_by, snapshot)
 values (tests.fx('wg'), 'recipe', gen_random_uuid(), tests.fx('enrico'), '{}');
+insert into private.ai_chat_deletions (household_id, conversation_id) values (tests.fx('wg'), 'conv_wg_old');
 insert into public.deleted_records (household_id, table_name, record_id) values (tests.fx('wg'), 'recipes', gen_random_uuid());
 -- The same in "Kuschelnest", which must stay.
 insert into public.recipes (household_id, title) values (tests.fx('home'), 'Mango-Curry');
@@ -393,6 +394,11 @@ select tests.authenticate_as(tests.fx('enrico'));
 select throws_ok(format('select public.delete_household(%L)', tests.fx('wg')),
   'P0001', 'ai_chats_remaining', 'Spec 0066, AC-032: while a KI-Agent chat is left: ai_chats_remaining');
 select public.delete_ai_chat((select id from public.ai_chats where household_id = tests.fx('wg')));
+select throws_ok(format('select public.delete_household(%L)', tests.fx('wg')),
+  'P0001', 'ai_chats_remaining', 'Spec 0067: while the deletion log holds a chat: ai_chats_remaining');
+-- ai-agent clears the log once it deleted the conversations in Foundry.
+select public.forget_ai_chat_deletions(tests.fx('wg'),
+  (select array_agg(id) from public.pending_ai_chat_deletions(tests.fx('wg'))));
 select lives_ok(format('select public.delete_household(%L)', tests.fx('wg')),
   'AC-019: the last member deletes "WG Köln"');
 select tests.clear_authentication();

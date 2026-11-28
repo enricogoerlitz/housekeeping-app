@@ -774,6 +774,48 @@ describe('TextField', () => {
       expect(input.getAttribute('name')).toMatch(/^hksearch\d+$/);
     });
 
+    it('composer polish 28.11.: a tap into the composer takes the cursor without scrolling the page', () => {
+      asIPhone();
+      render(
+        <TextField
+          accessibilityLabel="Nachricht"
+          value="Milch"
+          onChangeText={() => undefined}
+          multiline
+          grow
+          composer
+          testID="chat"
+        />,
+      );
+      const input = screen.getByTestId('chat') as HTMLTextAreaElement;
+      const focus = vi.spyOn(input, 'focus');
+      const finger = (x: number, y: number) => ({
+        identifier: 0,
+        force: 1,
+        clientX: x,
+        clientY: y,
+        pageX: x,
+        pageY: y,
+        target: input,
+      });
+      fireEvent.touchStart(input, {
+        touches: [finger(100, 800)],
+        changedTouches: [finger(100, 800)],
+      });
+      // Safari's own focus (and its scroll to the field) is prevented, the app focuses in place.
+      expect(fireEvent.touchEnd(input, { changedTouches: [finger(102, 801)] })).toBe(false);
+      expect(focus).toHaveBeenCalledWith({ preventScroll: true });
+      expect(document.activeElement).toBe(input);
+      expect(input.selectionStart).toBe(5);
+      // A drag across the field is scrolling: Safari keeps it.
+      input.blur();
+      fireEvent.touchStart(input, {
+        touches: [finger(100, 800)],
+        changedTouches: [finger(100, 800)],
+      });
+      expect(fireEvent.touchEnd(input, { changedTouches: [finger(100, 700)] })).toBe(true);
+    });
+
     it('spec 0033, AC-016: an e-mail field keeps its words', () => {
       asIPhone();
       render(
@@ -852,5 +894,127 @@ describe('TextField', () => {
     rerender(<TextField label="Uhrzeit" />);
     rerender(<TextField label="Uhrzeit" error="Ungültig" />);
     expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
+  });
+});
+
+// Enrico 28.11. (preview, phone): the agent's input like the Gemini/ChatGPT apps — no AutoFill or
+// contact suggestions (autocorrect stays), one rounded field ~46 pt at one line with "+" left and
+// mic and send right, the same inset on both ends, 8 pt between the controls, text at 17 pt.
+describe('TextField composer (spec 0067, composer polish)', () => {
+  function Composer(props: { value?: string }) {
+    return (
+      <TextField
+        accessibilityLabel="Nachricht an den Agent"
+        placeholder="Nachricht"
+        value={props.value ?? ''}
+        onChangeText={() => undefined}
+        multiline
+        grow
+        growLines={4.5}
+        round
+        composer
+        returnKeyType="send"
+        top={null}
+        left={<IconButton icon="plus" label="Anhängen" testID="plus" />}
+        right={<IconButton icon="send" label="Senden" variant="filled" testID="send" />}
+        testID="agent"
+      />
+    );
+  }
+
+  it('offers no autofill at all, but keeps autocorrect and spell checking', () => {
+    render(<Composer />);
+    const input = screen.getByTestId('agent');
+    expect(input.getAttribute('autocomplete')).toBe('off');
+    expect(input.getAttribute('autocorrect')).toBe('on');
+    expect(input.getAttribute('spellcheck')).toBe('true');
+    expect(input.getAttribute('enterkeyhint')).toBe('send');
+    // No name a browser or a password manager could read as a form field it knows.
+    expect(input.hasAttribute('name')).toBe(false);
+    expect(input.getAttribute('data-form-type')).toBe('other');
+    expect(input.getAttribute('data-1p-ignore')).toBe('true');
+    expect(input.getAttribute('data-lpignore')).toBe('true');
+  });
+
+  it('other fields keep their name (spec 0033 stays as it is)', () => {
+    render(<TextField label="Titel" value="" onChangeText={() => undefined} testID="title" />);
+    expect(screen.getByTestId('title').getAttribute('name')).toMatch(/^hksearch\d+$/);
+  });
+
+  it('writes one step larger than body text: 17 pt on 24 pt lines', () => {
+    render(<Composer />);
+    const input = screen.getByTestId('agent');
+    expect(input.style.fontSize).toBe('17px');
+    expect(input.style.lineHeight).toBe('24px');
+  });
+
+  it('one line is as high as its buttons (34 pt), so their centre is the line’s centre', () => {
+    render(<Composer />);
+    expect(screen.getByTestId('agent').style.height).toBe('34px');
+    const circle = (id: string) => {
+      const button = screen.getByTestId(id);
+      return (button.firstElementChild as HTMLElement | null)?.style.width ?? button.style.width;
+    };
+    expect(circle('plus')).toBe('34px');
+    expect(circle('send')).toBe('34px');
+    // The tap area stays 44 × 44 (40-ui.md).
+    expect(screen.getByTestId('send').style.width).toBe('44px');
+  });
+
+  it('has the same inset on both ends and 8 pt between the controls', () => {
+    render(<Composer />);
+    const row = screen.getByTestId('agent').parentElement as HTMLElement;
+    expect(row.style.paddingLeft).toBe(row.style.paddingRight);
+    expect(row.style.paddingLeft).toBe(row.style.paddingBottom);
+    expect(row.style.gap || row.style.columnGap).toBe('8px');
+  });
+
+  it('its buttons keep the cursor in the field: tapping "Senden" leaves the keyboard open', () => {
+    render(<Composer />);
+    // A prevented pointerdown is what keeps the focus (and the iPhone keyboard) in the field.
+    expect(fireEvent.pointerDown(screen.getByTestId('send'))).toBe(false);
+    expect(fireEvent.mouseDown(screen.getByTestId('plus'))).toBe(false);
+    // Elsewhere a button takes the focus as usual.
+    render(<IconButton icon="x" label="Schließen" testID="close" />);
+    expect(fireEvent.pointerDown(screen.getByTestId('close'))).toBe(true);
+  });
+
+  it('Enter sends and the cursor stays; Shift+Enter is a new line', () => {
+    const onSubmit = vi.fn();
+    render(
+      <TextField
+        accessibilityLabel="Nachricht"
+        value="Milch"
+        onChangeText={() => undefined}
+        multiline
+        grow
+        composer
+        onSubmitEditing={onSubmit}
+        testID="chat"
+      />,
+    );
+    const input = screen.getByTestId('chat');
+    input.focus();
+    expect(fireEvent.keyDown(input, { key: 'Enter', shiftKey: true })).toBe(true);
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(fireEvent.keyDown(input, { key: 'Enter' })).toBe(false);
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(document.activeElement).toBe(input);
+  });
+
+  it('stops growing at 4.5 lines', () => {
+    const scrollHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollHeight');
+    Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
+      configurable: true,
+      get: () => 400,
+    });
+    try {
+      render(<Composer value={'Zeile\n'.repeat(9)} />);
+      fireEvent.change(screen.getByTestId('agent'), { target: { value: 'Zeile\n'.repeat(10) } });
+      // 5 above and below the text, 4.5 lines of 24.
+      expect(screen.getByTestId('agent').style.height).toBe('118px');
+    } finally {
+      if (scrollHeight) Object.defineProperty(HTMLElement.prototype, 'scrollHeight', scrollHeight);
+    }
   });
 });

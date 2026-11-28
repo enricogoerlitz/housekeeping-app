@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   applyLabel,
   imageTarget,
+  isWorkOut,
   namedEntity,
   recheckAction,
   resolveAction,
@@ -186,10 +187,11 @@ describe('agent proposals in the household’s data (spec 0067, REQ-009)', () =>
         data({ restaurants: [{ ...enzo, favoriteOf: ['m-enrico'] }] }),
       ).problem,
     ).toBe('Ist schon Favorit');
+    // Spec 0041 (#150): the heart and "Merken" are two things; set_favorite is the heart.
     expect(
       resolveAction(act({ kind: 'set_favorite', target: 'activity', name: 'Bouldern' }), data())
         .command,
-    ).toEqual({ type: 'rememberActivity', activityId: bouldern.id, remembered: true });
+    ).toEqual({ type: 'favoriteActivity', activityId: bouldern.id });
     expect(
       resolveAction(act({ kind: 'set_servings', name: mangoCurry.title, servings: 6 }), data())
         .detail,
@@ -305,5 +307,60 @@ describe('what an agent image is for (spec 0067, REQ-011)', () => {
     expect(imageTarget('activity', 'bouldern', data())).toMatchObject({ id: bouldern.id });
     expect(imageTarget('restaurant', 'Unbekannt', data())).toBeUndefined();
     expect(imageTarget('recipe', undefined, data())).toBeUndefined();
+  });
+});
+
+describe('bulk editing (spec 0067, REQ-013)', () => {
+  const remembered = { ...bouldern, remembered: true };
+  it('"nicht mehr merken" goes through the one-tap remember path (spec 0041, #150)', () => {
+    const entry = resolveAction(
+      act({ kind: 'set_remembered', target: 'activity', name: 'Bouldern', favorite: false }),
+      data({ activities: [remembered] }),
+    );
+    expect(entry).toMatchObject({
+      title: 'Bouldern',
+      detail: 'Nicht mehr merken',
+      command: { type: 'rememberActivity', activityId: bouldern.id, remembered: false },
+    });
+    expect(
+      resolveAction(
+        act({ kind: 'set_remembered', target: 'activity', name: 'Bouldern', favorite: false }),
+        data(),
+      ).problem,
+    ).toBe('Ist nicht gemerkt');
+    expect(
+      resolveAction(
+        act({ kind: 'set_remembered', target: 'activity', name: 'Kino', favorite: true }),
+        data(),
+      ).problem,
+    ).toBe('Die Aktivität gibt es nicht');
+  });
+
+  it('the heart of an activity: already a favourite is a reason', () => {
+    expect(
+      resolveAction(
+        act({ kind: 'set_favorite', target: 'activity', name: 'Bouldern' }),
+        data({ activities: [{ ...bouldern, favoriteOf: ['m-enrico'] }] }),
+      ).problem,
+    ).toBe('Ist schon Favorit');
+  });
+
+  it('"Mit KI ausarbeiten" only for an unfinished recipe; it starts the flow of spec 0061', () => {
+    const dal = { ...mangoCurry, id: 'r-dal', title: 'Linsen-Dal', ingredients: [], steps: [] };
+    expect(
+      resolveAction(act({ kind: 'work_out', name: 'Linsen-Dal' }), data({ recipes: [dal] })),
+    ).toMatchObject({
+      title: 'Linsen-Dal',
+      detail: 'Mit KI ausarbeiten',
+      command: { type: 'workOut', recipeId: 'r-dal' },
+    });
+    expect(resolveAction(act({ kind: 'work_out', name: mangoCurry.title }), data()).problem).toBe(
+      'Ist schon ausgearbeitet',
+    );
+    expect(resolveAction(act({ kind: 'work_out', name: 'Pho' }), data()).problem).toBe(
+      'Das Rezept gibt es nicht',
+    );
+    expect(isWorkOut({ type: 'workOut', recipeId: 'r-dal' })).toBe(true);
+    expect(isWorkOut({ type: 'addToList', text: 'Milch' })).toBe(false);
   });
 });

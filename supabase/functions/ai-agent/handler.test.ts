@@ -299,8 +299,8 @@ describe('ai-agent: access', () => {
     expect(client.rpcCalls.map((call) => call.fn)).not.toContain('consume_ai_quota');
   });
 
-  it('AC-035: the 21st answer is 409 chat_too_long', async () => {
-    const ids = Array.from({ length: 20 }, (_, n) => `resp_${n}`);
+  it('AC-035 (spec 0067, step C: model runs, not answers): the 96th run is 409 chat_too_long', async () => {
+    const ids = Array.from({ length: 95 }, (_, n) => `resp_${n}`);
     const { deps } = setup({ chats: [chatRow({ response_ids: ids })] });
     const response = await handler(send({ chatId: CHAT_ID }), deps);
     expect(response.status).toBe(409);
@@ -392,7 +392,8 @@ describe('ai-agent: send', () => {
     expect(content[0]!.text).toContain('Koordinaten: 52.511, 13.459');
     expect(content[1]!.text).toBe('Romantisch in Mitte');
     expect(calls(state, 'POST', '/conversations')[0]?.body).toEqual({
-      metadata: { household_id: HOUSEHOLD_ID, app: 'housekeeping' },
+      // Spec 0067, decision 13: the environment of the agent.
+      metadata: { household_id: HOUSEHOLD_ID, app: 'housekeeping', env: 'local' },
     });
 
     // AC-037: exactly one output per call_id, carrying the enrichment (decision 11).
@@ -415,12 +416,20 @@ describe('ai-agent: send', () => {
         },
       },
       {
+        fn: 'begin_ai_chat_answer',
+        args: { chat_id: NEW_CHAT_ID, token: expect.any(String) },
+      },
+      {
         fn: 'record_ai_chat_turn',
         args: { chat_id: NEW_CHAT_ID, response_id: 'resp_new', title: null },
       },
       {
         fn: 'record_ai_chat_turn',
         args: { chat_id: NEW_CHAT_ID, response_id: 'resp_new', title: 'Romantisch in Mitte' },
+      },
+      {
+        fn: 'end_ai_chat_answer',
+        args: { chat_id: NEW_CHAT_ID, token: expect.any(String) },
       },
     ]);
   });
@@ -614,7 +623,11 @@ describe('ai-agent: delete', () => {
       `${PROJECT}/openai/v1/responses/resp_b`,
     ]);
     expect(calls(state, 'DELETE', '/conversations/conv_old')).toHaveLength(1);
-    expect(client.rpcCalls).toEqual([{ fn: 'delete_ai_chat', args: { chat_id: CHAT_ID } }]);
+    expect(client.rpcCalls).toEqual([
+      { fn: 'delete_ai_chat', args: { chat_id: CHAT_ID } },
+      // Spec 0067: then the log of chats deleted another way (empty here).
+      { fn: 'pending_ai_chat_deletions', args: { household_id: HOUSEHOLD_ID } },
+    ]);
   });
 
   it('AC-029: Foundry failing keeps the row and answers 503', async () => {
@@ -650,7 +663,10 @@ describe('ai-agent: delete', () => {
   it('a conversation already gone still deletes the answers and the row', async () => {
     const { deps, client } = setup({ state: { conversations: {} } });
     expect((await handler(del(), deps)).status).toBe(200);
-    expect(client.rpcCalls.map((call) => call.fn)).toEqual(['delete_ai_chat']);
+    expect(client.rpcCalls.map((call) => call.fn)).toEqual([
+      'delete_ai_chat',
+      'pending_ai_chat_deletions',
+    ]);
   });
 
   it('AC-031: purge deletes every chat of the household', async () => {
@@ -666,7 +682,11 @@ describe('ai-agent: delete', () => {
     });
     const response = await handler(post({ action: 'purge', householdId: HOUSEHOLD_ID }), deps);
     expect(await response.json()).toEqual({ deleted: 2 });
-    expect(client.rpcCalls.map((call) => call.fn)).toEqual(['delete_ai_chat', 'delete_ai_chat']);
+    expect(client.rpcCalls.map((call) => call.fn)).toEqual([
+      'delete_ai_chat',
+      'delete_ai_chat',
+      'pending_ai_chat_deletions',
+    ]);
   });
 
   it('AC-031: a household without chats is purged without any Foundry setting (no agent configured)', async () => {
@@ -981,7 +1001,14 @@ const writes = (client: ReturnType<typeof setup>['client']) =>
   client.rpcCalls
     .map((call) => call.fn)
     .filter(
-      (fn) => !['consume_ai_quota', 'record_ai_chat_turn', 'is_household_member'].includes(fn),
+      (fn) =>
+        ![
+          'consume_ai_quota',
+          'record_ai_chat_turn',
+          'is_household_member',
+          'begin_ai_chat_answer',
+          'end_ai_chat_answer',
+        ].includes(fn),
     );
 
 const appendedOutputs = (state: FoundryState) =>
@@ -1627,5 +1654,419 @@ describe('ai-agent: a draft of something the household has (preview 28.11., dupl
     const output = JSON.parse(outputsOf(state, 1)[0]!.output!);
     expect(output.existing).toEqual([{ id: LASAGNE, title: 'Linsen Dal' }]);
     expect(extrasOf(all).map((extra) => extra.kind)).toEqual(['recipe_draft', 'entities']);
+  });
+});
+
+// ---------- Spec 0067, step C ----------
+
+const rpcNames = (client: ReturnType<typeof setup>['client']) =>
+  client.rpcCalls.map((call) => call.fn);
+
+describe('ai-agent: one answer per chat (spec 0067, AC-024)', () => {
+  it('AC-024: a send while another answer runs is 409 chat_busy; nothing reaches Foundry or the quota', async () => {
+    const { deps, state, client } = setup({
+      rpc: (fn) =>
+        fn === 'begin_ai_chat_answer' ? { data: false, error: null } : { data: true, error: null },
+    });
+    const response = await handler(send({ chatId: CHAT_ID }), deps);
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: 'chat_busy' });
+    expect(state.calls).toEqual([]);
+    expect(rpcNames(client)).toEqual(['begin_ai_chat_answer']);
+  });
+
+  it('the lease is taken before the conversation is touched and given back after the answer', async () => {
+    const { deps, client } = setup();
+    await events(await handler(send({ chatId: CHAT_ID }), deps));
+    const names = rpcNames(client);
+    expect(names[0]).toBe('begin_ai_chat_answer');
+    expect(names.at(-1)).toBe('end_ai_chat_answer');
+    const begin = client.rpcCalls[0]!.args;
+    const end = client.rpcCalls.at(-1)!.args;
+    expect(begin).toEqual({ chat_id: CHAT_ID, token: expect.stringMatching(/^[0-9a-f-]{36}$/) });
+    expect(end).toEqual(begin);
+  });
+
+  it('a new chat holds its lease from the start; a refusal before the stream gives it back', async () => {
+    const { deps, client } = setup();
+    await events(await handler(send(), deps));
+    expect(rpcNames(client).slice(0, 3)).toEqual([
+      'consume_ai_quota',
+      'create_ai_chat',
+      'begin_ai_chat_answer',
+    ]);
+    const refused = setup({
+      rpc: (fn) =>
+        fn === 'consume_ai_quota'
+          ? { data: null, error: { message: 'quota_exceeded', code: 'P0001' } }
+          : { data: true, error: null },
+    });
+    expect((await handler(send({ chatId: CHAT_ID }), refused.deps)).status).toBe(429);
+    expect(rpcNames(refused.client)).toEqual([
+      'begin_ai_chat_answer',
+      'consume_ai_quota',
+      'end_ai_chat_answer',
+    ]);
+  });
+
+  it('AC-024: status says whether an answer runs; a foreign chat is 403, signed out 401', async () => {
+    const status = () => post({ action: 'status', householdId: HOUSEHOLD_ID, chatId: CHAT_ID });
+    const { deps, state } = setup();
+    const reply = await handler(status(), deps);
+    expect(await reply.json()).toEqual({ answering: true });
+    expect(state.calls).toEqual([]);
+    const foreign = setup({ chats: [chatRow({ household_id: FOREIGN_HOUSEHOLD })] });
+    expect((await handler(status(), foreign.deps)).status).toBe(403);
+    expect((await handler(post({}, { jwt: ANON_JWT }), deps)).status).toBe(401);
+  });
+});
+
+describe('ai-agent: quota per answer and tool run (spec 0067, REQ-015)', () => {
+  it('an answer costs 5, every further model run after tools 1 more', async () => {
+    const { deps, client } = setup({
+      state: { stream: toolTurn([{ name: 'list_recipes', callId: 'call_r', args: {} }]) },
+    });
+    await events(await handler(send({ chatId: CHAT_ID }), deps));
+    expect(
+      client.rpcCalls.filter((call) => call.fn === 'consume_ai_quota').map((call) => call.args),
+    ).toEqual([
+      { kind: 'request', amount: 5 },
+      { kind: 'request', amount: 1 },
+    ]);
+  });
+
+  it('the quota running out mid-answer ends it with quota_exceeded; the tool outputs are kept', async () => {
+    let charged = 0;
+    const { deps, state } = setup({
+      rpc: (fn) => {
+        if (fn !== 'consume_ai_quota') return { data: true, error: null };
+        charged += 1;
+        return charged === 1
+          ? { data: true, error: null }
+          : { data: null, error: { message: 'quota_exceeded', code: 'P0001' } };
+      },
+      state: { stream: toolTurn([{ name: 'list_recipes', callId: 'call_r', args: {} }]) },
+    });
+    const all = await events(await handler(send({ chatId: CHAT_ID }), deps));
+    expect(all.at(-1)).toEqual({ type: 'error', error: 'quota_exceeded' });
+    expect(calls(state, 'POST', `${PROJECT}/openai/v1/responses`)).toHaveLength(1);
+    expect(appendedOutputs(state).map((item) => item.call_id)).toEqual(['call_r']);
+  });
+});
+
+describe('ai-agent: the environment of a conversation (spec 0067, decision 13)', () => {
+  it('a new conversation names its environment', async () => {
+    const { deps, state } = setup();
+    await events(await handler(send(), deps));
+    expect(state.conversations.conv_new?.metadata).toEqual({
+      household_id: HOUSEHOLD_ID,
+      app: 'housekeeping',
+      env: 'local',
+    });
+  });
+
+  it("a conversation of another environment is 403 (the preview never answers in production's)", async () => {
+    const { deps, state } = setup({
+      state: {
+        conversations: {
+          conv_old: { metadata: { household_id: HOUSEHOLD_ID, env: 'prod' }, items: [] },
+        },
+      },
+    });
+    expect((await handler(send({ chatId: CHAT_ID }), deps)).status).toBe(403);
+    expect(calls(state, 'POST', '/responses')).toEqual([]);
+  });
+});
+
+describe('ai-agent: the deletion log (spec 0067, decision 13)', () => {
+  const LOG_OWN = 'dddddddd-0000-4000-8000-000000000001';
+  const LOG_DIRECT = 'dddddddd-0000-4000-8000-000000000002';
+  const LOG_FOREIGN = 'dddddddd-0000-4000-8000-000000000003';
+  const pending = [
+    { id: LOG_OWN, conversation_id: 'conv_old', response_ids: ['resp_a', 'resp_b'] },
+    { id: LOG_DIRECT, conversation_id: 'conv_direct', response_ids: ['resp_d', 'resp_x'] },
+    { id: LOG_FOREIGN, conversation_id: 'conv_foreign', response_ids: ['resp_f'] },
+  ];
+  const withLog = (over: Partial<FoundryState> = {}) =>
+    setup({
+      rpc: (fn) =>
+        fn === 'pending_ai_chat_deletions'
+          ? { data: pending, error: null }
+          : fn === 'forget_ai_chat_deletions'
+            ? { data: 3, error: null }
+            : { data: true, error: null },
+      state: {
+        conversations: {
+          conv_old: { metadata: { household_id: HOUSEHOLD_ID }, items: [] },
+          conv_direct: { metadata: { household_id: HOUSEHOLD_ID }, items: [] },
+          conv_foreign: { metadata: { household_id: FOREIGN_HOUSEHOLD }, items: [] },
+        },
+        responses: {
+          resp_a: { conversation: 'conv_old' },
+          resp_b: { conversation: 'conv_old' },
+          resp_d: { conversation: 'conv_direct' },
+          resp_x: { conversation: 'conv_elsewhere' },
+          resp_f: { conversation: 'conv_foreign' },
+        },
+        ...over,
+      },
+    });
+  const del = () => post({ action: 'delete', householdId: HOUSEHOLD_ID, chatId: CHAT_ID });
+
+  it('a chat deleted directly is cleaned at the next delete: its answers and conversation go', async () => {
+    const { deps, state, client } = withLog();
+    expect((await handler(del(), deps)).status).toBe(200);
+    expect(state.conversations.conv_direct).toBeUndefined();
+    expect(state.responses.resp_d).toBeUndefined();
+    // An answer of another conversation and a conversation of another household stay.
+    expect(state.responses.resp_x).toBeDefined();
+    expect(state.conversations.conv_foreign).toBeDefined();
+    expect(state.responses.resp_f).toBeDefined();
+    const forget = client.rpcCalls.find((call) => call.fn === 'forget_ai_chat_deletions');
+    expect(forget?.args).toEqual({
+      household_id: HOUSEHOLD_ID,
+      ids: [LOG_OWN, LOG_DIRECT, LOG_FOREIGN],
+    });
+    // The chat just deleted is not asked again.
+    expect(calls(state, 'GET', '/responses/resp_a')).toHaveLength(1);
+  });
+
+  it('purge cleans the log too, so delete_household can run', async () => {
+    const { deps, state, client } = withLog();
+    await handler(post({ action: 'purge', householdId: HOUSEHOLD_ID }), deps);
+    expect(state.conversations.conv_direct).toBeUndefined();
+    expect(rpcNames(client)).toContain('forget_ai_chat_deletions');
+  });
+
+  it('Foundry failing while cleaning keeps the log entries', async () => {
+    const { deps, client } = withLog({ failDeleteConversation: true });
+    const response = await handler(post({ action: 'purge', householdId: HOUSEHOLD_ID }), deps);
+    expect(response.status).toBe(503);
+    expect(rpcNames(client)).not.toContain('forget_ai_chat_deletions');
+  });
+});
+
+describe('ai-agent: a variant from the chat (spec 0067, step C)', () => {
+  const LASAGNE = '6f1c0f5e-0000-4000-8000-0000000000f1';
+  const DAL = '6f1c0f5e-0000-4000-8000-0000000000f2';
+  const FOREIGN_RECIPE = '6f1c0f5e-0000-4000-8000-0000000000f3';
+  const tables = {
+    recipes: [
+      {
+        household_id: HOUSEHOLD_ID,
+        id: LASAGNE,
+        kind: 'recipe',
+        title: 'Lasagne',
+        ingredients: [{ id: 'i', articleId: 'a-cream' }],
+        steps: [],
+      },
+      {
+        household_id: HOUSEHOLD_ID,
+        id: DAL,
+        kind: 'recipe',
+        title: 'Linsen-Dal',
+        ingredients: [],
+        steps: [],
+      },
+      {
+        household_id: FOREIGN_HOUSEHOLD,
+        id: FOREIGN_RECIPE,
+        kind: 'recipe',
+        title: 'Lasagne',
+        ingredients: [{}],
+        steps: [],
+      },
+    ],
+  };
+  const changeTurn = (args: unknown) =>
+    setup({
+      tables,
+      state: { stream: toolTurn([{ name: 'change_recipe', callId: 'call_v', args }]) },
+    });
+
+  it('the recipe of the household becomes a card; nothing is changed, no second model run', async () => {
+    const { deps, state, client } = changeTurn({
+      id: null,
+      name: 'lasagne',
+      wish: 'vegetarische Variante',
+    });
+    const all = await events(await handler(send({ chatId: CHAT_ID }), deps));
+    expect(extrasOf(all)).toEqual([
+      {
+        kind: 'recipe_change',
+        id: 'call_v',
+        recipeId: LASAGNE,
+        title: 'Lasagne',
+        wish: 'vegetarische Variante',
+      },
+    ]);
+    expect(calls(state, 'POST', `${PROJECT}/openai/v1/responses`)).toHaveLength(1);
+    expect(writes(client)).toEqual([]);
+  });
+
+  it('AC-014: a recipe of another household is no card, even with its id', async () => {
+    const { deps, state } = changeTurn({ id: FOREIGN_RECIPE, name: 'Pho', wish: 'vegan' });
+    const all = await events(await handler(send({ chatId: CHAT_ID }), deps));
+    expect(extrasOf(all)).toEqual([]);
+    expect(JSON.parse(appendedOutputs(state)[0]!.output)).toEqual({ error: 'recipe_not_found' });
+  });
+
+  it('an unfinished recipe is worked out instead; invalid arguments say so', async () => {
+    const dal = changeTurn({ id: DAL, name: 'Linsen-Dal', wish: 'vegan' });
+    const all = await events(await handler(send({ chatId: CHAT_ID }), dal.deps));
+    expect(extrasOf(all)).toEqual([]);
+    expect(JSON.parse(appendedOutputs(dal.state)[0]!.output)).toMatchObject({
+      error: 'unfinished',
+    });
+    const broken = changeTurn({ id: LASAGNE, name: 'Lasagne', wish: '' });
+    await events(await handler(send({ chatId: CHAT_ID }), broken.deps));
+    expect(JSON.parse(appendedOutputs(broken.state)[0]!.output)).toEqual({
+      error: 'invalid_arguments',
+    });
+  });
+});
+
+describe('ai-agent: fill the week and bulk passes (spec 0067, REQ-013, REQ-014)', () => {
+  it('REQ-014: fill_week becomes a card with the checked wishes; the dishes are the app’s', async () => {
+    const { deps, state } = setup({
+      state: {
+        stream: toolTurn([
+          {
+            name: 'fill_week',
+            callId: 'call_w',
+            args: {
+              from: '2026-11-30',
+              to: '2026-12-06',
+              slot: null,
+              vegetarian: 2,
+              quick_days: ['2026-12-02', 'Mittwoch'],
+              guest_days: [{ date: '2026-12-05', count: 2 }],
+              skip_days: [],
+            },
+          },
+        ]),
+      },
+    });
+    const all = await events(await handler(send({ chatId: CHAT_ID }), deps));
+    expect(extrasOf(all)).toEqual([
+      {
+        kind: 'week_fill',
+        id: 'call_w',
+        wishes: {
+          from: '2026-11-30',
+          to: '2026-12-06',
+          vegetarian: 2,
+          quick: ['2026-12-02'],
+          guests: [{ date: '2026-12-05', count: 2 }],
+          skip: [],
+        },
+      },
+    ]);
+    expect(calls(state, 'POST', `${PROJECT}/openai/v1/responses`)).toHaveLength(1);
+  });
+
+  it('AC-023: a bulk pass keeps 20 entries and offers the next pass', async () => {
+    const actions = Array.from({ length: 22 }, (_, n) => ({
+      ...blank,
+      kind: 'set_remembered',
+      target: 'activity',
+      name: `Ausflug ${n}`,
+      favorite: false,
+    }));
+    const { deps } = setup({
+      state: {
+        stream: toolTurn([
+          {
+            name: 'propose_actions',
+            callId: 'call_p',
+            args: { title: 'Eher einmalig', actions, more: null },
+          },
+        ]),
+      },
+    });
+    const [extra] = extrasOf(await events(await handler(send({ chatId: CHAT_ID }), deps)));
+    expect(extra?.kind === 'proposal' && extra.proposal.actions).toHaveLength(20);
+    expect(extra?.kind === 'proposal' && extra.proposal.more).toBe(true);
+  });
+});
+
+describe('ai-agent: photos only on request (spec 0067, REQ-013)', () => {
+  const OWN_A = '6f1c0f5e-0000-4000-8000-0000000000a1';
+  const OWN_B = '6f1c0f5e-0000-4000-8000-0000000000a2';
+  const NO_PHOTO = '6f1c0f5e-0000-4000-8000-0000000000a3';
+  const FOREIGN = '6f1c0f5e-0000-4000-8000-0000000000a4';
+  const photoSetup = () =>
+    setup({
+      tables: {
+        recipes: [
+          {
+            household_id: HOUSEHOLD_ID,
+            id: OWN_A,
+            title: 'Lasagne',
+            photo_path: `${HOUSEHOLD_ID}/recipes/a.jpg`,
+          },
+          {
+            household_id: HOUSEHOLD_ID,
+            id: OWN_B,
+            title: 'Dal',
+            photo_path: `${HOUSEHOLD_ID}/recipes/b.jpg`,
+          },
+          { household_id: HOUSEHOLD_ID, id: NO_PHOTO, title: 'Pho', photo_path: null },
+          {
+            household_id: FOREIGN_HOUSEHOLD,
+            id: FOREIGN,
+            title: 'Fremd',
+            photo_path: 'x/recipes/f.jpg',
+          },
+        ],
+      },
+      state: {
+        stream: toolTurn([
+          {
+            name: 'look_at_photos',
+            callId: 'call_f',
+            args: { kind: 'recipe', ids: [OWN_A, OWN_B, NO_PHOTO, FOREIGN] },
+          },
+        ]),
+      },
+    });
+  type PhotoOutput = { output: { type: string; text?: string; image_url?: string }[] };
+
+  it('the household’s photos go to the next run as images, each charged; others are left out', async () => {
+    const { deps, state, client } = photoSetup();
+    const loaded: string[] = [];
+    client.storage.download = async (_bucket, path) => {
+      loaded.push(path);
+      return { data: new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]), error: null };
+    };
+    const all = await events(await handler(send({ chatId: CHAT_ID }), deps));
+    const output = outputsOf(state, 1)[0] as unknown as PhotoOutput;
+    expect(output.output.map((part) => part.type)).toEqual([
+      'input_text',
+      'input_image',
+      'input_image',
+    ]);
+    expect(JSON.parse(output.output[0]!.text!)).toMatchObject({ count: 2, without_photo: 1 });
+    expect(output.output[1]!.image_url).toMatch(/^data:image\/jpeg;base64,/);
+    expect(loaded).toEqual([`${HOUSEHOLD_ID}/recipes/a.jpg`, `${HOUSEHOLD_ID}/recipes/b.jpg`]);
+    // 5 for the answer, 2 photos, 1 further run.
+    const charged = client.rpcCalls
+      .filter((call) => call.fn === 'consume_ai_quota')
+      .map((call) => call.args.amount);
+    expect(charged).toEqual([5, 2, 1]);
+    const steps = all.flatMap((event) =>
+      event.type === 'step' && event.step.status === 'done' ? [event.step] : [],
+    );
+    expect(steps[0]).toMatchObject({ label: 'Sieht sich Fotos an', count: 2 });
+  });
+
+  it('a photo that cannot be loaded is left out; the answer goes on', async () => {
+    const { deps, state, client } = photoSetup();
+    client.storage.download = async () => ({ data: null, error: { message: 'gone' } });
+    const all = await events(await handler(send({ chatId: CHAT_ID }), deps));
+    const output = outputsOf(state, 1)[0] as unknown as PhotoOutput;
+    expect(output.output.map((part) => part.type)).toEqual(['input_text']);
+    expect(JSON.parse(output.output[0]!.text!)).toMatchObject({ count: 0 });
+    expect(all.at(-1)).toEqual({ type: 'done' });
   });
 });

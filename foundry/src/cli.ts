@@ -5,6 +5,7 @@ import { appendFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 import { loadAgents } from './definitions';
+import { restConversationsApi, runPurge } from './purge';
 import { restAgentsApi } from './rest';
 import { run } from './run';
 import { azureCliToken } from './token';
@@ -22,6 +23,19 @@ if (writeAt >= 0) {
   mkdirSync(path.dirname(path.resolve(file)), { recursive: true });
   writeFileSync(file, JSON.stringify(agents));
   console.log(`${file}: ${agents.map((agent) => agent.name).join(', ')}`);
+} else if (args.includes('--purge-conversations')) {
+  // Spec 0067, decision 13: `--purge-conversations local` clears the local chats of the project.
+  void runPurge(args, {
+    env: (name) => process.env[name],
+    api: (endpoint) =>
+      restConversationsApi(
+        endpoint,
+        azureCliToken(process.env.FOUNDRY_SUBSCRIPTION?.trim() || undefined),
+        fetch,
+      ),
+    log: (line) => console.log(line),
+    error: (line) => console.error(line),
+  }).then((code) => process.exit(code));
 } else {
   void run(args, {
     env: (name) => process.env[name],

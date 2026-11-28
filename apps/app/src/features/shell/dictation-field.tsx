@@ -1,4 +1,4 @@
-import { IconButton, Text, TextField, type TextFieldProps } from '@housekeeping/ui';
+import { COMPOSER, IconButton, Text, TextField, type TextFieldProps } from '@housekeeping/ui';
 import { useEffect, type ReactNode } from 'react';
 import { View } from 'react-native';
 
@@ -68,7 +68,13 @@ export function DictationField(
         }}
         right={
           trailing ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: field.composer ? COMPOSER.gap : 2,
+              }}
+            >
               {mic}
               {trailing}
             </View>

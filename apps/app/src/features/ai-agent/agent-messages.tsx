@@ -16,6 +16,8 @@ import { AgentEntities } from './agent-entities';
 import { useAgentOpen } from './agent-open';
 import { AgentImageCard, AgentImagesRow } from './agent-image-cards';
 import { AgentProposalCard } from './agent-proposal-card';
+import { AgentRecipeChangeCard } from './agent-recipe-change-card';
+import { AgentWeekFillCard } from './agent-week-fill-card';
 import { AgentRecipeDraftCard } from './agent-recipe-draft-card';
 
 import type { AttachmentPreview } from './agent-attachments';
@@ -178,12 +180,19 @@ function Answer(props: {
     quoted: step.kind === 'web_search',
   }));
   const waiting = turn.status === 'streaming' && turn.text === '' && steps.length === 0;
+  // AC-024: another person's answer runs in this chat; this one starts after it.
+  const queued = turn.status === 'waiting';
   return (
     <View testID={testID} style={{ gap: 12 }}>
       <ProgressSteps steps={steps} runningLabel="läuft" testID={`${testID}-steps`} />
       {waiting ? (
         <Text variant="small" color="muted" testID={`${testID}-thinking`}>
           Denkt nach …
+        </Text>
+      ) : null}
+      {queued ? (
+        <Text variant="small" color="muted" testID={`${testID}-busy`}>
+          Agent antwortet gerade … deine Nachricht geht danach.
         </Text>
       ) : null}
       {turn.text ? (
@@ -201,6 +210,20 @@ function Answer(props: {
               <AgentProposalCard
                 key={extra.proposal.id}
                 proposal={extra.proposal}
+                loaded={turn.loaded === true}
+                onMore={
+                  props.followUpsEnabled ? () => props.onFollowUp('Weitere prüfen') : undefined
+                }
+                testID={id}
+              />
+            );
+          case 'recipe_change':
+            return <AgentRecipeChangeCard key={extra.id} extra={extra} testID={id} />;
+          case 'week_fill':
+            return (
+              <AgentWeekFillCard
+                key={extra.id}
+                extra={extra}
                 loaded={turn.loaded === true}
                 testID={id}
               />

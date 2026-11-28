@@ -118,6 +118,15 @@ export async function loadAgentChat(chatId: Id): Promise<AgentMessage[]> {
   return reply.messages;
 }
 
+/**
+ * Spec 0067, AC-024: whether an answer runs in the chat (another person's, or one of this device
+ * still going); the page waits with "Agent antwortet gerade …" before it sends.
+ */
+export async function agentChatAnswering(chatId: Id): Promise<boolean> {
+  const householdId = getState().activeHouseholdId;
+  return aiCall((transport) => transport.agentStatus(householdId, chatId));
+}
+
 const AGENT_DELETE_FAILED_MESSAGE = 'Löschen hat nicht geklappt – bitte noch einmal.';
 
 /** AC-028, AC-029: the chat in Foundry and its row, for every device of the household. */

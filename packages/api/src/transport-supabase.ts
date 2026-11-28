@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   AgentDeleteReplySchema,
   AgentLoadReplySchema,
+  AgentStatusReplySchema,
   AiImageReplySchema,
   PlacePreviewReplySchema,
   WebSearchReplySchema,
@@ -510,6 +511,15 @@ export function createSupabaseTransport(
           AGENT_DELETE_TIMEOUT_MS,
         )
       ).deleted,
+    agentStatus: async (householdId, chatId) =>
+      (
+        await invokeParsed(
+          AgentStatusReplySchema,
+          'ai-agent',
+          { action: 'status', householdId, chatId },
+          AGENT_LOAD_TIMEOUT_MS,
+        )
+      ).answering,
     fetchVideo: (request) =>
       invokeParsed(FetchVideoReplySchema, 'fetch-video', request, FETCH_VIDEO_TIMEOUT_MS),
     uploadMedia: async (path, photo) => {

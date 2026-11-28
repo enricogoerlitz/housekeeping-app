@@ -517,6 +517,7 @@ export async function fulfilError(route: Route, code: ErrorCode): Promise<void> 
     ai_unavailable: 503,
     search_unavailable: 503,
     chat_too_long: 409,
+    chat_busy: 409,
     internal: 500,
   };
   await fulfilFunction(route, status[code], ErrorReplySchema.parse({ error: code }));

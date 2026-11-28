@@ -171,6 +171,8 @@ export interface FakeAi {
   agent?: (request: AgentSendRequest) => AgentStreamEvent[];
   /** The messages `ai-agent` loads for a chat. */
   agentMessages?: (chatId: string) => AgentLoadReply['messages'];
+  /** Spec 0067, AC-024: whether an answer runs in the chat; none by default. */
+  agentAnswering?: (chatId: string) => boolean;
 }
 
 interface FailureRule {
@@ -3812,6 +3814,13 @@ export function createFakeServer(): FakeServer {
             throw new TransportError('permanent', 'forbidden', 403);
           commit(householdId, before, withoutRows(before, 'ai_chats', ids, false));
           return ids.length;
+        }),
+      agentStatus: (householdId, chatId) =>
+        run(userId, 'ai-agent', () => {
+          requireUser(userId);
+          if (!isMember(userId, householdId) || !data.get(householdId)?.ai_chats?.[chatId])
+            throw new TransportError('permanent', 'forbidden', 403);
+          return ai.agentAnswering ? ai.agentAnswering(chatId) : false;
         }),
       placePreview: (request) =>
         run(userId, 'web-search', () => {

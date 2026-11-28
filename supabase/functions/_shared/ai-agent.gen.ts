@@ -8,8 +8,11 @@ import {
   AgentProposalSchema,
   deleteWished,
   isProposalTool,
+  parseChangeArgs,
   parseDraftArgs,
+  parseFillWeekArgs,
   parseImageArgs,
+  parsePhotoArgs,
   parseProposalArgs,
 } from './agent-proposals.gen.ts';
 import { RecipeDraftReplySchema } from './contract.gen.ts';
@@ -30,8 +33,12 @@ export const AGENT_LIMITS = {
   title: 60,
   /** Characters of a place label. */
   placeLabel: 120,
-  /** Answers per chat (decision 13); afterwards a new chat. */
-  turns: 20,
+  /**
+   * Model runs per chat (its response ids; the row keeps at most 100, one answer takes up to 5);
+   * afterwards a new chat. Spec 0067, step C: before, 20 runs ended a chat after a few answers
+   * with tools; a long chat now gets the hint from about 30 messages (`longChat`).
+   */
+  turns: 95,
   /** Cards of one answer, each enriched with one Serper request. */
   cards: 8,
   /** Follow-up chips of one answer. */
@@ -72,6 +79,26 @@ export const AGENT_BADGE_LABELS: Record<AgentBadgeSlug, string> = {
 
 /** Units of the AI quota one answer costs (decision 13). */
 export const AGENT_QUOTA_PER_TURN = 5;
+/**
+ * Spec 0067, REQ-015: and each tool run on top — every further model run after tools, every
+ * recipe draft, Google image row and photo the agent looks at.
+ */
+export const AGENT_QUOTA_PER_TOOL_RUN = 1;
+
+/** REQ-015: from about this many messages the page suggests a new chat (cheaper, faster). */
+export const AGENT_LONG_CHAT_MESSAGES = 30;
+
+export const longChat = (messages: number): boolean => messages >= AGENT_LONG_CHAT_MESSAGES;
+
+/**
+ * Decision 13: the environment a conversation belongs to, from the agent's name
+ * (`household-agent-preview`): it goes into the conversation's metadata, so the preview can purge
+ * its own before its reset and no environment answers in another's chat.
+ */
+export function agentEnvironment(agent: string): 'local' | 'preview' | 'prod' | undefined {
+  const suffix = /-(local|preview|prod)$/.exec(agent)?.[1];
+  return suffix === 'local' || suffix === 'preview' || suffix === 'prod' ? suffix : undefined;
+}
 
 const Uuid = z.uuid();
 const HttpsUrl = z.url({ protocol: /^https$/ }).max(2048);
@@ -319,7 +346,12 @@ export const AgentRequestSchema = z.discriminatedUnion('action', [
   z.strictObject({ action: z.literal('delete'), householdId: Uuid, chatId: Uuid }),
   /** "Haushalt endgültig löschen" (REQ-010): every chat of the household. */
   z.strictObject({ action: z.literal('purge'), householdId: Uuid }),
+  /** Spec 0067, AC-024: whether an answer runs in the chat (another person's send waits). */
+  z.strictObject({ action: z.literal('status'), householdId: Uuid, chatId: Uuid }),
 ]);
+
+export const AgentStatusReplySchema = z.strictObject({ answering: z.boolean() });
+export type AgentStatusReply = z.infer<typeof AgentStatusReplySchema>;
 export type AgentRequest = z.infer<typeof AgentRequestSchema>;
 export type AgentSendRequest = z.infer<typeof AgentSendRequestSchema>;
 
@@ -707,6 +739,21 @@ const ImageForSchema = {
   name: z.string().max(200).optional(),
 };
 
+const IsoDateSchema = z.iso.date();
+
+/** REQ-014: the checked wishes of "Füll die Woche" (agent-proposals.ts parseFillWeekArgs). */
+export const WeekFillWishesSchema = z.strictObject({
+  from: IsoDateSchema,
+  to: IsoDateSchema,
+  slot: z.string().max(60).optional(),
+  vegetarian: z.int().min(0).max(AGENT_PROPOSAL_LIMITS.weekDays).optional(),
+  quick: z.array(IsoDateSchema).max(AGENT_PROPOSAL_LIMITS.weekDays),
+  guests: z
+    .array(z.strictObject({ date: IsoDateSchema, count: z.int().min(1).max(30) }))
+    .max(AGENT_PROPOSAL_LIMITS.weekDays),
+  skip: z.array(IsoDateSchema).max(AGENT_PROPOSAL_LIMITS.weekDays),
+});
+
 /** What an answer shows besides its text and place cards. */
 export const AgentExtraSchema = z.discriminatedUnion('kind', [
   /** REQ-009: a collect card; nothing changes before the person applies it. */
@@ -730,6 +777,23 @@ export const AgentExtraSchema = z.discriminatedUnion('kind', [
     id: z.string().min(1).max(200),
     title: z.string().max(60).optional(),
     items: z.array(AgentEntityRefSchema).min(1).max(AGENT_PROPOSAL_LIMITS.entities),
+  }),
+  /**
+   * Spec 0067, step C: a change of an existing recipe ("vegetarische Variante zur Lasagne"); the
+   * app opens its page with "Mit KI ändern" and this wish (Änderungsansicht, Rückgängig).
+   */
+  z.strictObject({
+    kind: z.literal('recipe_change'),
+    id: z.string().min(1).max(200),
+    recipeId: Uuid,
+    title: z.string().min(1).max(200),
+    wish: z.string().min(1).max(AGENT_PROPOSAL_LIMITS.wish),
+  }),
+  /** REQ-014: "Füll die Woche" — the app picks the dishes with the logic of spec 0063. */
+  z.strictObject({
+    kind: z.literal('week_fill'),
+    id: z.string().min(1).max(200),
+    wishes: WeekFillWishesSchema,
   }),
   /** REQ-011: Google images to pick one from. */
   z.strictObject({
@@ -779,6 +843,24 @@ export function entitiesOutput(
   });
 }
 
+/** The output of `change_recipe`: the household's recipe it found, for a chat opened later. */
+export function changeOutput(recipe: { id: string; title: string }, wish: string): string {
+  return JSON.stringify({
+    shown: true,
+    recipe,
+    wish,
+    note: 'Nichts ist geändert: die Karte öffnet das Rezept mit „Mit KI ändern“, dort prüft die Person die Änderung und übernimmt sie (mit Rückgängig).',
+  });
+}
+
+/** The output of `fill_week`: the dishes are the app's (spec 0063), never the model's. */
+export function weekFillOutput(): string {
+  return JSON.stringify({
+    shown: true,
+    note: 'Die App wählt die Gerichte mit eurer Vorschlagslogik, prüft Reisen und belegte Abende und zeigt sie als Karte zum Übernehmen. Nenne keine Gerichte, die du nicht aus einem Werkzeug kennst.',
+  });
+}
+
 /** The output of `show_images`: the images, so a chat opened later shows the same row. */
 export function imagesOutput(images: readonly AgentImageHit[]): string {
   return JSON.stringify({ shown: true, count: images.length, images });
@@ -823,6 +905,19 @@ export function extraOfCall(
       : undefined;
   }
   const result = record(jsonOf(output)) ?? {};
+  if (name === 'change_recipe') {
+    const recipe = record(result.recipe);
+    const wish = parseChangeArgs(args)?.wish;
+    const id = recipe ? str(recipe.id) : undefined;
+    const title = recipe ? str(recipe.title) : undefined;
+    return id && Uuid.safeParse(id).success && title && wish
+      ? { kind: 'recipe_change', id: callId, recipeId: id, title: clip(title, 200), wish }
+      : undefined;
+  }
+  if (name === 'fill_week') {
+    const wishes = parseFillWeekArgs(args);
+    return wishes && result.shown === true ? { kind: 'week_fill', id: callId, wishes } : undefined;
+  }
   if (name === 'show_entities') {
     const items = z
       .array(AgentEntityRefSchema)
@@ -862,6 +957,26 @@ export function extraOfCall(
   return undefined;
 }
 
+const PHOTO_KIND_LABEL = {
+  recipe: 'Rezepte',
+  restaurant: 'Restaurants',
+  activity: 'Aktivitäten',
+} as const;
+
+/** The output of `look_at_photos` for the conversation: what was seen, never the images. */
+export function photosOutput(
+  seen: readonly { id: string; title: string }[],
+  missing: number,
+): string {
+  return JSON.stringify({
+    shown: seen.length > 0,
+    count: seen.length,
+    photos: seen,
+    ...(missing > 0 ? { without_photo: missing } : {}),
+    note: 'Die Fotos folgen in dieser Reihenfolge als Bilder; bewerte nur, was du siehst.',
+  });
+}
+
 /** The step row of `draft_recipe` and `show_images` (REQ-008); the others show as their card. */
 export function proposalStep(
   name: string,
@@ -891,6 +1006,20 @@ export function proposalStep(
       label: 'Schreibt einen Rezeptentwurf',
       detail: unread ?? from,
       details: [],
+      status: 'done',
+    };
+  }
+  if (name === 'look_at_photos') {
+    const photos = parsePhotoArgs(args);
+    const count = typeof result.count === 'number' ? result.count : 0;
+    return {
+      id,
+      kind: 'tool',
+      label: 'Sieht sich Fotos an',
+      ...(photos ? { detail: PHOTO_KIND_LABEL[photos.kind] } : {}),
+      details: [],
+      count,
+      countLabel: 'Fotos',
       status: 'done',
     };
   }

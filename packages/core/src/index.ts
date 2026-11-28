@@ -63,6 +63,7 @@ export * from './packing';
 export * from './packing-actions';
 export * from './prep';
 export * from './plan-suggestions';
+export * from './week-fill';
 export * from './collections';
 export * from './collection-editor';
 export * from './page-editor';

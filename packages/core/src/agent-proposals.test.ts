@@ -8,7 +8,10 @@ import {
   isDeleteKind,
   parseDraftArgs,
   parseEntitiesArgs,
+  parseChangeArgs,
+  parseFillWeekArgs,
   parseImageArgs,
+  parsePhotoArgs,
   parseProposalArgs,
 } from './agent-proposals';
 
@@ -232,5 +235,143 @@ describe('show_entities (preview 28.11.: own entries as cards)', () => {
   });
   it('invalid input gives nothing', () => {
     expect(parseEntitiesArgs('{').items).toEqual([]);
+  });
+});
+
+describe('bulk editing (spec 0067, REQ-013)', () => {
+  const ID = '11111111-2222-4333-8444-555555555555';
+  it('AC-023: at most 20 entries per pass; "weitere prüfen" when the agent says so or the card is full', () => {
+    const many = Array.from({ length: 25 }, (_, index) =>
+      action({
+        kind: 'set_remembered',
+        target: 'activity',
+        name: `Ausflug ${index}`,
+        favorite: false,
+      }),
+    );
+    const full = parseProposalArgs(args(many, 'Eher einmalig'), { id: 'c', deletesAllowed: false });
+    expect(full.proposal.actions).toHaveLength(20);
+    expect(full.proposal.more).toBe(true);
+    const few = parseProposalArgs(
+      JSON.stringify({ title: 't', more: true, actions: many.slice(0, 3) }),
+      { id: 'c', deletesAllowed: false },
+    );
+    expect(few.proposal.more).toBe(true);
+    const done = parseProposalArgs(
+      JSON.stringify({ title: 't', more: false, actions: many.slice(0, 3) }),
+      { id: 'c', deletesAllowed: false },
+    );
+    expect(done.proposal.more).toBeUndefined();
+  });
+
+  it('"nicht mehr merken" and "Mit KI ausarbeiten" are entries; set_remembered needs on or off', () => {
+    const { proposal, dropped } = parseProposalArgs(
+      args([
+        action({ kind: 'set_remembered', target: 'activity', name: 'Zoo', favorite: false }),
+        action({ kind: 'set_remembered', target: 'activity', name: 'Kino', favorite: null }),
+        action({ kind: 'work_out', target: 'recipe', id: ID, name: 'Linsen-Dal' }),
+      ]),
+      { id: 'c', deletesAllowed: false },
+    );
+    expect(proposal.actions.map((entry) => entry.kind)).toEqual(['set_remembered', 'work_out']);
+    expect(dropped).toBe(1);
+  });
+});
+
+describe('change_recipe (spec 0067, variant from the chat)', () => {
+  const ID = '11111111-2222-4333-8444-555555555555';
+  it('the recipe and the wish; an id that is no uuid is ignored', () => {
+    expect(
+      parseChangeArgs(JSON.stringify({ id: ID, name: 'Lasagne', wish: 'vegetarische Variante' })),
+    ).toEqual({ id: ID, name: 'Lasagne', wish: 'vegetarische Variante' });
+    expect(
+      parseChangeArgs(JSON.stringify({ id: "x' or 1=1", name: 'Lasagne', wish: 'vegan' })),
+    ).toEqual({ name: 'Lasagne', wish: 'vegan' });
+  });
+
+  it('invalid input: no wish, no recipe, broken JSON; long wishes are cut', () => {
+    expect(parseChangeArgs(JSON.stringify({ id: ID, name: 'Lasagne', wish: ' ' }))).toBeUndefined();
+    expect(parseChangeArgs(JSON.stringify({ id: null, name: '', wish: 'vegan' }))).toBeUndefined();
+    expect(parseChangeArgs('{')).toBeUndefined();
+    const long = parseChangeArgs(JSON.stringify({ id: ID, name: 'L', wish: 'x'.repeat(900) }));
+    expect(long?.wish).toHaveLength(AGENT_PROPOSAL_LIMITS.wish);
+  });
+});
+
+describe('fill_week (spec 0067, REQ-014)', () => {
+  const week = {
+    from: '2026-11-30',
+    to: '2026-12-06',
+    slot: null,
+    vegetarian: 2,
+    quick_days: ['2026-12-02'],
+    guest_days: [{ date: '2026-12-05', count: 2 }],
+    skip_days: [],
+  };
+  it('"2× vegetarisch, Mittwoch wenig Zeit, Samstag Gäste" as checked wishes', () => {
+    expect(parseFillWeekArgs(JSON.stringify(week))).toEqual({
+      from: '2026-11-30',
+      to: '2026-12-06',
+      vegetarian: 2,
+      quick: ['2026-12-02'],
+      guests: [{ date: '2026-12-05', count: 2 }],
+      skip: [],
+    });
+  });
+
+  it('untrusted values: days outside the range, bad dates, odd counts drop out; 7 days at most', () => {
+    const parsed = parseFillWeekArgs(
+      JSON.stringify({
+        ...week,
+        to: '2027-03-01',
+        slot: 'Abendessen',
+        vegetarian: 99,
+        quick_days: ['2026-12-02', '2026-02-30', '2026-11-01', '2026-12-08', 7],
+        guest_days: [
+          { date: '2026-12-05', count: 0 },
+          { date: '2026-12-06', count: 3 },
+          { date: '2026-12-07', count: 3 },
+          { date: 'morgen', count: 2 },
+        ],
+      }),
+    );
+    expect(parsed).toEqual({
+      from: '2026-11-30',
+      to: '2026-12-06',
+      slot: 'Abendessen',
+      vegetarian: 7,
+      quick: ['2026-12-02'],
+      guests: [{ date: '2026-12-06', count: 3 }],
+      skip: [],
+    });
+  });
+
+  it('invalid input: no range, an end before the start, broken JSON', () => {
+    expect(parseFillWeekArgs(JSON.stringify({ ...week, from: null }))).toBeUndefined();
+    expect(parseFillWeekArgs(JSON.stringify({ ...week, to: '2026-11-01' }))).toBeUndefined();
+    expect(parseFillWeekArgs('nope')).toBeUndefined();
+  });
+});
+
+describe('look_at_photos (spec 0067, REQ-013: photos only on request)', () => {
+  const A = '11111111-2222-4333-8444-555555555555';
+  const B = '11111111-2222-4333-8444-666666666666';
+  it('one kind and up to 6 uuids, each once', () => {
+    const ids = [
+      A,
+      B,
+      A,
+      'nope',
+      ...Array.from({ length: 8 }, (_, n) => `11111111-2222-4333-8444-00000000000${n}`),
+    ];
+    const parsed = parsePhotoArgs(JSON.stringify({ kind: 'recipe', ids }));
+    expect(parsed?.kind).toBe('recipe');
+    expect(parsed?.ids).toHaveLength(AGENT_PROPOSAL_LIMITS.photos);
+    expect(parsed?.ids.slice(0, 2)).toEqual([A, B]);
+  });
+
+  it('invalid input: an unknown kind or no ids', () => {
+    expect(parsePhotoArgs(JSON.stringify({ kind: 'households', ids: [A] }))).toBeUndefined();
+    expect(parsePhotoArgs(JSON.stringify({ kind: 'recipe', ids: ['x'] }))).toBeUndefined();
   });
 });

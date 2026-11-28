@@ -57,6 +57,7 @@ export {
   type SheetActions,
 } from './overlay';
 export { pickImageFile } from './pick-image';
+export { COMPOSER } from './field-grow';
 export { useImageDropAndPaste } from './image-drop';
 export { useKeyboard } from './keyboard';
 export { useDragDismissKeyboard } from './use-drag-dismiss';

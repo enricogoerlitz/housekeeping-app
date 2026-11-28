@@ -572,6 +572,8 @@ export interface SuggestedDish {
   date: ISODate | null;
   /** The dish is vorgemerkt: that entry moves to the day instead of a second one. */
   plannedLaterEntryId?: Id;
+  /** Spec 0067, REQ-014 ("Samstag Gäste"): guests of a new entry. */
+  guests?: number;
 }
 
 /**
@@ -595,6 +597,7 @@ export function planSuggested(dishes: readonly SuggestedDish[], slotId: Id): Id[
         kind: 'recipe',
         recipeId: dish.recipeId,
         eaterIds: defaultEaterIds(),
+        ...(dish.guests ? { guests: dish.guests } : {}),
       });
       return dish.date === null ? [] : [id];
     }),

@@ -140,25 +140,6 @@ jobs:
             echo "::error::SUPABASE_POOLER_URL gehört nicht zum Projekt dieser Umgebung"
             exit 1
           fi
-      - name: Datenbank neu aufsetzen
-        # Migrations of develop on an empty database; the seed of config.toml is the local one.
-        run: supabase db reset --remote="$SUPABASE_POOLER_URL" --no-seed --yes
-      - name: Beispieldaten
-        # Management API with the ref (HTTP, no IPv6 needed): it takes a file of many statements,
-        # the pooler would send it as one prepared statement and fail.
-        run: supabase db query --remote="$SUPABASE_PROJECT_REF" --yes --file supabase/preview-seed.sql
-      - name: Einladungen
-        env:
-          PREVIEW_INVITE_EMAILS: ${{ secrets.PREVIEW_INVITE_EMAILS }}
-        run: node scripts/preview-invites.mjs
-      - name: Projekt neu starten
-        # The pg_cron launcher keeps the job list it loaded at its start across the reset: on
-        # 27.11.2026 it still ran jobs deleted long ago and none of the current ones. A restart
-        # (Management API) starts it fresh; the step waits until the project is ACTIVE_HEALTHY
-        # (at most 10 min, else red) and prints the jobs in cron.job (red without any).
-        run: node scripts/ci/supabase-restart.mjs
-      - name: Auth- und API-Konfiguration
-        run: supabase config push --remote="$SUPABASE_PROJECT_REF" --yes
       - name: Foundry-Konfiguration vorhanden
         # Spec 0066, ADR-0019: without them the KI-Agent of this environment would answer with an
         # old or no agent, so the run stops here instead of skipping.
@@ -178,6 +159,29 @@ jobs:
           client-id: ${{ vars.FOUNDRY_AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.FOUNDRY_AZURE_TENANT_ID }}
           allow-no-subscriptions: true
+      - name: Foundry-Chats der Vorschau leeren
+        # Spec 0067, decision 13: the reset forgets every chat, so its conversations and answers in
+        # Foundry (metadata env=preview) go first. Prints only counts, never the token.
+        run: node "$RUNNER_TEMP/foundry/foundry-agents.cjs" --purge-conversations preview
+      - name: Datenbank neu aufsetzen
+        # Migrations of develop on an empty database; the seed of config.toml is the local one.
+        run: supabase db reset --remote="$SUPABASE_POOLER_URL" --no-seed --yes
+      - name: Beispieldaten
+        # Management API with the ref (HTTP, no IPv6 needed): it takes a file of many statements,
+        # the pooler would send it as one prepared statement and fail.
+        run: supabase db query --remote="$SUPABASE_PROJECT_REF" --yes --file supabase/preview-seed.sql
+      - name: Einladungen
+        env:
+          PREVIEW_INVITE_EMAILS: ${{ secrets.PREVIEW_INVITE_EMAILS }}
+        run: node scripts/preview-invites.mjs
+      - name: Projekt neu starten
+        # The pg_cron launcher keeps the job list it loaded at its start across the reset: on
+        # 27.11.2026 it still ran jobs deleted long ago and none of the current ones. A restart
+        # (Management API) starts it fresh; the step waits until the project is ACTIVE_HEALTHY
+        # (at most 10 min, else red) and prints the jobs in cron.job (red without any).
+        run: node scripts/ci/supabase-restart.mjs
+      - name: Auth- und API-Konfiguration
+        run: supabase config push --remote="$SUPABASE_PROJECT_REF" --yes
       - id: foundry
         name: Foundry-Agenten
         # Upsert of every agent as <name>-preview: a new version only when its definition changed.

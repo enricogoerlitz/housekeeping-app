@@ -644,6 +644,21 @@ describe('preview.yml (Task 7)', () => {
     assertFoundryUpsert(preview, 'web-bauen', 'supabase-vorschau', 'preview');
   });
 
+  test('spec 0067, decision 13: the preview deletes its own Foundry chats before its reset', () => {
+    const job = jobs['supabase-vorschau'];
+    const login = steps(job).findIndex(
+      (step) =>
+        step.uses?.startsWith('azure/login@') &&
+        step.with?.['client-id'] === '${{ vars.FOUNDRY_AZURE_CLIENT_ID }}',
+    );
+    const purgeAt = stepIndex(job, /foundry-agents\.cjs" --purge-conversations preview$/);
+    const resetAt = stepIndex(job, /^supabase db reset/);
+    assert.ok(login !== -1 && purgeAt !== -1, 'login and purge exist');
+    assert.ok(login < purgeAt && purgeAt < resetAt, 'logged in, purged, then reset');
+    // Nothing of the step can print a token: no shell tracing, no echo of the login.
+    assert.doesNotMatch(steps(job)[purgeAt].run, /set -x|echo|az account get-access-token/);
+  });
+
   test('AC-013: before it reads its own token, the web job proves it cannot read the production one', () => {
     const job = jobs['web-vorschau'];
     const check = stepIndex(job, /secrets list -n "\$PRODUCTION_SWA_NAME"/);

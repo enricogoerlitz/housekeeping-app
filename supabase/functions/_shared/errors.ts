@@ -16,6 +16,7 @@ const STATUS: { [code in ErrorCode]: number } = {
   ai_unavailable: 503,
   search_unavailable: 503,
   chat_too_long: 409,
+  chat_busy: 409,
 };
 
 /** Ends a request with one of the stable error codes of the contract. */
