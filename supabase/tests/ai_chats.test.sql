@@ -141,6 +141,9 @@ select throws_ok(
   format($$ select public.delete_household(%L) $$, tests.fx('solo')),
   'P0001', 'ai_chats_remaining', 'AC-032: delete_household refuses while a chat is left');
 select public.delete_ai_chat((select id from public.ai_chats where conversation_id = 'conv_solo'));
+-- Spec 0067: ai-agent clears the deletion log once Foundry is cleaned (ai_chat_answers.test.sql).
+select public.forget_ai_chat_deletions(tests.fx('solo'),
+  (select array_agg(id) from public.pending_ai_chat_deletions(tests.fx('solo'))));
 select lives_ok(format($$ select public.delete_household(%L) $$, tests.fx('solo')),
   'AC-031: without chats the household is deleted');
 

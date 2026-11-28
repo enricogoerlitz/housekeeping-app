@@ -48,6 +48,13 @@ insert into lint_private_functions_for_authenticated values
   ('private.create_ai_chat(uuid,text,text,text)'),
   ('private.record_ai_chat_turn(uuid,text,text)'),
   ('private.delete_ai_chat(uuid)'),
+  -- Spec 0067: one answer per chat (AC-024) and the log of deleted chats.
+  ('private.my_ai_chat(uuid)'),
+  ('private.begin_ai_chat_answer(uuid,uuid)'),
+  ('private.end_ai_chat_answer(uuid,uuid)'),
+  ('private.ai_chat_answering(uuid)'),
+  ('private.pending_ai_chat_deletions(uuid)'),
+  ('private.forget_ai_chat_deletions(uuid,uuid[])'),
   ('private.assert_members(uuid,uuid[])'), -- security invoker, called by member-check triggers
   ('private.set_recipe_favorite(uuid,boolean)'),
   ('private.set_recipe_rating(uuid,numeric)'),
