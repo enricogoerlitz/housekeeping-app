@@ -53,6 +53,13 @@ rechts das nächste Rezept schon während der Bewegung (wie die Tabs von „Erle
 **REQ-006 — Karten mit Beschreibung.** Rezeptkarten (Kacheln) zeigen die ersten zwei Zeilen der Beschreibung; Titel
 lassen sich am Desktop auf der Detailseite markieren und kopieren.
 
+**REQ-007 — Links zur App öffnen die installierte App (Android).** Ein Link auf `house.kuschel-nest.de` (z. B. aus
+WhatsApp oder einer geteilten Nachricht) öffnet am Handy die installierte App statt des Browsers. Android: über
+`launch_handler`/Link-Handling im Web-App-Manifest. iOS lässt das für Web-Apps nicht zu – dort öffnet weiter Safari (Review Z. 12).
+
+- AC-005: Angenommen Android mit installierter App · Wenn Nadja einen geteilten Rezept-Link antippt · Dann öffnet die
+  App direkt auf dem Rezept
+
 ## Entscheidungen
 
 1. Name „Erleben“ (Enrico, 28.11.2026).
@@ -79,4 +86,5 @@ updated_at) mit RLS, Grants, pgTAP-Isolation, Delete-Trigger und Sync-Registrier
 - [ ] 4. Filter „In Auswahl“, Art bei Aktivitäten, Gmail-Filter am Desktop (AC-004)
 - [ ] 5. Wischen zwischen Rezepten mit Vorschau
 - [ ] 6. Beschreibung auf Kacheln, Titel kopierbar
+- [ ] 7. Links öffnen die installierte App unter Android (AC-005)
 - [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web`, pgTAP grün; e2e und Security-Check vor dem Release
