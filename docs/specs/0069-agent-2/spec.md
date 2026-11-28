@@ -99,6 +99,8 @@ Karte), ohne dass man nachfragen muss; gleiche Abfragen stehen nur einmal in den
   zuletzt gewählte Bild übernommen (heute bleibt der Knopf gesperrt, Bilder 1–4)
 - AC-014: Angenommen am Handy wurde ein Rezept mit Foto angelegt · Wenn Enrico „Öffnen“ tippt · Dann lässt sich die
   Rezeptseite scrollen, auch nach Neuladen
+- AC-015: Angenommen Liste am iPhone mit „Einkaufen“ und „+ Aus Kalender …“ · Wenn die Seite erscheint · Dann steht das
+  ⋯-Menü in derselben Zeile wie die beiden Knöpfe (heute rutscht es eine Zeile tiefer, weil der Platz nicht reicht)
 
 ## Entscheidungen
 
@@ -126,6 +128,6 @@ Karte), ohne dass man nachfragen muss; gleiche Abfragen stehen nur einmal in den
 - [ ] 6. Alle Felder als Vorschlag änderbar (AC-010)
 - [ ] 7. Kopieren, Markdown-Export, Teilen (AC-011)
 - [ ] 8. Vollständige Listen, keine doppelten Abfragen (AC-012)
-- [ ] 9. Fehler Foto-Auswahl und Scrollen (AC-013, AC-014)
+- [ ] 9. Fehler Foto-Auswahl, Scrollen und ⋯ der Liste (AC-013, AC-014, AC-015)
 - [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün; Testkatalog 0067 mit neuen Fällen;
       e2e und Security-Check vor dem Release
