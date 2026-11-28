@@ -186,7 +186,7 @@ update public.recipes set videos = jsonb_build_array(
   jsonb_build_object('path', tests.file('home', 'pasta', 'v7'), 'poster', tests.file('home', 'pasta', 'p7', 'jpg')))
 where id = tests.fx('pasta');
 select tests.authenticate_as(tests.fx('enrico'));
-select lives_ok(format($$ select public.delete_recipe(%L, '2026-11-26') $$, tests.fx('pasta')),
+select lives_ok(format($$ select public.delete_recipe(%L, current_date) $$, tests.fx('pasta')),
   'REQ-005: the recipe with its videos is deleted');
 select is((select public.restore_recipe(tests.fx('pasta'))), true, 'REQ-005: "Rückgängig" restores it');
 select is(tests.videos('pasta'), jsonb_build_array(
