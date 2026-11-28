@@ -35,8 +35,8 @@ import {
   useBreakpoint,
   useTheme,
 } from '@housekeeping/ui';
-import { useEffect, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { useEffect, useEffectEvent, useState } from 'react';
+import { ActivityIndicator, Pressable, View } from 'react-native';
 
 import { DictationField } from '@/features/shell/dictation-field';
 import { errorMessage } from '@/features/shell/error-message';
@@ -52,6 +52,7 @@ import {
   startPhotoSuggestions,
   usePhotoSuggestions,
 } from './ai-draft';
+import { peekAiChange, takeAiChange } from './ai-change-request';
 import { AiFillSheet, toastUnreadLinks, useDraftInput, type AiFillResult } from './ai-fill';
 import type { PageEditor } from './sections/use-page-editor';
 
@@ -136,6 +137,8 @@ export function AiPageTools(props: {
   const [refineError, setRefineError] = useState<string>();
   const draftInput = useDraftInput();
   const articlesById = useArticlesById();
+  // The wish of the agent's chat, read while the page opens (taken by the effect below).
+  const [asked, setAsked] = useState(() => peekAiChange(recipe.id));
   // Spec 0061, REQ-004: "Ausarbeiten" opens the edit mode with the window searching the title;
   // the intent stays until the window closes.
   const workOut = editor.intent?.kind === 'ai';
@@ -143,7 +146,6 @@ export function AiPageTools(props: {
     setFilling(false);
     if (workOut) editor.clearIntent();
   };
-  if (!offersAi(recipe)) return null;
   const editing = editor.draft !== undefined;
   const page = editor.page();
   const hasIngredients = page.ingredients.rows.length > 0;
@@ -272,8 +274,42 @@ export function AiPageTools(props: {
   // The panel and the windows show nothing in place on the reading page, so no empty slot takes
   // the page's gap above the photo (Nachklick 27.11.: 24 pt gap under the head).
   const panel = <PhotoSuggestionsPanel recipe={recipe} editor={editor} />;
+  // Spec 0067, step C: a change asked for in the agent's chat ("vegetarische Variante") runs
+  // "Mit KI ändern" with that wish as the page opens; its Änderungsansicht shows the result.
+  const runs = offersAi(recipe) && !editing && hasContent && !online.disabled;
+  const runAsked = useEffectEvent(() => {
+    const wish = takeAiChange(recipe.id);
+    if (!wish || !runs) return;
+    draftRecipeAsync({
+      text: wish,
+      links: [],
+      photos: [],
+      imagePrompt: false,
+      current: recipeDraftOf(editor.page(), articleName),
+    })
+      .then((reply) => propose({ reply, replace: true, change: true, generatePhoto: false }, true))
+      .catch((cause: unknown) =>
+        toast.show({
+          message: cause instanceof OfflineError ? OFFLINE_EDIT_HINT : AI_DRAFT_UNREACHABLE_MESSAGE,
+        }),
+      )
+      .finally(() => setAsked(undefined));
+  });
+  useEffect(() => runAsked(), []);
+  if (!offersAi(recipe)) return null;
   return (
     <>
+      {asked && runs ? (
+        <View
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}
+          testID="recipe-ai-change-asked"
+        >
+          <ActivityIndicator size="small" />
+          <Text variant="small" color="muted" style={{ flex: 1 }}>
+            {`Die KI ändert das Rezept: „${asked}“ …`}
+          </Text>
+        </View>
+      ) : null}
       {editing ? (
         <Stack gap={12}>
           <View style={{ alignItems: 'flex-start' }}>

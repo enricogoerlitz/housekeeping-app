@@ -3,6 +3,7 @@ import { parseSmartInput } from './amounts';
 import { findArticleByName } from './articles';
 import { formatShortDate, relativeDayLabel, weekdayShort, weekdayLong } from './dates';
 import { normalizeText } from './text';
+import { isUnfinishedRecipe } from './unfinished-recipes';
 import type {
   Activity,
   Article,
@@ -64,7 +65,10 @@ export type AgentCommand =
   | { type: 'createRestaurant'; name: string; address?: string }
   | { type: 'createActivity'; name: string; address?: string }
   | { type: 'favoriteRestaurant'; restaurantId: Id }
+  | { type: 'favoriteActivity'; activityId: Id }
   | { type: 'rememberActivity'; activityId: Id; remembered: boolean }
+  /** REQ-013: no write — the card opens the recipe in "Mit KI ausarbeiten" (spec 0061). */
+  | { type: 'workOut'; recipeId: Id }
   | { type: 'setServings'; recipeId: Id; servings: number }
   | { type: 'addRecurring'; text: string; rule: RecurringRule }
   | { type: 'removeItem'; itemId: Id }
@@ -296,28 +300,57 @@ export function resolveAction(action: AgentAction, data: ProposalData): Resolved
         seen: '',
       };
     }
+    case 'set_remembered': {
+      // Spec 0041 (#150): "Merken" is the household's bookmark, the heart is the person's.
+      const remembered = action.favorite ?? true;
+      const detail = remembered ? 'Merken' : 'Nicht mehr merken';
+      const activity = byIdOrName(data.activities, action, (row) => row.name);
+      if (!activity) return failed(action.name, detail, 'Die Aktivität gibt es nicht');
+      if (activity.remembered === remembered)
+        return failed(
+          activity.name,
+          detail,
+          remembered ? 'Ist schon gemerkt' : 'Ist nicht gemerkt',
+        );
+      return {
+        title: activity.name,
+        detail,
+        destructive: false,
+        command: { type: 'rememberActivity', activityId: activity.id, remembered },
+        seen: seenOf(activity),
+      };
+    }
+    case 'work_out': {
+      const detail = 'Mit KI ausarbeiten';
+      const recipe = byIdOrName(data.recipes, action, (row) => row.title);
+      if (!recipe) return failed(action.name, detail, 'Das Rezept gibt es nicht');
+      if (!isUnfinishedRecipe(recipe))
+        return failed(recipe.title, detail, 'Ist schon ausgearbeitet');
+      return {
+        title: recipe.title,
+        detail,
+        destructive: false,
+        command: { type: 'workOut', recipeId: recipe.id },
+        seen: seenOf(recipe),
+      };
+    }
     case 'set_favorite': {
       const favorite = action.favorite ?? true;
+      const detail = favorite ? 'Als Favorit' : 'Kein Favorit mehr';
       if (action.target === 'activity') {
         const activity = byIdOrName(data.activities, action, (row) => row.name);
-        const detail = favorite ? 'Merken' : 'Nicht mehr merken';
         if (!activity) return failed(action.name, detail, 'Die Aktivität gibt es nicht');
-        if (activity.remembered === favorite)
-          return failed(
-            activity.name,
-            detail,
-            favorite ? 'Ist schon gemerkt' : 'Ist nicht gemerkt',
-          );
+        if (activity.favoriteOf.includes(data.memberId) === favorite)
+          return failed(activity.name, detail, favorite ? 'Ist schon Favorit' : 'Ist kein Favorit');
         return {
           title: activity.name,
           detail,
           destructive: false,
-          command: { type: 'rememberActivity', activityId: activity.id, remembered: favorite },
+          command: { type: 'favoriteActivity', activityId: activity.id },
           seen: seenOf(activity),
         };
       }
       const restaurant = byIdOrName(data.restaurants, action, (row) => row.name);
-      const detail = favorite ? 'Als Favorit' : 'Kein Favorit mehr';
       if (!restaurant) return failed(action.name, detail, 'Das Restaurant gibt es nicht');
       if (restaurant.favoriteOf.includes(data.memberId) === favorite)
         return failed(restaurant.name, detail, favorite ? 'Ist schon Favorit' : 'Ist kein Favorit');
@@ -436,6 +469,11 @@ export function recheckAction(
   if (entry.problem) return { result: 'failed', entry };
   return { result: entry.seen === seen ? 'ok' : 'stale', entry };
 }
+
+/** REQ-013: an entry that opens "Mit KI ausarbeiten" instead of writing. */
+export const isWorkOut = (
+  command: AgentCommand,
+): command is Extract<AgentCommand, { type: 'workOut' }> => command.type === 'workOut';
 
 /** "3 übernehmen", "1 übernehmen". */
 export function applyLabel(count: number): string {

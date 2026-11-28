@@ -66,6 +66,7 @@ export function fakeClient(options: FakeClientOptions = {}): FakeClient {
         client.removes.push({ bucket, paths });
         return stored('remove', bucket, paths);
       },
+      download: () => Promise.resolve({ data: null, error: { message: 'not_found' } }),
     },
     auth: {
       getClaims: async (jwt) => {

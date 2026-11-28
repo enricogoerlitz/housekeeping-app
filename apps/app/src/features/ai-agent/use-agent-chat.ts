@@ -1,9 +1,16 @@
-import { aiErrorMessage, loadAgentChat, sendAgentMessage } from '@housekeeping/api';
+import {
+  agentChatAnswering,
+  AiError,
+  aiErrorMessage,
+  loadAgentChat,
+  sendAgentMessage,
+} from '@housekeeping/api';
 import type {
   AgentAttachment,
   AgentBadgeSlug,
   AgentCard,
   AgentExtra,
+  AgentMessage,
   AgentPlace,
   AgentSource,
   AgentStep,
@@ -31,7 +38,8 @@ export interface ChatTurn {
   extras: AgentExtra[];
   /** Loaded from "Verlauf": its proposals are shown, not applied again. */
   loaded?: boolean;
-  status: 'streaming' | 'done' | 'stopped' | 'error';
+  /** `waiting`: another answer runs in this chat, this one starts after it (AC-024). */
+  status: 'streaming' | 'waiting' | 'done' | 'stopped' | 'error';
   error?: string;
   /** Spec 0067: the badges and the number of photos and files of a message of the person. */
   badges?: AgentBadgeSlug[];
@@ -71,6 +79,45 @@ function turn(role: ChatTurn['role'], text: string, status: ChatTurn['status']):
     extras: [],
     status,
   };
+}
+
+/** A message of a chat from "Verlauf", as a turn of this page. */
+function loadedTurn(message: AgentMessage): ChatTurn {
+  return {
+    ...turn(message.role, message.text, 'done'),
+    cards: message.cards,
+    cardsTitle: message.cardsTitle,
+    followUps: message.followUps,
+    sources: message.sources,
+    steps: message.steps,
+    extras: message.extras,
+    loaded: true,
+    ...(message.attachments ? { attachments: message.attachments } : {}),
+  };
+}
+
+/** AC-024: how often and how long the page asks whether the other answer is done. */
+const WAIT_POLL_MS = 3000;
+const WAIT_POLLS = 60;
+const BUSY_RETRIES = 3;
+
+const pause = (ms: number, signal: AbortSignal) =>
+  new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    signal.addEventListener('abort', () => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
+
+/** Until no answer runs in the chat any more (or the person stops waiting). */
+async function waitWhileAnswering(chatId: Id, signal: AbortSignal): Promise<void> {
+  for (let poll = 0; poll < WAIT_POLLS && !signal.aborted; poll += 1) {
+    await pause(WAIT_POLL_MS, signal);
+    if (signal.aborted) return;
+    const answering = await agentChatAnswering(chatId).catch(() => false);
+    if (!answering) return;
+  }
 }
 
 function applyEvent(current: ChatTurn, event: AgentStreamEvent): ChatTurn {
@@ -162,20 +209,7 @@ export function useAgentChat(chatId: Id | undefined, onCreated: (id: Id) => void
     loadAgentChat(chatId).then(
       (messages) => {
         if (!live) return;
-        setState({
-          chatId,
-          turns: messages.map((message) => ({
-            ...turn(message.role, message.text, 'done'),
-            cards: message.cards,
-            cardsTitle: message.cardsTitle,
-            followUps: message.followUps,
-            sources: message.sources,
-            steps: message.steps,
-            extras: message.extras,
-            loaded: true,
-            ...(message.attachments ? { attachments: message.attachments } : {}),
-          })),
-        });
+        setState({ chatId, turns: messages.map(loadedTurn) });
         setLoad({ status: 'idle' });
       },
       (error: unknown) => {
@@ -220,32 +254,59 @@ export function useAgentChat(chatId: Id | undefined, onCreated: (id: Id) => void
           ...current,
           turns: current.turns.map((entry) => (entry.key === answer.key ? change(entry) : entry)),
         }));
-      sendAgentMessage(
-        {
-          chatId: state.chatId,
-          ...(editFrom !== undefined ? { editFrom } : {}),
-          message,
-          place,
-          badges: extras.badges,
-          attachments: extras.attachments,
-        },
-        (event) => {
-          if (event.type === 'chat') {
-            setState((current) => ({ ...current, chatId: event.chatId, title: event.title }));
-            createdId.current = event.chatId;
-            created.current(event.chatId);
+      const chatId = state.chatId;
+      const attempt = (again: boolean) =>
+        sendAgentMessage(
+          {
+            chatId,
+            // After waiting for another answer the message goes as a new one.
+            ...(editFrom !== undefined && !again ? { editFrom } : {}),
+            message,
+            place,
+            badges: extras.badges,
+            attachments: extras.attachments,
+          },
+          (event) => {
+            if (event.type === 'chat') {
+              setState((current) => ({ ...current, chatId: event.chatId, title: event.title }));
+              createdId.current = event.chatId;
+              created.current(event.chatId);
+              return;
+            }
+            update((current) => applyEvent(current, event));
+          },
+          controller.signal,
+        );
+      // AC-024: another person's answer runs in this chat — "Agent antwortet gerade …" until it is
+      // done, then her question and its answer appear and this message goes.
+      const run = async () => {
+        for (let tries = 0; ; tries += 1) {
+          try {
+            await attempt(tries > 0);
             return;
+          } catch (error) {
+            const busy = error instanceof AiError && error.reason === 'busy';
+            if (!busy || !chatId || tries >= BUSY_RETRIES) throw error;
+            update((current) => ({ ...current, status: 'waiting' }));
+            await waitWhileAnswering(chatId, controller.signal);
+            if (controller.signal.aborted) return;
+            const messages = await loadAgentChat(chatId);
+            setState((current) => ({
+              ...current,
+              turns: [...messages.map(loadedTurn), question, { ...answer, status: 'streaming' }],
+            }));
           }
-          update((current) => applyEvent(current, event));
-        },
-        controller.signal,
-      )
+        }
+      };
+      run()
         .then(() => {
           if (controller.signal.aborted)
             update((current) => ({ ...current, status: 'stopped', cardsPending: false }));
           else
             update((current) =>
-              current.status === 'streaming' ? applyEvent(current, { type: 'done' }) : current,
+              current.status === 'streaming' || current.status === 'waiting'
+                ? applyEvent(current, { type: 'done' })
+                : current,
             );
         })
         .catch((error: unknown) =>

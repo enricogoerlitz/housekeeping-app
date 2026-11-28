@@ -3,6 +3,7 @@
 // agent is the one household agent, foundry/agents/household-agent.yaml, deployed per environment
 // by @housekeeping/foundry with Entra (ADR-0019, ADR-0020). Answers of Foundry carry the agent's instructions: nothing here is ever handed to
 // the app as it came.
+import { agentEnvironment } from '../_shared/ai-agent.gen.ts';
 import type { Deps } from '../_shared/deps.ts';
 import { HttpError, requireEnv } from '../_shared/errors.ts';
 
@@ -29,6 +30,8 @@ export function agentConfig(env: Deps['env']): AgentConfig {
 const CALL_MS = 15_000;
 
 export interface Foundry {
+  /** Spec 0067, decision 13: local, preview or prod, from the agent's name. */
+  env?: string;
   createConversation(metadata: Record<string, string>): Promise<string>;
   /** The metadata, or undefined when the conversation is gone (404). */
   conversationMetadata(id: string): Promise<Record<string, unknown> | undefined>;
@@ -89,7 +92,9 @@ export function foundryClient(deps: Pick<Deps, 'fetch'>, config: AgentConfig): F
       ? (value as Record<string, unknown>)[name]
       : undefined;
 
+  const env = agentEnvironment(config.agent);
   return {
+    ...(env ? { env } : {}),
     async createConversation(metadata) {
       const { json } = await call('create_conversation', 'POST', '/conversations', { metadata });
       const id = field(json, 'id');

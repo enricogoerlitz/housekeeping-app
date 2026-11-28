@@ -3,6 +3,8 @@ import type { Activity, AgentExtra, Recipe, Restaurant } from '@housekeeping/cor
 import { MediaCard, ScrollRow, Text, useBreakpoint, useTheme } from '@housekeeping/ui';
 import { View } from 'react-native';
 
+import { useCoverSources } from '@/features/recipes/recipe-cover';
+
 import { useAgentOpen } from './agent-open';
 
 // Preview feedback 28.11.: the household's own entries the agent shows (show_entities) — cards
@@ -22,6 +24,9 @@ const COURSE: Record<string, string> = {
 function RecipeCard(props: { recipe: Recipe; testID: string }) {
   const { recipe } = props;
   const image = useRecipeImage(recipe);
+  // Spec 0067, step C (B's open point): a collection without its own photo shows the collage of
+  // its recipes' photos, as everywhere else (spec 0009, E14).
+  const covers = useCoverSources(recipe);
   const open = useAgentOpen();
   const collection = recipe.kind === 'collection';
   // A collection says so in its badge; its line stays empty.
@@ -38,6 +43,7 @@ function RecipeCard(props: { recipe: Recipe; testID: string }) {
       title={recipe.title}
       meta={meta || undefined}
       image={image}
+      {...(collection && covers.length > 1 ? { images: covers } : {})}
       placeholderIcon={collection ? 'folder-open' : 'utensils'}
       layout="photoTop"
       photoAspectRatio={4 / 3}

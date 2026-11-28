@@ -612,6 +612,8 @@ export interface Transport {
    * chat of the household (before "Haushalt endgültig löschen"). The number deleted.
    */
   agentDelete(householdId: string, chatId?: string): Promise<number>;
+  /** Spec 0067, AC-024: whether an answer runs in the chat (another person's send waits). */
+  agentStatus(householdId: string, chatId: string): Promise<boolean>;
   // Photo storage: the private bucket household-media, path <household>/<activities|recipes>/<id>/<file>
   /** Stores a JPEG under a new name (never overwrites). */
   uploadMedia(path: string, photo: Blob): Promise<void>;
@@ -706,6 +708,7 @@ export function switchable(inner: Transport): SwitchableTransport {
     agentSend: guard(inner.agentSend.bind(inner)),
     agentLoad: guard(inner.agentLoad.bind(inner)),
     agentDelete: guard(inner.agentDelete.bind(inner)),
+    agentStatus: guard(inner.agentStatus.bind(inner)),
     uploadMedia: guard(inner.uploadMedia.bind(inner)),
     downloadMedia: guard(inner.downloadMedia.bind(inner)),
     removeMedia: guard(inner.removeMedia.bind(inner)),

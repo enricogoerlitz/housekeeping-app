@@ -20,7 +20,7 @@ import {
   setRestaurantPhoto,
 } from './photos-remote';
 
-import { createActivity, updateActivity } from './commands-activities';
+import { createActivity, toggleActivityFavorite, updateActivity } from './commands-activities';
 import { resolveArticle } from './commands-articles';
 import { logDone, completeChore } from './commands-chores';
 import {
@@ -145,9 +145,16 @@ function runCommand(command: AgentCommand): Touched {
     case 'favoriteRestaurant':
       toggleRestaurantFavorite(command.restaurantId);
       return { kind: 'restaurant', id: command.restaurantId };
+    case 'favoriteActivity':
+      toggleActivityFavorite(command.activityId);
+      return { kind: 'activity', id: command.activityId };
     case 'rememberActivity':
+      // The one-tap "Merken" of spec 0041 (#150): the same command, no edit window.
       updateActivity(command.activityId, { remembered: command.remembered });
       return { kind: 'activity', id: command.activityId };
+    case 'workOut':
+      // REQ-013: not a write — the card opens "Mit KI ausarbeiten" for it (spec 0061).
+      throw new Error('Wird auf der Rezeptseite ausgearbeitet');
     case 'setServings':
       updateRecipe(command.recipeId, { servings: command.servings });
       return { kind: 'recipe', id: command.recipeId };

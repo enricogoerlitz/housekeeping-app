@@ -1009,8 +1009,9 @@ definition:
     - type: function
       name: propose_actions
       description: 'Schlägt Änderungen vor (Liste, Aufgaben, Kalender, Restaurants, Aktivitäten,
-        Portionen, Dauerposten, Löschen). Ändert nichts: die App zeigt eine Karte, die Person
-        übernimmt. Als letzter Schritt nach deinem Text.'
+        Merken, Portionen, Dauerposten, Rezepte ausarbeiten, Löschen), auch als Durchgang beim
+        Aufräumen. Ändert nichts: die App zeigt eine Karte, die Person übernimmt. Als letzter
+        Schritt nach deinem Text.'
       strict: true
       parameters:
         type: object
@@ -1018,6 +1019,7 @@ definition:
         required:
           - title
           - actions
+          - more
         properties:
           title:
             type:
@@ -1056,14 +1058,18 @@ definition:
                     - set_favorite
                     - set_servings
                     - add_recurring
+                    - set_remembered
+                    - work_out
                     - remove_from_list
                     - remove_plan_entry
                     - delete_recurring
                   description:
                     'add_to_list: auf die Einkaufsliste · chore_done: Aufgabe erledigt · plan:
                     Kalender-Eintrag · create_restaurant / create_activity: neu merken ·
-                    set_favorite: Favorit/gemerkt · set_servings: Portionen eines Rezepts ·
-                    add_recurring: Dauerposten · remove_from_list / remove_plan_entry /
+                    set_favorite: Herz (Favorit) eines Restaurants oder einer Aktivität ·
+                    set_remembered: Aktivität merken (Lesezeichen) oder nicht mehr merken ·
+                    set_servings: Portionen eines Rezepts · add_recurring: Dauerposten · work_out:
+                    unfertiges Rezept mit KI ausarbeiten · remove_from_list / remove_plan_entry /
                     delete_recurring: löschen, nur auf ausdrücklichen Wunsch'
                 target:
                   type:
@@ -1075,7 +1081,7 @@ definition:
                     - activity
                     - text
                     - null
-                  description: 'bei plan und set_favorite: worum es geht'
+                  description: 'bei plan, set_favorite, set_remembered und work_out: worum es geht'
                 id:
                   type:
                     - string
@@ -1122,7 +1128,7 @@ definition:
                   type:
                     - boolean
                     - 'null'
-                  description: 'set_favorite: true merken, false nicht mehr'
+                  description: 'set_favorite und set_remembered: true an (Favorit / merken), false aus (nicht mehr)'
                 weekday:
                   type:
                     - integer
@@ -1137,6 +1143,13 @@ definition:
                   description: 'add_recurring: alle wie viele Wochen'
                   minimum: 1
                   maximum: 52
+          more:
+            type:
+              - boolean
+              - 'null'
+            description:
+              'Massenbearbeitung: true, wenn noch ungeprüfte Einträge übrig sind (die Karte zeigt
+              „Weitere prüfen“)'
     - type: function
       name: draft_recipe
       description: 'Schreibt einen Rezeptentwurf (Text, Links, TikTok, YouTube, Fotos) mit dem
@@ -1277,3 +1290,117 @@ definition:
                 id:
                   type: string
                   description: die id aus dem Werkzeug-Ergebnis
+    - type: function
+      name: change_recipe
+      description: 'Schlägt eine Änderung eines vorhandenen Rezepts vor (z. B. eine vegetarische
+        Variante). Ändert nichts: die App zeigt eine Karte, die das Rezept mit „Mit KI ändern“
+        öffnet; dort prüft die Person die Änderung und übernimmt sie. Als letzter Schritt.'
+      strict: true
+      parameters:
+        type: object
+        additionalProperties: false
+        required:
+          - id
+          - name
+          - wish
+        properties:
+          id:
+            type:
+              - string
+              - 'null'
+            description: die id des Rezepts aus einem Werkzeug-Ergebnis
+          name:
+            type: string
+            description: Titel des Rezepts genau wie in den Daten
+          wish:
+            type: string
+            description: die Änderung in den Worten der Person, z. B. „vegetarische Variante“
+    - type: function
+      name: fill_week
+      description:
+        Füllt die Woche mit Gerichten des Haushalts nach der Vorschlagslogik der App (Reisen,
+        belegte Abende, Abwechslung prüft die App). Du gibst nur die Wünsche; die App zeigt die
+        Gerichte als Karte zum Übernehmen. Als letzter Schritt.
+      strict: true
+      parameters:
+        type: object
+        additionalProperties: false
+        required:
+          - from
+          - to
+          - slot
+          - vegetarian
+          - quick_days
+          - guest_days
+          - skip_days
+        properties:
+          from:
+            type: string
+            description: erster Tag JJJJ-MM-TT
+          to:
+            type: string
+            description: letzter Tag JJJJ-MM-TT, höchstens 7 Tage
+          slot:
+            type:
+              - string
+              - 'null'
+            description: Tageszeit des Haushalts; null = die letzte (Abendessen)
+          vegetarian:
+            type:
+              - integer
+              - 'null'
+            description: mindestens so viele vegetarische Gerichte
+            minimum: 0
+            maximum: 7
+          quick_days:
+            type: array
+            items:
+              type: string
+            description: Tage mit wenig Zeit (JJJJ-MM-TT)
+          guest_days:
+            type: array
+            description: Tage mit Gästen
+            items:
+              type: object
+              additionalProperties: false
+              required:
+                - date
+                - count
+              properties:
+                date:
+                  type: string
+                  description: JJJJ-MM-TT
+                count:
+                  type: integer
+                  description: wie viele Gäste
+                  minimum: 1
+                  maximum: 30
+          skip_days:
+            type: array
+            items:
+              type: string
+            description: Tage, die frei bleiben sollen (JJJJ-MM-TT)
+    - type: function
+      name: look_at_photos
+      description:
+        'Zeigt dir die eigenen Fotos von bis zu 6 Einträgen als Bilder, damit du sie bewerten
+        kannst. Kostet je Foto: nur, wenn die Person ausdrücklich nach den Fotos fragt.'
+      strict: true
+      parameters:
+        type: object
+        additionalProperties: false
+        required:
+          - kind
+          - ids
+        properties:
+          kind:
+            type: string
+            enum:
+              - recipe
+              - restaurant
+              - activity
+          ids:
+            type: array
+            items:
+              type: string
+            description: höchstens 6 ids aus einem Werkzeug-Ergebnis

@@ -42,6 +42,11 @@ export interface UserStorage {
     contentType: string,
   ): Promise<StorageResult>;
   remove(bucket: string, paths: string[]): Promise<StorageResult>;
+  /** Spec 0067, REQ-013: a photo the agent looks at; the bucket's policies decide. */
+  download(
+    bucket: string,
+    path: string,
+  ): Promise<{ data: Uint8Array | null; error: { message: string } | null }>;
 }
 
 /** A Supabase client acting as the caller: every read and RPC runs under their RLS. */

@@ -20,6 +20,7 @@ import { Button, Icon, SelectRow, Surface, Text, toast, useTheme } from '@housek
 import { useState } from 'react';
 import { View } from 'react-native';
 
+import { useWorkOut } from '@/features/recipes/work-out';
 import { confirmFirst } from '@/features/shell/confirm-dialog';
 import { errorMessage } from '@/features/shell/error-message';
 import { useOnlineOnly } from '@/features/shell/offline';
@@ -38,21 +39,30 @@ type EntryState =
   | { phase: 'running' }
   | { phase: 'done' }
   | { phase: 'failed'; reason: string }
-  | { phase: 'undone' };
+  | { phase: 'undone' }
+  /** REQ-013: handed to "Mit KI ausarbeiten" (spec 0061). */
+  | { phase: 'opened' };
 
-const RESULT: Record<'done' | 'undone' | 'running', string> = {
+const RESULT: Record<'done' | 'undone' | 'running' | 'opened', string> = {
   done: 'Übernommen',
   undone: 'Zurückgenommen',
   running: 'Wird übernommen …',
+  opened: 'Zum Ausarbeiten geöffnet',
 };
+
+/** "3 ausarbeiten". */
+const workOutLabel = (count: number) => `${count} ausarbeiten`;
 
 export function AgentProposalCard(props: {
   proposal: AgentProposal;
   /** From "Verlauf": shown, not applied (it may have been applied then). */
   loaded: boolean;
+  /** REQ-013, AC-023: "Weitere prüfen" asks the agent for the next pass. */
+  onMore?: () => void;
   testID: string;
 }) {
   const { proposal, testID } = props;
+  const workOut = useWorkOut();
   const theme = useTheme();
   const online = useOnlineOnly();
   const data = useAgentProposalData();
@@ -77,9 +87,27 @@ export function AgentProposalCard(props: {
   const setState = (index: number, next: EntryState) =>
     setStates((current) => current.map((state, at) => (at === index ? next : state)));
 
-  const chosen = states.flatMap((state, index) =>
+  const ticked = states.flatMap((state, index) =>
     state.phase === 'open' && state.selected && !entries[index]?.problem ? [index] : [],
   );
+  // REQ-013: working a recipe out is no command but the flow of spec 0061, with its own button.
+  const isWork = (index: number) => proposal.actions[index]?.kind === 'work_out';
+  const chosen = ticked.filter((index) => !isWork(index));
+  const chosenWork = ticked.filter(isWork);
+
+  const startWorkOut = () => {
+    const ids = chosenWork.flatMap((index) => {
+      const command = entries[index]?.command;
+      return command?.type === 'workOut' ? [command.recipeId] : [];
+    });
+    const first = ids[0];
+    if (!first || online.disabled) return;
+    setStates((current) =>
+      current.map((state, index) => (chosenWork.includes(index) ? { phase: 'opened' } : state)),
+    );
+    // "Weiter zum nächsten" follows the chosen ones in this order.
+    workOut(first, { order: ids });
+  };
 
   /** Runs the given entries one by one; returns how many went through. */
   const run = async (indexes: readonly number[]): Promise<number> => {
@@ -296,7 +324,7 @@ export function AgentProposalCard(props: {
           );
         })}
       </View>
-      {!props.loaded && (openRows || anyDone) ? (
+      {!props.loaded && (openRows || anyDone) && (ticked.length > 0 || restore) ? (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>
           {openRows && chosen.length > 0 ? (
             <Button
@@ -307,6 +335,18 @@ export function AgentProposalCard(props: {
               hint={online.hint}
               onPress={() => void apply()}
               testID={`${testID}-apply`}
+            />
+          ) : null}
+          {openRows && chosenWork.length > 0 ? (
+            <Button
+              label={workOutLabel(chosenWork.length)}
+              icon="sparkles"
+              size="sm"
+              variant={chosen.length > 0 ? 'secondary' : 'primary'}
+              disabled={busy || online.disabled}
+              hint={online.hint}
+              onPress={startWorkOut}
+              testID={`${testID}-work-out`}
             />
           ) : null}
           {restore ? (
@@ -321,6 +361,20 @@ export function AgentProposalCard(props: {
               testID={`${testID}-undo`}
             />
           ) : null}
+        </View>
+      ) : null}
+      {proposal.more && !props.loaded && props.onMore ? (
+        <View style={{ flexDirection: 'row' }}>
+          <Button
+            label="Weitere prüfen"
+            icon="arrow-right"
+            variant="link"
+            size="sm"
+            disabled={busy || online.disabled}
+            hint={online.hint}
+            onPress={props.onMore}
+            testID={`${testID}-more`}
+          />
         </View>
       ) : null}
       {cards.length > 0 ? (

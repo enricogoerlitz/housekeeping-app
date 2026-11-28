@@ -2,6 +2,7 @@ import { useAiChats, useAppView } from '@housekeeping/api';
 import {
   addBadge,
   AGENT_LIMITS,
+  longChat,
   placeChipLabel,
   placeToSend,
   rememberPlace,
@@ -323,6 +324,20 @@ export function AgentScreen() {
           <Text variant="small" color="muted" testID="agent-limit-hint">
             Dieser Chat ist lang geworden – starte einen neuen.
           </Text>
+        ) : longChat(chat.turns.length) && !disabled ? (
+          // REQ-015: from about 30 messages a new chat answers faster and costs less.
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Text variant="small" color="muted" style={{ flex: 1 }} testID="agent-long-hint">
+              Langer Chat – ein neuer antwortet schneller und günstiger.
+            </Text>
+            <Button
+              label="Neuer Chat"
+              variant="link"
+              size="sm"
+              onPress={newChat}
+              testID="agent-long-new"
+            />
+          </View>
         ) : null}
         {editing !== undefined ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>

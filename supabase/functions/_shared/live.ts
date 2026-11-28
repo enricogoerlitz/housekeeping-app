@@ -74,6 +74,11 @@ function userClient(env: Deps['env'], authorization: string): UserClient {
         ),
       remove: async (bucket, paths) =>
         stored((await client.storage.from(bucket).remove(paths)).error),
+      download: async (bucket, path) => {
+        const { data, error } = await client.storage.from(bucket).download(path);
+        if (error || !data) return { data: null, error: { message: 'download_failed' } };
+        return { data: new Uint8Array(await data.arrayBuffer()), error: null };
+      },
     },
     rpc: (fn, args) =>
       client.rpc(fn, args).then(({ data, error }): DbResult => ({
