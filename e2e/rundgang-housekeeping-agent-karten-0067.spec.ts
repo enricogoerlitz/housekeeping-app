@@ -134,14 +134,19 @@ test('AC-017, AC-018, decision 53, preview 28.11.: steps fold to one line; the c
   await openAgent(page);
   await ask(page, 'Milch und Eier auf die Liste, Linsen-Dal am Dienstag');
 
+  // The answer is complete once its card stands (the chat stops following the end).
+  const card = 'agent-turn-1-extra-0';
+  await expect(tid(page, `${card}-apply`)).toBeVisible();
+
   // Decision 53: three steps are one line "3 Schritte"; a tap shows them all.
-  await expect(tid(page, 'agent-turn-1-steps')).toContainText('3 Schritte');
+  const group = tid(page, 'agent-turn-1-steps-group');
+  await expect(group).toHaveText('3 Schritte');
   await expect(tid(page, 'agent-turn-1-steps-t2')).toHaveCount(0);
-  await tid(page, 'agent-turn-1-steps').getByText('3 Schritte').click();
+  await group.click();
+  await expect(group).toHaveAttribute('aria-expanded', 'true');
   await expect(tid(page, 'agent-turn-1-steps-t2')).toContainText('Liest eure Rezepte');
 
   // AC-017: three entries, all ticked; AC-018: one unticked, two taken over.
-  const card = 'agent-turn-1-extra-0';
   await expect(tid(page, `${card}-apply`)).toHaveText('3 übernehmen');
   await tid(page, `${card}-entry-1`).click();
   await expect(tid(page, `${card}-apply`)).toHaveText('2 übernehmen');
