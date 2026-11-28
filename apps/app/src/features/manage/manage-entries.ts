@@ -104,7 +104,7 @@ const MANAGE_GROUPS: ManageGroup[] = [
 
 /**
  * Spec 0067, REQ-001/REQ-002: the first group depends on the person's view. "Normal" opens the
- * agent from here ("Agent", AC-004); "KI zuerst" has the agent in the tab bar and "Haushalt" here
+ * agent from here ("AI Agent", AC-004); "KI zuerst" has the agent in the tab bar and "Haushalt" here
  * instead, as the first entry (AC-001).
  */
 export function manageGroups(view: AppView, agent: boolean): ManageGroup[] {
@@ -131,7 +131,7 @@ export function manageGroups(view: AppView, agent: boolean): ManageGroup[] {
       key: 'agent',
       title: 'KI',
       entries: [
-        { key: 'agent', label: 'Agent', icon: 'sparkles', href: '/ki-agent', route: 'ki-agent' },
+        { key: 'agent', label: 'AI Agent', icon: 'sparkles', href: '/ki-agent', route: 'ki-agent' },
       ],
     },
     ...MANAGE_GROUPS,

@@ -326,6 +326,8 @@ interface Round {
   responseId?: string;
   calls: FunctionCall[];
   failed: boolean;
+  /** Review D: Azure's content filter refused the message (prompt shield). */
+  blocked?: boolean;
 }
 
 const record = (value: unknown): Record<string, unknown> =>
@@ -405,8 +407,16 @@ async function streamRound(input: {
           if (!input.sources.has(source.host) && input.sources.size < 12)
             input.sources.set(source.host, source);
         break;
-      case 'response.failed':
       case 'response.incomplete':
+        if (record(record(event.response).incomplete_details).reason === 'content_filter') {
+          round.blocked = true;
+          console.error('foundry_agent_blocked');
+          break;
+        }
+        round.failed = true;
+        console.error('foundry_agent_failed', { step: 'stream', event: event.type });
+        break;
+      case 'response.failed':
       case 'error':
         round.failed = true;
         console.error('foundry_agent_failed', { step: 'stream', event: event.type });
@@ -626,6 +636,11 @@ async function streamTurn(
       },
     });
     if (round.failed) throw new HttpError('ai_unavailable');
+    if (round.blocked) {
+      // The person reads one German hint instead of Azure's canned refusal (AGENT_BLOCKED_TEXT).
+      emit({ type: 'error', error: 'blocked' });
+      return;
+    }
 
     // UI tools close at once without a model run; household tools answer and the model runs on.
     const outputs: unknown[] = [];

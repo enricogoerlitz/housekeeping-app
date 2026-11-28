@@ -21,6 +21,7 @@ const STREAM_REASON: Record<string, AiErrorReason> = {
   quota_exceeded: 'quota',
   chat_too_long: 'chatTooLong',
   ai_unavailable: 'unavailable',
+  blocked: 'blocked',
 };
 
 function deviceTimeZone(): string {

@@ -47,7 +47,7 @@ export function AgentRecipeChangeCard(props: {
               hint={online.hint}
               onPress={() => {
                 requestAiChange(recipe.id, extra.wish);
-                open({ kind: 'recipe', id: recipe.id });
+                open({ kind: 'recipe', id: recipe.id, again: Date.now() });
               }}
               testID={`${testID}-open`}
             />

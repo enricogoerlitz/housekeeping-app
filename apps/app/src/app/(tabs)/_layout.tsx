@@ -133,7 +133,7 @@ export default function TabsLayout() {
           <Tabs.Screen name="(artikel)" options={{ title: 'Artikel', ...page }} />
           <Tabs.Screen name="(maerkte)" options={{ title: 'Märkte & Bereiche', ...page }} />
           <Tabs.Screen name="dauerposten" options={{ title: 'Dauerposten', ...page }} />
-          <Tabs.Screen name="ki-agent" options={{ title: 'KI-Agent', ...page }} />
+          <Tabs.Screen name="ki-agent" options={{ title: 'AI Agent', ...page }} />
           <Tabs.Screen name="mitglieder" options={{ title: 'Haushalt & Mitglieder', ...page }} />
           <Tabs.Screen name="feedback" options={{ title: 'Feedback', ...page }} />
           <Tabs.Screen name="einstellungen" options={{ title: 'Einstellungen', ...page }} />

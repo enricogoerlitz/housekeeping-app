@@ -16,7 +16,17 @@ import {
   type MealPlanEntry,
   type Recipe,
 } from '@housekeeping/core';
-import { Avatar, Badge, Button, Row, Section, Surface, Text, useTheme } from '@housekeeping/ui';
+import {
+  Avatar,
+  Badge,
+  Button,
+  Icon,
+  Row,
+  Section,
+  Surface,
+  Text,
+  useTheme,
+} from '@housekeeping/ui';
 import { useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 
@@ -297,22 +307,46 @@ function PlannedCard(props: {
       )}
       {/* Never inside the pressable card: a button in a button is invalid on the web. */}
       {props.corner ? (
-        <View style={{ position: 'absolute', top: 8, right: 8 }}>{props.corner}</View>
+        <View style={{ position: 'absolute', top: 4, right: 4 }}>{props.corner}</View>
       ) : null}
     </View>
   );
 }
 
+/**
+ * "Route" over the photo (review D, 28.11.: the text button floated without a background): a
+ * round map pin on the card's surface like the heart and bookmark of the tiles (spec 0041,
+ * AC-017), 44 pt to tap.
+ */
 function RouteButton(props: { entryId: string; onPress: () => void }) {
+  const theme = useTheme();
   return (
-    <Button
-      label="Route"
-      icon="map-pin"
-      size="sm"
-      variant="secondary"
-      onPress={props.onPress}
+    <Pressable
       testID={`today-route-${props.entryId}`}
-    />
+      accessibilityRole="button"
+      accessibilityLabel="Route"
+      onPress={props.onPress}
+      style={(state) => ({
+        width: 44,
+        height: 44,
+        alignItems: 'center',
+        justifyContent: 'center',
+        opacity: state.pressed ? 0.6 : 1,
+      })}
+    >
+      <View
+        style={{
+          width: 34,
+          height: 34,
+          borderRadius: 17,
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: theme.colors.surface,
+        }}
+      >
+        <Icon name="map-pin" size={18} color="text" />
+      </View>
+    </Pressable>
   );
 }
 

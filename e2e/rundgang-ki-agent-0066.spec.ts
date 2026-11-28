@@ -154,7 +154,7 @@ test('AC-001, AC-003, AC-004, AC-005: ✨ in "Restaurants" opens the empty page,
   await expect(tid(page, 'agent-open')).toHaveCount(0);
   await openAgentFromRestaurants(page);
   // Spec 0067: the one household agent, opened with the badge "Ausgehen" and its start page.
-  await expect(tid(page, 'agent-title')).toContainText('Agent');
+  await expect(tid(page, 'agent-title')).toHaveText('AI Agent');
   await expect(tid(page, 'agent-badge-ausgehen')).toBeVisible();
   await expect(tid(page, 'agent-abilities')).toBeVisible();
   await expect(tid(page, 'agent-place-chip')).toContainText('Hier · Zu Fuß');

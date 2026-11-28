@@ -219,6 +219,28 @@ describe('REQ-005: the next unfinished recipe', () => {
     });
   });
 
+  it('spec 0067, decision 36: the recipes chosen in the agent go one after the other, then it stops', () => {
+    const dal = titleOnly('r-dal', 'Dal');
+    const recipes = [apfel, bami, chili, dal];
+    const chosen = ['r-chili', 'r-apfel'];
+    expect(nextUnfinished(recipes, chosen, 'r-chili', { onlyOrder: true })).toEqual({
+      next: 'r-apfel',
+      remaining: 1,
+    });
+    // After the last chosen one nothing follows, the other unfinished ones are not counted.
+    const worked = [apfel, bami, done('r-chili', 'Chili'), dal];
+    expect(nextUnfinished(worked, chosen, 'r-apfel', { onlyOrder: true })).toEqual({
+      next: undefined,
+      remaining: 0,
+    });
+    // A chosen one finished meanwhile drops out; one outside the choice never comes.
+    const later = [done('r-apfel', 'Apfelstrudel'), bami, chili, dal];
+    expect(nextUnfinished(later, chosen, 'r-chili', { onlyOrder: true })).toEqual({
+      next: undefined,
+      remaining: 0,
+    });
+  });
+
   it('collections are never next', () => {
     const recipes = [apfel, makeCollection({ id: 'c-fest', title: 'Fest' })];
     expect(nextUnfinished(recipes, ['r-apfel', 'c-fest'], 'r-apfel')).toEqual({

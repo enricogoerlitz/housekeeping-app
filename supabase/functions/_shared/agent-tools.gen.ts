@@ -594,6 +594,15 @@ const RECIPE_SORTS: Record<string, Sort> = {
 const RECIPE_KINDS = ['recipe', 'collection', 'all'] as const;
 
 /** Recipes by default; collections or both on request. */
+/** Review D (REQ-013): "welche haben kein Foto?" in one call, not page by page. */
+const PHOTO_PARAM: Param = {
+  type: 'boolean',
+  description: 'mit eigenem Foto (true) oder ohne (false)',
+};
+const photoMatch = (item: Item, args: Args) =>
+  typeof args.has_photo !== 'boolean' || item.has_photo === args.has_photo;
+const photoLabel = (args: Args) => booleanLabel(args.has_photo, 'mit Foto', 'ohne Foto', 'Foto');
+
 const kindMatches = (row: ToolRow, args: Args) =>
   args.kind === 'all' || (args.kind === 'collection') === (row.kind === 'collection');
 
@@ -622,6 +631,7 @@ const listRecipes: ListTool = {
     },
     favorite: { type: 'boolean', description: 'Favorit von mindestens einem Mitglied' },
     unfinished: { type: 'boolean', description: 'unfertig: ohne Zutaten und ohne Schritte' },
+    has_photo: PHOTO_PARAM,
     kind: {
       type: 'enum',
       values: RECIPE_KINDS,
@@ -709,7 +719,8 @@ const listRecipes: ListTool = {
       String(item.last_cooked_on) < args.cooked_before) &&
     (typeof args.favorite !== 'boolean' ||
       strings(item.favorite_of).length > 0 === args.favorite) &&
-    (typeof args.unfinished !== 'boolean' || item.unfinished === args.unfinished),
+    (typeof args.unfinished !== 'boolean' || item.unfinished === args.unfinished) &&
+    photoMatch(item, args),
   search: (item) => [
     str(item.title),
     str(item.cuisine),
@@ -758,6 +769,7 @@ const listRecipes: ListTool = {
     ...dateLabel(args.cooked_before, 'nicht gekocht seit', 'zuletzt gekocht vor'),
     ...booleanLabel(args.favorite, 'Favorit', 'kein Favorit', 'Favorit'),
     ...booleanLabel(args.unfinished, 'unfertig', 'fertig', 'unfertig'),
+    ...photoLabel(args),
   ],
 };
 
@@ -787,10 +799,12 @@ const RESTAURANT_FIELDS = {
 };
 const visitedLabels = (args: Args) => [
   ...booleanLabel(args.favorite, 'Favorit', 'kein Favorit', 'Favorit'),
+  ...photoLabel(args),
   ...booleanLabel(args.visited, 'besucht', 'nicht besucht', 'besucht'),
   ...dateLabel(args.visited_before, 'nicht besucht seit', 'zuletzt besucht vor'),
 ];
 const visitedMatch = (item: Item, args: Args) =>
+  photoMatch(item, args) &&
   (typeof args.favorite !== 'boolean' || strings(item.favorite_of).length > 0 === args.favorite) &&
   (typeof args.visited !== 'boolean' || (num(item.visits) ?? 0) > 0 === args.visited) &&
   (typeof args.visited_before !== 'string' ||
@@ -800,6 +814,7 @@ const visitParams: Record<string, Param> = {
   favorite: { type: 'boolean', description: 'Favorit von mindestens einem Mitglied' },
   visited: { type: 'boolean', description: 'schon besucht (stand bis heute im Kalender)' },
   visited_before: { type: 'date', description: 'zuletzt besucht vor diesem Tag oder nie' },
+  has_photo: PHOTO_PARAM,
 };
 
 const listRestaurants: ListTool = {

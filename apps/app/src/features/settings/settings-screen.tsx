@@ -307,8 +307,8 @@ function ViewChoice() {
       />
       <Text variant="small" color="muted" testID="app-view-hint">
         {view === 'ai_first'
-          ? 'Der Agent steht in der Mitte der Leiste. „Haushalt“ findest du unter ⊞.'
-          : 'Den Agent erreichst du über ⊞ Verwalten → „Agent“ und über ✨ auf den Seiten.'}{' '}
+          ? '„AI Agent“ steht in der Mitte der Leiste. „Haushalt“ findest du unter ⊞.'
+          : '„AI Agent“ erreichst du über ⊞ Verwalten und über ✨ auf den Seiten.'}{' '}
         Gilt nur für dich.
       </Text>
       {online.disabled && online.hint ? (

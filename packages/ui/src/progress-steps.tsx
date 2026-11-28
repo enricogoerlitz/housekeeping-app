@@ -23,7 +23,15 @@ export interface ProgressStepsProps {
   runningLabel: string;
   /** Each row is `${testID}-${id}`, its toggle `-toggle`, its details `-details`. */
   testID?: string;
+  /**
+   * Spec 0067, decision 22: from three steps on they fold into one row with this text ("4
+   * Schritte"); while one runs, the row shows that step. A tap opens all rows (`-group`).
+   */
+  summary?: string;
 }
+
+/** From this many steps on, a `summary` folds them into one row. */
+const GROUP_FROM = 3;
 
 function StepRow(props: { step: ProgressStep; runningLabel: string; testID?: string }) {
   const theme = useTheme();
@@ -100,17 +108,62 @@ function StepRow(props: { step: ProgressStep; runningLabel: string; testID?: str
  * household tools of step 2 ("Liest eure Rezepte · Suche „Curry“ · 20 von 143").
  */
 export function ProgressSteps(props: ProgressStepsProps) {
+  const theme = useTheme();
+  const [open, setOpen] = useState(false);
   if (props.steps.length === 0) return null;
+  const rows = props.steps.map((step) => (
+    <StepRow
+      key={step.id}
+      step={step}
+      runningLabel={props.runningLabel}
+      testID={props.testID ? `${props.testID}-${step.id}` : undefined}
+    />
+  ));
+  if (props.summary === undefined || props.steps.length < GROUP_FROM)
+    return (
+      <View testID={props.testID} style={{ gap: 2 }}>
+        {rows}
+      </View>
+    );
+  const running = props.steps.findLast((step) => step.running);
+  const line = running ? running.line : props.summary;
+  const label = running
+    ? `${running.line}, ${props.runningLabel}, ${props.summary}`
+    : props.summary;
   return (
     <View testID={props.testID} style={{ gap: 2 }}>
-      {props.steps.map((step) => (
-        <StepRow
-          key={step.id}
-          step={step}
-          runningLabel={props.runningLabel}
-          testID={props.testID ? `${props.testID}-${step.id}` : undefined}
+      <Pressable
+        testID={props.testID ? `${props.testID}-group` : undefined}
+        accessibilityRole="button"
+        {...expandableA11y(label, open, Platform.OS)}
+        onPress={() => setOpen(!open)}
+        style={(state) => [
+          {
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 8,
+            minHeight: 32,
+            alignSelf: 'flex-start',
+            borderRadius: 6,
+            opacity: state.pressed ? 0.6 : 1,
+          },
+          keyboardFocusRing(theme, (state as { focused?: boolean }).focused),
+        ]}
+      >
+        <View
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: 4,
+            backgroundColor: running ? theme.colors.accent : theme.colors.textMuted,
+          }}
         />
-      ))}
+        <Text variant="small" color="muted" numberOfLines={1} style={{ flexShrink: 1 }}>
+          {line}
+        </Text>
+        <Icon name={open ? 'chevron-up' : 'chevron-down'} size={16} color="muted" />
+      </Pressable>
+      {open ? <View style={{ paddingLeft: 16, gap: 2 }}>{rows}</View> : null}
     </View>
   );
 }

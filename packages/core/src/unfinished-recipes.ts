@@ -25,17 +25,24 @@ const byTitle = (a: Recipe, b: Recipe) => a.title.localeCompare(b.title, 'de');
  * REQ-005: the unfinished recipe after `currentId` in `order` (the list the page was opened from,
  * spec 0034), then from the front of it; unfinished recipes outside the order follow A–Z, and
  * without an order everything is A–Z. `remaining` counts the unfinished recipes other than the
- * open one.
+ * open one. `onlyOrder` (spec 0067, decision 36): the recipes chosen in the agent's chat, one
+ * after the other and from the front, nothing outside them — after the last chosen one it stops.
  */
 export function nextUnfinished(
   recipes: readonly Recipe[],
   order: readonly Id[] | undefined,
   currentId: Id,
+  options: { onlyOrder?: boolean } = {},
 ): { next: Id | undefined; remaining: number } {
-  const waiting = recipes.filter((recipe) => isUnfinishedRecipe(recipe) && recipe.id !== currentId);
-  const ids = new Set(waiting.map((recipe) => recipe.id));
   const ordered = [...new Set(order ?? [])];
   const inOrder = new Set(ordered);
+  const waiting = recipes.filter(
+    (recipe) =>
+      isUnfinishedRecipe(recipe) &&
+      recipe.id !== currentId &&
+      (!options.onlyOrder || inOrder.has(recipe.id)),
+  );
+  const ids = new Set(waiting.map((recipe) => recipe.id));
   const outside = recipes
     .filter((recipe) => !inOrder.has(recipe.id) && (ids.has(recipe.id) || recipe.id === currentId))
     .sort(byTitle)

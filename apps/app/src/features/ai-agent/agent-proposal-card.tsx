@@ -105,8 +105,8 @@ export function AgentProposalCard(props: {
     setStates((current) =>
       current.map((state, index) => (chosenWork.includes(index) ? { phase: 'opened' } : state)),
     );
-    // "Weiter zum nächsten" follows the chosen ones in this order.
-    workOut(first, { order: ids });
+    // "Weiter zum nächsten" follows the chosen ones in this order, then stops (decision 36).
+    workOut(first, { chosen: ids });
   };
 
   /** Runs the given entries one by one; returns how many went through. */
@@ -155,7 +155,8 @@ export function AgentProposalCard(props: {
     setSeen(nextSeen);
     const undo = snapshot();
     const applied = await run(ready);
-    if (applied > 0) setRestore(() => undo);
+    // The first snapshot of the card undoes everything since, a later delete included (review D).
+    if (applied > 0) setRestore((current) => current ?? undo);
     setBusy(false);
   };
 
@@ -182,7 +183,7 @@ export function AgentProposalCard(props: {
       onConfirm: () => {
         const undo = snapshot();
         void run([index]).then((applied) => {
-          if (applied > 0) setRestore(() => undo);
+          if (applied > 0) setRestore((current) => current ?? undo);
         });
       },
       testID: `${testID}-confirm`,
