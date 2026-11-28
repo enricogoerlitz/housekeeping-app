@@ -125,3 +125,35 @@ export function backspaceRemovesBadge(
   if (badges.length === 0 || selection.start !== 0 || selection.end !== 0) return undefined;
   return badges.slice(0, -1);
 }
+
+/** REQ-005: the links of a message shown as chips, at most this many. */
+const MESSAGE_LINKS = 3;
+
+/**
+ * REQ-005 (review D): the http(s) links typed or pasted into the message, each once, with the
+ * host to show on its chip ("chefkoch.de"). A trailing comma or full stop is no part of a link.
+ */
+export function messageLinks(text: string): { url: string; host: string }[] {
+  const links: { url: string; host: string }[] = [];
+  for (const match of text.matchAll(/\bhttps?:\/\/[^\s<>"]+/gi)) {
+    const url = match[0].replace(/[.,;:!?)\]]+$/, '');
+    if (links.some((link) => link.url === url)) continue;
+    const host = /^https?:\/\/(?:[^@/?#]*@)?([^/?#:]+)/i
+      .exec(url)?.[1]
+      ?.toLowerCase()
+      .replace(/^www\./, '');
+    if (!host || !host.includes('.')) continue;
+    links.push({ url, host });
+    if (links.length >= MESSAGE_LINKS) break;
+  }
+  return links;
+}
+
+/** ✕ on a link chip: the text without that link, spaces tidied. */
+export function withoutLink(text: string, url: string): string {
+  return text
+    .split(url)
+    .join(' ')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+}

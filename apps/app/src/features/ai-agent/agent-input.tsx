@@ -3,11 +3,21 @@ import {
   backspaceRemovesBadge,
   badgeLabel,
   matchBadges,
+  messageLinks,
   slashQuery,
   takeSlash,
+  withoutLink,
   type AgentBadgeSlug,
 } from '@housekeeping/core';
-import { Chip, IconButton, pickImageFile, Surface, Text, useTheme } from '@housekeeping/ui';
+import {
+  Chip,
+  IconButton,
+  openExternalLink,
+  pickImageFile,
+  Surface,
+  Text,
+  useTheme,
+} from '@housekeeping/ui';
 import { useState, type ComponentRef, type ReactNode, type RefObject } from 'react';
 import { Pressable, View, type TextInput } from 'react-native';
 
@@ -71,8 +81,10 @@ export function AgentInput(props: AgentInputProps) {
     props.inputRef.current?.focus();
   };
 
+  // REQ-005 (review D): a pasted link shows as a chip with its host; tap opens it, ✕ removes it.
+  const links = messageLinks(props.text);
   const chips =
-    props.badges.length > 0 || props.attachments.length > 0 || props.place ? (
+    props.badges.length > 0 || props.attachments.length > 0 || props.place || links.length > 0 ? (
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }} testID="agent-input-chips">
         {props.place ? (
           <Chip
@@ -110,6 +122,20 @@ export function AgentInput(props: AgentInputProps) {
             onRemove={() => props.onRemoveAttachment(entry.key)}
             removeLabel={`${entry.label} entfernen`}
             testID={`agent-attachment-${entry.key}`}
+          />
+        ))}
+        {links.map((link, index) => (
+          <Chip
+            key={link.url}
+            label={link.host}
+            icon="link"
+            size="sm"
+            disabled={!props.editable}
+            accessibilityLabel={`${link.host} öffnen`}
+            onPress={() => openExternalLink(link.url)}
+            onRemove={() => props.onChangeText(withoutLink(props.text, link.url))}
+            removeLabel={`${link.host} entfernen`}
+            testID={`agent-link-${index}`}
           />
         ))}
       </View>

@@ -13,7 +13,7 @@ metadata:
 instructions_file: household-agent.md
 definition:
   kind: prompt
-  model: gpt-6.1-terra
+  model: gpt-5.6-luna
   reasoning:
     effort: low
   tools:
@@ -128,6 +128,7 @@ definition:
           - cooked_before
           - favorite
           - unfinished
+          - has_photo
           - kind
         properties:
           query:
@@ -252,6 +253,11 @@ definition:
               - boolean
               - 'null'
             description: 'unfertig: ohne Zutaten und ohne Schritte'
+          has_photo:
+            type:
+              - boolean
+              - 'null'
+            description: mit eigenem Foto (true) oder ohne (false)
           kind:
             type:
               - string
@@ -284,6 +290,7 @@ definition:
           - favorite
           - visited
           - visited_before
+          - has_photo
         properties:
           query:
             type:
@@ -377,6 +384,11 @@ definition:
               - string
               - 'null'
             description: zuletzt besucht vor diesem Tag oder nie (JJJJ-MM-TT)
+          has_photo:
+            type:
+              - boolean
+              - 'null'
+            description: mit eigenem Foto (true) oder ohne (false)
     - type: function
       name: list_activities
       description:
@@ -398,6 +410,7 @@ definition:
           - favorite
           - visited
           - visited_before
+          - has_photo
         properties:
           query:
             type:
@@ -482,6 +495,11 @@ definition:
               - string
               - 'null'
             description: zuletzt besucht vor diesem Tag oder nie (JJJJ-MM-TT)
+          has_photo:
+            type:
+              - boolean
+              - 'null'
+            description: mit eigenem Foto (true) oder ohne (false)
     - type: function
       name: calendar
       description:

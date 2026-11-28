@@ -83,7 +83,7 @@ async function chooseView(page: Page, view: 'normal' | 'ai_first'): Promise<void
 
 test('AC-004: in "Normal" ⊞ Verwalten → "Agent" opens the agent page', async ({ page }) => {
   await openAgent(page);
-  await expect(tid(page, 'agent-title')).toContainText('Agent');
+  await expect(tid(page, 'agent-title')).toHaveText('AI Agent');
   await expect(tid(page, 'agent-greeting')).toContainText('ich bin euer Housekeeping-Agent');
 });
 
@@ -98,8 +98,8 @@ test('AC-001, AC-003: "KI zuerst" puts the agent in the middle and "Haushalt" fi
   const tabs = page.locator('[role="tab"]');
   await expect(tabs).toHaveCount(5);
   await expect(tabs.nth(2)).toHaveAttribute('data-testid', 'tab-agent');
-  await expect(tid(page, 'tab-agent')).toHaveAccessibleName('Agent');
-  await expect(tid(page, 'tab-agent')).not.toContainText('Agent');
+  await expect(tid(page, 'tab-agent')).toHaveAccessibleName('AI Agent');
+  await expect(tid(page, 'tab-agent')).toContainText('AI Agent');
   await expect(tid(page, 'tab-haushalt')).toHaveCount(0);
   await tid(page, 'tab-agent').click();
   await expect(tid(page, 'agent-screen')).toBeVisible();
@@ -180,15 +180,17 @@ test('AC-009: seven lines make the field 4.5 lines high, then it scrolls', async
   await openAgent(page);
   const input = tid(page, 'agent-input');
   await input.fill(['eins', 'zwei', 'drei', 'vier', 'fünf', 'sechs', 'sieben'].join('\n'));
-  const { height, lineHeight, scrolls } = await input.evaluate((node) => {
+  const { height, lineHeight, padding, scrolls } = await input.evaluate((node) => {
     const style = getComputedStyle(node);
     return {
       height: node.getBoundingClientRect().height,
       lineHeight: Number.parseFloat(style.lineHeight),
+      // Decision 47: the slim bar centres one line in 46 pt, so the padding is no fixed 12.
+      padding: Number.parseFloat(style.paddingTop) + Number.parseFloat(style.paddingBottom),
       scrolls: node.scrollHeight > node.clientHeight,
     };
   });
-  expect(height).toBeCloseTo(24 + lineHeight * 4.5, 0);
+  expect(height).toBeCloseTo(padding + lineHeight * 4.5, 0);
   expect(scrolls).toBe(true);
 });
 
@@ -224,5 +226,6 @@ test('AC-010, REQ-005: a .docx is refused, a PDF goes with the message', async (
   expect(String((sent[0]?.attachments as { dataUrl: string }[])[0]?.dataUrl)).toMatch(
     /^data:application\/pdf;base64,/,
   );
-  await expect(tid(page, 'agent-turn-0-meta')).toHaveText('1 Anhang');
+  // Decision 32: a message sent just now shows its files; only a loaded chat says "1 Anhang".
+  await expect(tid(page, 'agent-turn-0-files')).toBeVisible();
 });

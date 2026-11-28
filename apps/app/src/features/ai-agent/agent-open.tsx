@@ -19,6 +19,11 @@ import { useOpenRestaurant } from '@/features/restaurants/navigation';
 export interface OpenTarget {
   kind: 'recipe' | 'collection' | 'restaurant' | 'activity';
   id: Id;
+  /**
+   * Opens the entry anew even when it is shown already: "Änderung ansehen" of a second change
+   * card for the recipe beside the chat must start "Mit KI ändern" again (review D, 28.11.).
+   */
+  again?: number;
 }
 
 const OpenContext = createContext<((target: OpenTarget) => void) | undefined>(undefined);
@@ -69,7 +74,7 @@ function Detail(props: {
         onOpen={(id) => props.onOpen({ kind: 'activity', id })}
       />
     );
-  return <RecipeDetail recipeId={target.id} onBack={props.onClose} backLabel="Agent" quick />;
+  return <RecipeDetail recipeId={target.id} onBack={props.onClose} backLabel="AI Agent" quick />;
 }
 
 /**
@@ -84,7 +89,7 @@ export function AgentOpenHost(props: { children: ReactNode }) {
   const close = () => setOpened(undefined);
   const detail = opened ? (
     <Detail
-      key={`${opened.kind}-${opened.id}`}
+      key={`${opened.kind}-${opened.id}-${opened.again ?? 0}`}
       target={opened}
       onClose={close}
       onOpen={setOpened}

@@ -562,6 +562,47 @@ describe('ai-agent: send', () => {
     expect(all.at(-1)).toEqual({ type: 'error', error: 'ai_unavailable' });
   });
 
+  it('review D: a message the content filter blocks ends with "blocked", not ai_unavailable', async () => {
+    // Azure's prompt shield (jailbreak) answers a pasted "Ignoriere alle Regeln …" with a
+    // canned English refusal and an incomplete response (seen in the test catalogue, J1/J2).
+    const { deps } = setup({
+      state: {
+        stream: () =>
+          sse([
+            { type: 'response.created', response: { id: 'resp_x' } },
+            {
+              type: 'response.output_text.delta',
+              delta: "I'm sorry, but I cannot assist with that request.",
+            },
+            {
+              type: 'response.incomplete',
+              response: { id: 'resp_x', incomplete_details: { reason: 'content_filter' } },
+            },
+          ]),
+      },
+    });
+    const all = await events(await handler(send({ chatId: CHAT_ID }), deps));
+    expect(all.at(-1)).toEqual({ type: 'error', error: 'blocked' });
+    expect(all.some((event) => event.type === 'done')).toBe(false);
+  });
+
+  it('review D: an incomplete answer for another reason stays ai_unavailable', async () => {
+    const { deps } = setup({
+      state: {
+        stream: () =>
+          sse([
+            { type: 'response.created', response: { id: 'resp_x' } },
+            {
+              type: 'response.incomplete',
+              response: { id: 'resp_x', incomplete_details: { reason: 'max_output_tokens' } },
+            },
+          ]),
+      },
+    });
+    const all = await events(await handler(send({ chatId: CHAT_ID }), deps));
+    expect(all.at(-1)).toEqual({ type: 'error', error: 'ai_unavailable' });
+  });
+
   it('an answer without cards appends nothing and ends with done', async () => {
     const { deps, state } = setup({ state: { stream: () => sse(turnEvents(false)) } });
     const all = await events(await handler(send({ chatId: CHAT_ID }), deps));

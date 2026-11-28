@@ -8,9 +8,11 @@ import {
 } from '@housekeeping/api';
 import {
   ACTIVITY_SORTS,
+  activityEmptyState,
   activityMatches,
   countRememberFilters,
   filterRemembered,
+  leavesActivityList,
   REMEMBER_FILTERS,
   sortActivities,
   type RememberFilter,
@@ -44,7 +46,7 @@ import {
   openKeyboardNow,
 } from '@housekeeping/ui';
 import { AgentEntryButton } from '@/features/ai-agent/agent-entry';
-import { useIsFocused, useRouter } from 'expo-router';
+import { useIsFocused, usePathname, useRouter } from 'expo-router';
 import { type ComponentRef, useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, View, type TextInput } from 'react-native';
 
@@ -105,12 +107,14 @@ export function ActivitiesScreen() {
   const tiles = listView.view === 'tiles';
   const [listWidth, setListWidth] = useState(0);
   // "Gemerkt", "Alle", "Nicht gemerkt" (spec 0041, REQ-004): never in the address, and back to
-  // "Gemerkt" whenever the list is left (AC-013).
+  // "Gemerkt" whenever the list is left (AC-013) — not when an activity opens above it.
   const [remember, setRemember] = useState<RememberFilter>('remembered');
-  const [wasFocused, setWasFocused] = useState(focused);
-  if (focused !== wasFocused) {
-    setWasFocused(focused);
-    if (!focused) setRemember('remembered');
+  const pathname = usePathname();
+  const left = !focused && leavesActivityList(pathname);
+  const [wasLeft, setWasLeft] = useState(left);
+  if (left !== wasLeft) {
+    setWasLeft(left);
+    if (left) setRemember('remembered');
   }
 
   const query = params.suche ?? '';
@@ -339,46 +343,63 @@ export function ActivitiesScreen() {
       </Row>
     </Stack>
   );
+  const emptyResults = activityEmptyState(query, remember, favoritesOnly);
+  const showAll = () => {
+    setRemember('all');
+    setFavoritesOnly(false);
+  };
   const listBody = (
     <>
-      <Text variant="small" color="muted" testID="activity-count" style={{ marginBottom: 12 }}>
-        {results.length === 1 ? '1 Aktivität' : `${results.length} Aktivitäten`}
-      </Text>
       {results.length === 0 ? (
+        // Worded like recipes and articles: the search or the filter that hides them.
         <EmptyState
-          icon="search"
-          title="Nichts gefunden"
-          text="Probiere ein anderes Wort oder nimm den Filter heraus."
+          icon={query.trim() ? 'search' : 'list-filter'}
+          title={emptyResults.title}
+          text={emptyResults.text}
           testID="activities-no-results"
-        />
-      ) : (
-        <View
-          onLayout={(event) => setListWidth(event.nativeEvent.layout.width)}
-          style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GAP }}
         >
-          {results.map((activity) => (
-            <View key={activity.id} style={{ width: cellWidth }}>
-              {tiles ? (
-                <ActivityTile
-                  activity={activity}
-                  myRating={activity.ratings[me.id] ?? 0}
-                  isFavorite={activity.favoriteOf.includes(me.id)}
-                  visits={visitsById.get(activity.id)}
-                  onPress={() => open(activity.id)}
-                />
-              ) : (
-                <ActivityCard
-                  activity={activity}
-                  myRating={activity.ratings[me.id] ?? 0}
-                  isFavorite={activity.favoriteOf.includes(me.id)}
-                  visits={visitsById.get(activity.id)}
-                  selected={activity.id === selectedId}
-                  onPress={() => open(activity.id)}
-                />
-              )}
-            </View>
-          ))}
-        </View>
+          {emptyResults.showAll ? (
+            <Button
+              label="Alle zeigen"
+              variant="secondary"
+              onPress={showAll}
+              testID="activities-show-all"
+            />
+          ) : null}
+        </EmptyState>
+      ) : (
+        <>
+          <Text variant="small" color="muted" testID="activity-count" style={{ marginBottom: 12 }}>
+            {results.length === 1 ? '1 Aktivität' : `${results.length} Aktivitäten`}
+          </Text>
+          <View
+            onLayout={(event) => setListWidth(event.nativeEvent.layout.width)}
+            style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GAP }}
+          >
+            {results.map((activity) => (
+              <View key={activity.id} style={{ width: cellWidth }}>
+                {tiles ? (
+                  <ActivityTile
+                    activity={activity}
+                    myRating={activity.ratings[me.id] ?? 0}
+                    isFavorite={activity.favoriteOf.includes(me.id)}
+                    visits={visitsById.get(activity.id)}
+                    onPress={() => open(activity.id)}
+                  />
+                ) : (
+                  <ActivityCard
+                    activity={activity}
+                    myRating={activity.ratings[me.id] ?? 0}
+                    isFavorite={activity.favoriteOf.includes(me.id)}
+                    visits={visitsById.get(activity.id)}
+                    selected={activity.id === selectedId}
+                    onPress={() => open(activity.id)}
+                  />
+                )}
+              </View>
+            ))}
+          </View>
+        </>
       )}
     </>
   );

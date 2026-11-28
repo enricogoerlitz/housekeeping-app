@@ -281,9 +281,9 @@ Beim Bau von Schritt A entschieden (27.11.2026):
     („/re“ → Rezepte, Ausgehen über „Restaurants“; „/au“ auch Haushalt über „Aufgaben“). Im
     `[KONTEXT]` stehen die Badges als „Hinweise der Person: … (nur Hinweise …)“ und „Heute im Haushalt:
     Freitag, 2026-11-27 (Europe/Berlin)“ aus `households.timezone`.
-22. OFFEN: Eine Frage wie „was kochen wir diese Woche und was fehlt“ ruft heute je Rezept ein
-    `list_recipes` mit Suche (7 Aufrufe). Ein Filter „diese Titel/IDs“ würde das bündeln — in Schritt
-    D mit dem Testkatalog entscheiden. Ebenso, ob viele Schrittzeilen zu einer Gruppe zusammenklappen.
+22. Entschieden in Schritt D (Entscheidung 53): kein Filter „diese Titel/IDs“; Schrittzeilen klappen
+    ab drei zu einer Zeile zusammen. Ursprünglich offen: Eine Frage wie „was kochen wir diese Woche
+    und was fehlt“ rief je Rezept ein `list_recipes` mit Suche (7 Aufrufe).
 
 Beim Bau von Schritt B entschieden (27./28.11.2026, mit Enricos Rückmeldungen aus der Vorschau):
 
@@ -412,8 +412,72 @@ Beim Bau von Schritt C entschieden (28.11.2026):
     Zeile, „+“, Mikrofon und Senden als 34-pt-Kreise mit 44 pt Tippfläche, 8 pt Abstände, Text 17 pt;
     Senden lässt die Tastatur offen; Tastatur in einem Zug. Der Chip „localhost“ über der Tastatur ist
     Safaris Adressleiste und fehlt in der installierten App.
-48. OFFEN für D: Der Agent hat jetzt 18 Werkzeuge (ADR-0019, Option F: ab etwa 15–20 Routing
-    prüfen); beim Rezept-Aufräumen nutzte er `unfinished: true` nicht und sah nur die ersten 20.
+48. Entschieden in Schritt D (Entscheidungen 49, 50): Der Agent hat 18 Werkzeuge (ADR-0019,
+    Option F: ab etwa 15–20 Routing prüfen). Im Testkatalog nutzen alle drei Modelle beim
+    Rezept-Aufräumen `unfinished: true` (7 von 7). Kein Routing.
+
+Beim Bau von Schritt D entschieden (28.11.2026, Testkatalog und Review `tmp/0067/REVIEW.md`):
+
+49. **Modell (Entscheidung 10):** `gpt-5.6-luna` ist Standard in `household-agent.yaml`. Im
+    Testkatalog (64 Fälle, 72 Nachrichten, je Modell gemessen) lag luna vor der Optimierung bei 58
+    Fällen, terra bei 57, `gpt-6-luna` bei 50. Nach der Optimierung erreichen terra und luna je 64
+    von 64, `gpt-6-luna` 58. Kosten der Tokens je Nachricht: luna 0,25 ¢, terra 1,05 ¢,
+    `gpt-6-luna` 0,13 ¢. Bis zum ersten Text vergehen bei luna und terra 5,3 s, bei `gpt-6-luna`
+    3,2 s. Das Routing nach Aufgabe auf terra aus Entscheidung 10 entfällt, weil luna auch Planen,
+    „Woche füllen“ und die Massenbearbeitung schafft. terra bleibt bereitgestellt.
+50. **Routing (ADR-0019, Option F): nicht bauen.** Neu prüfen ab etwa 25 Werkzeugen, wenn eine
+    Gruppe des Katalogs mit luna unter 90 % fällt oder wenn Enrico schwächere Antworten beim Planen
+    bemerkt. Dann zuerst ohne Klassifizierer: nach Badge und Schlüsselwörtern auf
+    `household-agent-terra-<env>` aus derselben YAML umschalten, in derselben Conversation.
+51. **Inhaltsfilter:** Blockt Azures Prompt Shield eine Nachricht (Antwort `incomplete`, Grund
+    `content_filter`), endet die Antwort mit dem Stream-Fehler `blocked`. Die App zeigt dann
+    „Das kann ich so nicht bearbeiten: Der Schutzfilter hält Anweisungen an die KI im eingefügten
+    Text oder in der Datei zurück. Lass sie weg oder frag ohne sie noch einmal.“ statt Azures
+    englischer Absage, live wie im geladenen Chat. Die Absage wird nur im unvollständigen Item
+    ersetzt.
+52. **Hilfen für das Modell:**
+    - Der Kontext nennt „Diese Woche“ und „Nächste Woche“ als Daten (Montag bis Sonntag, Tag des
+      Haushalts).
+    - `list_recipes`, `list_restaurants` und `list_activities` haben den Filter `has_photo`.
+      „Welche haben kein Foto?“ braucht damit einen Aufruf.
+    - Neue Regeln in den Anweisungen:
+      - Koordinaten im Kontext gelten als bekannter Ort.
+      - Angekündigte Karten auch zeigen.
+      - Klare Wünsche sofort vorschlagen, nur nach dem Unklaren fragen.
+      - Was schon auf der Liste steht, trotzdem vorschlagen.
+      - Geplantes aus `calendar`.
+      - Jede Antwort hat einen Satz.
+      - „Woche füllen“ wählt die Tage selbst.
+      - Neue Orte immer als Karten.
+53. **Entscheidung 22:** Ab drei Schritten zeigt eine Antwort eine Zeile „n Schritte“. Ein Tipp
+    zeigt alle Schritte (`ProgressSteps summary`), ein laufender steht in der Zeile. Kein
+    Werkzeugaufruf ist verborgen (REQ-008 bleibt). Ein Filter „diese Titel/IDs“ kommt nicht:
+    terra und luna lesen bei „was kochen wir diese Woche und was fehlt“ höchstens dreimal, und der
+    Lese-Cache fängt doppelte Aufrufe ab.
+54. **„Weiter zum nächsten“ aus dem Chat** (ändert Entscheidung 36): Es geht nur durch die in der
+    Karte gewählten Rezepte und hört nach dem letzten auf (`nextUnfinished` mit `onlyOrder`).
+    Vorher verlor der Weg aus dem Chat die Auswahl und ging A–Z durch alle unfertigen Rezepte.
+55. **„Änderung ansehen“** öffnet das Rezept neben dem Chat neu, auch wenn es schon offen ist.
+    „Mit KI ändern“ startet dann mit dem neuen Wunsch.
+56. **„Rückgängig“ der Sammelkarte** nimmt alles seit dem ersten Übernehmen zurück, auch ein
+    späteres einzelnes Löschen. Vorher ersetzte das Löschen das „Rückgängig“ der übrigen Einträge
+    (AC-018).
+57. **Einheitlich „AI Agent“** (ändert Entscheidung 16): gilt für den Kopf der Seite, den Eintrag
+    unter ⊞ und in der Seitenleiste, das Zurück-Label und den Hinweis in den Einstellungen. Der
+    Agent selbst stellt sich weiter als „Housekeeping-Agent“ vor.
+58. **Link-Chip (REQ-005):** Ein getippter oder eingefügter http(s)-Link erscheint als Chip mit
+    seinem Host („chefkoch.de“, höchstens drei). Ein Tipp auf den Chip öffnet den Link, ✕ nimmt
+    ihn aus dem Text (`messageLinks`, `withoutLink`).
+59. **Alte Conversations ohne `env`** (vor Entscheidung 44): Der Vorschau-Purge löscht sie, wenn
+    alle Agenten, die darin geantwortet haben, zur Vorschau gehören (`created_by.agent`, z. B.
+    `household-agent-preview`, `places-agent-preview`). Unbeantwortete und gemischte
+    Conversations bleiben, Produktion nie. Im Projekt lagen 11 solche: 2 der Vorschau und 9
+    lokale (nicht angefasst).
+60. **Außerhalb von 0067, aus der Review-Runde:**
+    - Auf der Übersicht ist „Route“ ein runder Kartenpunkt wie Herz und Merken der Kacheln, kein
+      schwebender Text mehr.
+    - Aktivitäten behalten „Alle“, wenn eine Aktivität geöffnet wird.
+    - Ein leerer Filter benennt sich selbst und bietet „Alle zeigen“ (Filterprüfung der App).
 
 ## Grenzfälle, die in der App fest verdrahtet sind
 
@@ -471,26 +535,27 @@ Nach dem Bau prüft der Bauende gründlich und schreibt eine Review mit klarem U
 
 ## Risiken
 
-| Risiko                                                                                                    | Gegenmaßnahme                                                                                                                                                                                                | Test                                           |
-| --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------- |
-| Werkzeug liefert Daten eines fremden Haushalts                                                            | Haushalts-ID nur vom Server; Abfragen mit dem JWT der Person (RLS)                                                                                                                                           | pgTAP + Werkzeugtest fremder Haushalt (AC-014) |
-| Modell schleust SQL oder Filter ein                                                                       | feste Abfragen, Werte gebunden, Felder/Sortierungen per Liste erlaubt                                                                                                                                        | AC-015, Werkzeug-Unit-Tests                    |
-| Agent ändert ohne Zustimmung (Prompt-Injection)                                                           | kein Schreibwerkzeug; nur `propose_actions`, Übernehmen in der App                                                                                                                                           | AC-020, Testkatalog                            |
-| Vorschlag auf veraltetem Stand überschreibt Neueres                                                       | beim Übernehmen neu lesen, abweichende Einträge abgewählt                                                                                                                                                    | Test mit zweitem Gerät                         |
-| Abgemeldete Person / fremde Person ruft die Function                                                      | `requireMember` wie 0066                                                                                                                                                                                     | Function-Test 401/403                          |
-| Kosten laufen davon (lange Chats, Massenbearbeitung, Bilder)                                              | Kontingent je Antwort und Werkzeuglauf, 20-Einträge-Grenze, Hinweis auf neuen Chat                                                                                                                           | Function-Tests, Messung im Testkatalog         |
-| Daten bleiben bei Foundry nach Löschen                                                                    | Conversation + alle Antworten löschen, Löschprotokoll, Vorschau leert vor Reset                                                                                                                              | Smoke wie 0066                                 |
-| Rohantworten verraten Anweisungen                                                                         | Function gibt nie Rohantworten weiter                                                                                                                                                                        | Function-Test                                  |
-| Injection trägt Haushaltsdaten über Websuche oder Links hinaus (Security-Check 27.11., mittel; **offen**) | Instruktion: keine Haushaltsdaten in Suchen; Links nur https, Öffnen nur auf Tipp. Für B/D: klären, ob die Foundry-Websuche Seiten aufruft; Websites der Karten nach Werkzeugrunden nur aus der Anreicherung | Testkatalog D                                  |
-| Viele Werkzeugaufrufe treiben Kosten und Last (Security-Check, niedrig; behoben)                          | 10 Aufrufe je Lauf, 20 je Antwort, 5 Läufe, Seiten ≤ 300, Ausgabe ≤ 60 000 Zeichen                                                                                                                           | edge „cost: at most 10 …“                      |
-| Anhang mit falschem Inhalt (Security-Check, Hinweis; akzeptiert)                                          | Präfix, Base64, Länge geprüft; Unlesbares lehnt Foundry ab (`ai_unavailable`)                                                                                                                                | core                                           |
-| Zwei Antworten im selben Chat verschränken sich (Schritt C)                                               | Lease je Chat vor jedem Zugriff, Token, 150 s; zweite Sendung 409 `chat_busy`, App wartet                                                                                                                    | pgTAP `ai_chat_answers`, edge AC-024, Smoke    |
-| Ein Mitglied hält einen Chat dauerhaft fest (Schritt C)                                                   | Lease läuft nach 150 s ab; nur der eigene Haushalt; Ende nur mit dem eigenen Token                                                                                                                           | pgTAP                                          |
-| Chats direkt gelöscht, Daten bleiben bei Foundry (aus Spec 0066, war akzeptiert)                          | Löschprotokoll per Trigger, abgearbeitet bei `delete`/`purge`, `delete_household` wartet; Fremdes im Protokoll wird nicht gelöscht                                                                           | pgTAP, edge, Smoke                             |
-| Vorschau-Reset lässt Conversations liegen (aus Spec 0066, offen)                                          | `env` in den Metadaten, Purge vor dem Reset, Produktion nie                                                                                                                                                  | foundry `purge.test.ts`, Workflow-Test         |
-| Eigene Fotos landen bei Foundry (`look_at_photos`, Schritt C)                                             | nur auf ausdrücklichen Wunsch, höchstens 6, nur Fotos des Chat-Haushalts (RLS, Pfadprüfung); liegen in der Conversation und gehen mit dem Chat                                                               | edge                                           |
-| Modell plant „Woche füllen“ in belegte Abende oder Reisen (Schritt C)                                     | das Modell gibt nur Wünsche; Abende, Reisen und Gerichte rechnet die App; vor dem Übernehmen neu gelesen                                                                                                     | core `week-fill`, Smoke                        |
-| Werkzeugergebnisse und Anhänge liegen bei Foundry (Security-Check, Hinweis)                               | nur angefragte Felder, keine E-Mails, Profile nur `id,name` der Mitglieder; Löschen wie Spec 0066                                                                                                            | edge AC-014                                    |
+| Risiko                                                                                         | Gegenmaßnahme                                                                                                                                                                                                        | Test                                                                                                                            |
+| ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Werkzeug liefert Daten eines fremden Haushalts                                                 | Haushalts-ID nur vom Server; Abfragen mit dem JWT der Person (RLS)                                                                                                                                                   | pgTAP + Werkzeugtest fremder Haushalt (AC-014)                                                                                  |
+| Modell schleust SQL oder Filter ein                                                            | feste Abfragen, Werte gebunden, Felder/Sortierungen per Liste erlaubt                                                                                                                                                | AC-015, Werkzeug-Unit-Tests                                                                                                     |
+| Agent ändert ohne Zustimmung (Prompt-Injection)                                                | kein Schreibwerkzeug; nur `propose_actions`, Übernehmen in der App                                                                                                                                                   | AC-020, Testkatalog                                                                                                             |
+| Vorschlag auf veraltetem Stand überschreibt Neueres                                            | beim Übernehmen neu lesen, abweichende Einträge abgewählt                                                                                                                                                            | Test mit zweitem Gerät                                                                                                          |
+| Abgemeldete Person / fremde Person ruft die Function                                           | `requireMember` wie 0066                                                                                                                                                                                             | Function-Test 401/403                                                                                                           |
+| Kosten laufen davon (lange Chats, Massenbearbeitung, Bilder)                                   | Kontingent je Antwort und Werkzeuglauf, 20-Einträge-Grenze, Hinweis auf neuen Chat                                                                                                                                   | Function-Tests, Messung im Testkatalog                                                                                          |
+| Daten bleiben bei Foundry nach Löschen                                                         | Conversation + alle Antworten löschen, Löschprotokoll, Vorschau leert vor Reset                                                                                                                                      | Smoke wie 0066                                                                                                                  |
+| Rohantworten verraten Anweisungen                                                              | Function gibt nie Rohantworten weiter                                                                                                                                                                                | Function-Test                                                                                                                   |
+| Injection trägt Haushaltsdaten über Websuche oder Links hinaus (Security-Check 27.11., mittel) | Instruktion: keine Haushaltsdaten in Suchen; Links nur https, Öffnen nur auf Tipp; Websites der Karten nach Werkzeugrunden nur aus der Anreicherung. Ob die Foundry-Websuche Seiten selbst aufruft, bleibt ungeklärt | Testkatalog D: J4 („häng unsere Liste an den Link“) bei allen drei Modellen abgelehnt, keine Haushaltsdaten in den Suchanfragen |
+| Eingefügter Text mit Anweisungen blockt die ganze Frage (Schritt D)                            | Azures Prompt Shield blockt; deutscher Hinweis statt englischer Absage (Entscheidung 51); die Frage ohne den Text geht                                                                                               | edge, core, api „blocked“                                                                                                       |
+| Viele Werkzeugaufrufe treiben Kosten und Last (Security-Check, niedrig; behoben)               | 10 Aufrufe je Lauf, 20 je Antwort, 5 Läufe, Seiten ≤ 300, Ausgabe ≤ 60 000 Zeichen                                                                                                                                   | edge „cost: at most 10 …“                                                                                                       |
+| Anhang mit falschem Inhalt (Security-Check, Hinweis; akzeptiert)                               | Präfix, Base64, Länge geprüft; Unlesbares lehnt Foundry ab (`ai_unavailable`)                                                                                                                                        | core                                                                                                                            |
+| Zwei Antworten im selben Chat verschränken sich (Schritt C)                                    | Lease je Chat vor jedem Zugriff, Token, 150 s; zweite Sendung 409 `chat_busy`, App wartet                                                                                                                            | pgTAP `ai_chat_answers`, edge AC-024, Smoke                                                                                     |
+| Ein Mitglied hält einen Chat dauerhaft fest (Schritt C)                                        | Lease läuft nach 150 s ab; nur der eigene Haushalt; Ende nur mit dem eigenen Token                                                                                                                                   | pgTAP                                                                                                                           |
+| Chats direkt gelöscht, Daten bleiben bei Foundry (aus Spec 0066, war akzeptiert)               | Löschprotokoll per Trigger, abgearbeitet bei `delete`/`purge`, `delete_household` wartet; Fremdes im Protokoll wird nicht gelöscht                                                                                   | pgTAP, edge, Smoke                                                                                                              |
+| Vorschau-Reset lässt Conversations liegen (aus Spec 0066, offen)                               | `env` in den Metadaten, Purge vor dem Reset, Produktion nie                                                                                                                                                          | foundry `purge.test.ts`, Workflow-Test                                                                                          |
+| Eigene Fotos landen bei Foundry (`look_at_photos`, Schritt C)                                  | nur auf ausdrücklichen Wunsch, höchstens 6, nur Fotos des Chat-Haushalts (RLS, Pfadprüfung); liegen in der Conversation und gehen mit dem Chat                                                                       | edge                                                                                                                            |
+| Modell plant „Woche füllen“ in belegte Abende oder Reisen (Schritt C)                          | das Modell gibt nur Wünsche; Abende, Reisen und Gerichte rechnet die App; vor dem Übernehmen neu gelesen                                                                                                             | core `week-fill`, Smoke                                                                                                         |
+| Werkzeugergebnisse und Anhänge liegen bei Foundry (Security-Check, Hinweis)                    | nur angefragte Felder, keine E-Mails, Profile nur `id,name` der Mitglieder; Löschen wie Spec 0066                                                                                                                    | edge AC-014                                                                                                                     |
 
 ## Umsetzung
 
@@ -506,7 +571,7 @@ In drei Bauschritten, jeder mit Vorschau für Enrico; keine volle e2e-Suite vor 
 - [x] B2. Rezept anlegen über die Entwurfs-Strecke, „Prüfen und anlegen“ im Editor (REQ-010)
 - [x] B3. Bilder (REQ-011), Orte (REQ-012)
 - [x] C1. Massenbearbeitung (REQ-013), Woche füllen (REQ-014), Betrieb (REQ-015), Entscheidung 13
-- [ ] D. Prüfung mit Testkatalog, Modellbewertung, Optimierung, `tmp/0067/REVIEW.md`, Urteil an Enrico
+- [x] D. Prüfung mit Testkatalog, Modellbewertung, Optimierung, `tmp/0067/REVIEW.md`, Urteil an Enrico
 - [ ] `/security-check` auf den Diff, Befunde behoben oder unter „Risiken“
 - [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün,
       `pnpm exec supabase test db` grün (eigener Wegwerf-Stack), `pnpm e2e:dev` grün; volle e2e-Suite
@@ -651,3 +716,54 @@ In drei Bauschritten, jeder mit Vorschau für Enrico; keine volle e2e-Suite vor 
   `look_at_photos`; der gemeinsame lokale Stack (develop) kennt sie erst nach dem Merge – bis dahin
   dort `FOUNDRY_HOUSEHOLD_AGENT_VERSION` auf die Version davor (4) setzen. Die Migration `ai_chat_answers_and_deletions` mit
   `pnpm db:reset` einspielen.
+
+## Nachweis (Schritt D, 28.11.2026)
+
+- **Prüfung:** Testkatalog `tmp/0067/testkatalog/` mit 64 Fällen, 72 Nachrichten und 20 Gruppen,
+  dazu der Seed `seed-eval.sql`. Läufer und Bewerter laufen gegen die echte Function und echtes
+  Foundry auf dem Wegwerf-Stack `hk-0067d` (Ports 550xx). Insgesamt 300 Nachrichten, 540
+  Modellläufe und 18 Entwürfe (`foundry-calls.log`). Review mit Urteil „gut“ und zwei
+  Einschränkungen in `tmp/0067/REVIEW.md`. Treffer vorher / nachher:
+
+  | Modell   | vorher  | nachher |
+  | -------- | ------- | ------- |
+  | terra    | 57 / 64 | 64 / 64 |
+  | luna 5.6 | 58 / 64 | 64 / 64 |
+  | luna 6   | 50 / 64 | 58 / 64 |
+
+  Die Vergleichsagenten `household-agent-{terra,luna56,luna6}-local` und alle 273 Test-Chats
+  in Foundry sind wieder gelöscht.
+
+- **Rot zuerst** (Ausgaben in `tmp/0067/red/`):
+  - core `unfinished-recipes.test.ts` (1 rot): Ende nach den gewählten Rezepten.
+  - core `ai-agent-d.test.ts` (2 + 2 rot): `blocked` und die Wochenzeilen.
+  - core `agent-tools.test.ts` (2 rot): `has_photo`.
+  - core `agent-badges.test.ts` (2 rot): Link-Chip.
+  - ui `progress-steps.test.tsx` (2 rot): Gruppe.
+  - api `ai-agent.backend.test.ts` (1 rot): `blocked`.
+  - edge `ai-agent/handler.test.ts` (1 rot): `content_filter` → `blocked`.
+  - foundry `purge.test.ts` (1 rot): alte Conversations ohne `env`.
+  - foundry `run.test.ts` (1 rot): Modell luna.
+  - Aus der Filterprüfung: core `activity-kinds.test.ts` (5 rot): „Alle“ bleibt, Leerzustände.
+- **Negativtests:**
+  - Ein anderer `incomplete`-Grund bleibt `ai_unavailable`.
+  - Eine vollständige Antwort und anderer unvollständiger Text bleiben beim Laden unverändert.
+  - `ftp:`, `mailto:` und Text ohne Schema werden kein Link-Chip.
+  - Gemischte und unbeantwortete alte Conversations sowie solche der Produktion bleiben.
+  - Ohne Zonen-Angabe gibt es keine Wochenzeile.
+- **Prüfungen:**
+  - `pnpm format:check && pnpm check && pnpm build:web` grün.
+  - pgTAP auf `hk-0067d`: 60 Dateien, 2824 Tests grün. In `recipe_deletion.test.sql` hing ein
+    Test von der Reihenfolge der OIDs ab (`order by 1`); er ist korrigiert.
+  - Kein e2e und kein Security-Check (Enricos Vorgabe: beide direkt nach D). Die e2e-Dateien von
+    0066/0067 sind an „AI Agent“, das schmale Feld (AC-009) und die Anhang-Vorschau (AC-010)
+    angepasst.
+- **UI:**
+  - iPhone-Simulator (iPhone 18 Pro, Safari, `tmp/0067/ux-review-D/`): Wolke hell, Markthalle
+    dunkel, „KI zuerst“, geladene echte Chats (Schritte gruppiert, Sammelkarte, Ortskarten).
+  - Playwright (`tmp/0067/ui/shots/`): Handy 390 × 844 hell und dunkel, Desktop 1440 × 900 mit
+    Übersicht, Link-Chip, blockierter Nachricht und Seitenleiste.
+  - Nicht geprüft: installierte PWA, Diktat, fremde Links im In-App-Browser.
+- **Für Enrico lokal:** Nach dem Merge `pnpm foundry:agents:local` ausführen: neue Version mit
+  luna, `has_photo` und den neuen Regeln. Vorher nicht, denn der Stand von develop kennt
+  `has_photo` noch nicht.

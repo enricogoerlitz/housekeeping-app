@@ -184,7 +184,13 @@ function Answer(props: {
   const queued = turn.status === 'waiting';
   return (
     <View testID={testID} style={{ gap: 12 }}>
-      <ProgressSteps steps={steps} runningLabel="läuft" testID={`${testID}-steps`} />
+      {/* Decision 22: from three steps on one row "4 Schritte", opened by a tap. */}
+      <ProgressSteps
+        steps={steps}
+        runningLabel="läuft"
+        summary={`${steps.length} Schritte`}
+        testID={`${testID}-steps`}
+      />
       {waiting ? (
         <Text variant="small" color="muted" testID={`${testID}-thinking`}>
           Denkt nach …

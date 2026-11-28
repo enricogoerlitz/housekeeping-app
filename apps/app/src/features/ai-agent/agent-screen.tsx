@@ -265,7 +265,7 @@ export function AgentScreen() {
   const inChat = chat.chatId !== undefined || turns.length > 0;
   const header = (
     <ScreenHeader
-      title="Agent"
+      title="AI Agent"
       subtitle={
         inChat
           ? (title ?? (chat.load.status === 'loading' ? 'Wird geladen …' : undefined))

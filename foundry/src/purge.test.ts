@@ -68,7 +68,12 @@ function fakeProject(conversations: Conv[], options: { status?: number } = {}) {
   return { fetchFn, calls, live, responses };
 }
 
-const conv = (id: string, metadata: Record<string, string>, responses: string[] = []): Conv => ({
+const conv = (
+  id: string,
+  metadata: Record<string, string>,
+  responses: string[] = [],
+  agent = 'household-agent-preview',
+): Conv => ({
   id,
   metadata,
   items: [
@@ -76,7 +81,7 @@ const conv = (id: string, metadata: Record<string, string>, responses: string[] 
     ...responses.map((response, index) => ({
       id: `fc_${id}_${index}`,
       type: 'function_call',
-      created_by: { response_id: response, agent: { name: 'household-agent-preview' } },
+      created_by: { response_id: response, agent: { name: agent } },
     })),
   ],
 });
@@ -88,7 +93,7 @@ const PROJECT = [
     'resp_1',
   ]),
   conv('conv_prod', { app: 'housekeeping', env: 'prod', household_id: 'h2' }, ['resp_9']),
-  conv('conv_old', { app: 'housekeeping', household_id: 'h3' }, ['resp_8']),
+  conv('conv_old', { app: 'housekeeping', household_id: 'h3' }, ['resp_8'], 'places-agent-prod'),
   conv('conv_p2', { app: 'housekeeping', env: 'preview', household_id: 'h4' }),
   conv('conv_play', { env: 'preview' }, ['resp_7']),
 ];
@@ -101,6 +106,56 @@ describe('purge of the preview conversations (decision 13)', () => {
     expect([...project.live.keys()]).toEqual(['conv_prod', 'conv_old', 'conv_play']);
     expect([...project.responses].sort()).toEqual(['resp_7', 'resp_8', 'resp_9']);
     expect(project.calls.every((call) => call.auth === `Bearer ${TOKEN}`)).toBe(true);
+  });
+
+  it('review D: a chat from before decision 44 (no env) goes when only this environment’s agents answered in it', async () => {
+    const project = fakeProject([
+      conv('conv_legacy_p', { app: 'housekeeping', household_id: 'h1' }, ['resp_a', 'resp_b']),
+      conv(
+        'conv_legacy_0066',
+        { app: 'housekeeping', household_id: 'h1' },
+        ['resp_c'],
+        'places-agent-preview',
+      ),
+      conv(
+        'conv_legacy_prod',
+        { app: 'housekeeping', household_id: 'h2' },
+        ['resp_d'],
+        'household-agent-prod',
+      ),
+      conv(
+        'conv_legacy_local',
+        { app: 'housekeeping', household_id: 'h3' },
+        ['resp_e'],
+        'household-agent-local',
+      ),
+      // Never answered: whose it is cannot be told, so it stays.
+      conv('conv_legacy_empty', { app: 'housekeeping', household_id: 'h4' }),
+    ]);
+    const api = restConversationsApi(ENDPOINT, TOKEN, project.fetchFn);
+    expect(await purgeConversations(api, 'preview')).toEqual({ conversations: 2, responses: 3 });
+    expect([...project.live.keys()]).toEqual([
+      'conv_legacy_prod',
+      'conv_legacy_local',
+      'conv_legacy_empty',
+    ]);
+    expect([...project.responses].sort()).toEqual(['resp_d', 'resp_e']);
+    // A conversation answered by agents of two environments stays as well.
+    const mixed: Conv = {
+      ...conv('conv_mixed', { app: 'housekeeping' }, ['resp_f']),
+      items: [
+        ...conv('conv_mixed', { app: 'housekeeping' }, ['resp_f']).items,
+        {
+          id: 'fc_x',
+          type: 'function_call',
+          created_by: { response_id: 'resp_g', agent: { name: 'household-agent-prod' } },
+        },
+      ],
+    };
+    const second = fakeProject([mixed]);
+    expect(
+      await purgeConversations(restConversationsApi(ENDPOINT, TOKEN, second.fetchFn), 'preview'),
+    ).toEqual({ conversations: 0, responses: 0 });
   });
 
   it('production is never purged, local only on purpose; the log names counts, never a token', async () => {

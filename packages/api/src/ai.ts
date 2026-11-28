@@ -2,7 +2,7 @@
 // the active household; replies are validated against the core contract in the transport.
 // Nothing here changes data: a proposal is applied only when the person accepts it
 // (`applyProposal`).
-import type { SpeechTokenReply } from '@housekeeping/core';
+import { AGENT_BLOCKED_TEXT, type SpeechTokenReply } from '@housekeeping/core';
 
 import type { AssistantContext, AiSearchResult, AssistantReply } from './assistant';
 import { onlineCall } from './backend';
@@ -22,7 +22,15 @@ const WEB_SEARCH_UNAVAILABLE_MESSAGE =
   'Die Websuche ist gerade nicht erreichbar. Versuch es gleich noch einmal.';
 
 export type AiErrorReason =
-  'quota' | 'unavailable' | 'unauthorized' | 'failed' | 'search' | 'chatTooLong' | 'busy';
+  | 'quota'
+  | 'unavailable'
+  | 'unauthorized'
+  | 'failed'
+  | 'search'
+  | 'chatTooLong'
+  | 'busy'
+  /** Review D: the content filter refused the agent's message. */
+  | 'blocked';
 
 const MESSAGES: Record<AiErrorReason, string> = {
   quota: AI_QUOTA_MESSAGE,
@@ -32,6 +40,7 @@ const MESSAGES: Record<AiErrorReason, string> = {
   search: WEB_SEARCH_UNAVAILABLE_MESSAGE,
   chatTooLong: AI_CHAT_TOO_LONG_MESSAGE,
   busy: AI_CHAT_BUSY_MESSAGE,
+  blocked: AGENT_BLOCKED_TEXT,
 };
 
 /** A failed AI call; `message` is the German text for the person. */

@@ -315,6 +315,8 @@ export function useAgentChat(chatId: Id | undefined, onCreated: (id: Id) => void
             status: 'error',
             cardsPending: false,
             error: aiErrorMessage(error),
+            // Review D: Azure's canned English refusal never stays; the hint says it in German.
+            ...(error instanceof AiError && error.reason === 'blocked' ? { text: '' } : {}),
           })),
         )
         .finally(() => {

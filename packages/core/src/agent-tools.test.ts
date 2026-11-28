@@ -397,6 +397,34 @@ describe('list_restaurants and list_activities', () => {
     const sport = run('list_activities', { kind: 'sport', fields: ['name'] }, placesHousehold());
     expect(sport.json.items).toEqual([{ name: 'Eislaufen' }]);
   });
+
+  it('review D (REQ-013): "ohne Foto" is a filter, so one call counts them all', () => {
+    const data = placesHousehold();
+    data.rows.restaurants = (data.rows.restaurants ?? []).map((row, index) =>
+      index === 0 ? { ...row, photo_path: 'h/restaurants/p1.jpg' } : row,
+    );
+    const without = run('list_restaurants', { has_photo: false, fields: ['name'] }, data);
+    expect(without.json.items).toEqual([{ name: 'Crackers' }, { name: 'Pho Ngon' }]);
+    expect(without.json.total).toBe(2);
+    expect(stepLine(without.step)).toBe('Liest eure Restaurants · ohne Foto · 2 von 3');
+    const activities = run('list_activities', { has_photo: true, fields: ['name'] }, data);
+    expect(activities.json.items).toEqual([]);
+  });
+});
+
+describe('review D (REQ-013): recipes without a photo', () => {
+  it('has_photo false finds the recipes without one, true the others', () => {
+    const data = recipeHousehold();
+    const all = run('list_recipes', { fields: ['title', 'has_photo'], limit: 300 }, data);
+    const without = run('list_recipes', { has_photo: false, fields: ['title'], limit: 300 }, data);
+    const withPhoto = run('list_recipes', { has_photo: true, fields: ['title'], limit: 300 }, data);
+    const items = all.json.items as { title: string; has_photo: boolean }[];
+    expect((without.json.items as unknown[]).length).toBe(items.filter((i) => !i.has_photo).length);
+    expect((withPhoto.json.items as unknown[]).length).toBe(
+      items.filter((i) => i.has_photo).length,
+    );
+    expect(stepLine(without.step)).toContain('ohne Foto');
+  });
 });
 
 // ---------- Calendar ----------

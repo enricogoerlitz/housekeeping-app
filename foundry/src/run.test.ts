@@ -161,7 +161,8 @@ describe('agent files', () => {
     expect(agents.map((agent) => agent.name)).toEqual(['household-agent']);
     const [agent] = agents;
     expect(agentName('household-agent', 'prod')).toBe('household-agent-prod');
-    expect(agent?.definition.model).toBe('gpt-6.1-terra');
+    // Review D (decision 10): gpt-5.6-luna answers the test catalogue as well as terra for a quarter.
+    expect(agent?.definition.model).toBe('gpt-5.6-luna');
     expect(agent?.definition.instructions).toContain('Housekeeping-Agent');
     const tools = agent?.definition.tools as {
       type: string;

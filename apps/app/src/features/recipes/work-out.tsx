@@ -24,6 +24,11 @@ import type { PageEditor } from './sections/use-page-editor';
 // "Mit KI ausfüllen" searching the title (Entscheidung 7).
 
 const requested = new Set<Id>();
+/**
+ * Spec 0067, decision 36: the recipes chosen on a card of the agent; "Weiter zum nächsten" goes
+ * through them only and stops after the last one (a list's order goes on A–Z, spec 0061).
+ */
+let chosen: readonly Id[] | undefined;
 
 /** Takes the request for `recipeId`; true once after "Ausarbeiten" or "Weiter zum nächsten". */
 function takeWorkOut(recipeId: Id): boolean {
@@ -35,14 +40,21 @@ function takeWorkOut(recipeId: Id): boolean {
  * offline only to read (AC-011, AC-024). `push` opens it over the list with the list's order;
  * `replace` takes the place of the page shown, so "‹ Essen" still leads to the list.
  */
-export function useWorkOut(): (recipeId: Id, how: { order: readonly Id[] } | 'replace') => void {
+export function useWorkOut(): (
+  recipeId: Id,
+  how: { order: readonly Id[] } | { chosen: readonly Id[] } | 'replace',
+) => void {
   const online = useOnlineOnly();
   const openRecipe = useOpenRecipe();
   const router = useRouter();
   return (recipeId, how) => {
     if (!online.disabled) requested.add(recipeId);
-    if (how === 'replace') router.replace({ pathname: '/rezept/[id]', params: { id: recipeId } });
-    else openRecipe(recipeId, how.order);
+    if (how === 'replace') {
+      router.replace({ pathname: '/rezept/[id]', params: { id: recipeId } });
+      return;
+    }
+    chosen = 'chosen' in how ? [...how.chosen] : undefined;
+    openRecipe(recipeId, 'order' in how ? how.order : undefined);
   };
 }
 
@@ -73,7 +85,10 @@ export function UnfinishedCard(props: {
 
   if (editor.draft || editor.unsaved || recipe.kind !== 'recipe') return null;
   if (!unfinished && (!openedUnfinished || props.quick)) return null;
-  const { next, remaining } = nextUnfinished(recipes, browseOrder('recipes'), recipe.id);
+  const fromAgent = chosen?.includes(recipe.id) === true;
+  const { next, remaining } = fromAgent
+    ? nextUnfinished(recipes, chosen, recipe.id, { onlyOrder: true })
+    : nextUnfinished(recipes, browseOrder('recipes'), recipe.id);
   const onNext = next && !props.quick ? () => workOut(next, 'replace') : undefined;
   const nextButton = (primary: boolean) =>
     onNext ? (

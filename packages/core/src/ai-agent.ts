@@ -263,7 +263,20 @@ export function contextBlock(input: {
 
 function householdDayLine(now: Date, timeZone: string): string {
   const day = zonedDay(now, timeZone);
-  return `Heute im Haushalt: ${day.text} (${day.zone})`;
+  return `Heute im Haushalt: ${day.text} (${day.zone})\n${weeksLine(day.text)}`;
+}
+
+/**
+ * Review D (test catalogue C3, N1): "diese/nächste Woche" as dates, Monday to Sunday, so the model
+ * does not guess the week on a Saturday ("Samstag, 2026-11-28" → 23.–29.11. and 30.11.–6.12.).
+ */
+function weeksLine(dayText: string): string {
+  const iso = dayText.slice(-10);
+  const at = new Date(`${iso}T12:00:00Z`);
+  const sinceMonday = (at.getUTCDay() + 6) % 7;
+  const plus = (days: number) =>
+    new Date(at.getTime() + (days - sinceMonday) * 86_400_000).toISOString().slice(0, 10);
+  return `Diese Woche: ${plus(0)} bis ${plus(6)} · Nächste Woche: ${plus(7)} bis ${plus(13)}`;
 }
 
 // ---------- Requests ----------
@@ -1046,7 +1059,19 @@ export const AGENT_STREAM_ERRORS = [
   'quota_exceeded',
   'chat_too_long',
   'internal',
+  /** Review D: Azure's content filter (prompt shield) refused the message. */
+  'blocked',
 ] as const;
+
+/**
+ * Review D (test catalogue J1/J2): what the person reads when Azure's content filter blocks a
+ * message, usually pasted text with instructions to the AI ("Ignoriere alle Regeln …").
+ */
+export const AGENT_BLOCKED_TEXT =
+  'Das kann ich so nicht bearbeiten: Der Schutzfilter hält Anweisungen an die KI im eingefügten Text oder in der Datei zurück. Lass sie weg oder frag ohne sie noch einmal.';
+
+/** The canned refusal Azure streams for a blocked prompt (an incomplete answer). */
+const BLOCKED_REFUSAL = /^I['’]m sorry, but I cannot assist with that request\.?$/;
 
 export const AgentStreamEventSchema = z.discriminatedUnion('type', [
   /** First event of a new chat: its id and title. */
@@ -1210,7 +1235,11 @@ export function messagesFromItems(
       const parts = list(item.content)
         .map(record)
         .filter((part) => part?.type === 'output_text');
-      const text = stripCitations(parts.map((part) => str(part?.text) ?? '').join(''));
+      const written = stripCitations(parts.map((part) => str(part?.text) ?? '').join(''));
+      const text =
+        item.status === 'incomplete' && BLOCKED_REFUSAL.test(written.trim())
+          ? AGENT_BLOCKED_TEXT
+          : written;
       const current = answerNow();
       current.text = [current.text, text].filter(Boolean).join('\n\n').slice(0, 40_000);
       const sources = sourcesOf(parts.flatMap((part) => list(part?.annotations)));

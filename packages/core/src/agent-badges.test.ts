@@ -6,8 +6,10 @@ import {
   badgeLabel,
   backspaceRemovesBadge,
   matchBadges,
+  messageLinks,
   slashQuery,
   takeSlash,
+  withoutLink,
   withoutSlash,
 } from './agent-badges';
 
@@ -82,5 +84,27 @@ describe('badges in the input (REQ-004)', () => {
     expect(withoutSlash('/re', 3)).toEqual({ text: '', cursor: 0 });
     expect(withoutSlash('Was kochen /re', 14)).toEqual({ text: 'Was kochen ', cursor: 11 });
     expect(withoutSlash('ohne Slash', 10)).toEqual({ text: 'ohne Slash', cursor: 10 });
+  });
+});
+
+describe('REQ-005: a link in the message shows as a chip (review D)', () => {
+  it('names the host of each link once, http(s) only, at most three', () => {
+    const text =
+      'leg das an https://www.chefkoch.de/rezepte/1/Lasagne.html und https://vm.tiktok.com/ZGdX/ ' +
+      'und nochmal https://www.chefkoch.de/rezepte/1/Lasagne.html, ftp://x.org/a mailto:a@b.de';
+    expect(messageLinks(text)).toEqual([
+      { url: 'https://www.chefkoch.de/rezepte/1/Lasagne.html', host: 'chefkoch.de' },
+      { url: 'https://vm.tiktok.com/ZGdX/', host: 'vm.tiktok.com' },
+    ]);
+    const many = ['a', 'b', 'c', 'd'].map((x) => `https://${x}.example.org/`).join(' ');
+    expect(messageLinks(many)).toHaveLength(3);
+    expect(messageLinks('kein Link, nur www.chefkoch.de')).toEqual([]);
+  });
+
+  it('✕ takes the link out of the text, the rest stays readable', () => {
+    expect(
+      withoutLink('leg das an https://www.chefkoch.de/r/1 für 2', 'https://www.chefkoch.de/r/1'),
+    ).toBe('leg das an für 2');
+    expect(withoutLink('https://a.example.org/x', 'https://a.example.org/x')).toBe('');
   });
 });
