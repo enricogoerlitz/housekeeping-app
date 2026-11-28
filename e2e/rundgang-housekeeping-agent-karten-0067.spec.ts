@@ -292,6 +292,9 @@ test('decision 38, preview 28.11.: a variant taken over on the recipe shows the 
   await expect(tid(page, 'recipe-proposal')).toBeHidden();
   await page.getByRole('button', { name: 'Rezept schließen' }).click();
   await expect(tid(page, `${card}-made-0`)).toContainText('Lasagne');
+  // Taken over: no second "Änderung ansehen" (it would ask the AI again).
+  await expect(tid(page, `${card}-applied`)).toHaveText('Übernommen');
+  await expect(tid(page, `${card}-open`)).toHaveCount(0);
 });
 
 test('REQ-011, preview 28.11.: "Als Foto nehmen" saves the AI photo and shows the recipe with it', async ({

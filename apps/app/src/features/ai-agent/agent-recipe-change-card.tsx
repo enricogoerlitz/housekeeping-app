@@ -36,7 +36,22 @@ export function AgentRecipeChangeCard(props: {
       <Text variant="small" color="muted" testID={`${testID}-wish`}>
         {`Mit KI ändern: „${extra.wish}“`}
       </Text>
-      {recipe ? (
+      {recipe && applied ? (
+        <>
+          {/* Taken over: the changed recipe is the result; asking again would cost another run. */}
+          <Text variant="small" color="muted" testID={`${testID}-applied`}>
+            Übernommen
+          </Text>
+          <AgentEntities
+            extra={{
+              kind: 'entities',
+              id: `${extra.id}-made`,
+              items: [{ kind: 'recipe', id: recipe.id }],
+            }}
+            testID={`${testID}-made`}
+          />
+        </>
+      ) : recipe ? (
         <>
           <Text variant="small" color="muted">
             Du siehst zuerst, was sich ändert, und übernimmst es dort – mit Rückgängig.
@@ -55,16 +70,6 @@ export function AgentRecipeChangeCard(props: {
               testID={`${testID}-open`}
             />
           </View>
-          {applied ? (
-            <AgentEntities
-              extra={{
-                kind: 'entities',
-                id: `${extra.id}-made`,
-                items: [{ kind: 'recipe', id: recipe.id }],
-              }}
-              testID={`${testID}-made`}
-            />
-          ) : null}
         </>
       ) : (
         <Text variant="small" color="warn" testID={`${testID}-gone`}>
